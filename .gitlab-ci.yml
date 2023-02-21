@@ -507,8 +507,8 @@ deploy-linux:
         - cd darts-package\dist
         - ls
     dependencies:
-        - build-linux-3.6
-        - build-linux-3.7
-        - build-linux-3.8
-        - build-linux-3.9
+        #- build-linux-3.6-ODLS
+        #- build-linux-3.7-ODLS
+        - build-linux-3.8-ODLS
+        - build-linux-3.9-ODLS
 
