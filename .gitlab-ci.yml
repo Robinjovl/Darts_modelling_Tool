@@ -496,5 +496,19 @@ test-windows-3.6-ODLS:
       when: always
       expire_in: 1 year
 
-
+deploy-linux:
+    stage: deploy
+    #TODO only for main branch
+    # Will be executed on runner with windows tag - that assumed to run on windows host
+    tags:
+        - linux
+    script:
+        # run simulation fot test models set
+        - cd darts-package\dist
+        - ls
+    dependencies:
+        - build-linux-3.6
+        - build-linux-3.7
+        - build-linux-3.8
+        - build-linux-3.9
 
