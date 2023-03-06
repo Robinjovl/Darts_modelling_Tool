@@ -8,7 +8,7 @@ stages:
 build-linux-3.11:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
@@ -20,7 +20,7 @@ build-linux-3.11:
 build-linux-3.10:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
@@ -42,7 +42,7 @@ build-linux-3.9:
 build-linux-3.8:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
@@ -54,7 +54,7 @@ build-linux-3.8:
 build-linux-3.7:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
@@ -66,7 +66,7 @@ build-linux-3.7:
 build-linux-3.6:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
@@ -101,7 +101,7 @@ build-linux-3.9-ODLS:
 build-linux-3.8-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.8'       # for python image selection in .build-linux
@@ -111,7 +111,7 @@ build-linux-3.8-ODLS:
 build-linux-3.7-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.7'        # for python image selection in .build-linux
@@ -121,7 +121,7 @@ build-linux-3.7-ODLS:
 build-linux-3.6-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.6'
@@ -163,7 +163,7 @@ build-windows-3.9:
 build-windows-3.8:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
@@ -175,7 +175,7 @@ build-windows-3.8:
 build-windows-3.7:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
@@ -187,7 +187,7 @@ build-windows-3.7:
 build-windows-3.6:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
@@ -223,7 +223,7 @@ build-windows-3.9-ODLS:
 build-windows-3.8-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-windows-ODLS
     variables:
         PY_VER: '3.8'
@@ -233,7 +233,7 @@ build-windows-3.8-ODLS:
 build-windows-3.7-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-windows-ODLS
     variables:
         PY_VER: '3.7'
@@ -243,7 +243,7 @@ build-windows-3.7-ODLS:
 build-windows-3.6-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .build-windows-ODLS
     variables:
         PY_VER: '3.6'
@@ -400,7 +400,7 @@ test-linux-3.9-ODLS:
 test-linux-3.8-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-linux
     variables:
         PY_VER: '3.8'       # for python image selection in .test-linux
@@ -412,7 +412,7 @@ test-linux-3.8-ODLS:
 test-linux-3.7-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-linux
     variables:
         PY_VER: '3.7'        # for python image selection in .test-linux
@@ -424,7 +424,7 @@ test-linux-3.7-ODLS:
 test-linux-3.6-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-linux
     variables:
         PY_VER: '3.6'
@@ -474,7 +474,7 @@ test-linux-3.9:
 test-linux-3.8:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
@@ -488,7 +488,7 @@ test-linux-3.8:
 test-linux-3.7:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
@@ -502,7 +502,7 @@ test-linux-3.7:
 test-linux-3.6:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
@@ -515,7 +515,7 @@ test-linux-3.6:
 
 ###################################################################################
 
-test-windows-3.101:
+test-windows-3.11:
     only:
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
@@ -554,7 +554,7 @@ test-windows-3.9:
 test-windows-3.8:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
@@ -568,7 +568,7 @@ test-windows-3.8:
 test-windows-3.7:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
@@ -582,7 +582,7 @@ test-windows-3.7:
 test-windows-3.6:
     only:
       refs:
-        - main
+        - test_ci
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
@@ -625,7 +625,7 @@ test-windows-3.9-ODLS:
 test-windows-3.8-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-windows
     variables:
         PY_VER: '3.8'
@@ -637,7 +637,7 @@ test-windows-3.8-ODLS:
 test-windows-3.7-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-windows
     variables:
         PY_VER: '3.7'
@@ -649,7 +649,7 @@ test-windows-3.7-ODLS:
 test-windows-3.6-ODLS:
     only:
       refs:
-        - main
+        - test_ci
     extends: .test-windows
     variables:
         PY_VER: '3.6'
@@ -746,10 +746,10 @@ deploy-testpypi:
 # pick all whl ODLS-artifacts (windows/linux, different python versions) and upload to test pipy
 # TODO auto-increment package version (in darts-package/setup.py and .gitlab-ci.yml) and add git tag; now it is done manually
 .deploy-pypi:
-    # Run deploy only for main branch
+    # Run deploy only for test_ci branch
     only:
         refs:
-            - main
+            - test_ci
     stage: deploy
     # just for twine
     image: python:3.9
