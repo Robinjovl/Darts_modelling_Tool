@@ -43,24 +43,24 @@ Mass and heat transfer involves a thermal multiphase flow system, which requires
 (Governing-Equations)=
 ### Governing Equations
 
-For the investigated domain with volume {math}`\Omega`, bounded by surface {math}`\Gamma`, the mass and energy conservation can be expressed in a uniformly integral way, as
+For the investigated domain with volume math`\Omega`, bounded by surface math`\Gamma`, the mass and energy conservation can be expressed in a uniformly integral way, as
 
-```{math}
+```math
 \frac{\partial}{\partial{t}} \int_{\Omega}{M^c}d{\Omega} + \int_{\Gamma}{\bf{F}^c\bf{\cdot}{\bf{n}}}d{\Gamma} = \int_{\Omega}{Q^c}d{\Omega}.
 ```
 
-Here, {math}`M^c` denotes the accumulation term for the {math}`c^{\mathrm{th}}` component ({math}`c = 1, \ldots, n_c`, indexing for the mass components, [e.g., water, {math}`\mathrm{CO_2}`] and {math}`c = n_c + 1` for the energy quantity); {math}`\bf{F}_c` refers to the flux term of the {math}`c^{\mathrm{th}}` component; {math}`{\bf{n}}` refers to the unit normal pointing outward to the domain boundary;
-{math}`Q_c` denotes the source/sink term of the {math}`c^{\mathrm{th}}` component.
+Here, math`M^c` denotes the accumulation term for the math`c^{\mathrm{th}}` component (math`c = 1, \ldots, n_c`, indexing for the mass components, [e.g., water, math`\mathrm{CO_2}`] and math`c = n_c + 1` for the energy quantity); math`\bf{F}_c` refers to the flux term of the math`c^{\mathrm{th}}` component; math`{\bf{n}}` refers to the unit normal pointing outward to the domain boundary;
+math`Q_c` denotes the source/sink term of the math`c^{\mathrm{th}}` component.
 
-The mass accumulation term collects each component distribution over {math}`n_p` fluid phases in a summation form,
+The mass accumulation term collects each component distribution over math`n_p` fluid phases in a summation form,
 
-```{math}
+```math
     \begin{aligned}
         M^c = \phi\sum\limits^{n_p}_{j=1}x_{cj}\rho_js_j + (1-\phi), \quad c = 1, \ldots, n_c,
     \end{aligned}
 ```
 
-where {math}`\phi` is porosity, {math}`s_j` is phase saturation, {math}`\rho_j` is phase density {math}`[\mathrm{kmol/m^3}]` and {math}`x_{cj}` is molar fraction of {math}`c` component in {math}`j` phase.
+where math`\phi` is porosity, math`s_j` is phase saturation, math`\rho_j` is phase density math`[\mathrm{kmol/m^3}]` and math`x_{cj}` is molar fraction of math`c` component in math`j` phase.
 
 The energy accumulation term contains the internal energy of fluid and rock,
 
@@ -70,16 +70,16 @@ The energy accumulation term contains the internal energy of fluid and rock,
     \end{aligned}
 \end{equation}
 
-where {math}`U_j` is phase internal energy {math}`[\mathrm{kJ}]` and {math}`U_r` is rock internal energy {math}`[\mathrm{kJ}]`.
+where math`U_j` is phase internal energy math`[\mathrm{kJ}]` and math`U_r` is rock internal energy math`[\mathrm{kJ}]`.
 The rock is assumed compressible and represented by the change of porosity through:
 
 \begin{equation}
     \phi = \phi_0 \big(1 + c_r (p - p_\mathrm{ref}) \big),
 \end{equation}
 
-where {math}`\phi_0` is the initial porosity, {math}`c_r` is the rock compressibility [1/bar] and {math}`p_\mathrm{ref}` is the reference pressure [bars].
+where math`\phi_0` is the initial porosity, math`c_r` is the rock compressibility [1/bar] and math`p_\mathrm{ref}` is the reference pressure [bars].
 
-The mass flux of each component is represented by the summation over {math}`n_p` fluid phases,
+The mass flux of each component is represented by the summation over math`n_p` fluid phases,
 
 \begin{equation}
     \begin{aligned}
@@ -87,22 +87,22 @@ The mass flux of each component is represented by the summation over {math}`n_p`
     \end{aligned}
 \end{equation}
 
-Here the velocity {math}`\bf{u_j}` follows the extension of Darcy's law to multiphase flow,
+Here the velocity math`\bf{u_j}` follows the extension of Darcy's law to multiphase flow,
 
-```{math}
+```math
     \small
     \bf{u_j} = \mathbf{K}\frac{k_{rj}}{\mu_j}(\nabla{p_j}-\bf{\gamma_j}\nabla{z}),
 ```
 
-where {math}`\mathbf{K}` is the permeability tensor {math}`[\mathrm{mD}]`, {math}`k_{rj}` is the relative permeability of phase {math}`j`, {math}`\mu_j` is the viscosity of phase {math}`j` {math}`[\mathrm{mPa\cdot s}]`, {math}`p_j` is the pressure of phase {math}`j` [bars], {math}`\bf{\gamma_j}=\rho_j\bf{g}` is the specific weight {math}`[\mathrm{N/m^3}]` and {math}`z` is the depth vector [m].
+where math`\mathbf{K}` is the permeability tensor math`[\mathrm{mD}]`, math`k_{rj}` is the relative permeability of phase math`j`, math`\mu_j` is the viscosity of phase math`j` math`[\mathrm{mPa\cdot s}]`, math`p_j` is the pressure of phase math`j` [bars], math`\bf{\gamma_j}=\rho_j\bf{g}` is the specific weight math`[\mathrm{N/m^3}]` and math`z` is the depth vector [m].
 
-The {math}`\textbf{J}_{cj}` is the diffusion flux of component {math}`c` in phase {math}`j`, which is described by Fick's law as
+The math`\textbf{J}_{cj}` is the diffusion flux of component math`c` in phase math`j`, which is described by Fick's law as
 
-```{math}
+```math
     \textbf{J}_{cj} = - \phi \textbf{D}_{cj} \nabla x_{cj},
 ```
 
-where {math}`\textbf{D}_{cj}` is the diffusion coefficient [m{math}`^2`/day].
+where math`\textbf{D}_{cj}` is the diffusion coefficient [mmath`^2`/day].
 
 The energy flux includes the thermal convection and conduction terms,
 
@@ -112,7 +112,7 @@ The energy flux includes the thermal convection and conduction terms,
     \end{aligned}
 \end{equation}
 
-where {math}`h_j` is phase enthalpy {math}`[\mathrm{kJ/kg}]` and {math}`\kappa` is effective thermal conductivity {math}`[\mathrm{kJ/m/day/K}]`.
+where math`h_j` is phase enthalpy math`[\mathrm{kJ/kg}]` and math`\kappa` is effective thermal conductivity math`[\mathrm{kJ/m/day/K}]`.
 
 Finally, the source term in mass conservation equations can be present in the following form
 
@@ -122,7 +122,7 @@ Finally, the source term in mass conservation equations can be present in the fo
     \end{aligned}
 \end{equation}
 
-where {math}`q_j` is the phase source/sink term from the well, {math}`v_{ck}` is the stoichiometric coefficient associated with chemical reaction {math}`k` for the component {math}`c` and {math}`r_{k}` is the rate for the reaction.
+where math`q_j` is the phase source/sink term from the well, math`v_{ck}` is the stoichiometric coefficient associated with chemical reaction math`k` for the component math`c` and math`r_{k}` is the rate for the reaction.
 Similarly, the source term in the energy balance equation can be written as
 
 \begin{equation}
@@ -131,16 +131,16 @@ Similarly, the source term in the energy balance equation can be written as
     \end{aligned}
 \end{equation}
 
-Here {math}`v_{ek}` is the stoichiometric coefficient associated with kinetic reaction {math}`k` for the energy and {math}`r_{ek}` is the energy rate for kinetic reaction.
+Here math`v_{ek}` is the stoichiometric coefficient associated with kinetic reaction math`k` for the energy and math`r_{ek}` is the energy rate for kinetic reaction.
 
-The nonlinear equations are discretized with the finite volume method using the multi-point flux approximation on general unstructured mesh in space and with the backward Euler approximation in time. For the {math}`i^{\mathrm{th}}` reservoir block, the governing equation in discretized residual form reads:
-```{math}
+The nonlinear equations are discretized with the finite volume method using the multi-point flux approximation on general unstructured mesh in space and with the backward Euler approximation in time. For the math`i^{\mathrm{th}}` reservoir block, the governing equation in discretized residual form reads:
+```math
     \begin{aligned}
         R^c_i = V_i \Big(M^{c}_i(\omega_i) - M^{c}_i(\omega^n_{i}) \Big) -
         \Delta{t} \Big(\sum_l{A_{l}F^{c}_{l}(\omega)} + V_iQ^{c}_{i}(\omega) \Big) = 0, \quad c = 1, \ldots, n_c+1.
     \end{aligned}
 ```
-Here {math}`V_i` is the volume of the {math}`i^{th}` grid block, {math}`\omega_{i}` refers to state variables at the current time step, {math}`\omega^{n}_i` refers to state variables at previous time step, {math}`A_l` is the contact area between neighboring grids.
+Here math`V_i` is the volume of the math`i^{th}` grid block, math`\omega_{i}` refers to state variables at the current time step, math`\omega^{n}_i` refers to state variables at previous time step, math`A_l` is the contact area between neighboring grids.
 
 (Operator_Form_of_Governing_Equations)=
 ## Operator Form of Governing Equations
@@ -155,16 +155,16 @@ With the OBL approach, the governing equations are written in form of state-depe
 (Conservation-of-mass-and-energy)=
 ### Conservation of mass and energy
 
-Pressure, temperature and overall composition are taken as the unified state variables in a given control volume in general-purpose thermal-compositional simulation. Upstream weighting of the physical state is used to determine the flux-related fluid properties determined at the interface {math}`l`. The discretized mass conservation equation in operator form for girdblock (here we omit {math}`i`) reads:
+Pressure, temperature and overall composition are taken as the unified state variables in a given control volume in general-purpose thermal-compositional simulation. Upstream weighting of the physical state is used to determine the flux-related fluid properties determined at the interface math`l`. The discretized mass conservation equation in operator form for girdblock (here we omit math`i`) reads:
 
 \begin{equation}
 V\phi_0[ \alpha_c (\omega) -\alpha_c( \omega_n)]-\Delta t\sum_{l\in L(i)}\sum_{j=1}^{n_p}[\Gamma^l\beta_{cj}^l(\omega^u)\Delta\psi_j^l + \Gamma_d^l\gamma_{j}^l(\omega)\Delta \chi_{cj}]+\Delta t V \delta_c(\omega)=0 .
 \end{equation}
 
-where {math}`V` is the control volume, {math}`\omega_n` is the physical state of block {math}`i` at the previous timestep, {math}`\omega` is the physical state of block {math}`i` at the new timestep, {math}`\omega^{u}` is the physical state of upstream block, {math}`\Gamma^l` and {math}`\Gamma_d^l` are the fluid and diffusive transmissibilities respectively and {math}`L(i)` is a set of interfaces for gridblock {math}`i`.
+where math`V` is the control volume, math`\omega_n` is the physical state of block math`i` at the previous timestep, math`\omega` is the physical state of block math`i` at the new timestep, math`\omega^{u}` is the physical state of upstream block, math`\Gamma^l` and math`\Gamma_d^l` are the fluid and diffusive transmissibilities respectively and math`L(i)` is a set of interfaces for gridblock math`i`.
 
 Here we defined the following state-dependent operators,
-```{math}
+```math
 :label: belta
 \begin{align}
 \alpha_{cf}\left(\omega\right) &= \Big(1+c_r(p-p_{ref})\Big)\sum_{j=1}^{n_p}x_{cj}\rho_js_j, \ c = 1,\ldots,n_c; \\
@@ -174,17 +174,17 @@ Here we defined the following state-dependent operators,
 \delta_{c}(\omega) &= \sum\limits_{j=1}^{n_p}v_{cj}r_j(\omega),\ c = 1,\ldots,n_c.
 \end{align}
 ```
-The phase-potential-upwinding (PPU) strategy for OBL parametrization is applied in DARTS to model the gravity and capillary effect {cite:p}`Khait2018_SPE,lyuspeobl`. The potential difference of phase {math}`j` on the interface {math}`l` between block 1 and 2 can be written as:
+The phase-potential-upwinding (PPU) strategy for OBL parametrization is applied in DARTS to model the gravity and capillary effect {cite:p}`Khait2018_SPE,lyuspeobl`. The potential difference of phase math`j` on the interface math`l` between block 1 and 2 can be written as:
 
 \begin{equation}
 \Delta \psi^l_{j} = p_1-p^c_{j}(\omega_1) - (p_2-p^c_{j}(\omega_2))-\frac{\rho_j(\omega_1)+\rho_j(\omega_2)}{2}g(z_2-z_1),
 \end{equation}
 
-where {math}`p^c_{j}` is the capillary pressure.
+where math`p^c_{j}` is the capillary pressure.
 
 The discretized energy conservation equation in operator form can be written as:
 
-```{math}
+```math
 \begin{aligned}
 V \phi_0 [\alpha_{ef}(\omega) &- \alpha_{ef}(\omega_n) ] - 
 \Delta{t}\sum_{l\in L(i)} \sum_{j=1}^{n_p}[\Gamma^l\beta_{ej}^l(\omega^{u})\Delta\psi_{j}^l
@@ -194,7 +194,7 @@ V \phi_0 [\alpha_{ef}(\omega) &- \alpha_{ef}(\omega_n) ] -
 \end{aligned}
 ```
 where:
-```{math}
+```math
 :label: energy_acc_flux_6
 \begin{align}
 \alpha_{ef}(\omega)&= \Big(1+c_r(p-p_{ref}) \Big)\sum\limits^{n_p}_{j=1}{\rho_js_jU_j};\\
@@ -205,14 +205,14 @@ where:
 ```
 
 In addition, for accounting the energy of rock, three additional operators should be defined:
-```{math}
+```math
 \begin{align}
 \alpha_{eri}(\omega) &= \frac{U_r}{1+c_r(p-p_{ref})}, \\
 \alpha_{erc}(\omega) &= \frac{1}{1+c_r(p-p_{ref})}, \\
 \chi_{er}(\omega) &= T_r.
 \end{align}
 ```
-{math}`\alpha_{eri}` and {math}`\alpha_{erc}` represent the rock internal energy and rock conduction, respectively. {math}`U_r` is a state-dependent parameter, thus these two rock energy terms are treated separately.
+math`\alpha_{eri}` and math`\alpha_{erc}` represent the rock internal energy and rock conduction, respectively. math`U_r` is a state-dependent parameter, thus these two rock energy terms are treated separately.
 
 This agglomeration of different physical terms into a single nonlinear operator simplifies the implementation of nonlinear formulations. Instead of performing complex evaluations of each property and its derivatives with respect to nonlinear unknowns, operators can be parameterized in physical space either at the pre-processing stage or adaptively with a limited number of supporting points. The evaluation of operators during the simulation is based on multi-linear interpolation, which improves the performance of the linearization stage. Besides, due to the piece-wise representation of operators, the nonlinearity of the system is reduced, which improves the nonlinear behavior {cite:p}`Khait2018_geothermics,Khait2018_SPE`.
 However, to delineate the nonlinear behavior in the system, especially strong nonlinearity (e.g., at high-enthalpy conditions), it is necessary to select a reasonable OBL resolution to characterize the physical space. Too coarse OBL resolution may lead to a large error in the solutions {cite:p}`Voskov2017_JCP`.
@@ -228,17 +228,17 @@ As for the BHP well control, the injector and/or producer will operate under fix
     p-p^{target} = 0.
 \end{equation}
 
-The volumetric rate control in DARTS is implemented through the volumetric rate operator {math}`\zeta^{vol}_p(\omega)`:
+The volumetric rate control in DARTS is implemented through the volumetric rate operator math`\zeta^{vol}_p(\omega)`:
 
 \begin{equation}
 \Gamma^l\zeta_j^{vol}(\omega)\Delta{p} - Q^{target} = 0,
 \end{equation}
 
 where
-```{math}
+```math
 \zeta_j^{vol}= \frac{\hat{s}_j(\omega) \sum_c\beta_{cj}(\omega)}{\hat{\rho}_t(\omega)},
 ```
-where {math}`Q^{target}` is the target volumetric flow rate at separator conditions {math}`[\mathrm{m^3/day}]`, {math}`\beta_{cj}(\omega)` is the mass flux operator as shown in {eq}`belta`, {math}`\hat{s}_j` and {math}`\hat{\rho}_t(\omega)` are the saturation and total fluid density respectively at separator conditions.
+where math`Q^{target}` is the target volumetric flow rate at separator conditions math`[\mathrm{m^3/day}]`, math`\beta_{cj}(\omega)` is the mass flux operator as shown in {eq}`belta`, math`\hat{s}_j` and math`\hat{\rho}_t(\omega)` are the saturation and total fluid density respectively at separator conditions.
 
 Any of the described well controls can be coupled with energy boundary conditions, defined by the temperature or enthalpy of the injected fluid at the injection well. Since temperature is the function of the thermodynamic state, it is expressed in operator form and the temperature well control reads:
 
@@ -246,13 +246,13 @@ Any of the described well controls can be coupled with energy boundary condition
     \chi(\omega) - T^{target} = 0,
 \end{equation}
 
-where {math}`\chi(\omega)` is defined by {eq}`energy_acc_flux_6` and {math}`T^{target}` is the target temperature of injected fluid. Alternatively, the enthalpy of the injected fluid can be defined:
+where math`\chi(\omega)` is defined by {eq}`energy_acc_flux_6` and math`T^{target}` is the target temperature of injected fluid. Alternatively, the enthalpy of the injected fluid can be defined:
 
 \begin{equation}
     h(\omega) - h^{target} = 0,
 \end{equation}
 
-where {math}`h` is the enthalpy of the well control block, {math}`h^{target}` is the target enthalpy of injected fluid. For the production well control, enthalpy is taken equal to that of the upstream well block.
+where math`h` is the enthalpy of the well control block, math`h^{target}` is the target enthalpy of injected fluid. For the production well control, enthalpy is taken equal to that of the upstream well block.
 
 (Various-physical-models)=
 ## Various physical models
@@ -266,11 +266,11 @@ This section is dedicated for the description of physical models relevant to var
 (Treatment-of-porosity)=
 ### Treatment of porosity
 
-The porosity {math}`\phi` depends on the concentrations of the minerals  according to the relationship:
-```{math}
+The porosity math`\phi` depends on the concentrations of the minerals  according to the relationship:
+```math
     \phi=1-\sum^{M}_{m=1} \frac{{\cal M}_m c_{ms}}{\rho_m},
 ```
-where {math}`M` is the number of reactive minerals, {math}`{\cal M}_m` is the molar mass of mineral {math}`m`, {math}`\rho_m` is the mass density of mineral {math}`m` and {math}`c_{ms}` represents and the molar concentration of mineral {math}`m`.
+where math`M` is the number of reactive minerals, math`{\cal M}_m` is the molar mass of mineral math`m`, math`\rho_m` is the mass density of mineral math`m` and math`c_{ms}` represents and the molar concentration of mineral math`m`.
 
 Let's represent the total bulk volume of control element in simulation
 
@@ -278,25 +278,25 @@ Let's represent the total bulk volume of control element in simulation
     V = V_f + V_r + V_{nr},
 \end{equation}
 
-and {math}`V_r` denotes reactive volume and {math}`V_{nr}` represents the non-reactive volume (not altered by any chemical reaction). Dividing this by the total (bulk) volume gives
+and math`V_r` denotes reactive volume and math`V_{nr}` represents the non-reactive volume (not altered by any chemical reaction). Dividing this by the total (bulk) volume gives
 
 \begin{equation}
     1 = \phi + \phi_r + \phi_{nr} = \phi^T + \phi_{nr},
 \end{equation}
 
-where {math}`\phi_r` represents the reactive volume fraction, {math}`\phi_{nr}` is the non-reactive volume fraction, and {math}`\phi^T` is the total porosity defined as the sum of the fluid porosity and reactive volume fraction. Since only the reactive volume and fluid porosity can change due to chemical reactions, it follows directly that the total porosity remains constant throughout simulation (when neglecting compressibility). This and the changes in volume fractions due to precipitation and dissolution is illustrated in the following figure.
+where math`\phi_r` represents the reactive volume fraction, math`\phi_{nr}` is the non-reactive volume fraction, and math`\phi^T` is the total porosity defined as the sum of the fluid porosity and reactive volume fraction. Since only the reactive volume and fluid porosity can change due to chemical reactions, it follows directly that the total porosity remains constant throughout simulation (when neglecting compressibility). This and the changes in volume fractions due to precipitation and dissolution is illustrated in the following figure.
 
 ![alt fig:porosity](./porosity_schematic.png "fig:porosity")
 *Schematic of the different volumes in the domain. The domain consists of three distinct regions, particularly the fluid volume which is occupies by all the mobile phases (liquid and gaseous in the case of two phase flow), the reactive volume which consist of solid phases that can react or precipitate, and finally the nonreactive volume (the part of the control volume which doesn't participate in any chemical reaction)*
 
 Note that the fluid porosity can always be obtained with the following constitutive equation
 
-```{math}
+```math
 \phi = \phi^T \Big( 1 - {\sum_{m=1}^{M} \hat{s}_m} \Big),
 ```
 
-where {math}`M` is the number of solid phases (occupying the reactive volume fraction) and {math}`\hat{s}_m` is the saturation of  solid phase. Please note that the {math}`s_{\alpha}` is the fluid saturation (defined over the pore volume) while {math}`\hat{s}_{m}` is the
-{solid saturation of mineral phase {math}`m`} (defined over the pore and reactive rock volume).
+where math`M` is the number of solid phases (occupying the reactive volume fraction) and math`\hat{s}_m` is the saturation of  solid phase. Please note that the math`s_{\alpha}` is the fluid saturation (defined over the pore volume) while math`\hat{s}_{m}` is the
+{solid saturation of mineral phase math`m`} (defined over the pore and reactive rock volume).
 
 (References)=
 ## References
