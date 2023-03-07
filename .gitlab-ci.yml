@@ -693,9 +693,10 @@ deploy-testpypi:
         - build-linux-3.7-ODLS
         - build-linux-3.8-ODLS
         - build-linux-3.9-ODLS
+        - build-linux-3.10-ODLS
         - build-windows-3.6-ODLS
         - build-windows-3.7-ODLS
         - build-windows-3.8-ODLS
         - build-windows-3.9-ODLS
-
+        - build-windows-3.10-ODLS
 
