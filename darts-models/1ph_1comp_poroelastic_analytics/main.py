@@ -3,6 +3,7 @@ from darts.engines import *
 import numpy as np
 import meshio
 from math import fabs
+import os
 
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
@@ -133,20 +134,23 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
     data = []
 
     file_name = 'perf_' + case + '_' + scheme + '_' + mesh + '_' + platform.system().lower()[:3] + '.pkl'
-    ref_data = load_performance_data(file_name=file_name)
-    failed = 0
-    for ith_step, dt in enumerate(t):
-        time += dt
-        m.params.first_ts = dt
-        m.params.max_ts = dt
-        run_python(m, dt)
+    if os.path.isfile(file_name):
+        ref_data = load_performance_data(file_name=file_name)
+        failed = 0
+        for ith_step, dt in enumerate(t):
+            time += dt
+            m.params.first_ts = dt
+            m.params.max_ts = dt
+            run_python(m, dt)
 
-        # write a vtk snapshot
-        # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
-        data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
-        failed += check_performance_data(ref_data[ith_step], data[ith_step], failed)
-    #m.save_performance_data(data=data, file_name=file_name)
-    # m.print_timers()
+            # write a vtk snapshot
+            # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
+            data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
+            failed += check_performance_data(ref_data[ith_step], data[ith_step], failed)
+        # m.save_performance_data(data=data, file_name=file_name)
+        # m.print_timers()
+    else:
+        failed = 1
 
     return (failed > 0), data[-1]['simulation time']
 def run_and_plot(case='mandel', scheme='non_stabilized'):
@@ -311,3 +315,4 @@ def run_test(args: list = []):
 # for arg in test_args[0]:
 #     run_test(arg)
 
+# test(case='terzaghi', scheme='non_stabilized', mesh='rect')
