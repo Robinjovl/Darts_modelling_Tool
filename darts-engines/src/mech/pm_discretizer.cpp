@@ -55,7 +55,8 @@ pm_discretizer::Gradients pm_discretizer::merge_stencils(const vector<index_t>& 
 	MERGE_BLOCK_SIZE = m1.M / ND;
 	auto& pre_grad = pre_merged_grad[MERGE_BLOCK_SIZE];
 	std::fill_n(&pre_grad.values[0], pre_grad.values.size(), 0.0);
-	pre_grad(0, { (size_t)pre_grad.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)pre_grad.N, 1 }) = m1.values;
+	pre_grad(0, { (size_t)pre_grad.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)pre_grad.N, 1 }) = 
+		m1(0, { (size_t)m1.M, (size_t)(MERGE_BLOCK_SIZE * st1.size()) }, { (size_t)m1.N, 1 });
 
 	for (counter = 0; counter < st2.size(); counter++)
 	{
