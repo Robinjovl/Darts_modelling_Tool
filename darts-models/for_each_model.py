@@ -160,7 +160,10 @@ def run_single_test(dir, module_name, args, ret_value):
         if ret_value.value:
             print('FAIL, \t%.2f s' % test_time)
         else:
-            print('OK, \t%.2f s' % test_time)
+            if test_time > 0.0:
+                print('OK, \t%.2f s' % test_time)
+            else:
+                print('SAVED')
     except Exception as err:
         # sys.stdout = orig_stdout
         print(dir)

@@ -134,25 +134,31 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
     data = []
 
     file_name = 'perf_' + case + '_' + scheme + '_' + mesh + '_' + platform.system().lower()[:3] + '.pkl'
-    if os.path.isfile(file_name):
+    failed = 0
+
+    is_plk_exist = os.path.isfile(file_name)
+    if is_plk_exist:
         ref_data = load_performance_data(file_name=file_name)
-        failed = 0
-        for ith_step, dt in enumerate(t):
-            time += dt
-            m.params.first_ts = dt
-            m.params.max_ts = dt
-            run_python(m, dt)
 
-            # write a vtk snapshot
-            # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
-            data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
+    for ith_step, dt in enumerate(t):
+        time += dt
+        m.params.first_ts = dt
+        m.params.max_ts = dt
+        run_python(m, dt)
+
+        # write a vtk snapshot
+        # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
+        data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
+        if is_plk_exist:
             failed += check_performance_data(ref_data[ith_step], data[ith_step], failed)
-        # m.save_performance_data(data=data, file_name=file_name)
-        # m.print_timers()
-    else:
-        failed = 1
+    if not is_plk_exist:
+        m.save_performance_data(data=data, file_name=file_name)
+    # m.print_timers()
 
-    return (failed > 0), data[-1]['simulation time']
+    if is_plk_exist:
+        return (failed > 0), data[-1]['simulation time']
+    else:
+        return False, -1.0
 def run_and_plot(case='mandel', scheme='non_stabilized'):
     ## only with rectangular mesh
     nt = 60
@@ -311,8 +317,8 @@ def run_test(args: list = []):
 #      ['terzaghi_two_layers', 'non_stabilized', 'rect'],
 #      ['terzaghi_two_layers', 'non_stabilized', 'wedge']]
 # ]
-#
+
 # for arg in test_args[0]:
 #     run_test(arg)
 
-# test(case='terzaghi', scheme='non_stabilized', mesh='rect')
+# test(case='terzaghi', scheme='stabilized', mesh='rect')
