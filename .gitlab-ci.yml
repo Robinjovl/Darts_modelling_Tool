@@ -615,7 +615,6 @@ test-windows-3.6-ODLS:
     artifacts:
       paths:
         - './darts-models/_logs/*.log'
-        - './darts-models/1ph_1comp_poroelastic_analytics/*.pkl'
       when: always
       expire_in: 1 year
 
@@ -648,7 +647,6 @@ test-windows-3.6-ODLS:
     artifacts:
       paths:
         - '.\darts-models\_logs\*.log'
-        - '.\darts-models\1ph_1comp_poroelastic_analytics\*.pkl'
       when: always
       expire_in: 1 year
 
