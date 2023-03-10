@@ -23,7 +23,7 @@ namespace linalg
 	{
 	public:
 		typedef T Type;
-		int M, N;
+		index_t M, N;
 	public:
 		std::valarray<T> values;
 		std::gslice g;
@@ -198,10 +198,10 @@ namespace linalg
 	template<typename Block>
 	Matrix<typename Block::Type> make_block_diagonal(const Block& block, const size_t rank)
 	{
-		const uint8_t MB = block.M;
-		const uint8_t NB = block.N;
+		const size_t MB = block.M;
+		const size_t NB = block.N;
 		Matrix<typename Block::Type> result (rank * MB, rank * NB);
-		for (uint8_t i = 0; i < rank; i++)
+		for (size_t i = 0; i < rank; i++)
 		{
 			result(i * (NB + MB * rank * NB),
 				{ MB, NB }, { rank * NB, 1 }) = block.values;
