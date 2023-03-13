@@ -31,8 +31,6 @@ test_args = [
                 ['terzaghi_two_layers', 'non_stabilized', 'rect'],
                 ['terzaghi_two_layers', 'non_stabilized', 'wedge']]
             ]
-test_dirs = []
-test_args = []
 
 accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
 

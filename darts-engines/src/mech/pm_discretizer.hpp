@@ -143,17 +143,17 @@ namespace pm
 	protected:
 		int n_matrix, n_cells, n_fracs, n_faces, nb_faces;
 		static const value_t darcy_constant, heat_cond_constant;
-		std::map<uint8_t, Matrix> pre_A, pre_rest, pre_rhs_mult;
-		std::map<uint8_t, Matrix> pre_Ad, pre_restd, pre_rhs_multd;
-		std::map<uint8_t, Matrix> pre_frac_grad_mult, pre_Wsvd, pre_Zsvd, pre_w_svd;
-		std::map<uint8_t, std::map<uint8_t,Matrix>> pre_cur_rhs, pre_cur_rhsd;
-		std::map<uint8_t, Matrix> pre_merged_grad;
+		std::map<index_t, Matrix> pre_A, pre_rest, pre_rhs_mult;
+		std::map<index_t, Matrix> pre_Ad, pre_restd, pre_rhs_multd;
+		std::map<index_t, Matrix> pre_frac_grad_mult, pre_Wsvd, pre_Zsvd, pre_w_svd;
+		std::map<index_t, std::map<index_t,Matrix>> pre_cur_rhs, pre_cur_rhsd;
+		std::map<index_t, Matrix> pre_merged_grad;
 		std::vector<index_t> pre_merged_stencil;
 		std::vector<Approximation> pre_merged_flux;
 		index_t st_id;
 
 		Matrix W;
-		std::vector<std::map<uint8_t, InnerMatrices>> inner;
+		std::vector<std::map<index_t, InnerMatrices>> inner;
 
 		Matrix get_u_face_prev(const Matrix dr, const index_t cell_id) const;
 		Matrix get_ub_prev(const Face& face) const;
@@ -161,7 +161,7 @@ namespace pm
 		Matrix calc_grad_cur(const index_t cell_id) const;
 		Matrix calc_vector(const Matrix& a, const Matrix& rhs, const std::vector<index_t>& stencil) const;
 		Gradients merge_stencils(const std::vector<index_t>& st1, const Matrix& m1, const std::vector<index_t>& st2, const Matrix& m2);
-		Approximation& merge_approximations(const Approximation& flux1, const Approximation& flux2, const uint8_t ws_id);
+		Approximation& merge_approximations(const Approximation& flux1, const Approximation& flux2, const index_t ws_id);
 		bool check_trans_sum(const std::vector<index_t>& st, const Matrix& a) const;
 		void write_trans(const std::vector<index_t>& st, const Matrix& from);
 		void write_trans_biot(const std::vector<index_t>& st, const Matrix& from, const Matrix& from_biot);
@@ -171,7 +171,7 @@ namespace pm
 		void contact_mixing(value_t dt, index_t cell_id, index_t fault_id, const Face& face);
 		void contact_mixing_new(value_t dt, index_t cell_id, index_t fault_id, const Face& face);
 
-		uint8_t counter, MERGE_BLOCK_SIZE;
+		index_t counter, MERGE_BLOCK_SIZE;
 		index_t id, id1, id2;
 		inline index_t check_face_is_fault(const Face& face)
 		{
@@ -233,12 +233,12 @@ namespace pm
 		std::vector<Gradients> grad, grad_d;
 		std::vector<Gradients> grad_prev;
 
-		static const uint8_t MIN_FACE_NUM = 1;
-		static const uint8_t MAX_FACE_NUM = 50;
-		static const uint8_t BLOCK_SIZE;
+		static const index_t MIN_FACE_NUM = 1;
+		static const index_t MAX_FACE_NUM = 50;
+		static const index_t BLOCK_SIZE;
 		static const int MAX_STENCIL = 50;
 		static const int MAX_POINTS_PER_CELL = 8;
-		static const uint8_t MAX_FLUXES_NUM = 8;
+		static const index_t MAX_FLUXES_NUM = 8;
 
 		Scheme scheme;
 		bool ASSEMBLE_HEAT_CONDUCTION;

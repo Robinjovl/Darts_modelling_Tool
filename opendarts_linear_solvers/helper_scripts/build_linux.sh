@@ -102,7 +102,7 @@ else
   mkdir -p ../../darts-engines/lib/opendarts_linear_solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/opendarts_linear_solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/opendarts_linear_solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make

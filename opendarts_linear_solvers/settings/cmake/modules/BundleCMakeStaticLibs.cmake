@@ -13,10 +13,9 @@
 #   returns the list of include header file directories required to use the library 
 #   in bundled_tgt_include_headers.
 #
-function(bundle_static_library tgt_name bundled_dir bundled_tgt_full_file_name bundled_tgt_prefix bundled_tgt_include_headers bundling_target)
+function(bundle_static_library tgt_name bundled_dir bundled_tgt_full_file_name bundled_tgt_file_name bundled_tgt_include_headers bundling_target)
   message(CHECK_START "Bundling ${tgt_name}...")  # build settings
   
-  set(bundled_tgt_file_name "${bundled_tgt_prefix}${tgt_name}")
   list(APPEND static_libs ${tgt_name})  # contains the list of all static libs tgt_name depends upon 
   list(APPEND object_libs ${tgt_name})  # contains the list of all object libs tgt_name depends upon
   

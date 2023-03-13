@@ -34,7 +34,7 @@ cd darts-engines
 make clean
 if [ $ODLS == "0" ] #no cmd arguments
 then
-	make mt $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
 	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true #open-darts currently works only without openMP
 fi
