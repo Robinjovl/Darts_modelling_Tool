@@ -96,7 +96,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
 # Additionally it returns:
 #   linear_solvers_bundled_filename: the full path to the single. a file
 #   linear_solvers_bundled_header_files: the string containing all header file include drectories
-bundle_static_library(linear_solvers "bundled_libs" linear_solvers_bundled_filename "darts_" linear_solvers_bundled_header_files linear_solvers_bundling_target)
+set(bundled_tgt_file_name "darts_linear_solvers")
+bundle_static_library(linear_solvers "bundled_libs" linear_solvers_bundled_filename "${bundled_tgt_file_name}" linear_solvers_bundled_header_files linear_solvers_bundling_target)
 
 # Generate the single file library as an imported library
 add_library(linear_solvers_bundled STATIC IMPORTED GLOBAL)
@@ -108,6 +109,9 @@ set_target_properties(linear_solvers_bundled
 
 add_dependencies(linear_solvers_bundled linear_solvers_bundling_target)
 
+message(STATUS "-----------------------------------------------")
+message(STATUS ${linear_solvers_bundled_filename})
+
 install(FILES ${linear_solvers_bundled_filename}
   CONFIGURATIONS RELEASE RELWITHDEBINFO ""    
   DESTINATION lib
@@ -115,7 +119,8 @@ install(FILES ${linear_solvers_bundled_filename}
 
 install(FILES ${linear_solvers_bundled_filename}
   CONFIGURATIONS DEBUG    
-  DESTINATION lib/debug
+  DESTINATION lib
+  RENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${bundled_tgt_file_name}_d${CMAKE_STATIC_LIBRARY_SUFFIX}
 )
 
 # ------------------------------------------------------------------------------
