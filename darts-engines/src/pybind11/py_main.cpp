@@ -119,11 +119,7 @@ PYBIND11_MODULE(engines, m)
   pybind_operator_set_interpolator_pz_cap_gra(m);
 
 #ifdef WITH_GPU
-  pybind_engine_nc_gpu(m);
   pybind_engine_nc_cg_gpu(m);
-  pybind_engine_nce_gpu(m);
-  pybind_engine_nc_cg_dif_gpu(m);
   pybind_engine_super_gpu(m);
-
 #endif
 }
