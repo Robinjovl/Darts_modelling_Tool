@@ -16,9 +16,8 @@ build-linux-3.10:
         ODLS: '0'
         
 build-linux-3.9: # for protected branches only
-    only:
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_REF_PROTECTED == "true"'
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -68,8 +67,8 @@ build-linux-3.10-ODLS:
         ODLS: '1'        # build with open-darts linear solvers
         
 build-linux-3.9-ODLS:
-    only:
-        - merge_requests
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -119,9 +118,8 @@ build-windows-3.10:
         ODLS: '0' 
  
 build-windows-3.9:  # for protected branches only
-    only:
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_REF_PROTECTED == "true"'
     extends: .build-windows
     variables:
         PY_VER: '3.9'
@@ -172,8 +170,8 @@ build-windows-3.10-ODLS:
                 
  
 build-windows-3.9-ODLS:
-    only:
-        - merge_requests
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .build-windows-ODLS
     variables:
         PY_VER: '3.9'
@@ -240,7 +238,7 @@ build-windows-3.6-ODLS:
     artifacts:
       paths:
         - './darts-package/dist/*.whl'
-      expire_in: 3 months
+      expire_in: 1 months
       
 ###################################################################################
 
@@ -290,7 +288,7 @@ build-windows-3.6-ODLS:
     artifacts:
       paths:
         - '.\darts-package\dist\*.whl'
-      expire_in: 3 months
+      expire_in: 1 months
 
 ###################################################################################
 
@@ -325,7 +323,7 @@ build-windows-3.6-ODLS:
     artifacts:
       paths:
         - '.\darts-package\dist\*.whl'
-      expire_in: 3 months
+      expire_in: 1 months
 
 
 ###################################################################################
@@ -343,8 +341,8 @@ test-linux-3.10-ODLS:
         - build-linux-3.10-ODLS
 
 test-linux-3.9-ODLS:
-    only:
-        - merge_requests
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .test-linux
     variables:
         PY_VER: '3.9'       # for python image selection in .test-linux
@@ -404,9 +402,8 @@ test-linux-3.10:
         - build-linux-3.10
 
 test-linux-3.9:  # for protected branches only
-    only:
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_REF_PROTECTED == "true"'
     extends: .test-linux
     variables:
         PY_VER: '3.9'       # for python image selection in .test-linux
@@ -466,9 +463,8 @@ test-windows-3.10:
         - build-windows-3.10
 
 test-windows-3.9:  # for protected branches only
-    only:
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_REF_PROTECTED == "true"'
     extends: .test-windows
     variables:
         PY_VER: '3.9'
@@ -528,8 +524,8 @@ test-windows-3.10-ODLS:
         - build-windows-3.10-ODLS
 
 test-windows-3.9-ODLS:
-    only:
-        - merge_requests
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .test-windows
     variables:
         PY_VER: '3.9'
