@@ -9,15 +9,13 @@ build-linux-3.10:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.10'       # for python image selection in .build-linux
         PY_SUF: 'cp310-cp310' # for python path selection in .build-linux-dockcross
         ODLS: '0'
         
-build-linux-3.9:
+build-linux-3.9: # for protected branches only
     only:
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
@@ -31,8 +29,6 @@ build-linux-3.8:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.8'       # for python image selection in .build-linux
@@ -43,8 +39,6 @@ build-linux-3.7:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.7'        # for python image selection in .build-linux
@@ -55,8 +49,6 @@ build-linux-3.6:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.6'
@@ -76,6 +68,8 @@ build-linux-3.10-ODLS:
         ODLS: '1'        # build with open-darts linear solvers
         
 build-linux-3.9-ODLS:
+    only:
+        - merge_requests
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -118,15 +112,13 @@ build-windows-3.10:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
     variables:
         PY_VER: '3.10'
         PYTHONPATH: 'D:\Python310'        
         ODLS: '0' 
  
-build-windows-3.9:
+build-windows-3.9:  # for protected branches only
     only:
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
@@ -140,8 +132,6 @@ build-windows-3.8:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
     variables:
         PY_VER: '3.8'
@@ -152,8 +142,6 @@ build-windows-3.7:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
     variables:
         PY_VER: '3.7'
@@ -164,8 +152,6 @@ build-windows-3.6:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .build-windows
     variables:
         PY_VER: '3.6'
@@ -186,6 +172,8 @@ build-windows-3.10-ODLS:
                 
  
 build-windows-3.9-ODLS:
+    only:
+        - merge_requests
     extends: .build-windows-ODLS
     variables:
         PY_VER: '3.9'
@@ -355,6 +343,8 @@ test-linux-3.10-ODLS:
         - build-linux-3.10-ODLS
 
 test-linux-3.9-ODLS:
+    only:
+        - merge_requests
     extends: .test-linux
     variables:
         PY_VER: '3.9'       # for python image selection in .test-linux
@@ -405,8 +395,6 @@ test-linux-3.10:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
     variables:
         PY_VER: '3.10'       # for python image selection in .test-linux
@@ -415,7 +403,7 @@ test-linux-3.10:
     dependencies:
         - build-linux-3.10
 
-test-linux-3.9:
+test-linux-3.9:  # for protected branches only
     only:
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
@@ -431,8 +419,6 @@ test-linux-3.8:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
     variables:
         PY_VER: '3.8'       # for python image selection in .test-linux
@@ -445,8 +431,6 @@ test-linux-3.7:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
     variables:
         PY_VER: '3.7'        # for python image selection in .test-linux
@@ -459,8 +443,6 @@ test-linux-3.6:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-linux
     variables:
         PY_VER: '3.6'
@@ -475,8 +457,6 @@ test-windows-3.10:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
     variables:
         PY_VER: '3.10'
@@ -485,7 +465,7 @@ test-windows-3.10:
     dependencies:
         - build-windows-3.10
 
-test-windows-3.9:
+test-windows-3.9:  # for protected branches only
     only:
       variables:
         - $CI_COMMIT_REF_PROTECTED == "true"
@@ -501,8 +481,6 @@ test-windows-3.8:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
     variables:
         PY_VER: '3.8'
@@ -515,8 +493,6 @@ test-windows-3.7:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
     variables:
         PY_VER: '3.7'
@@ -529,8 +505,6 @@ test-windows-3.6:
     only:
       refs:
         - main
-      variables:
-        - $CI_COMMIT_REF_PROTECTED == "true"
     extends: .test-windows
     variables:
         PY_VER: '3.6'
@@ -554,6 +528,8 @@ test-windows-3.10-ODLS:
         - build-windows-3.10-ODLS
 
 test-windows-3.9-ODLS:
+    only:
+        - merge_requests
     extends: .test-windows
     variables:
         PY_VER: '3.9'
