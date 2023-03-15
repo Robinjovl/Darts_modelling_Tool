@@ -52,7 +52,7 @@ class Model(DartsModel):
         self.physics = Poroelasticity(self.property_container, self.timer, n_points=400,
                                      min_p=-10, max_p=1000)
 
-        self.reservoir.P_VAR = self.physics.engine.P_VAR
+        self.reservoir.P_VAR = self.physics.engine.P_VAR #index of pressure value in unknown vector
 
     def init(self):
         DartsModel.init(self)
@@ -63,6 +63,7 @@ class Model(DartsModel):
                                  self.physics.engine.ACC_OP, self.physics.engine.FLUX_OP, self.physics.engine.GRAV_OP)
         self.reservoir.mech_operators.prepare()
         self.init_contacts()
+
     def reinit_reference(self, physics, output_directory):
         self.reservoir.turn_off_equilibrium()
         self.reservoir.write_to_vtk(output_directory, 0, self.physics)
@@ -79,9 +80,11 @@ class Model(DartsModel):
 
         #X = np.array(physics.engine.X, copy=False).reshape(self.reservoir.mesh.n_blocks, 4)
         #self.reservoir.u_ref = X[:,:3].flatten()
+
     def reinit(self, output_directory):
         self.reservoir.turn_off_equilibrium()
         self.reservoir.write_to_vtk(output_directory, 0, self.physics)
+
     def init_contacts(self):
         if hasattr(self.reservoir, 'contacts'):
             for contact in self.reservoir.contacts:

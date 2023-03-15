@@ -32,6 +32,8 @@ class UnstructReservoir:
             self.terzaghi_two_layers(scheme, mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
             self.terzaghi_two_layers_no_analytics(scheme, mesh)
+        elif case == 'mandel_flow':
+            self.mandel_flow(scheme, mesh)
 
         self.unstr_discr.x_new = np.ones( (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4) )
         self.unstr_discr.x_new[:,0] = self.u_init[0]
@@ -143,8 +145,30 @@ class UnstructReservoir:
         self.pz_bounds[:] = self.unstr_discr.pz_bounds
         self.p_ref[:] = self.unstr_discr.p_ref
         self.f[:] = self.unstr_discr.f
+
+        # Calculate well_index (very primitive way....):
+        rw = 0.1
+        coords = self.unstr_discr.mat_cell_info_dict[0].coord_nodes_to_cell
+        dx = np.max(coords[:,0]) - np.min(coords[:,0])
+        dy = np.max(coords[:,1]) - np.min(coords[:,1])
+        dz = np.max(coords[:,2]) - np.min(coords[:,2])
+        # WIx
+        wi_x = 0.0
+        # WIy
+        wi_y = 0.0
+        # WIz
+        hz = dz
+        rp_z = 0.28 * np.sqrt((self.permy / self.permx) ** 0.5 * dx ** 2 +
+                              (self.permx / self.permy) ** 0.5 * dy ** 2) / \
+               ((self.permx / self.permy) ** 0.25 + (self.permy / self.permx) ** 0.25)
+        wi_z = 2 * np.pi * np.sqrt(self.permx * self.permy) * hz / np.log(rp_z / rw)
+        self.well_index = TC.darcy_constant * np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
+
+
         self.wells = []
         # self.time_file = open('sol_poromechanics/time.txt', 'w')
+        self.time_file = None
+
     def update_mandel_boundary(self, dt, time, physics):
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
@@ -187,6 +211,7 @@ class UnstructReservoir:
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
             self.bc_rhs[4 * bound_id + 3] = flow['r']
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -201,11 +226,70 @@ class UnstructReservoir:
         self.bc[:] = self.bc_rhs
         self.bc_prev[:] = self.bc_rhs_prev
         #self.init_wells()
+
     def update(self, dt, time):
         # update local array
         #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
+
+    def set_equilibrium(self):
+        # store original transmissibilities
+        self.tran = np.array(self.mesh.tran, copy=True)
+        self.rhs = np.array(self.mesh.rhs, copy=True)
+        self.tran_biot = np.array(self.mesh.tran_biot, copy=True)
+        self.rhs_biot = np.array(self.mesh.rhs_biot, copy=True)
+        # turn off some terms for evaluation of momentum equilibrium
+        tran = np.array(self.mesh.tran, copy=False)
+        rhs = np.array(self.mesh.rhs, copy=False)
+        tran_biot = np.array(self.mesh.tran_biot, copy=False)
+        rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
+
+        #
+        tran[12::16] = 0.0
+        tran[13::16] = 0.0
+        tran[14::16] = 0.0
+        tran[15::16] = 0.0
+        rhs[3::4] = 0.0
+
+        tran_biot[12::16] = 0.0
+        tran_biot[13::16] = 0.0
+        tran_biot[14::16] = 0.0
+        tran_biot[15::16] = 0.0
+        rhs_biot[3::4] = 0.0
+
+        self.unstr_discr.f[3::4] = 0#self.p_init - self.unstr_discr.p_ref[:]
+        self.f[:] = self.unstr_discr.f
+
+    def turn_off_equilibrium(self):
+        # revert to original transmissibilities
+        tran = np.array(self.mesh.tran, copy=False)
+        rhs = np.array(self.mesh.rhs, copy=False)
+        tran_biot = np.array(self.mesh.tran_biot, copy=False)
+        rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
+        offset = np.array(self.mesh.offset, copy=False)
+        tran[12::16] = self.tran[12::16]
+        tran[13::16] = self.tran[13::16]
+        tran[14::16] = self.tran[14::16]
+        tran[15::16] = self.tran[15::16]
+        rhs[3::4] = self.rhs[3::4]
+
+        tran_biot[12::16] = self.tran_biot[12::16]
+        tran_biot[13::16] = self.tran_biot[13::16]
+        tran_biot[14::16] = self.tran_biot[14::16]
+        tran_biot[15::16] = self.tran_biot[15::16]
+        rhs_biot[3::4] = self.rhs_biot[3::4]
+
+        # for i in range(len(self.mesh.fault_conn_id)):
+        #     conn_ids = self.mesh.fault_conn_id[i]
+        #     for conn_id in conn_ids:
+        #         tran_biot[12 + 16 * offset[conn_id]:12 + 16 * offset[conn_id + 1]:16] = 0.0
+        #         tran_biot[13 + 16 * offset[conn_id]:13 + 16 * offset[conn_id + 1]:16] = 0.0
+        #         tran_biot[14 + 16 * offset[conn_id]:14 + 16 * offset[conn_id + 1]:16] = 0.0
+        #         tran_biot[15 + 16 * offset[conn_id]:15 + 16 * offset[conn_id + 1]:16] = 0.0
+
+        self.unstr_discr.f[:] = 0.0
+        self.f[:] = 0.0
 
     # def mandel(self):
     #     self.u_init = [0.0, 0.0, 0.0]
@@ -326,6 +410,7 @@ class UnstructReservoir:
     #     self.pm.bc_prev = self.pm.bc
     #     self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
     #     self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
+
     def mandel_north_dirichlet(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -470,6 +555,7 @@ class UnstructReservoir:
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(self.F / self.a) / 2
+
     def terzaghi(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -614,6 +700,7 @@ class UnstructReservoir:
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = np.fabs(self.F)
+
     def terzaghi_two_layers(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -777,6 +864,7 @@ class UnstructReservoir:
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
+
     def terzaghi_two_layers_no_analytics(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -917,6 +1005,142 @@ class UnstructReservoir:
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
+        self.tD = 1.0
+        self.pD = 1.0
+
+    def mandel_flow(self, scheme='non_stabilized', mesh='rect'):
+        self.u_init = [0.0, 0.0, 0.0]
+        self.p_init = 100
+        self.porosity = 0.2
+        self.permx = self.permy = self.permz = 10.0
+
+        mesh_file = 'meshes/struct_10x10x1.msh'
+        mesh_file = 'meshes/transfinite.msh'
+
+        self.file_path = mesh_file
+        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
+                                               mesh_file=mesh_file)
+        self.unstr_discr.eps_t = 1.E+0
+        self.unstr_discr.eps_n = 1.E+0
+        self.unstr_discr.mu = 3.2
+        self.unstr_discr.P12 = 0
+        self.unstr_discr.Prol = 1
+        self.unstr_discr.n_dim = 3
+        self.unstr_discr.bcf_num = 3
+        self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
+        self.unstr_discr.physical_tags['fracture'] = [91]
+        self.unstr_discr.physical_tags['output'] = []
+        self.unstr_discr.physical_tags['matrix'] = [99991]
+        self.unstr_discr.physical_tags['fracture_shape'] = []
+
+        # define rock properties
+        E = 10000 # young, bar
+        nu = 0.25 # poisson
+        self.lam = E * nu / (1 + nu) / (1 - 2 * nu)
+        self.mu = E / 2 / (1 + nu)
+        self.biot = 1
+        self.kd_cur = E / 3 / (1 - 2 * nu) # bulk modulus
+
+        # fluid properties
+        self.fluid_compressibility = 1.e-5
+        self.fluid_viscosity = 1.0
+
+        self.unstr_discr.init_matrix_stiffness({99991: {'E': E, 'nu': nu}})
+        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+
+        mech_xm = ROLLER
+        mech_xp = ROLLER#LOAD(-0, [0.0, 0.0, 0.0])
+        mech_ym = ROLLER
+        mech_yp = ROLLER#LOAD(-0, [0.0, 0.0, 0.0])
+        mech_zm = ROLLER
+        mech_zp = ROLLER
+
+        flow_xm = AQUIFER(self.p_init)
+        flow_xp = AQUIFER(self.p_init) # constant pressure
+        flow_ym = NO_FLOW
+        flow_yp = NO_FLOW
+        flow_zm = NO_FLOW
+        flow_zp = NO_FLOW
+
+        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.load_mesh_with_bounds()
+        self.unstr_discr.calc_cell_neighbours()
+
+        # init poromechanics discretizer
+        self.pm = pm_discretizer()
+        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.pm.visc = 1#9.81e-2
+        self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+
+        for cell_id in range(len(self.unstr_discr.faces)):
+            faces = self.unstr_discr.faces[cell_id]
+            fs = face_vector()
+            for face_id in range(len(faces)):
+                face = faces[face_id]
+                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
+                                        face.face_id1, face.face_id2,
+                                        face.area, list(face.n), list(face.centroid)))
+            self.pm.faces.append(fs)
+
+            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
+            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
+            # if int(cell_id / 22) == 5:
+            #     permx = 1.E-6
+            #     permy = 1.E-6
+            #     permz = 1.E-6
+            # else:
+            permx = self.permx
+            permy = self.permy
+            permz = self.permz
+            self.pm.perms.append(matrix33(permx, permy, permz))
+            self.pm.biots.append(matrix33(self.biot))
+            self.pm.stfs.append(Stiffness(self.lam, self.mu))
+            self.biot_mean[9 * cell_id] = self.biot
+            self.biot_mean[9 * cell_id + 4] = self.biot
+            self.biot_mean[9 * cell_id + 8] = self.biot
+
+        self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
+        self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
+        self.unstr_discr.pz_bounds[:] = self.p_init
+        self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
+        self.unstr_discr.p_ref[:] = self.p_init
+        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+            n = self.get_normal_to_bound_face(bound_id)
+            P = np.identity(3) - np.outer(n, n)
+            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
+            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
+            #if flow['a'] == 1.0:
+            #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
+            #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
+            #    else: bc.extend([0.0, 1.0, 0.0])
+            #else:
+            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            self.pm.bc.append(matrix(bc, len(bc), 1))
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
+            self.bc_rhs[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+        #self.bc_rhs_prev = np.copy(self.bc_rhs)
+        self.pm.bc_prev = self.pm.bc
+        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
         self.tD = 1.0
         self.pD = 1.0
 
@@ -1101,11 +1325,12 @@ class UnstructReservoir:
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
 
         # time-dependent boundaries
-        if ith_step == 0:
-            self.time_file.write(str(0.0) + '\n')
-        else:
-            self.time_file.write(str(physics.engine.t * 86400.0) + '\n')
-        self.time_file.flush()
+        if self.time_file is not None:
+            if ith_step == 0:
+                self.time_file.write(str(0.0) + '\n')
+            else:
+                self.time_file.write(str(physics.engine.t * 86400.0) + '\n')
+            self.time_file.flush()
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0

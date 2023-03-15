@@ -77,6 +77,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
                                                         m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
                                                         m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
+
 def run_timestep_python(m, dt, t):
     self = m
     max_newt = self.params.max_i_newton
@@ -113,6 +114,7 @@ def run_timestep_python(m, dt, t):
     converged = self.e.post_newtonloop(dt, t)
     self.timer.node['simulation'].stop()
     return converged
+
 def test(case='mandel', scheme='non_stabilized', mesh='rect'):
     import platform
 
@@ -159,10 +161,12 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
         return (failed > 0), data[-1]['simulation time']
     else:
         return False, -1.0
+
 def run_and_plot(case='mandel', scheme='non_stabilized'):
     ## only with rectangular mesh
     nt = 60
     max_dt = 30  # sec
+    # generate log-increasing timesteps
     t = np.logspace(-3, np.log10(max_dt), nt)
     # nt = 200
     # max_t = 200
@@ -181,6 +185,16 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     redirect_darts_output('log.txt')
     output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
+
+    if case == 'mandel_flow':
+        # set equilibrium (including boundary conditions)
+        # calculate initial volumetric strain eps_vol_ref to use as initial afterwards
+        m.reservoir.set_equilibrium()
+        m.physics.engine.find_equilibrium = True
+        m.params.first_ts = 1
+        run_python(m, 1.0, init_step=True)
+        m.reinit_reference(m.physics, output_directory)
+	    
     m.physics.engine.find_equilibrium = False
 
     # for rectangular grid
@@ -227,6 +241,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         plot_comparison(m, pres, scheme, case, save_data=save_data)
         if case == 'terzaghi_two_layers':
             plot_comparison(m, disp, scheme, case, save_data=save_data)
+
 def plot_comparison(m, data, scheme, case, save_data=False):
     prefix = 'sol_poromechanics/'
     tD, dataD = m.reservoir.tD, m.reservoir.pD
@@ -265,6 +280,8 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         y_label = r'$p\;/\;F$'
     elif case == 'terzaghi_two_layers':
         y_label = r'$p$'
+    elif case == 'mandel_flow':
+        y_label = r'$2p\;/\;F$'
     if name == 'u':
         y_label = r'$u$'
 
@@ -322,3 +339,5 @@ def run_test(args: list = []):
 #     run_test(arg)
 
 # test(case='terzaghi', scheme='stabilized', mesh='rect')
+
+run_and_plot(case='mandel_flow', scheme='non_stabilized')
