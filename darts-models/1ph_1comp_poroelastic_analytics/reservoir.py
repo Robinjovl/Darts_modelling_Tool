@@ -20,6 +20,9 @@ from scipy.special import erfc as erfc
 class UnstructReservoir:
     def __init__(self, timer, case='mandel', scheme='non_stabilized', mesh='rect'):
         self.timer = timer
+
+        self.init_constants()
+
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
 
@@ -164,10 +167,30 @@ class UnstructReservoir:
         wi_z = 2 * np.pi * np.sqrt(self.permx * self.permy) * hz / np.log(rp_z / rw)
         self.well_index = TC.darcy_constant * np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
 
-
         self.wells = []
+
         # self.time_file = open('sol_poromechanics/time.txt', 'w')
         self.time_file = None
+
+    def init_constants(self):
+        # cell_types (should be consistent with values in .geo mesh file)
+        self.FRACTURE = 91
+        self.MATRIX = 99991
+
+        # boundaries (should be consistent with values in .geo mesh file)
+        # X- X+ Y- Y+ Z- Z+
+        self.PHYSICAL_TAGS = [991, 992, 993, 994, 995, 996]
+        self.xp, self.xm, self.yp, self.ym, self.zp, self.zm = self.PHYSICAL_TAGS
+
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        # boundary conditions for flow
+        self.NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        self.AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p} # constant pressure
+        # boundary conditions for geomechanics, normal and tangential
+        self.ROLLER =  {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        self.FREE =    {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        self.STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        self.LOAD  = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
 
     def update_mandel_boundary(self, dt, time, physics):
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
@@ -245,7 +268,9 @@ class UnstructReservoir:
         tran_biot = np.array(self.mesh.tran_biot, copy=False)
         rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
 
-        #
+        # 4 = 3 displacements + flow
+        # matrix 4x4 => 16 elements - for each cell
+        # 12-16 indices correspond to the last (4-th) row
         tran[12::16] = 0.0
         tran[13::16] = 0.0
         tran[14::16] = 0.0
@@ -1010,9 +1035,9 @@ class UnstructReservoir:
 
     def mandel_flow(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 100
+        self.p_init = 100 #? bar
         self.porosity = 0.2
-        self.permx = self.permy = self.permz = 10.0
+        self.permx = self.permy = self.permz = 10.0 #? mD
 
         mesh_file = 'meshes/struct_10x10x1.msh'
         mesh_file = 'meshes/transfinite.msh'
@@ -1028,11 +1053,10 @@ class UnstructReservoir:
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-        self.unstr_discr.physical_tags['fracture'] = [91]
+        self.unstr_discr.physical_tags['fracture'] = [self.FRACTURE]
         self.unstr_discr.physical_tags['output'] = []
-        self.unstr_discr.physical_tags['matrix'] = [99991]
+        self.unstr_discr.physical_tags['matrix'] = [self.MATRIX]
         self.unstr_discr.physical_tags['fracture_shape'] = []
-
         # define rock properties
         E = 10000 # young, bar
         nu = 0.25 # poisson
@@ -1045,44 +1069,36 @@ class UnstructReservoir:
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
 
-        self.unstr_discr.init_matrix_stiffness({99991: {'E': E, 'nu': nu}})
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': E, 'nu': nu}})
+        self.unstr_discr.physical_tags['boundary'] = self.PHYSICAL_TAGS
 
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        mech_xm = self.ROLLER
+        mech_xp = self.ROLLER
+        mech_ym = self.ROLLER
+        mech_yp = self.ROLLER
+        mech_zm = self.ROLLER
+        mech_zp = self.ROLLER
 
-        mech_xm = ROLLER
-        mech_xp = ROLLER#LOAD(-0, [0.0, 0.0, 0.0])
-        mech_ym = ROLLER
-        mech_yp = ROLLER#LOAD(-0, [0.0, 0.0, 0.0])
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        flow_xm = self.NO_FLOW
+        flow_xp = self.NO_FLOW
+        flow_ym = self.NO_FLOW
+        flow_yp = self.NO_FLOW
+        flow_zm = self.NO_FLOW
+        flow_zp = self.NO_FLOW
 
-        flow_xm = AQUIFER(self.p_init)
-        flow_xp = AQUIFER(self.p_init) # constant pressure
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
-
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.xp] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.xm] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.yp] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.ym] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.zp] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.zm] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
-        self.pm.visc = 1#9.81e-2
+        self.pm.visc = 1 #? cP
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
         for cell_id in range(len(self.unstr_discr.faces)):
@@ -1097,15 +1113,12 @@ class UnstructReservoir:
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-            # if int(cell_id / 22) == 5:
-            #     permx = 1.E-6
-            #     permy = 1.E-6
-            #     permz = 1.E-6
-            # else:
+
             permx = self.permx
             permy = self.permy
             permz = self.permz
             self.pm.perms.append(matrix33(permx, permy, permz))
+
             self.pm.biots.append(matrix33(self.biot))
             self.pm.stfs.append(Stiffness(self.lam, self.mu))
             self.biot_mean[9 * cell_id] = self.biot
@@ -1139,9 +1152,9 @@ class UnstructReservoir:
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
         #self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc
+        self.pm.bc_prev = self.pm.bc #?
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-        self.tD = 1.0
+        self.tD = 1.0 #?
         self.pD = 1.0
 
     def add_well(self, name, depth):
@@ -1160,6 +1173,7 @@ class UnstructReservoir:
         well.segment_depth_increment = 1
         self.wells.append(well)
         return 0
+
     def add_perforation(self, well, res_block, well_index):
         """
         Class method which ads perforation to each (existing!) well
@@ -1171,6 +1185,7 @@ class UnstructReservoir:
         well_block = 0
         well.perforations = well.perforations + [(well_block, res_block, well_index)]
         return 0
+
     def init_wells(self):
         """
         Class method which initializes the wells (adding wells and their perforations to the reservoir)
@@ -1197,6 +1212,7 @@ class UnstructReservoir:
         self.mesh.reverse_and_sort_pm()
         #self.mesh.init_grav_coef()
         return 0
+
     def get_normal_to_bound_face(self, b_id):
         cell = self.unstr_discr.bound_cell_info_dict[b_id]
         cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
@@ -1207,6 +1223,7 @@ class UnstructReservoir:
                 n = face.n
                 if np.inner(t_face, n) < 0: n = -n
                 return n
+
     def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
         #self.check_positive_negative_sides()
         path = 'pm_conn' + str(t_step) + '.dat'
@@ -1237,6 +1254,7 @@ class UnstructReservoir:
             #     #sum_no_bound = np.sum(all_trans[st < self.unstr_discr.mat_cells_tot], axis=0)
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
+
     def write_to_vtk(self, output_directory, ith_step, physics):
         """
         Class method which writes output of unstructured grid to VTK format
@@ -1308,6 +1326,8 @@ class UnstructReservoir:
                 for i in range(6):
                     cell_data['stress'][-1][:, i] = stress[i::6]
                     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
+                    # [-1] is just to access the array was appended few lines above (can use [0] as well)
+                    #? 6
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
@@ -1334,6 +1354,7 @@ class UnstructReservoir:
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
+
     def write_to_vtk_with_faces(self, output_directory, ith_step, physics):
         """
         Class method which writes output of unstructured grid to VTK format
