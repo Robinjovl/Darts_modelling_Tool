@@ -1097,7 +1097,7 @@ class UnstructReservoir:
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)  #? Why 3 values for gravity
         self.pm.visc = 1 #? cP
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
