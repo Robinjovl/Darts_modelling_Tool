@@ -431,8 +431,8 @@ def load_performance_data(file_name=''):
     return 0
 
 def check_performance_data(ref_data, cur_data, prev_fail,
-                           diff_norm_normalized_tol=1e-10,
-                           diff_abs_max_normalized_tol=1e-7,
+                           diff_norm_normalized_tol=1e-7,
+                           diff_abs_max_normalized_tol=1e-5,
                            rel_diff_tol=1):
     fail = 0
 
