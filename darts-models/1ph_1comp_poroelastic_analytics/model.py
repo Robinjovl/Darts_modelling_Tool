@@ -34,6 +34,7 @@ class Model(DartsModel):
         #self.add_wells_frac()
 
         self.timer.node["initialization"].stop()
+
     def set_physics(self):
         self.zero = 1e-13
         """Physical properties"""
@@ -96,6 +97,7 @@ class Model(DartsModel):
                 contact.P_VAR_T = self.physics.engine.P_VAR
                 contact.init_fault()
             self.physics.engine.contacts = self.reservoir.contacts
+
     def setup_contact_friction(self, contact_algorithm):
         if hasattr(self.reservoir, 'contacts'):
             for contact in self.physics.engine.contacts:
@@ -197,6 +199,7 @@ class Model(DartsModel):
         for kk in range(layers_num):
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
                                            well_index=self.reservoir.well_index)
+
     def add_wells_frac(self):
         layers_num = 1
         is_center = False
@@ -255,6 +258,7 @@ class Model(DartsModel):
             for kk in range(layers_num):
                 self.reservoir.add_perforation(self.reservoir.wells[-1], int(id2 + kk),
                                                well_index=self.reservoir.well_index)
+
     def add_wells_groningen(self):
         layers_num = 1
         is_center = False
@@ -357,6 +361,7 @@ class Model(DartsModel):
                                                     initial_pressure=self.reservoir.p_init,
                                                     initial_displacement=self.reservoir.u_init)
         return 0
+
     def set_boundary_conditions(self):
         """
         Class method called in the init() class method of parents class

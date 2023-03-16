@@ -1,0 +1,10 @@
+Mesh
+Input mesh provided in gmsh file.
+Fracture modeled with cell for flow. For geomechanis there is no cell.Volume of cell is #?
+
+Units
+METRIC
+
+Cell contacts for geomechanics
+A face (each #?) between cells divided to segments. One contact could contain of few segments. Each contact stores
+cell indices and friction coefficient. 

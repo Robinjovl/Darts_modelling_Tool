@@ -197,7 +197,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
 	    
     m.physics.engine.find_equilibrium = False
 
-    # for rectangular grid
+    # for rectangular grid  #?
     nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
     ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
     x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
@@ -339,5 +339,7 @@ def run_test(args: list = []):
 #     run_test(arg)
 
 # test(case='terzaghi', scheme='stabilized', mesh='rect')
+
+#run_and_plot(case='mandel', scheme='non_stabilized')
 
 run_and_plot(case='mandel_flow', scheme='non_stabilized')

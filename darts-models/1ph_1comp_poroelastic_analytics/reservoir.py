@@ -1035,11 +1035,11 @@ class UnstructReservoir:
 
     def mandel_flow(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 100 #? bar
+        self.p_init = 100  # bar
         self.porosity = 0.2
-        self.permx = self.permy = self.permz = 10.0 #? mD
+        self.permx = self.permy = self.permz = 10.0  # mD
 
-        mesh_file = 'meshes/struct_10x10x1.msh'
+        #mesh_file = 'meshes/struct_10x10x1.msh'
         mesh_file = 'meshes/transfinite.msh'
 
         self.file_path = mesh_file
@@ -1057,17 +1057,19 @@ class UnstructReservoir:
         self.unstr_discr.physical_tags['output'] = []
         self.unstr_discr.physical_tags['matrix'] = [self.MATRIX]
         self.unstr_discr.physical_tags['fracture_shape'] = []
-        # define rock properties
+        # define rock geomechanical properties
         E = 10000 # young, bar
         nu = 0.25 # poisson
+        # Lame coefficients, used to construct Stiffness  tensor
         self.lam = E * nu / (1 + nu) / (1 - 2 * nu)
         self.mu = E / 2 / (1 + nu)
+
         self.biot = 1
-        self.kd_cur = E / 3 / (1 - 2 * nu) # bulk modulus
+        self.kd_cur = E / 3 / (1 - 2 * nu)  # bulk modulus
 
         # fluid properties
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
+        self.fluid_compressibility = 1.e-5  # 1/bar
+        self.fluid_viscosity = 1.0  # cP
 
         self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': E, 'nu': nu}})
         self.unstr_discr.physical_tags['boundary'] = self.PHYSICAL_TAGS
@@ -1097,8 +1099,8 @@ class UnstructReservoir:
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)  #? Why 3 values for gravity
-        self.pm.visc = 1 #? cP
+        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)  # gravity vector (to turn on use [0,0,9.8] or [0,0,-0.98])
+        self.pm.visc = 1 # don't change here 
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
         for cell_id in range(len(self.unstr_discr.faces)):
@@ -1120,8 +1122,8 @@ class UnstructReservoir:
             self.pm.perms.append(matrix33(permx, permy, permz))
 
             self.pm.biots.append(matrix33(self.biot))
-            self.pm.stfs.append(Stiffness(self.lam, self.mu))
-            self.biot_mean[9 * cell_id] = self.biot
+            self.pm.stfs.append(Stiffness(self.lam, self.mu)) # main
+            self.biot_mean[9 * cell_id] = self.biot #?
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
 
@@ -1153,7 +1155,7 @@ class UnstructReservoir:
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
         #self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc #?
-        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))  #source/sink
         self.tD = 1.0 #?
         self.pD = 1.0
 
@@ -1323,11 +1325,10 @@ class UnstructReservoir:
 
                 stress = np.array(self.mech_operators.stresses, copy=False)
                 total_stress = np.array(self.mech_operators.total_stresses, copy=False)
-                for i in range(6):
+                for i in range(6):  # 6 values - Voight notation
                     cell_data['stress'][-1][:, i] = stress[i::6]
                     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
                     # [-1] is just to access the array was appended few lines above (can use [0] as well)
-                    #? 6
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
