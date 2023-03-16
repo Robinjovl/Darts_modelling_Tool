@@ -30,7 +30,8 @@ class Model(DartsModel):
         self.params.max_i_newton = 10
         self.params.max_i_linear = 5000
 
-        #self.add_wells()
+        if case == 'mandel_flow':
+            self.add_wells()
         #self.add_wells_frac()
 
         self.timer.node["initialization"].stop()

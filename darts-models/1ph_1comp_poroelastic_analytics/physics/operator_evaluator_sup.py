@@ -77,18 +77,19 @@ class RateOperators(operator_set_evaluator_iface):
 
         self.flux[:] = 0
         # step-1
-        for j in ph:
-            for i in range(self.nc):
-                self.flux[i] += rho[j] / mu[j]
+        #for j in ph:
+        #    for i in range(self.nc):
+        #        self.flux[i] += rho[j] / mu[j]
+        self.flux[0] += rho[0] / self.mu[0]        
         # step-2
         flux_sum = np.sum(self.flux)
 
         # step-3
         total_density = np.sum(rho)
         # step-4
-        for j in ph:
-            values[j] = flux_sum / total_density
-
+        #for j in ph:
+        #    values[j] = flux_sum / total_density
+        values[0] = flux_sum / total_density
         #print(state, values)
         return 0
 

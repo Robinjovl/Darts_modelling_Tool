@@ -197,7 +197,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
 	    
     m.physics.engine.find_equilibrium = False
 
-    # for rectangular grid  #?
+    # for rectangular grid
     nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
     ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
     x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
@@ -220,8 +220,10 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
 
         # save pressure
         X = np.array(m.physics.engine.X, copy=False)
-        pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][::ny] # for rectangular grid
-        disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::m.physics.engine.N_VARS][::ny] # for rectangular grid
+        nw = len(m.reservoir.wells) # to skip additional cells for wells, 2 cells per well
+        end_idx = -4 * 2 * nw # 4 = 3 displs + pressure
+        pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
+        disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
         if case == 'mandel':
             pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
         elif case == 'terzaghi':

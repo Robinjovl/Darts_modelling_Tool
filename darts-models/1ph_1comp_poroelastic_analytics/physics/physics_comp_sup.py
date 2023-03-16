@@ -20,6 +20,7 @@ class Poroelasticity(PhysicsBase):
         self.timer = timer.node["simulation"]
         self.components = property_container.components_name
         self.nc = property_container.nc
+        self.n_components = self.nc
         self.phases = property_container.phases_name
         self.nph = property_container.nph
         self.n_vars = self.nc + self.n_dim
