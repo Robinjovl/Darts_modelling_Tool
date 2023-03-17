@@ -254,15 +254,6 @@ where {math}`\chi(\omega)` is defined by {eq}`energy_acc_flux_6` and {math}`T^{t
 
 where {math}`h` is the enthalpy of the well control block, {math}`h^{target}` is the target enthalpy of injected fluid. For the production well control, enthalpy is taken equal to that of the upstream well block.
 
-(Various-physical-models)=
-## Various physical models
-
-This section is dedicated for the description of physical models relevant to various application in the energy transition portfolio.
-
-### Generic multiphase multi-component formulation
-
-### Treatment of the solid phases
-
 (Treatment-of-porosity)=
 ### Treatment of porosity
 
