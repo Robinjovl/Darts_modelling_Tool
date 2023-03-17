@@ -35,8 +35,8 @@ class UnstructReservoir:
             self.terzaghi_two_layers(scheme, mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
             self.terzaghi_two_layers_no_analytics(scheme, mesh)
-        elif case == 'mandel_flow':
-            self.mandel_flow(scheme, mesh)
+        elif case == 'prod_well':
+            self.prod_well(scheme, mesh)
 
         self.unstr_discr.x_new = np.ones( (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4) )
         self.unstr_discr.x_new[:,0] = self.u_init[0]
@@ -1033,7 +1033,7 @@ class UnstructReservoir:
         self.tD = 1.0
         self.pD = 1.0
 
-    def mandel_flow(self, scheme='non_stabilized', mesh='rect'):
+    def prod_well(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 100  # bar
         self.porosity = 0.2
@@ -1074,10 +1074,10 @@ class UnstructReservoir:
         self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': E, 'nu': nu}})
         self.unstr_discr.physical_tags['boundary'] = self.PHYSICAL_TAGS
 
-        mech_xm = self.ROLLER
-        mech_xp = self.ROLLER
-        mech_ym = self.ROLLER
-        mech_yp = self.ROLLER
+        mech_xm = self.FREE
+        mech_xp = self.FREE
+        mech_ym = self.FREE
+        mech_yp = self.FREE
         mech_zm = self.ROLLER
         mech_zp = self.ROLLER
 
@@ -1154,9 +1154,9 @@ class UnstructReservoir:
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
         #self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc #?
+        self.pm.bc_prev = self.pm.bc # save vals from previous timestep, needed to compute time-derivatives
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))  #source/sink
-        self.tD = 1.0 #?
+        self.tD = 1.0 # this vars are used to make time/pressure dimensionless
         self.pD = 1.0
 
     def add_well(self, name, depth):
@@ -1257,7 +1257,7 @@ class UnstructReservoir:
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
 
-    def write_to_vtk(self, output_directory, ith_step, physics):
+    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -1287,6 +1287,8 @@ class UnstructReservoir:
         #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
         #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
         self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
+        #poro = np.array(self.mesh.poro, copy=False)
+        #print('poro', poro.sum()) #? poro=182.0
         self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
                                           self.mesh.bc, physics.engine.op_vals_arr)
         # else:
@@ -1328,6 +1330,8 @@ class UnstructReservoir:
                 for i in range(6):  # 6 values - Voight notation
                     cell_data['stress'][-1][:, i] = stress[i::6]
                     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
+                    if verbose:
+                        print('stress', i, 'min:', stress[i::6].min(), 'max:', stress[i::6].max())
                     # [-1] is just to access the array was appended few lines above (can use [0] as well)
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
@@ -1337,6 +1341,12 @@ class UnstructReservoir:
                 #     cell_data[ith_geometry]['permy'] = self.permy[:]
                 #     cell_data[ith_geometry]['permz'] = self.permz[:]
             geom_id += 1
+
+        if verbose:
+            for data_key in cell_data.keys():
+                if data_key == 'stress':
+                    continue
+                print(data_key, 'min:', cell_data[data_key][0].min(), 'max:', cell_data[data_key][0].max())
 
         # Store solution for each time-step:
         mesh = meshio.Mesh(

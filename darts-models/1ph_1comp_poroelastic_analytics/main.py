@@ -186,7 +186,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
 
-    if case == 'mandel_flow':
+    if case == 'prod_well':
         # set equilibrium (including boundary conditions)
         # calculate initial volumetric strain eps_vol_ref to use as initial afterwards
         m.reservoir.set_equilibrium()
@@ -218,10 +218,9 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         m.params.max_ts = dt
         run_python(m, dt)
 
-        # save pressure
+        # save pressure at the right boundary of grid
         X = np.array(m.physics.engine.X, copy=False)
-        nw = len(m.reservoir.wells) # to skip additional cells for wells, 2 cells per well
-        end_idx = -4 * 2 * nw # 4 = 3 displs + pressure
+        end_idx = m.reservoir.mesh.n_res_blocks * m.physics.engine.N_VARS  # to skip additional cells for wells, 2 cells per well
         pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
         disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
         if case == 'mandel':
@@ -235,7 +234,9 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
         # write a vtk snapshot
-        m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
+        m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics, verbose=True)
+
+    write_time_data(m, case + '.pkl', case + '.xlsx')
     m.print_timers()
 
     if case != 'terzaghi_two_layers_no_analytics':
@@ -261,6 +262,7 @@ def plot_comparison(m, data, scheme, case, save_data=False):
     darts_linestyle = '--'
     colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
     # pressure against time
+    # [1:,0] - do not plot the first timestep; use value only for the first point at the right bound
     ax[0].semilogx(data['time'][1:] / tD, data['analytics'][1:,0] / dataD, color='b', linewidth=1, linestyle=an_linestyle, label='Analytics')
     ax[0].semilogx(data['time'][1:] / tD, data['darts'][1:,0] / dataD, color='b', linewidth=1, linestyle=darts_linestyle, label=darts_name)
 
@@ -282,7 +284,7 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         y_label = r'$p\;/\;F$'
     elif case == 'terzaghi_two_layers':
         y_label = r'$p$'
-    elif case == 'mandel_flow':
+    elif case == 'prod_well':
         y_label = r'$2p\;/\;F$'
     if name == 'u':
         y_label = r'$u$'
@@ -313,6 +315,21 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         A[:, :, 1] = data['x'][np.newaxis, :]
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
 
+def write_time_data(m, pkl_fname, xls_fname):
+    import pandas as pd
+    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    time_data.to_pickle(pkl_fname)
+
+    # filter data and write to xlsx
+    # list the column names that should be removed
+    press_gridcells = time_data.filter(like='reservoir').columns.tolist()
+    chem_cols = time_data.filter(like='Kmol').columns.tolist()
+    # remove columns from data
+    time_data.drop(columns=press_gridcells + chem_cols, inplace=True)
+    writer = pd.ExcelWriter(xls_fname)
+    time_data.to_excel(writer, 'Sheet1')
+    writer.save()
+
 def run_test(args: list = []):
     if len(args) > 2:
         return test(case=args[0], scheme=args[1], mesh=args[2])
@@ -342,6 +359,6 @@ def run_test(args: list = []):
 
 # test(case='terzaghi', scheme='stabilized', mesh='rect')
 
-#run_and_plot(case='mandel', scheme='non_stabilized')
+run_and_plot(case='mandel', scheme='non_stabilized')
 
-run_and_plot(case='mandel_flow', scheme='non_stabilized')
+#run_and_plot(case='prod_well', scheme='non_stabilized')
