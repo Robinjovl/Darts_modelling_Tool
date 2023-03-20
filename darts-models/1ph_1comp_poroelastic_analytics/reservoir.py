@@ -1042,6 +1042,9 @@ class UnstructReservoir:
         #mesh_file = 'meshes/struct_10x10x1.msh'
         mesh_file = 'meshes/transfinite.msh'
 
+        from geomechanics import geomech
+        self.geomech = geomech()
+
         self.file_path = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
                                                mesh_file=mesh_file)
@@ -1257,6 +1260,33 @@ class UnstructReservoir:
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
 
+    def get_pressure(self, physics):
+        '''
+        :param physics:
+        :return: 1d current timestep pressure array
+        '''
+        # Temporarily store mesh_data in copy:
+        Mesh = meshio.read(self.unstr_discr.mesh_file)
+
+        # Allocate empty new cell_data dictionary:
+        cell_property = ['u_x', 'u_y', 'u_z', 'p']
+        props_num = len(cell_property)
+        property_array = np.array(physics.engine.X, copy=False)
+        available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
+        available_fracture_geometries = ['quad', 'triangle']
+        # Matrix
+        geom_id = 0
+        Mesh.cells = []
+        cell_data = {}
+        for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
+            if ith_geometry in available_matrix_geometries:
+                Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
+                # Add matrix data to dictionary:
+                for i in range(props_num):
+                    if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
+                    cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
+        return cell_data['p'][-1]
+
     def write_to_vtk(self, output_directory, ith_step, physics, verbose=False):
         """
         Class method which writes output of unstructured grid to VTK format
@@ -1341,6 +1371,36 @@ class UnstructReservoir:
                 #     cell_data[ith_geometry]['permy'] = self.permy[:]
                 #     cell_data[ith_geometry]['permz'] = self.permz[:]
             geom_id += 1
+
+        arr = []
+        arr_names = []
+        if True: #ti == n_time_steps - 1: # calc geomech only on last tstep
+            #m.timer.node["displs"] = timer_node()
+            #m.timer.node["displs"].start()
+            print('calc_displs..')
+            P = self.get_pressure(physics)
+            [ux, uy, uz] = self.calc_displs(P, only_1st_layer=False)
+            print('ok!')
+            #m.timer.node["displs"].stop()
+
+            arr = [ux, uy, uz]
+            arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy']
+
+            #m.timer.node["stress"] = timer_node()
+            #m.timer.node["stress"].start()
+            print('calc_stress..')
+            stress, strain = self.geomech.calc_strain_stress(self.centers,
+                                                            self.prisms,
+                                                            self.delta_pressure)
+            [Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
+            print('ok!')
+            #m.timer.node["stress"].stop()
+
+            arr += [Sx, Sy, Sz, Syz, Sxz, Sxy]
+            arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
+
+            for i in range(len(arr_names)):
+                cell_data[arr_names[i]] = [arr[i]]
 
         if verbose:
             for data_key in cell_data.keys():
@@ -1851,3 +1911,103 @@ class UnstructReservoir:
             - np.sum((g * t2 / self.omega)[:,:n_roots], axis=1) / self.theta)[xi < 0]
 
         return -u
+
+    # parameters should be the same as E in self.prod_well
+    def geomech_init_params(self):
+        # elastic constants
+        self.geomech.poisson = 0.25
+        self.geomech.young = 10000
+
+        # thermal expansion coefficient
+        self.thermal_exp_coeff = 0 # 1/°C
+
+        # Mohr-Coulomb
+        self.cohesion = 0  # assume no cohesion due to healing
+        self.friction = 0.15
+
+    def geomech_init_geometry(self):
+        if hasattr(self, 'prisms'):  # do only once
+            return
+
+        # coordinates 3 lines, Nnodes columns
+        points = self.unstr_discr.mesh_data.points.T
+
+        nodes = np.zeros((3, len(points[0][:])))
+        for k in range(len(points[0][:])):
+            nodes[0][k] = points[1][k]
+            nodes[1][k] = points[0][k]
+            nodes[2][k] = points[2][k]
+
+        connectivity = self.unstr_discr.mesh_data.cells_dict['hexahedron']
+        # prisms Nelem lines, 8 columns (nodes per elem) =data.cells_dict['hexahedron'].shape[1]
+
+        #print('connectivity[0]', connectivity[0])
+        #print('connectivity.shape', connectivity.shape)
+
+        self.prisms = np.zeros((len(connectivity), 6))
+        for k in range(len(connectivity)):
+            prism = connectivity[k]
+            xloc, yloc, zloc = [], [], []
+            for i in prism:
+                yloc.append(nodes[1][i])
+                xloc.append(nodes[0][i])
+                zloc.append(nodes[2][i])
+            self.prisms[k][0] = np.amin(yloc)
+            self.prisms[k][1] = np.amax(yloc)
+
+            self.prisms[k][2] = np.amin(xloc)
+            self.prisms[k][3] = np.amax(xloc)
+
+            self.prisms[k][4] = np.amax(zloc)
+            self.prisms[k][5] = np.amin(zloc)
+
+        #print('self.prisms', self.prisms.shape)
+
+        # centers
+        self.unstr_discr.store_centroid_all_cells()
+        centers_1d = self.unstr_discr.centroid_all_cells
+        self.centers = centers_1d.transpose()
+
+    def init_delta_pressure(self, P):
+        '''
+        should be called each time before computing displacements
+        P current pressure array
+        '''
+        self.delta_pressure = P - self.p_init
+        self.delta_pressure *= 0.1  # convert units bar->MPa
+
+    def calc_displs(self, P, only_1st_layer=False):
+        '''
+        return list of 3 displacement vectors, values are  in meters
+        displs computed at the centers of cells
+        '''
+
+        self.geomech_init_geometry()
+        self.init_delta_pressure(P)
+
+        if only_1st_layer:  # calc displs only for the 1-st layer
+            nx = self.discr_mesh.nx
+            ny = self.discr_mesh.ny
+            actnum = np.array(self.discr_mesh.actnum, copy=False)
+            n_act_cells_1st_layer = actnum[:nx*ny].sum()
+            centers_ptr = self.centers[:, :n_act_cells_1st_layer]
+            print('n_act_cells_1st_layer', n_act_cells_1st_layer)
+        else:
+            centers_ptr = self.centers
+
+        #print('centers_ptr', centers_ptr.shape)
+        ux1, uy1, uz1 = self.geomech.calc_displacements(centers_ptr, self.prisms, self.delta_pressure)
+
+        if only_1st_layer:  # fill the rest displ values with zeros
+            n_act_cells_rest_layers = self.discr_mesh.n_cells - n_act_cells_1st_layer
+            ux = np.hstack([ux1, np.zeros(n_act_cells_rest_layers)])
+            uy = np.hstack([uy1, np.zeros(n_act_cells_rest_layers)])
+            uz = np.hstack([uz1, np.zeros(n_act_cells_rest_layers)])
+        else:
+            ux = ux1
+            uy = uy1
+            uz = uz1
+
+        return ux, uy, uz
+
+

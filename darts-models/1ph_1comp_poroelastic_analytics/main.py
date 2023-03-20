@@ -168,6 +168,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     max_dt = 30  # sec
     # generate log-increasing timesteps
     t = np.logspace(-3, np.log10(max_dt), nt)
+    t = [10]
     # nt = 200
     # max_t = 200
     # t = max_t / nt * np.ones(nt)
@@ -316,6 +317,13 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
 
 def write_time_data(m, pkl_fname, xls_fname):
+    '''
+    save pkl and xls files with well rates
+    :param m:
+    :param pkl_fname:
+    :param xls_fname:
+    :return:
+    '''
     import pandas as pd
     time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
     time_data.to_pickle(pkl_fname)
@@ -359,6 +367,6 @@ def run_test(args: list = []):
 
 # test(case='terzaghi', scheme='stabilized', mesh='rect')
 
-run_and_plot(case='mandel', scheme='non_stabilized')
+#run_and_plot(case='mandel', scheme='non_stabilized')
 
-#run_and_plot(case='prod_well', scheme='non_stabilized')
+run_and_plot(case='prod_well', scheme='non_stabilized')

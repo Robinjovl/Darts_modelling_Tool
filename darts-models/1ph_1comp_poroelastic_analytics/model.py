@@ -187,8 +187,10 @@ class Model(DartsModel):
 
         # unstructured
         dist = 1.E+10
+        # well coordinates (middle of grid)
         mid = (np.min(self.reservoir.unstr_discr.mesh_data.points, axis=0) +
                np.max(self.reservoir.unstr_discr.mesh_data.points, axis=0)) / 2
+        # calc cell id with well location
         id = -1
         for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
             cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + cell.centroid[2] ** 2
@@ -200,6 +202,7 @@ class Model(DartsModel):
         for kk in range(layers_num):
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
                                            well_index=self.reservoir.well_index)
+        print("wells added, index=", self.reservoir.well_index)
 
     def add_wells_frac(self):
         layers_num = 1
@@ -379,8 +382,7 @@ class Model(DartsModel):
             else:
                 # For BHP control in injection well we usually specify pressure and composition (upstream) but here
                 # the method is wrapped such  that we only need to specify bhp pressure (see lambda for more info)
-                #w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
-                w.control = self.physics.new_bhp_inj(self.reservoir.p_init)
+                w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
         return 0
 
     def set_op_list(self):
@@ -535,3 +537,5 @@ class model_properties(property_container):
 
 
         return self.sat, self.dens_m
+
+
