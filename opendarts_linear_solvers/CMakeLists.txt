@@ -46,6 +46,7 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Compiler flags 
+  add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
   set(opendarts_cxx_compiler_flags, "-W3")
   
   # Linker flags (currently not needed)
