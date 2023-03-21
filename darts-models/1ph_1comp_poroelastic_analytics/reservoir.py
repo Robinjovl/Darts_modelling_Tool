@@ -1077,12 +1077,13 @@ class UnstructReservoir:
         self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': E, 'nu': nu}})
         self.unstr_discr.physical_tags['boundary'] = self.PHYSICAL_TAGS
 
-        mech_xm = self.FREE
-        mech_xp = self.FREE
-        mech_ym = self.FREE
-        mech_yp = self.FREE
+        mech_xm = self.ROLLER
+        mech_xp = self.ROLLER
+        mech_ym = self.ROLLER
+        mech_yp = self.ROLLER
         mech_zm = self.ROLLER
-        mech_zp = self.ROLLER
+        mech_zp = self.FREE
+        # free = self.LOAD(0.0, [0.0, 0.0, 0.0])
 
         flow_xm = self.NO_FLOW
         flow_xp = self.NO_FLOW
@@ -1379,12 +1380,12 @@ class UnstructReservoir:
             #m.timer.node["displs"].start()
             print('calc_displs..')
             P = self.get_pressure(physics)
-            [ux, uy, uz] = self.calc_displs(P, only_1st_layer=False)
+            [ux, uy, uz, dp] = self.calc_displs(P, only_1st_layer=False)
             print('ok!')
             #m.timer.node["displs"].stop()
 
-            arr = [ux, uy, uz]
-            arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy']
+            arr = [ux, uy, uz, dp] # *1e3 - m. -> mm.
+            arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
             #m.timer.node["stress"] = timer_node()
             #m.timer.node["stress"].start()
@@ -1932,11 +1933,11 @@ class UnstructReservoir:
         # coordinates 3 lines, Nnodes columns
         points = self.unstr_discr.mesh_data.points.T
 
-        nodes = np.zeros((3, len(points[0][:])))
-        for k in range(len(points[0][:])):
-            nodes[0][k] = points[1][k]
-            nodes[1][k] = points[0][k]
-            nodes[2][k] = points[2][k]
+        #nodes = np.zeros((3, len(points[0][:])))
+        #for k in range(len(points[0][:])):
+        #    nodes[0][k] = points[1][k]
+        #    nodes[1][k] = points[0][k]
+        #    nodes[2][k] = points[2][k]
 
         connectivity = self.unstr_discr.mesh_data.cells_dict['hexahedron']
         # prisms Nelem lines, 8 columns (nodes per elem) =data.cells_dict['hexahedron'].shape[1]
@@ -1947,11 +1948,11 @@ class UnstructReservoir:
         self.prisms = np.zeros((len(connectivity), 6))
         for k in range(len(connectivity)):
             prism = connectivity[k]
-            xloc, yloc, zloc = [], [], []
-            for i in prism:
-                yloc.append(nodes[1][i])
-                xloc.append(nodes[0][i])
-                zloc.append(nodes[2][i])
+
+            xloc = points[0][connectivity[k]]
+            yloc = points[1][connectivity[k]]
+            zloc = points[2][connectivity[k]]
+
             self.prisms[k][0] = np.amin(yloc)
             self.prisms[k][1] = np.amax(yloc)
 
@@ -1961,12 +1962,17 @@ class UnstructReservoir:
             self.prisms[k][4] = np.amax(zloc)
             self.prisms[k][5] = np.amin(zloc)
 
+
         #print('self.prisms', self.prisms.shape)
 
         # centers
         self.unstr_discr.store_centroid_all_cells()
         centers_1d = self.unstr_discr.centroid_all_cells
         self.centers = centers_1d.transpose()
+        # make YXZ from XYZ
+        tmp = self.centers[0, :].copy() # X
+        self.centers[0, :] = self.centers[1, :] # put Y first
+        self.centers[1, :] = tmp # put X second
 
     def init_delta_pressure(self, P):
         '''
@@ -2008,6 +2014,6 @@ class UnstructReservoir:
             uy = uy1
             uz = uz1
 
-        return ux, uy, uz
+        return ux, uy, uz, self.delta_pressure
 
 
