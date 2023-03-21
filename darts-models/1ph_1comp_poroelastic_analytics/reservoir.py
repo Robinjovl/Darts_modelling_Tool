@@ -1424,11 +1424,14 @@ class UnstructReservoir:
             stress, strain = self.geomech.calc_strain_stress(self.centers,
                                                             self.prisms,
                                                             self.delta_pressure)
-            [Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
+            s_list = []
+            for s in stress:
+                s_list.append(self.get_full_vector(s))
+            #[Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
             print('ok!')
             #m.timer.node["stress"].stop()
 
-            arr += [Sx, Sy, Sz, Syz, Sxz, Sxy]
+            arr += s_list #[Sx, Sy, Sz, Syz, Sxz, Sxy]
             arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
 
             for i in range(len(arr_names)):
@@ -1957,19 +1960,20 @@ class UnstructReservoir:
         self.cohesion = 0  # assume no cohesion due to healing
         self.friction = 0.15
 
-    def store_centroid_inner_box(self):
+    def calc_centroid_inner_box(self):
         """
         Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
         :return:
         """
         tot_cell_count = 0
-        #for ith_cell in self.frac_cell_info_dict:
-        #    self.centroid_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].centroid
-        #    tot_cell_count += 1
+        inner_box_cell_count = 0
 
         centroid_list_x = []
         centroid_list_y = []
         centroid_list_z = []
+
+        local_to_global = np.array(self.n_cells)
+
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
             if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
@@ -1978,9 +1982,15 @@ class UnstructReservoir:
                 centroid_list_x.append(c[0])
                 centroid_list_y.append(c[1])
                 centroid_list_z.append(c[2])
+                local_to_global[inner_box_cell_count] = tot_cell_count
+                inner_box_cell_count += 1
             tot_cell_count += 1
+
         centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
-        return centroids
+
+        local_to_global = local_to_global[:inner_box_cell_count]
+        #local_to_global = np.array(list(local_to_global.values()))
+        return centroids, local_to_global
 
 
     def geomech_init_geometry(self):
@@ -1989,8 +1999,8 @@ class UnstructReservoir:
 
         points = self.unstr_discr.mesh_data.points.T
         connectivity = self.unstr_discr.mesh_data.cells_dict['hexahedron']
-
-        self.prisms = np.zeros((len(connectivity), 6))
+        self.n_cells = len(connectivity)
+        self.prisms = np.zeros((self.n_cells, 6))
         for k in range(len(connectivity)):
             prism = connectivity[k]
 
@@ -2010,7 +2020,7 @@ class UnstructReservoir:
         #print('self.prisms', self.prisms.shape)
 
         # centers
-        self.centers = self.calc_centroid_inner_box()
+        self.centers, self.local_to_global = self.calc_centroid_inner_box()
 
 
     def init_delta_pressure(self, P):
@@ -2020,6 +2030,17 @@ class UnstructReservoir:
         '''
         self.delta_pressure = P - self.p_init
         self.delta_pressure *= 0.1  # convert units bar->MPa
+
+
+    def get_full_vector(self, u_inner):
+        '''
+        make full vector, also for outer box
+        :param u_inner: values in inner box
+        :return:
+        '''
+        u = np.zeros(self.n_cells)
+        u[self.local_to_global[:]] = u_inner[:]
+        return u
 
     def calc_displs(self, P, only_1st_layer=False):
         '''
@@ -2047,9 +2068,9 @@ class UnstructReservoir:
             uy = np.hstack([uy1, np.zeros(n_act_cells_rest_layers)])
             uz = np.hstack([uz1, np.zeros(n_act_cells_rest_layers)])
         else:
-            ux = ux1
-            uy = uy1
-            uz = uz1
+            ux = self.get_full_vector(ux1)
+            uy = self.get_full_vector(uy1)
+            uz = self.get_full_vector(uz1)
 
         return ux, uy, uz, self.delta_pressure
 
