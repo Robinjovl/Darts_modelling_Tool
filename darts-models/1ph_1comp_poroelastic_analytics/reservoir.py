@@ -1058,6 +1058,7 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         use_pkl = False
+        #use_pkl = True
         if use_pkl:
             pkl_file = open('unstr_discr.pkl', 'rb')
             self.unstr_discr = pickle.load(pkl_file)
@@ -1415,7 +1416,7 @@ class UnstructReservoir:
             print('ok!')
             #m.timer.node["displs"].stop()
 
-            arr = [ux, uy, uz, dp] # *1e3 - m. -> mm.
+            arr = [ux, uy, uz, dp]
             arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
             #m.timer.node["stress"] = timer_node()
@@ -1972,7 +1973,7 @@ class UnstructReservoir:
         centroid_list_y = []
         centroid_list_z = []
 
-        local_to_global = np.array(self.n_cells)
+        local_to_global = np.zeros(self.n_cells, dtype=np.int32)
 
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
@@ -2039,7 +2040,7 @@ class UnstructReservoir:
         :return:
         '''
         u = np.zeros(self.n_cells)
-        u[self.local_to_global[:]] = u_inner[:]
+        u[self.local_to_global] = u_inner[:]
         return u
 
     def calc_displs(self, P, only_1st_layer=False):
