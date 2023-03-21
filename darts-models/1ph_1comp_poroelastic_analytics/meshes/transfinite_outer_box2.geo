@@ -1,13 +1,13 @@
-ax = 300;
-ay = 300;
+ax = 200;
+ay = 200;
 lc = 25;
 lc_frac = 600;
 l = 100;
 phi = Pi / 4;
-h = 50;
-Nx_pt = 90 + 1;
-Ny_pt = 90 + 1;
-Nz = 5;
+h = 30;
+Nx_pt = 60 + 1;
+Ny_pt = 60 + 1;
+Nz = 3;
 
 Point(1) = {0, 0, 0, lc};
 Point(2) = {ax, 0,  0, lc};

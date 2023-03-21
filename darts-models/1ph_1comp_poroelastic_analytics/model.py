@@ -26,6 +26,7 @@ class Model(DartsModel):
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         self.params.linear_type = sim_params.cpu_superlu#cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
+        #self.params.linear_type = sim_params.cpu_gmres_fs_cpr
         self.runtime = 2 # Total simulations time [days], this parameters is overwritten in main.py!
         self.params.max_i_newton = 10
         self.params.max_i_linear = 5000

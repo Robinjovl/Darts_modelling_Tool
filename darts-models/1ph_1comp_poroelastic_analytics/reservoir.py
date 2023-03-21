@@ -15,6 +15,7 @@ from darts.mesh.transcalc import TransCalculations as TC
 import scipy.optimize as opt
 import scipy
 from scipy.special import erfc as erfc
+import pickle
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoir:
@@ -1040,15 +1041,35 @@ class UnstructReservoir:
         self.permx = self.permy = self.permz = 10.0  # mD
 
         #mesh_file = 'meshes/struct_10x10x1.msh'
-        mesh_file = 'meshes/transfinite.msh'
+        #mesh_file = 'meshes/transfinite.msh'
         mesh_file = 'meshes/transfinite_outer_box.msh'
+        mesh_file = 'meshes/transfinite_outer_box2.msh'
 
         from geomechanics import geomech
         self.geomech = geomech()
 
+        # XY: 0 - outer - 50 - inner -  150 - outer - 200
+        # Z : 0 - outer - 20 - inner -  30 - outer - 50
+        self.outer_box_x1 = self.outer_box_y1 = 50
+        self.outer_box_x2 = self.outer_box_y2 = 150
+        self.outer_box_z1 = 20
+        self.outer_box_z2 = 30
+
         self.file_path = mesh_file
-        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
-                                               mesh_file=mesh_file)
+
+        use_pkl = False
+        if use_pkl:
+            pkl_file = open('unstr_discr.pkl', 'rb')
+            self.unstr_discr = pickle.load(pkl_file)
+            pkl_file.close()
+        else:
+            self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
+                                                   mesh_file=mesh_file)
+            # save
+            pkl_file = open('unstr_discr.pkl', 'wb')
+            pickle.dump(self.unstr_discr, pkl_file)
+            pkl_file.close()
+
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
         self.unstr_discr.mu = 3.2
@@ -1121,20 +1142,14 @@ class UnstructReservoir:
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
-            # XY: 0 - outer - 100 - inner -  200 - outer - 300
-            # Z : 0 - outer - 40 - inner -  60 - outer - 100
-            outer_box_x1 = outer_box_y1 = 100
-            outer_box_x2 = outer_box_y2 = 200
-            outer_box_z1 = 40
-            outer_box_z2 = 60
             cell_in_outer_box = True
-            if outer_box_x1 < cell.centroid[0] < outer_box_x2 and \
-               outer_box_y1 < cell.centroid[1] < outer_box_y2 and \
-               outer_box_z1 < cell.centroid[2] < outer_box_z2:
+            if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
+               self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
+               self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
                 cell_in_outer_box = False
 
             if cell_in_outer_box:
-                permx = permy = permz = 0 # no flow in outer box
+                permx = permy = permz = 1e-5 # no flow in outer box
             else:
                 permx = self.permx
                 permy = self.permy
@@ -1383,10 +1398,10 @@ class UnstructReservoir:
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
-                if ith_step == 0:
-                    cell_data[ith_geometry]['permx'] = self.permx[:]
-                    cell_data[ith_geometry]['permy'] = self.permy[:]
-                    cell_data[ith_geometry]['permz'] = self.permz[:]
+                #if ith_step == 0:
+                #    cell_data[ith_geometry]['permx'] = self.permx[:]
+                #    cell_data[ith_geometry]['permy'] = self.permy[:]
+                #    cell_data[ith_geometry]['permz'] = self.permz[:]
             geom_id += 1
 
         arr = []
@@ -1942,24 +1957,38 @@ class UnstructReservoir:
         self.cohesion = 0  # assume no cohesion due to healing
         self.friction = 0.15
 
+    def store_centroid_inner_box(self):
+        """
+        Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
+        :return:
+        """
+        tot_cell_count = 0
+        #for ith_cell in self.frac_cell_info_dict:
+        #    self.centroid_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].centroid
+        #    tot_cell_count += 1
+
+        centroid_list_x = []
+        centroid_list_y = []
+        centroid_list_z = []
+        for ith_cell in self.unstr_discr.mat_cell_info_dict:
+            c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
+            if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
+                    self.outer_box_y1 < c[1] < self.outer_box_y2 and \
+                    self.outer_box_z1 < c[2] < self.outer_box_z2:
+                centroid_list_x.append(c[0])
+                centroid_list_y.append(c[1])
+                centroid_list_z.append(c[2])
+            tot_cell_count += 1
+        centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
+        return centroids
+
+
     def geomech_init_geometry(self):
         if hasattr(self, 'prisms'):  # do only once
             return
 
-        # coordinates 3 lines, Nnodes columns
         points = self.unstr_discr.mesh_data.points.T
-
-        #nodes = np.zeros((3, len(points[0][:])))
-        #for k in range(len(points[0][:])):
-        #    nodes[0][k] = points[1][k]
-        #    nodes[1][k] = points[0][k]
-        #    nodes[2][k] = points[2][k]
-
         connectivity = self.unstr_discr.mesh_data.cells_dict['hexahedron']
-        # prisms Nelem lines, 8 columns (nodes per elem) =data.cells_dict['hexahedron'].shape[1]
-
-        #print('connectivity[0]', connectivity[0])
-        #print('connectivity.shape', connectivity.shape)
 
         self.prisms = np.zeros((len(connectivity), 6))
         for k in range(len(connectivity)):
@@ -1981,13 +2010,8 @@ class UnstructReservoir:
         #print('self.prisms', self.prisms.shape)
 
         # centers
-        self.unstr_discr.store_centroid_all_cells()
-        centers_1d = self.unstr_discr.centroid_all_cells
-        self.centers = centers_1d.transpose()
-        # make YXZ from XYZ
-        tmp = self.centers[0, :].copy() # X
-        self.centers[0, :] = self.centers[1, :] # put Y first
-        self.centers[1, :] = tmp # put X second
+        self.centers = self.calc_centroid_inner_box()
+
 
     def init_delta_pressure(self, P):
         '''
@@ -2007,10 +2031,8 @@ class UnstructReservoir:
         self.init_delta_pressure(P)
 
         if only_1st_layer:  # calc displs only for the 1-st layer
-            nx = self.discr_mesh.nx
-            ny = self.discr_mesh.ny
-            actnum = np.array(self.discr_mesh.actnum, copy=False)
-            n_act_cells_1st_layer = actnum[:nx*ny].sum()
+            assert (True) #(not implemented)
+            n_act_cells_1st_layer = 0
             centers_ptr = self.centers[:, :n_act_cells_1st_layer]
             print('n_act_cells_1st_layer', n_act_cells_1st_layer)
         else:
