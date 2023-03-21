@@ -1041,6 +1041,7 @@ class UnstructReservoir:
 
         #mesh_file = 'meshes/struct_10x10x1.msh'
         mesh_file = 'meshes/transfinite.msh'
+        mesh_file = 'meshes/transfinite_outer_box.msh'
 
         from geomechanics import geomech
         self.geomech = geomech()
@@ -1120,9 +1121,24 @@ class UnstructReservoir:
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
-            permx = self.permx
-            permy = self.permy
-            permz = self.permz
+            # XY: 0 - outer - 100 - inner -  200 - outer - 300
+            # Z : 0 - outer - 40 - inner -  60 - outer - 100
+            outer_box_x1 = outer_box_y1 = 100
+            outer_box_x2 = outer_box_y2 = 200
+            outer_box_z1 = 40
+            outer_box_z2 = 60
+            cell_in_outer_box = True
+            if outer_box_x1 < cell.centroid[0] < outer_box_x2 and \
+               outer_box_y1 < cell.centroid[1] < outer_box_y2 and \
+               outer_box_z1 < cell.centroid[2] < outer_box_z2:
+                cell_in_outer_box = False
+
+            if cell_in_outer_box:
+                permx = permy = permz = 0 # no flow in outer box
+            else:
+                permx = self.permx
+                permy = self.permy
+                permz = self.permz
             self.pm.perms.append(matrix33(permx, permy, permz))
 
             self.pm.biots.append(matrix33(self.biot))
@@ -1367,10 +1383,10 @@ class UnstructReservoir:
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
-                # if ith_step == 0:
-                #     cell_data[ith_geometry]['permx'] = self.permx[:]
-                #     cell_data[ith_geometry]['permy'] = self.permy[:]
-                #     cell_data[ith_geometry]['permz'] = self.permz[:]
+                if ith_step == 0:
+                    cell_data[ith_geometry]['permx'] = self.permx[:]
+                    cell_data[ith_geometry]['permy'] = self.permy[:]
+                    cell_data[ith_geometry]['permz'] = self.permz[:]
             geom_id += 1
 
         arr = []
@@ -1961,7 +1977,6 @@ class UnstructReservoir:
 
             self.prisms[k][4] = np.amax(zloc)
             self.prisms[k][5] = np.amin(zloc)
-
 
         #print('self.prisms', self.prisms.shape)
 
