@@ -1053,10 +1053,10 @@ class UnstructReservoir:
 
         # XY: 0 - outer - 50 - inner -  150 - outer - 200
         # Z : 0 - outer - 20 - inner -  30 - outer - 50
-        self.outer_box_x1 = self.outer_box_y1 = 50
-        self.outer_box_x2 = self.outer_box_y2 = 150
-        self.outer_box_z1 = 20
-        self.outer_box_z2 = 30
+        self.outer_box_x1_ = self.outer_box_y1_ = 50
+        self.outer_box_x2_ = self.outer_box_y2_ = 150
+        self.outer_box_z1_ = 20
+        self.outer_box_z2_ = 30
 
         # no bounds, one region
         self.outer_box_x1 = self.outer_box_y1 = -1e6
@@ -1153,9 +1153,9 @@ class UnstructReservoir:
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
             cell_in_outer_box = True
-            if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
-               self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
-               self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
+            if self.outer_box_x1_ < cell.centroid[0] < self.outer_box_x2_ and \
+               self.outer_box_y1_ < cell.centroid[1] < self.outer_box_y2_ and \
+               self.outer_box_z1_ < cell.centroid[2] < self.outer_box_z2_:
                 cell_in_outer_box = False
 
             if cell_in_outer_box:
@@ -1416,7 +1416,7 @@ class UnstructReservoir:
 
         arr = []
         arr_names = []
-        if self.proxy == True:# and ti == n_time_steps - 1: # calc geomech only on last tstep
+        if self.proxy:# and ti == n_time_steps - 1: # calc geomech only on last tstep
             #m.timer.node["displs"] = timer_node()
             #m.timer.node["displs"].start()
             print('calc_displs..')

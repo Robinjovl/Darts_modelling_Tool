@@ -113,6 +113,10 @@ def run_timestep_python(m, dt, t):
     # End of newton loop
     converged = self.e.post_newtonloop(dt, t)
     self.timer.node['simulation'].stop()
+
+    #P = m.reservoir.get_pressure(m.physics)
+    #print('Time', t, 'P range: ', P.min(), P.max(), 'bars')
+
     return converged
 
 def test(case='mandel', scheme='non_stabilized', mesh='rect'):

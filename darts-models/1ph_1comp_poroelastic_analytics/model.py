@@ -194,7 +194,7 @@ class Model(DartsModel):
         # calc cell id with well location
         id = -1
         for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-            cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + cell.centroid[2] ** 2
+            cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + (cell.centroid[2] - mid[2]) ** 2
             if dist > cur_dist:
                 dist = cur_dist
                 id = cell_id
