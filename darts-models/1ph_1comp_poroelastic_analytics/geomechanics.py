@@ -1,5 +1,6 @@
 import numpy as np
 import compaction as cpt
+#from numba import njit
 
 # arg: t - 1D array of 6 values in Voight notation
 # returns (3x3) tensor
@@ -77,6 +78,7 @@ class geomech():
 
 
     # calculate strain and stress tensors from displacements on fault_surface
+    #@njit
     def calc_strain_stress(self, fault_surface, prisms, delta_pressure):
         # compute displacement derivatives
         step_x = step_y = step_z = 1  # step for derivatives, m.

@@ -1040,10 +1040,13 @@ class UnstructReservoir:
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 10.0  # mD
 
-        #mesh_file = 'meshes/struct_10x10x1.msh'
-        #mesh_file = 'meshes/transfinite.msh'
-        mesh_file = 'meshes/transfinite_outer_box.msh'
-        mesh_file = 'meshes/transfinite_outer_box2.msh'
+        self.proxy = False
+
+        if self.proxy == True:
+            mesh_file = 'meshes/transfinite1.msh'             #mesh for proxy
+        else:
+            #mesh_file = 'meshes/transfinite_outer_box.msh'
+            mesh_file = 'meshes/transfinite1_outer_box2.msh' #mesh for fully-coupled
 
         from geomechanics import geomech
         self.geomech = geomech()
@@ -1055,10 +1058,16 @@ class UnstructReservoir:
         self.outer_box_z1 = 20
         self.outer_box_z2 = 30
 
+        # no bounds, one region
+        self.outer_box_x1 = self.outer_box_y1 = -1e6
+        self.outer_box_x2 = self.outer_box_y2 = 1e6
+        self.outer_box_z1 = -1e6
+        self.outer_box_z2 = 1e6
+
         self.file_path = mesh_file
 
         use_pkl = False
-        #use_pkl = True
+        #use_pkl = True # speedup mesh initialization
         if use_pkl:
             pkl_file = open('unstr_discr.pkl', 'rb')
             self.unstr_discr = pickle.load(pkl_file)
@@ -1407,7 +1416,7 @@ class UnstructReservoir:
 
         arr = []
         arr_names = []
-        if True: #ti == n_time_steps - 1: # calc geomech only on last tstep
+        if self.proxy == True:# and ti == n_time_steps - 1: # calc geomech only on last tstep
             #m.timer.node["displs"] = timer_node()
             #m.timer.node["displs"].start()
             print('calc_displs..')
@@ -1973,13 +1982,13 @@ class UnstructReservoir:
         centroid_list_y = []
         centroid_list_z = []
 
-        local_to_global = np.zeros(self.n_cells, dtype=np.int32)
+        local_to_global = np.zeros(self.n_cells, dtype=np.int32) # actual size will be less
 
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
-            if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
-                    self.outer_box_y1 < c[1] < self.outer_box_y2 and \
-                    self.outer_box_z1 < c[2] < self.outer_box_z2:
+            if self.outer_box_x1 < c[0] < self.outer_box_x2 and \
+               self.outer_box_y1 < c[1] < self.outer_box_y2 and \
+               self.outer_box_z1 < c[2] < self.outer_box_z2:
                 centroid_list_x.append(c[0])
                 centroid_list_y.append(c[1])
                 centroid_list_z.append(c[2])
@@ -1989,10 +1998,34 @@ class UnstructReservoir:
 
         centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
 
-        local_to_global = local_to_global[:inner_box_cell_count]
+        local_to_global = local_to_global[:inner_box_cell_count] #  shrink array to actual size
         #local_to_global = np.array(list(local_to_global.values()))
         return centroids, local_to_global
 
+    def calc_centroid(self):
+        """
+        Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
+        :return:
+        """
+        tot_cell_count = 0
+        #for ith_cell in self.frac_cell_info_dict:
+        #    self.centroid_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].centroid
+        #    tot_cell_count += 1
+
+        centroid_list_x = []
+        centroid_list_y = []
+        centroid_list_z = []
+        for ith_cell in self.unstr_discr.mat_cell_info_dict:
+            c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
+            if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
+                    self.outer_box_y1 < c[1] < self.outer_box_y2 and \
+                    self.outer_box_z1 < c[2] < self.outer_box_z2:
+                centroid_list_x.append(c[0])
+                centroid_list_y.append(c[1])
+                centroid_list_z.append(c[2])
+            tot_cell_count += 1
+        centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
+        return centroids, None
 
     def geomech_init_geometry(self):
         if hasattr(self, 'prisms'):  # do only once
@@ -2021,8 +2054,8 @@ class UnstructReservoir:
         #print('self.prisms', self.prisms.shape)
 
         # centers
-        self.centers, self.local_to_global = self.calc_centroid_inner_box()
-
+        #self.centers, self.local_to_global = self.calc_centroid_inner_box()
+        self.centers, self.local_to_global = self.calc_centroid()
 
     def init_delta_pressure(self, P):
         '''
@@ -2039,6 +2072,8 @@ class UnstructReservoir:
         :param u_inner: values in inner box
         :return:
         '''
+        if self.local_to_global is None:
+            return u_inner
         u = np.zeros(self.n_cells)
         u[self.local_to_global] = u_inner[:]
         return u
@@ -2053,7 +2088,7 @@ class UnstructReservoir:
         self.init_delta_pressure(P)
 
         if only_1st_layer:  # calc displs only for the 1-st layer
-            assert (True) #(not implemented)
+            assert (True) #(not implemented for unstructured grid)
             n_act_cells_1st_layer = 0
             centers_ptr = self.centers[:, :n_act_cells_1st_layer]
             print('n_act_cells_1st_layer', n_act_cells_1st_layer)
