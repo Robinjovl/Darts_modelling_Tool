@@ -1758,8 +1758,8 @@ engine_base::calc_well_residual_L1()
 			for (int v = 0; v < n_vars; v++)
 			{
 				index_t i_w, i_r;
-				value_t wi;
-				std::tie(i_w, i_r, wi) = w->perforations[ip];
+				value_t wi, wid;
+				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
 				res[v] += fabs(RHS[(w->well_body_idx + i_w) * n_vars + v]);
 				norm[v] += (PV[w->well_body_idx + i_w] * av_op[v]);
@@ -1800,8 +1800,8 @@ engine_base::calc_well_residual_L2()
 			for (int v = 0; v < n_vars; v++)
 			{
 				index_t i_w, i_r;
-				value_t wi;
-				std::tie(i_w, i_r, wi) = w->perforations[ip];
+				value_t wi, wid;
+				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
 				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
 				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
@@ -1838,8 +1838,8 @@ engine_base::calc_well_residual_Linf()
 			for (int v = 0; v < n_vars; v++)
 			{
 				index_t i_w, i_r;
-				value_t wi;
-				std::tie(i_w, i_r, wi) = w->perforations[ip];
+				value_t wi, wid;
+				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
 				res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + v] / (PV[w->well_body_idx + i_w] * av_op[v]));
 				residual = std::max(residual, res);
