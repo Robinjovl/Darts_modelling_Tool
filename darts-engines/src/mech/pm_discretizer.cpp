@@ -1050,504 +1050,508 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 	}
 	printf("Gradient reconstruction was done!\n");
 }
-//void pm_discretizer::reconstruct_gradients_per_node(value_t dt, index_t n_nodes)
-//{
-//	bool isStationary = dt == 0.0 ? true : false;
-//	if (isStationary) dt = 1.0;
-//
-//	n_cells = perms.size();
-//	grad_prev = grad;
-//
-//	// Variables
-//	size_t n_cur_faces;
-//	vector<index_t> admissible_connections(4, 0);
-//	index_t id1, id2;
-//	Matrix n(ND, 1), K1n(ND, 1), K2n(ND, 1), gam1(ND, 1), gam2(ND, 1), B1n(ND, 1), B2n(ND, 1);
-//	value_t lam1, lam2;
-//	Matrix C1(9, 9), C2(9, 9), T1(3, 3), T2(3, 3), G1(3, 9), G2(3, 9);
-//	Matrix nblock(9, 3), nblock_t(3, 9), tblock(9, 9);
-//	bool res;
-//	value_t r1, Ap, gamma, sign, angle;
-//	Matrix y1(ND, 1), An(ND, ND), At(ND, ND), L(ND, ND), P(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), mult_p(ND, 1);
-//	Matrix sq_mat(BLOCK_SIZE * ND, BLOCK_SIZE * ND), Wsvd(BLOCK_SIZE * ND, BLOCK_SIZE * ND), frac_grad_mult(BLOCK_SIZE, BLOCK_SIZE * ND);
-//	value_t k_stab1, k_stab2, c_stab1, c_stab2;
-//	Matrix B1nn(ND * ND, 1), B2nn(ND * ND, 1);
-//
-//	int face_id, face_id1, face_count_id, cell_id, node_id, bface_id, st_id, loop_face_id;
-//	value_t r2_frac;
-//
-//	// initialize gradients for each node
-//	vector<std::vector<index_t>> node_stencil(n_nodes, std::vector<index_t>(MAX_STENCIL));
-//	vector<Matrix> node_A(n_nodes);
-//	vector<Matrix> node_rhs_mult(n_nodes);
-//	vector<Matrix> node_rest(n_nodes);
-//
-//	// allocate memory for gradients
-//	vector<index_t> faces_per_node(n_nodes, 0);
-//	vector<unordered_set<index_t>> nodes_per_cell(n_matrix, std::unordered_set<index_t>(MAX_POINTS_PER_CELL));
-//	unordered_set<index_t>::const_iterator it;
-//	for (cell_id = 0; cell_id < n_matrix; cell_id++)
-//	{
-//		const auto& vec_faces = faces[cell_id];
-//		for (face_id = 0; face_id < vec_faces.size(); face_id++)
-//		{
-//			const Face& face = vec_faces[face_id];
-//			for (const auto& pt : face.pts)
-//				faces_per_node[pt]++;
-//		}
-//	}
-//	for (node_id = 0; node_id < n_nodes; node_id++)
-//	{
-//		auto& eq_num = faces_per_node[node_id];
-//		node_stencil[node_id].clear();
-//		node_A[node_id] = Matrix(BLOCK_SIZE * eq_num, BLOCK_SIZE * ND);
-//		node_rhs_mult[node_id] = Matrix(BLOCK_SIZE * eq_num, MAX_STENCIL);
-//		node_rest[node_id] = Matrix(BLOCK_SIZE * eq_num, 1);
-//		eq_num = 0;
-//	}
-//
-//	// Gradient reconstruction in matrix cells
-//	for (cell_id = 0; cell_id < n_matrix; cell_id++)
-//	{
-//		const auto& vec_faces = faces[cell_id];
-//		auto& cell_pts = nodes_per_cell[cell_id];
-//		cell_pts.clear();
-//
-//		// Build the system from the continuity at the interfaces
-//		/*n_cur_faces = 0;// vec_faces.size();
-//		for (face_id = 0; face_id < vec_faces.size(); face_id++)
-//		{
-//			const Face& face = vec_faces[face_id];
-//			if (face.type == BORDER)
-//			{
-//				const auto& b = bc[face.face_id2];
-//				const auto& an = b(0, 0);			const auto& bn = b(1, 0);
-//				const auto& at = b(2, 0);			const auto& bt = b(3, 0);
-//				const auto& ap = b(4, 0);			const auto& bp = b(5, 0);
-//				if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
-//			}
-//			else if (face.type != MAT_TO_FRAC) n_cur_faces++;
-//		}*/
-//
-//		for (loop_face_id = 0; loop_face_id < vec_faces.size(); loop_face_id++)
-//		{
-//			const Face& face = vec_faces[loop_face_id];
-//			node_id = face.pts[0];
-//			it = cell_pts.find(node_id);	if (it == cell_pts.end()) { cell_pts.insert(node_id); }
-//			auto& A = node_A[node_id];
-//			auto& rest = node_rest[node_id];
-//			auto& rhs_mult = node_rhs_mult[node_id];
-//			auto& node_face_id = faces_per_node[node_id];
-//			auto& st_node = node_stencil[node_id];
-//
-//			// fill equation for first node that belongs to the interface
-//			if (face.type == MAT)
-//			{
-//				// Clean matrices
-//				auto& cur = inner[cell_id][loop_face_id];
-//				std::fill_n(&cur.A1.values[0], cur.A1.values.size(), 0.0);
-//				std::fill_n(&cur.A2.values[0], cur.A2.values.size(), 0.0);
-//				std::fill_n(&cur.Q1.values[0], cur.Q1.values.size(), 0.0);
-//				std::fill_n(&cur.Q2.values[0], cur.Q2.values.size(), 0.0);
-//				std::fill_n(&cur.Th1.values[0], cur.Th1.values.size(), 0.0);
-//				std::fill_n(&cur.Th2.values[0], cur.Th2.values.size(), 0.0);
-//				std::fill_n(&cur.R1.values[0], cur.R1.values.size(), 0.0);
-//				std::fill_n(&cur.R2.values[0], cur.R2.values.size(), 0.0);
-//
-//				const int& cell_id1 = face.cell_id1;
-//				const int& cell_id2 = face.cell_id2;
-//				const auto& c1 = cell_centers[cell_id1];
-//				const auto& c2 = cell_centers[cell_id2];
-//				n = (face.n.transpose() * (c2 - c1)).values[0] > 0 ? face.n : -face.n;
-//				P = I3 - outer_product(n, n.transpose());
-//				// Permeability decomposition
-//				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
-//				K2n = pm_discretizer::darcy_constant * perms[cell_id2] * n;
-//				lam1 = (n.transpose() * K1n)(0, 0);
-//				lam2 = (n.transpose() * K2n)(0, 0);
-//				gam1 = K1n - lam1 * n;
-//				gam2 = K2n - lam2 * n;
-//				// Stiffness decomposition
-//				C1 = W * stfs[cell_id1] * W.transpose();
-//				C2 = W * stfs[cell_id2] * W.transpose();
-//				nblock = make_block_diagonal(n, ND);
-//				nblock_t = make_block_diagonal(n.transpose(), ND);
-//				tblock = make_block_diagonal(P, ND);
-//				T1 = nblock_t * C1 * nblock;
-//				T2 = nblock_t * C2 * nblock;
-//				G1 = nblock_t * C1 * tblock;
-//				G2 = nblock_t * C2 * tblock;
-//				// Process geometry
-//				auto& r1 = cur.r1;
-//				auto& r2 = cur.r2;
-//				r1 = (n.transpose() * (face.c - c1))(0, 0);
-//				r2 = (n.transpose() * (c2 - face.c))(0, 0);
-//				assert(r1 > 0.0);		assert(r2 > 0.0);
-//				auto& y1 = cur.y1;
-//				auto& y2 = cur.y2;
-//				y1 = c1 + r1 * n;	 y2 = c2 - r2 * n;
-//				// Assemble matrices
-//				auto& A1 = cur.A1;						auto& A2 = cur.A2;
-//				auto& Q1 = cur.Q1;						auto& Q2 = cur.Q2;
-//				auto& R1 = cur.R1;						auto& R2 = cur.R2;
-//				B1n = biots[cell_id1] * n;
-//				B2n = biots[cell_id2] * n;
-//				if (!isStationary)
-//				{
-//					A1(3, { 3, 1 }, { 4, 1 }) = B1n.values;				A2(3, { 3, 1 }, { 4, 1 }) = B2n.values;
-//					A1(4 * 3, { 3 }, { 1 }) = B1n.transpose().values;	A2(4 * 3, { 3 }, { 1 }) = B2n.transpose().values;
-//					R1(3, 0) = -(B1n.transpose() * get_u_face_prev(face.c - c1, cell_id1)).values[0];
-//					R2(3, 0) = -(B2n.transpose() * get_u_face_prev(face.c - c2, cell_id2)).values[0];
-//				}
-//				Q1(0, { 3, 3 }, { 4, 1 }) = -T1.values;
-//				Q1(3, 3) = -lam1 * dt / visc;
-//				Q1 += r1 * A1;
-//				Q2(0, { 3, 3 }, { 4, 1 }) = -T2.values;
-//				Q2(3, 3) = -lam2 * dt / visc;
-//				Q2 -= r2 * A2;
-//				auto& Th1 = cur.Th1;
-//				auto& Th2 = cur.Th2;
-//				Th1(0, { 3, 9 }, { 12, 1 }) = -G1.values;
-//				Th2(0, { 3, 9 }, { 12, 1 }) = -G2.values;
-//				Th1(45, { 3 }, { 1 }) = -dt / visc * gam1.transpose().values;
-//				Th2(45, { 3 }, { 1 }) = -dt / visc * gam2.transpose().values;
-//				Th1 += A1 * make_block_diagonal((face.c - y1).transpose(), 4);
-//				Th2 += A2 * make_block_diagonal((face.c - y2).transpose(), 4);
-//				R1(3, 0) += (dt / visc * grav_vec * K1n).values[0];
-//				R2(3, 0) += (dt / visc * grav_vec * K2n).values[0];
-//
-//				// Matrix
-//				A(4 * node_face_id * 4 * ND, { 4, 4 * ND }, { 4 * ND, 1 }) = ((Q2 * make_block_diagonal((y2 - y1).transpose(), 4) + r2 * (Th1 - Th2)) * make_block_diagonal(I3 - outer_product(n, n.transpose()), 4) +
-//					(r2 * Q1 + r1 * Q2) * make_block_diagonal(n.transpose(), 4)).values;
-//				/*(Q2 * make_block_diagonal((c2 - c1).transpose(), 4) +
-//				r2 * (Q1 - Q2) * make_block_diagonal(n.transpose(), 4) + r2 * (Th1 - Th2)).values;*/
-//				// RHS
-//				res1 = findInVector(st_node, cell_id1);
-//				if (res1.first) { id = res1.second; }
-//				else { id = st_node.size(); st_node.push_back(cell_id1); }
-//				id1 = id;
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 4, 4 }, { (size_t)rhs_mult.N, 1 }) += -(Q2 + r2 * A1).values;
-//
-//				res2 = findInVector(st_node, cell_id2);
-//				if (res2.first) { id = res2.second; }
-//				else { id = st_node.size(); st_node.push_back(cell_id2); }
-//				id2 = id;
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 4, 4 }, { (size_t)rhs_mult.N, 1 }) += (Q2 + r2 * A2).values;
-//
-//				rest(4 * node_face_id, { 4 }, { 1 }) = r2 * (R2 - R1).values;
-//				node_face_id++;
-//
-//				// stabilization parameters
-//				cur.k_stab1 = lam1 / r1;
-//				cur.k_stab2 = lam2 / r2;
-//				cur.beta_stab1 = sqrt((B1n.transpose() * B1n).values[0]);
-//				cur.beta_stab2 = sqrt((B2n.transpose() * B2n).values[0]);
-//				B1nn.values = (make_block_diagonal(n, ND) * B1n).values;
-//				B2nn.values = (make_block_diagonal(n, ND) * B2n).values;
-//				cur.c_stab1 = (B1nn.transpose() * C1 * B1nn).values[0] / r1 / cur.beta_stab1 / cur.beta_stab1;
-//				cur.c_stab2 = (B2nn.transpose() * C2 * B2nn).values[0] / r2 / cur.beta_stab2 / cur.beta_stab2;
-//				//cur.alpha_min_stab1 = (sqrt((k_stab1 - c_stab1) * (k_stab1 - c_stab1) + 4 * cur.beta_stab1 * cur.beta_stab1 / dt) - (k_stab1 + c_stab1)) / (2 * cur.beta_stab1);
-//				//cur.alpha_min_stab2 = (sqrt((k_stab2 - c_stab2) * (k_stab2 - c_stab2) + 4 * cur.beta_stab2 * cur.beta_stab2 / dt) - (k_stab2 + c_stab2)) / (2 * cur.beta_stab2);
-//
-//				cur.S1(0, { ND, ND }, { 4, 1 }) = outer_product(B1n, B1n.transpose()).values / cur.beta_stab1;
-//				cur.S1(ND, ND) = cur.beta_stab1;
-//				// cur.S1.values *= std::max(cur.alpha_min_stab1, 1.0);
-//
-//				cur.S2(0, { ND, ND }, { 4, 1 }) = outer_product(B2n, B2n.transpose()).values / cur.beta_stab2;
-//				cur.S2(ND, ND) = cur.beta_stab2;
-//				// cur.S2.values *= std::max(cur.alpha_min_stab2, 1.0);
-//			}
-//			else if (face.type == BORDER)
-//			{
-//				const auto& b = bc[face.face_id2];
-//				const auto& an = b(0, 0);			const auto& bn = b(1, 0);
-//				const auto& at = b(2, 0);			const auto& bt = b(3, 0);
-//				const auto& ap = b(4, 0);			const auto& bp = b(5, 0);
-//				// Skip if pure neumann
-//				// if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
-//
-//				const int& cell_id1 = face.cell_id1;
-//				// Geometry
-//				const auto& c1 = cell_centers[cell_id1];
-//				n = (face.n.transpose() * (face.c - c1)).values[0] > 0 ? face.n : -face.n;
-//				P = I3 - outer_product(n, n.transpose());
-//				r1 = (n.transpose() * (face.c - c1))(0, 0);		assert(r1 > 0.0);
-//				y1 = c1 + r1 * n;
-//				B1n = biots[cell_id1] * n;
-//				// Stiffness decomposition
-//				C1 = W * stfs[cell_id1] * W.transpose();
-//				nblock = make_block_diagonal(n, ND);
-//				nblock_t = make_block_diagonal(n.transpose(), ND);
-//				tblock = make_block_diagonal(P, ND);
-//				T1 = nblock_t * C1 * nblock;
-//				G1 = nblock_t * C1 * tblock;
-//				// Permeability decomposition
-//				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
-//				lam1 = (n.transpose() * K1n)(0, 0);
-//				gam1 = K1n - lam1 * n;
-//				// Extra 'boundary' stuff
-//				An = (an * I3 + bn / r1 * T1);
-//				At = (at * I3 + bt / r1 * T1);
-//				Ap = 1.0 / (ap + bp / r1 / visc * lam1);
-//				res = At.inv();
-//				if (!res)
-//				{
-//					cout << "Inversion failed!\n";	exit(-1);
-//				}
-//				L = An * At;
-//				gamma = 1.0 / (n.transpose() * L * n).values[0];
-//				gamma_nnt = gamma * outer_product(n, n.transpose());
-//				gamma_nnt_mult = gamma_nnt * (bn * I3 - bt * L);
-//				mult_p = (bt * I3 + gamma_nnt_mult) * B1n;
-//				// Filling mechanics equations
-//				A(4 * node_face_id * 4 * ND,
-//					{ ND, 3 * ND },
-//					{ 4 * ND, 1 }) = (at * make_block_diagonal((face.c - c1).transpose(), ND) +
-//						bt * nblock_t * C1 +
-//						gamma_nnt_mult * (G1 + T1 / r1 *
-//							make_block_diagonal((y1 - face.c).transpose(), ND))).values;
-//				A(4 * node_face_id * 4 * ND + 3 * ND,
-//					{ ND, ND },
-//					{ 4 * ND, 1 }) = outer_product(mult_p, Ap * bp / visc * ((lam1 / r1 * (y1 - face.c) + gam1).transpose() *
-//						P)).values;
-//
-//				res1 = findInVector(st_node, face.cell_id1);
-//				if (res1.first) { id = res1.second; }
-//				else { id = st_node.size(); st_node.push_back(face.cell_id1); }
-//				id1 = id;
-//
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 3, 3 }, { (size_t)rhs_mult.N, 1 }) += (gamma_nnt_mult * T1 / r1 - at * I3).values;
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id + 3, { 3, 1 }, { (size_t)rhs_mult.N, 1 }) += (Ap * bp / visc * lam1 / r1 * mult_p).values;
-//				rest(4 * node_face_id, { 3 }, { 1 }) = (mult_p * Ap * bp / visc * (grav_vec * K1n).values[0]).values;
-//				// Filling flow equation
-//				A((4 * node_face_id + 3) * 4 * ND + 3 * ND,
-//					{ ND },
-//					{ 1 }) = (ap * (face.c - c1) + bp / visc * K1n).values;
-//				rhs_mult(4 * node_face_id + 3, 4 * id + 3) -= ap;
-//				rest(4 * node_face_id + 3, 0) = bp / visc * (grav_vec * K1n).values[0];
-//				// BC RHS coefficients
-//				bface_id = n_cells + face.face_id2;
-//				res2 = findInVector(st_node, bface_id);
-//				if (res2.first) { id = res2.second; }
-//				else { id = st_node.size(); st_node.push_back(bface_id); }
-//				id2 = id;
-//				// Mech
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 3, 3 }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt + (I3 - gamma_nnt * L) * P).values;
-//				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id + 3, { 3, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
-//				// Flow
-//				rhs_mult(4 * node_face_id + 3, 4 * id + 3) = 1.0;
-//
-//				node_face_id++;
-//			}
-//			/*else if (face.type == MAT_TO_FRAC)
-//			{
-//				const Face& face0 = vec_faces[face.face_id1];
-//				const auto& cur = inner[cell_id][face.face_id1];
-//				// recount original face id
-//				face_id1 = 0;
-//				for (index_t h = 0; h < face.face_id1; h++)
-//				{
-//					const Face& face = vec_faces[h];
-//					if (face.type == BORDER)
-//					{
-//						const auto& b = bc[face.face_id2];
-//						const auto& an = b(0, 0);	const auto& at = b(2, 0);
-//						if (an != 0.0 || at != 0.0)	face_id1++;
-//					}
-//					else if (face.type != MAT_TO_FRAC) face_id1++;
-//				}
-//
-//				const int& cell_id1 = face0.cell_id1;
-//				const int& frac_id = face.cell_id2;
-//				assert(frac_id >= n_matrix);
-//				const auto& c1 = cell_centers[cell_id1];
-//				const auto& c2 = cell_centers[frac_id];
-//				n = (face.n.transpose() * (face.c - c1)).values[0] > 0 ? face.n : -face.n;
-//				sign = get_fault_sign(n, ref_contact_ids[frac_id - n_matrix]);
-//				// add gap
-//				res1 = findInVector(st, frac_id);
-//				if (res1.first) { id1 = res1.second; }
-//				else { id1 = st.size(); st.push_back(frac_id); }
-//				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1,
-//					{ BLOCK_SIZE, BLOCK_SIZE },
-//					{ (size_t)rhs_mult.N, 1 }) += -sign * (cur.Q2 + cur.r2 * cur.A1).values;
-//				// add gap gradient
-//				const auto& frac_grad = grad[frac_id];
-//				auto& frac_grad_mult = pre_frac_grad_mult[frac_grad.stencil.size()];
-//				std::fill_n(&frac_grad_mult.values[0], frac_grad_mult.values.size(), 0.0);
-//				frac_grad_mult = sign * (cur.Q2 * make_block_diagonal((cur.y2 - face.c).transpose(), BLOCK_SIZE) - cur.r2 * cur.Th2) * frac_grad.mat;
-//				for (st_id = 0; st_id < frac_grad.stencil.size(); st_id++)
-//				{
-//					assert(frac_grad.stencil[st_id] >= n_matrix);
-//					res1 = findInVector(st, frac_grad.stencil[st_id]);
-//					if (res1.first) { id = res1.second; }
-//					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
-//					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
-//						{ BLOCK_SIZE, BLOCK_SIZE },
-//						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(st_id * BLOCK_SIZE,
-//							{ BLOCK_SIZE, BLOCK_SIZE },
-//							{ (size_t)frac_grad_mult.N, 1 });
-//				}
-//				// no discontinuity in pressure
-//				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = 0.0;
-//
-//				// pressure condition
-//				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
-//				K2n = pm_discretizer::darcy_constant * perms[frac_id] * n;
-//				r2_frac = frac_apers[frac_id - n_matrix] / 2;
-//				lam2 = (n.transpose() * K2n)(0, 0);
-//
-//				// remove previous numbers
-//				A((BLOCK_SIZE * face_id1 + ND) * A.N, { BLOCK_SIZE * ND }, { 1 }) = 0.0;
-//				rhs_mult((BLOCK_SIZE * face_id1 + ND) * rhs_mult.N, { (size_t)rhs_mult.N }, { 1 }) = 0.0;
-//				rest(BLOCK_SIZE * face_id1 + ND, 0) = 0.0;
-//				// fill newer
-//				A((BLOCK_SIZE * face_id1 + ND) * A.N + ND * ND, { ND }, { 1 }) = (c2 - c1 + r2_frac / lam2 * (K1n - K2n)).values;
-//				res1 = findInVector(st, cell_id1);
-//				if (res1.first) { id = res1.second; }
-//				else { id = st.size(); st.push_back(cell_id1); }
-//				rhs_mult(BLOCK_SIZE * face_id1 + ND, BLOCK_SIZE * id + ND) = -1.0;
-//
-//				res2 = findInVector(st, frac_id);
-//				if (res2.first) { id = res2.second; }
-//				else { id = st.size(); st.push_back(frac_id); }
-//				rhs_mult(BLOCK_SIZE * face_id1 + ND, BLOCK_SIZE * id + ND) = 1.0;
-//
-//				rest(BLOCK_SIZE * face_id1 + ND, 0) = r2_frac / lam2 * ((grav_vec * K1n).values[0] - (grav_vec * K2n).values[0]);
-//				//face_id++;
-//			}*/
-//
-//			// copy to other nodes that belong to the interface
-//			for (index_t k = 1; k < face.pts.size(); k++)
-//			{
-//				node_id = face.pts[k];
-//				it = cell_pts.find(node_id);	if (it == cell_pts.end()) { cell_pts.insert(node_id); }
-//				auto& other_A = node_A[node_id];
-//				auto& other_rest = node_rest[node_id];
-//				auto& other_rhs_mult = node_rhs_mult[node_id];
-//				auto& other_node_face_id = faces_per_node[node_id];
-//				auto& st_node = node_stencil[node_id];
-//
-//				//// stencil & rhs_mult
-//				// 1
-//				res1 = findInVector(st_node, face.cell_id1);
-//				if (res1.first) { id = res1.second; }
-//				else { id = st_node.size(); st_node.push_back(face.cell_id1); }
-//				other_rhs_mult(BLOCK_SIZE * other_node_face_id * rhs_mult.N + BLOCK_SIZE * id, { BLOCK_SIZE , BLOCK_SIZE }, { (size_t)other_rhs_mult.N, 1 }) =
-//					rhs_mult(BLOCK_SIZE * (node_face_id-1) * rhs_mult.N + BLOCK_SIZE * id1, { BLOCK_SIZE , BLOCK_SIZE }, { (size_t)rhs_mult.N, 1 });
-//				// 2
-//				if (face.type == MAT)
-//				{
-//					res2 = findInVector(st_node, face.cell_id2);
-//					if (res2.first) { id = res2.second; }
-//					else { id = st_node.size(); st_node.push_back(face.cell_id2); }
-//				}
-//				else
-//				{
-//					bface_id = n_cells + face.face_id2;
-//					res2 = findInVector(st_node, bface_id);
-//					if (res2.first) { id = res2.second; }
-//					else { id = st_node.size(); st_node.push_back(bface_id); }
-//				}
-//				other_rhs_mult(BLOCK_SIZE * other_node_face_id * rhs_mult.N + BLOCK_SIZE * id, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)other_rhs_mult.N, 1 }) =
-//					rhs_mult(BLOCK_SIZE * (node_face_id - 1) * rhs_mult.N + BLOCK_SIZE * id2, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)rhs_mult.N, 1 });
-//				//// main matrix
-//				other_A(BLOCK_SIZE * other_node_face_id * BLOCK_SIZE * ND, { BLOCK_SIZE, BLOCK_SIZE * ND }, { (size_t)other_A.N, 1 }) =
-//					A(BLOCK_SIZE * (node_face_id - 1) * BLOCK_SIZE * ND, { BLOCK_SIZE, BLOCK_SIZE * ND }, { (size_t)A.N, 1 });
-//				//// free term
-//				other_rest(BLOCK_SIZE * other_node_face_id, { BLOCK_SIZE }, { 1 }) = rest(BLOCK_SIZE * (node_face_id - 1), { BLOCK_SIZE }, { 1 });
-//
-//				other_node_face_id++;
-//			}
-//		}
-//	}
-//
-//	// Calculate node-based gradients
-//	vector<Gradients> node_grad(n_nodes);
-//	for (node_id = 0; node_id < n_nodes; node_id++)
-//	{
-//		const auto& st_node = node_stencil[node_id];
-//		const auto& eq_num = faces_per_node[node_id];
-//		auto& A = node_A[node_id];
-//		auto& rhs_mult = node_rhs_mult[node_id];
-//		const auto& rest = node_rest[node_id];
-//		auto& cur_rhs = pre_cur_rhs[eq_num][st_node.size()];
-//		cur_rhs.values = rhs_mult(0, { (size_t)BLOCK_SIZE * eq_num, BLOCK_SIZE * st_node.size() }, { (size_t)rhs_mult.N, 1 });
-//		auto& cur_grad = node_grad[node_id];
-//
-//		cur_grad.stencil = st_node;
-//
-//		sq_mat = A.transpose() * A;
-//		res = sq_mat.inv();
-//		if (!res)
-//		{
-//			cout << "Inversion failed!\n";
-//			//sq_mat.write_in_file("sq_mat_" + std::to_string(cell_id) + ".txt");
-//			exit(-1);
-//		}
-//		if (sq_mat.is_nan())
-//		{
-//			face_count_id = (face_id > ND) ? ND : face_id;
-//			auto& Wsvd = pre_Wsvd[face_count_id];
-//			auto& Zsvd = pre_Zsvd[face_count_id];
-//			auto& w_svd = pre_w_svd[face_count_id].values;
-//			std::fill_n(&Wsvd.values[0], Wsvd.values.size(), 0.0);
-//			std::fill_n(&Zsvd.values[0], Zsvd.values.size(), 0.0);
-//			std::fill_n(&w_svd[0], w_svd.size(), 0.0);
-//
-//			// SVD decomposition A = M W Z*
-//			if (Zsvd.M != A.N) { printf("Wrong matrix dimension!\n"); exit(-1); }
-//			res = A.svd(Zsvd, w_svd);
-//			assert(Zsvd.M == face_count_id * BLOCK_SIZE && Zsvd.N == face_count_id * BLOCK_SIZE);
-//			if (!res) { cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" + std::to_string(cell_id) + ".txt");*/ exit(-1); }
-//			// check SVD
-//			// Wsvd.set_diagonal(w_svd);
-//			// assert(A == M * Wsvd * Zsvd.transpose());
-//			for (index_t i = 0; i < w_svd.size(); i++)
-//				w_svd[i] = (fabs(w_svd[i]) < 1000 * EQUALITY_TOLERANCE) ? 0.0 /*w_svd[i]*/ : 1.0 / w_svd[i];
-//			Wsvd.set_diagonal(w_svd);
-//			// check pseudo-inverse
-//			// Matrix Ainv = Zsvd * Wsvd * M.transpose();
-//			// assert(A * Ainv * A == A && Ainv * A * Ainv == Ainv);
-//			cur_grad.mat = Zsvd * Wsvd * A.transpose() * cur_rhs;
-//			cur_grad.rhs = Zsvd * Wsvd * A.transpose() * rest;
-//		}
-//		else
-//		{
-//			cur_grad.mat = sq_mat * A.transpose() * cur_rhs;
-//			cur_grad.rhs = sq_mat * A.transpose() * rest;
-//		}
-//	
-//	}
-//
-//	// Calculate cell-based gradients
-//	value_t n_nodes_per_cell;
-//	Gradients g;	g.stencil.reserve(MAX_STENCIL);	g.mat = Matrix(BLOCK_SIZE * ND, MAX_STENCIL * BLOCK_SIZE);	
-//
-//	for (cell_id = 0; cell_id < n_matrix; cell_id++)
-//	{
-//		const auto& cell_pts = nodes_per_cell[cell_id];
-//		// number of nodes for current cell
-//		n_nodes_per_cell = cell_pts.size();
-//		// cell gradient
-//		auto& cur_cell_grad = grad[cell_id];
-//		// clean up gradients
-//		g.stencil.clear();					g.mat.values = 0.0;					g.rhs.values = 0.0;
-//		cur_cell_grad.stencil.clear();		cur_cell_grad.mat.values = 0.0;		cur_cell_grad.rhs = Matrix(BLOCK_SIZE * ND, 1);
-//		for (const auto& node_id : cell_pts)
-//		{
-//			const auto& cur_node_grad = node_grad[node_id];
-//			g = merge_stencils(g.stencil, g.mat, cur_node_grad.stencil, cur_node_grad.mat / n_nodes_per_cell);
-//			cur_cell_grad.rhs += cur_node_grad.rhs / n_nodes_per_cell;
-//		}
-//
-//		cur_cell_grad.stencil = g.stencil;
-//		cur_cell_grad.mat = Matrix(BLOCK_SIZE * ND, BLOCK_SIZE * g.stencil.size());
-//		cur_cell_grad.mat.values = g.mat(0, { BLOCK_SIZE * ND, BLOCK_SIZE * g.stencil.size() }, { (size_t)g.mat.N, 1 });
-//	}
-//
-//	printf("Gradient reconstruction was done!\n");
-//}
+void pm_discretizer::reconstruct_gradients_per_node(value_t dt, index_t n_nodes)
+{
+	bool isStationary = dt == 0.0 ? true : false;
+	if (isStationary) dt = 1.0;
+
+	n_cells = perms.size();
+	grad_prev = grad;
+
+	// Variables
+	size_t n_cur_faces;
+	vector<index_t> admissible_connections(4, 0);
+	index_t id1, id2;
+	Matrix n(ND, 1), K1n(ND, 1), K2n(ND, 1), gam1(ND, 1), gam2(ND, 1), B1n(ND, 1), B2n(ND, 1);
+	value_t lam1, lam2;
+	Matrix C1(9, 9), C2(9, 9), T1(3, 3), T2(3, 3), G1(3, 9), G2(3, 9);
+	Matrix nblock(9, 3), nblock_t(3, 9), tblock(9, 9);
+	bool res;
+	value_t r1, Ap, gamma, sign, angle;
+	Matrix y1(ND, 1), An(ND, ND), At(ND, ND), L(ND, ND), P(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), mult_p(ND, 1);
+	Matrix sq_mat(BLOCK_SIZE * ND, BLOCK_SIZE * ND), Wsvd(BLOCK_SIZE * ND, BLOCK_SIZE * ND), frac_grad_mult(BLOCK_SIZE, BLOCK_SIZE * ND);
+	value_t k_stab1, k_stab2, c_stab1, c_stab2;
+	Matrix B1nn(ND * ND, 1), B2nn(ND * ND, 1);
+
+	int face_id, face_id1, face_count_id, cell_id, node_id, bface_id, st_id, loop_face_id;
+	value_t r2_frac;
+
+	// initialize gradients for each node
+	vector<std::vector<index_t>> node_stencil(n_nodes, std::vector<index_t>(MAX_STENCIL));
+	vector<Matrix> node_A(n_nodes);
+	vector<Matrix> node_rhs_mult(n_nodes);
+	vector<Matrix> node_rest(n_nodes);
+
+	// allocate memory for gradients
+	vector<index_t> faces_per_node(n_nodes, 0);
+	vector<unordered_set<index_t>> nodes_per_cell(n_matrix, std::unordered_set<index_t>(MAX_POINTS_PER_CELL));
+	unordered_set<index_t>::const_iterator it;
+	for (cell_id = 0; cell_id < n_matrix; cell_id++)
+	{
+		const auto& vec_faces = faces[cell_id];
+		for (face_id = 0; face_id < vec_faces.size(); face_id++)
+		{
+			const Face& face = vec_faces[face_id];
+			for (const auto& pt : face.pts)
+				faces_per_node[pt]++;
+		}
+	}
+	for (node_id = 0; node_id < n_nodes; node_id++)
+	{
+		auto& eq_num = faces_per_node[node_id];
+		node_stencil[node_id].clear();
+		node_A[node_id] = Matrix(BLOCK_SIZE * eq_num, BLOCK_SIZE * ND);
+		node_rhs_mult[node_id] = Matrix(BLOCK_SIZE * eq_num, MAX_STENCIL);
+		node_rest[node_id] = Matrix(BLOCK_SIZE * eq_num, 1);
+		eq_num = 0;
+	}
+
+	// Gradient reconstruction in matrix cells
+	for (cell_id = 0; cell_id < n_matrix; cell_id++)
+	{
+		const auto& vec_faces = faces[cell_id];
+		auto& cell_pts = nodes_per_cell[cell_id];
+		cell_pts.clear();
+
+		// Build the system from the continuity at the interfaces
+		/*n_cur_faces = 0;// vec_faces.size();
+		for (face_id = 0; face_id < vec_faces.size(); face_id++)
+		{
+			const Face& face = vec_faces[face_id];
+			if (face.type == BORDER)
+			{
+				const auto& b = bc[face.face_id2];
+				const auto& an = b(0, 0);			const auto& bn = b(1, 0);
+				const auto& at = b(2, 0);			const auto& bt = b(3, 0);
+				const auto& ap = b(4, 0);			const auto& bp = b(5, 0);
+				if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
+			}
+			else if (face.type != MAT_TO_FRAC) n_cur_faces++;
+		}*/
+
+		for (loop_face_id = 0; loop_face_id < vec_faces.size(); loop_face_id++)
+		{
+			const Face& face = vec_faces[loop_face_id];
+			node_id = face.pts[0];
+			it = cell_pts.find(node_id);	if (it == cell_pts.end()) { cell_pts.insert(node_id); }
+			auto& A = node_A[node_id];
+			auto& rest = node_rest[node_id];
+			auto& rhs_mult = node_rhs_mult[node_id];
+			auto& node_face_id = faces_per_node[node_id];
+			auto& st_node = node_stencil[node_id];
+
+			// fill equation for first node that belongs to the interface
+			if (face.type == MAT)
+			{
+				// Clean matrices
+				auto& cur = inner[cell_id][loop_face_id];
+				std::fill_n(&cur.A1.values[0], cur.A1.values.size(), 0.0);
+				std::fill_n(&cur.A2.values[0], cur.A2.values.size(), 0.0);
+				std::fill_n(&cur.Q1.values[0], cur.Q1.values.size(), 0.0);
+				std::fill_n(&cur.Q2.values[0], cur.Q2.values.size(), 0.0);
+				std::fill_n(&cur.Th1.values[0], cur.Th1.values.size(), 0.0);
+				std::fill_n(&cur.Th2.values[0], cur.Th2.values.size(), 0.0);
+				std::fill_n(&cur.R1.values[0], cur.R1.values.size(), 0.0);
+				std::fill_n(&cur.R2.values[0], cur.R2.values.size(), 0.0);
+
+				const int& cell_id1 = face.cell_id1;
+				const int& cell_id2 = face.cell_id2;
+				const auto& c1 = cell_centers[cell_id1];
+				const auto& c2 = cell_centers[cell_id2];
+				n = (face.n.transpose() * (c2 - c1)).values[0] > 0 ? face.n : -face.n;
+				P = I3 - outer_product(n, n.transpose());
+				// Permeability decomposition
+				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
+				K2n = pm_discretizer::darcy_constant * perms[cell_id2] * n;
+				lam1 = (n.transpose() * K1n)(0, 0);
+				lam2 = (n.transpose() * K2n)(0, 0);
+				gam1 = K1n - lam1 * n;
+				gam2 = K2n - lam2 * n;
+				// Stiffness decomposition
+				C1 = W * stfs[cell_id1] * W.transpose();
+				C2 = W * stfs[cell_id2] * W.transpose();
+				nblock = make_block_diagonal(n, ND);
+				nblock_t = make_block_diagonal(n.transpose(), ND);
+				tblock = make_block_diagonal(P, ND);
+				T1 = nblock_t * C1 * nblock;
+				T2 = nblock_t * C2 * nblock;
+				G1 = nblock_t * C1 * tblock;
+				G2 = nblock_t * C2 * tblock;
+				// Process geometry
+				auto& r1 = cur.r1;
+				auto& r2 = cur.r2;
+				r1 = (n.transpose() * (face.c - c1))(0, 0);
+				r2 = (n.transpose() * (c2 - face.c))(0, 0);
+				assert(r1 > 0.0);		assert(r2 > 0.0);
+				auto& y1 = cur.y1;
+				auto& y2 = cur.y2;
+				y1 = c1 + r1 * n;	 y2 = c2 - r2 * n;
+				// Assemble matrices
+				auto& A1 = cur.A1;						auto& A2 = cur.A2;
+				auto& Q1 = cur.Q1;						auto& Q2 = cur.Q2;
+				auto& R1 = cur.R1;						auto& R2 = cur.R2;
+				B1n = biots[cell_id1] * n;
+				B2n = biots[cell_id2] * n;
+				if (!isStationary)
+				{
+					A1(3, { 3, 1 }, { 4, 1 }) = B1n.values;				A2(3, { 3, 1 }, { 4, 1 }) = B2n.values;
+					A1(4 * 3, { 3 }, { 1 }) = B1n.transpose().values;	A2(4 * 3, { 3 }, { 1 }) = B2n.transpose().values;
+					R1(3, 0) = -(B1n.transpose() * get_u_face_prev(face.c - c1, cell_id1)).values[0];
+					R2(3, 0) = -(B2n.transpose() * get_u_face_prev(face.c - c2, cell_id2)).values[0];
+				}
+				Q1(0, { 3, 3 }, { 4, 1 }) = -T1.values;
+				Q1(3, 3) = -lam1 * dt / visc;
+				Q1 += r1 * A1;
+				Q2(0, { 3, 3 }, { 4, 1 }) = -T2.values;
+				Q2(3, 3) = -lam2 * dt / visc;
+				Q2 -= r2 * A2;
+				auto& Th1 = cur.Th1;
+				auto& Th2 = cur.Th2;
+				Th1(0, { 3, 9 }, { 12, 1 }) = -G1.values;
+				Th2(0, { 3, 9 }, { 12, 1 }) = -G2.values;
+				Th1(45, { 3 }, { 1 }) = -dt / visc * gam1.transpose().values;
+				Th2(45, { 3 }, { 1 }) = -dt / visc * gam2.transpose().values;
+				Th1 += A1 * make_block_diagonal((face.c - y1).transpose(), 4);
+				Th2 += A2 * make_block_diagonal((face.c - y2).transpose(), 4);
+				R1(3, 0) += (dt / visc * grav_vec * K1n).values[0];
+				R2(3, 0) += (dt / visc * grav_vec * K2n).values[0];
+
+				// Matrix
+				A(4 * node_face_id * 4 * ND, { 4, 4 * ND }, { 4 * ND, 1 }) = ((Q2 * make_block_diagonal((y2 - y1).transpose(), 4) + r2 * (Th1 - Th2)) * make_block_diagonal(I3 - outer_product(n, n.transpose()), 4) +
+					(r2 * Q1 + r1 * Q2) * make_block_diagonal(n.transpose(), 4)).values;
+				/*(Q2 * make_block_diagonal((c2 - c1).transpose(), 4) +
+				r2 * (Q1 - Q2) * make_block_diagonal(n.transpose(), 4) + r2 * (Th1 - Th2)).values;*/
+				// RHS
+				res1 = findInVector(st_node, cell_id1);
+				if (res1.first) { id = res1.second; }
+				else { id = st_node.size(); st_node.push_back(cell_id1); }
+				id1 = id;
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 4, 4 }, { (size_t)rhs_mult.N, 1 }) += -(Q2 + r2 * A1).values;
+
+				res2 = findInVector(st_node, cell_id2);
+				if (res2.first) { id = res2.second; }
+				else { id = st_node.size(); st_node.push_back(cell_id2); }
+				id2 = id;
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 4, 4 }, { (size_t)rhs_mult.N, 1 }) += (Q2 + r2 * A2).values;
+
+				rest(4 * node_face_id, { 4 }, { 1 }) = r2 * (R2 - R1).values;
+				node_face_id++;
+
+				// stabilization parameters
+				cur.k_stab1 = lam1 / r1;
+				cur.k_stab2 = lam2 / r2;
+				cur.beta_stab1 = sqrt((B1n.transpose() * B1n).values[0]);
+				cur.beta_stab2 = sqrt((B2n.transpose() * B2n).values[0]);
+				B1nn.values = (make_block_diagonal(n, ND) * B1n).values;
+				B2nn.values = (make_block_diagonal(n, ND) * B2n).values;
+				cur.c_stab1 = (B1nn.transpose() * C1 * B1nn).values[0] / r1 / cur.beta_stab1 / cur.beta_stab1;
+				cur.c_stab2 = (B2nn.transpose() * C2 * B2nn).values[0] / r2 / cur.beta_stab2 / cur.beta_stab2;
+				//cur.alpha_min_stab1 = (sqrt((k_stab1 - c_stab1) * (k_stab1 - c_stab1) + 4 * cur.beta_stab1 * cur.beta_stab1 / dt) - (k_stab1 + c_stab1)) / (2 * cur.beta_stab1);
+				//cur.alpha_min_stab2 = (sqrt((k_stab2 - c_stab2) * (k_stab2 - c_stab2) + 4 * cur.beta_stab2 * cur.beta_stab2 / dt) - (k_stab2 + c_stab2)) / (2 * cur.beta_stab2);
+
+				cur.S1(0, { ND, ND }, { 4, 1 }) = outer_product(B1n, B1n.transpose()).values / cur.beta_stab1;
+				cur.S1(ND, ND) = cur.beta_stab1;
+				// cur.S1.values *= std::max(cur.alpha_min_stab1, 1.0);
+
+				cur.S2(0, { ND, ND }, { 4, 1 }) = outer_product(B2n, B2n.transpose()).values / cur.beta_stab2;
+				cur.S2(ND, ND) = cur.beta_stab2;
+				// cur.S2.values *= std::max(cur.alpha_min_stab2, 1.0);
+			}
+			else if (face.type == BORDER)
+			{
+				const auto& b = bc[face.face_id2];
+				const auto& an = b(0, 0);			const auto& bn = b(1, 0);
+				const auto& at = b(2, 0);			const auto& bt = b(3, 0);
+				const auto& ap = b(4, 0);			const auto& bp = b(5, 0);
+				// Skip if pure neumann
+				// if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
+
+				const int& cell_id1 = face.cell_id1;
+				// Geometry
+				const auto& c1 = cell_centers[cell_id1];
+				n = (face.n.transpose() * (face.c - c1)).values[0] > 0 ? face.n : -face.n;
+				P = I3 - outer_product(n, n.transpose());
+				r1 = (n.transpose() * (face.c - c1))(0, 0);		assert(r1 > 0.0);
+				y1 = c1 + r1 * n;
+				B1n = biots[cell_id1] * n;
+				// Stiffness decomposition
+				C1 = W * stfs[cell_id1] * W.transpose();
+				nblock = make_block_diagonal(n, ND);
+				nblock_t = make_block_diagonal(n.transpose(), ND);
+				tblock = make_block_diagonal(P, ND);
+				T1 = nblock_t * C1 * nblock;
+				G1 = nblock_t * C1 * tblock;
+				// Permeability decomposition
+				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
+				lam1 = (n.transpose() * K1n)(0, 0);
+				gam1 = K1n - lam1 * n;
+				// Extra 'boundary' stuff
+				An = (an * I3 + bn / r1 * T1);
+				At = (at * I3 + bt / r1 * T1);
+				Ap = 1.0 / (ap + bp / r1 / visc * lam1);
+				res = At.inv();
+				if (!res)
+				{
+					cout << "Inversion failed!\n";	exit(-1);
+				}
+				L = An * At;
+				gamma = 1.0 / (n.transpose() * L * n).values[0];
+				gamma_nnt = gamma * outer_product(n, n.transpose());
+				gamma_nnt_mult = gamma_nnt * (bn * I3 - bt * L);
+				mult_p = (bt * I3 + gamma_nnt_mult) * B1n;
+				// Filling mechanics equations
+				A(4 * node_face_id * 4 * ND,
+					{ ND, 3 * ND },
+					{ 4 * ND, 1 }) = (at * make_block_diagonal((face.c - c1).transpose(), ND) +
+						bt * nblock_t * C1 +
+						gamma_nnt_mult * (G1 + T1 / r1 *
+							make_block_diagonal((y1 - face.c).transpose(), ND))).values;
+				A(4 * node_face_id * 4 * ND + 3 * ND,
+					{ ND, ND },
+					{ 4 * ND, 1 }) = outer_product(mult_p, Ap * bp / visc * ((lam1 / r1 * (y1 - face.c) + gam1).transpose() *
+						P)).values;
+
+				res1 = findInVector(st_node, face.cell_id1);
+				if (res1.first) { id = res1.second; }
+				else { id = st_node.size(); st_node.push_back(face.cell_id1); }
+				id1 = id;
+
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 3, 3 }, { (size_t)rhs_mult.N, 1 }) += (gamma_nnt_mult * T1 / r1 - at * I3).values;
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id + 3, { 3, 1 }, { (size_t)rhs_mult.N, 1 }) += (Ap * bp / visc * lam1 / r1 * mult_p).values;
+				rest(4 * node_face_id, { 3 }, { 1 }) = (mult_p * Ap * bp / visc * (grav_vec * K1n).values[0]).values;
+				// Filling flow equation
+				A((4 * node_face_id + 3) * 4 * ND + 3 * ND,
+					{ ND },
+					{ 1 }) = (ap * (face.c - c1) + bp / visc * K1n).values;
+				rhs_mult(4 * node_face_id + 3, 4 * id + 3) -= ap;
+				rest(4 * node_face_id + 3, 0) = bp / visc * (grav_vec * K1n).values[0];
+				// BC RHS coefficients
+				bface_id = n_cells + face.face_id2;
+				res2 = findInVector(st_node, bface_id);
+				if (res2.first) { id = res2.second; }
+				else { id = st_node.size(); st_node.push_back(bface_id); }
+				id2 = id;
+				// Mech
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id, { 3, 3 }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt + (I3 - gamma_nnt * L) * P).values;
+				rhs_mult(4 * node_face_id * rhs_mult.N + 4 * id + 3, { 3, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
+				// Flow
+				rhs_mult(4 * node_face_id + 3, 4 * id + 3) = 1.0;
+
+				node_face_id++;
+			}
+			/*else if (face.type == MAT_TO_FRAC)
+			{
+				const Face& face0 = vec_faces[face.face_id1];
+				const auto& cur = inner[cell_id][face.face_id1];
+				// recount original face id
+				face_id1 = 0;
+				for (index_t h = 0; h < face.face_id1; h++)
+				{
+					const Face& face = vec_faces[h];
+					if (face.type == BORDER)
+					{
+						const auto& b = bc[face.face_id2];
+						const auto& an = b(0, 0);	const auto& at = b(2, 0);
+						if (an != 0.0 || at != 0.0)	face_id1++;
+					}
+					else if (face.type != MAT_TO_FRAC) face_id1++;
+				}
+
+				const int& cell_id1 = face0.cell_id1;
+				const int& frac_id = face.cell_id2;
+				assert(frac_id >= n_matrix);
+				const auto& c1 = cell_centers[cell_id1];
+				const auto& c2 = cell_centers[frac_id];
+				n = (face.n.transpose() * (face.c - c1)).values[0] > 0 ? face.n : -face.n;
+				sign = get_fault_sign(n, ref_contact_ids[frac_id - n_matrix]);
+				// add gap
+				res1 = findInVector(st, frac_id);
+				if (res1.first) { id1 = res1.second; }
+				else { id1 = st.size(); st.push_back(frac_id); }
+				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1,
+					{ BLOCK_SIZE, BLOCK_SIZE },
+					{ (size_t)rhs_mult.N, 1 }) += -sign * (cur.Q2 + cur.r2 * cur.A1).values;
+				// add gap gradient
+				const auto& frac_grad = grad[frac_id];
+				auto& frac_grad_mult = pre_frac_grad_mult[frac_grad.stencil.size()];
+				std::fill_n(&frac_grad_mult.values[0], frac_grad_mult.values.size(), 0.0);
+				frac_grad_mult = sign * (cur.Q2 * make_block_diagonal((cur.y2 - face.c).transpose(), BLOCK_SIZE) - cur.r2 * cur.Th2) * frac_grad.mat;
+				for (st_id = 0; st_id < frac_grad.stencil.size(); st_id++)
+				{
+					assert(frac_grad.stencil[st_id] >= n_matrix);
+					res1 = findInVector(st, frac_grad.stencil[st_id]);
+					if (res1.first) { id = res1.second; }
+					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
+					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
+						{ BLOCK_SIZE, BLOCK_SIZE },
+						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(st_id * BLOCK_SIZE,
+							{ BLOCK_SIZE, BLOCK_SIZE },
+							{ (size_t)frac_grad_mult.N, 1 });
+				}
+				// no discontinuity in pressure
+				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = 0.0;
+
+				// pressure condition
+				K1n = pm_discretizer::darcy_constant * perms[cell_id1] * n;
+				K2n = pm_discretizer::darcy_constant * perms[frac_id] * n;
+				r2_frac = frac_apers[frac_id - n_matrix] / 2;
+				lam2 = (n.transpose() * K2n)(0, 0);
+
+				// remove previous numbers
+				A((BLOCK_SIZE * face_id1 + ND) * A.N, { BLOCK_SIZE * ND }, { 1 }) = 0.0;
+				rhs_mult((BLOCK_SIZE * face_id1 + ND) * rhs_mult.N, { (size_t)rhs_mult.N }, { 1 }) = 0.0;
+				rest(BLOCK_SIZE * face_id1 + ND, 0) = 0.0;
+				// fill newer
+				A((BLOCK_SIZE * face_id1 + ND) * A.N + ND * ND, { ND }, { 1 }) = (c2 - c1 + r2_frac / lam2 * (K1n - K2n)).values;
+				res1 = findInVector(st, cell_id1);
+				if (res1.first) { id = res1.second; }
+				else { id = st.size(); st.push_back(cell_id1); }
+				rhs_mult(BLOCK_SIZE * face_id1 + ND, BLOCK_SIZE * id + ND) = -1.0;
+
+				res2 = findInVector(st, frac_id);
+				if (res2.first) { id = res2.second; }
+				else { id = st.size(); st.push_back(frac_id); }
+				rhs_mult(BLOCK_SIZE * face_id1 + ND, BLOCK_SIZE * id + ND) = 1.0;
+
+				rest(BLOCK_SIZE * face_id1 + ND, 0) = r2_frac / lam2 * ((grav_vec * K1n).values[0] - (grav_vec * K2n).values[0]);
+				//face_id++;
+			}*/
+
+			// copy to other nodes that belong to the interface
+			for (index_t k = 1; k < face.pts.size(); k++)
+			{
+				node_id = face.pts[k];
+				it = cell_pts.find(node_id);	if (it == cell_pts.end()) { cell_pts.insert(node_id); }
+				auto& other_A = node_A[node_id];
+				auto& other_rest = node_rest[node_id];
+				auto& other_rhs_mult = node_rhs_mult[node_id];
+				auto& other_node_face_id = faces_per_node[node_id];
+				auto& st_node = node_stencil[node_id];
+
+				//// stencil & rhs_mult
+				// 1
+				res1 = findInVector(st_node, face.cell_id1);
+				if (res1.first) { id = res1.second; }
+				else { id = st_node.size(); st_node.push_back(face.cell_id1); }
+				other_rhs_mult(BLOCK_SIZE * other_node_face_id * rhs_mult.N + BLOCK_SIZE * id, { BLOCK_SIZE , BLOCK_SIZE }, { (size_t)other_rhs_mult.N, 1 }) =
+					rhs_mult(BLOCK_SIZE * (node_face_id-1) * rhs_mult.N + BLOCK_SIZE * id1, { BLOCK_SIZE , BLOCK_SIZE }, { (size_t)rhs_mult.N, 1 });
+				// 2
+				if (face.type == MAT)
+				{
+					res2 = findInVector(st_node, face.cell_id2);
+					if (res2.first) { id = res2.second; }
+					else { id = st_node.size(); st_node.push_back(face.cell_id2); }
+				}
+				else
+				{
+					bface_id = n_cells + face.face_id2;
+					res2 = findInVector(st_node, bface_id);
+					if (res2.first) { id = res2.second; }
+					else { id = st_node.size(); st_node.push_back(bface_id); }
+				}
+				other_rhs_mult(BLOCK_SIZE * other_node_face_id * rhs_mult.N + BLOCK_SIZE * id, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)other_rhs_mult.N, 1 }) =
+					rhs_mult(BLOCK_SIZE * (node_face_id - 1) * rhs_mult.N + BLOCK_SIZE * id2, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)rhs_mult.N, 1 });
+				//// main matrix
+				other_A(BLOCK_SIZE * other_node_face_id * BLOCK_SIZE * ND, { BLOCK_SIZE, BLOCK_SIZE * ND }, { (size_t)other_A.N, 1 }) =
+					A(BLOCK_SIZE * (node_face_id - 1) * BLOCK_SIZE * ND, { BLOCK_SIZE, BLOCK_SIZE * ND }, { (size_t)A.N, 1 });
+				//// free term
+				other_rest(BLOCK_SIZE * other_node_face_id, { BLOCK_SIZE }, { 1 }) = rest(BLOCK_SIZE * (node_face_id - 1), { BLOCK_SIZE }, { 1 });
+
+				other_node_face_id++;
+			}
+		}
+	}
+
+	// Calculate node-based gradients
+	vector<Gradients> node_grad(n_nodes);
+	for (node_id = 0; node_id < n_nodes; node_id++)
+	{
+		const auto& st_node = node_stencil[node_id];
+		const auto& eq_num = faces_per_node[node_id];
+		auto& A = node_A[node_id];
+		auto& rhs_mult = node_rhs_mult[node_id];
+		const auto& rest = node_rest[node_id];
+		auto& cur_rhs = pre_cur_rhs[eq_num][st_node.size()];
+		cur_rhs.values = rhs_mult(0, { (size_t)BLOCK_SIZE * eq_num, BLOCK_SIZE * st_node.size() }, { (size_t)rhs_mult.N, 1 });
+		auto& cur_grad = node_grad[node_id];
+
+		cur_grad.stencil = st_node;
+
+		sq_mat = A.transpose() * A;
+		//value_t det0 = sq_mat.det();
+		for (index_t dd = 0; dd < sq_mat.M; dd++)
+			sq_mat(dd, dd) += 100.0 * EQUALITY_TOLERANCE;
+		//value_t det = sq_mat.det();
+		res = sq_mat.inv();
+		if (!res)
+		{
+			cout << "Inversion failed!\n";
+			//sq_mat.write_in_file("sq_mat_" + std::to_string(cell_id) + ".txt");
+			exit(-1);
+		}
+		if (sq_mat.is_nan())
+		{
+			face_count_id = (face_id > ND) ? ND : face_id;
+			auto& Wsvd = pre_Wsvd[face_count_id];
+			auto& Zsvd = pre_Zsvd[face_count_id];
+			auto& w_svd = pre_w_svd[face_count_id].values;
+			std::fill_n(&Wsvd.values[0], Wsvd.values.size(), 0.0);
+			std::fill_n(&Zsvd.values[0], Zsvd.values.size(), 0.0);
+			std::fill_n(&w_svd[0], w_svd.size(), 0.0);
+
+			// SVD decomposition A = M W Z*
+			if (Zsvd.M != A.N) { printf("Wrong matrix dimension!\n"); exit(-1); }
+			res = A.svd(Zsvd, w_svd);
+			assert(Zsvd.M == face_count_id * BLOCK_SIZE && Zsvd.N == face_count_id * BLOCK_SIZE);
+			if (!res) { cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" + std::to_string(cell_id) + ".txt");*/ exit(-1); }
+			// check SVD
+			// Wsvd.set_diagonal(w_svd);
+			// assert(A == M * Wsvd * Zsvd.transpose());
+			for (index_t i = 0; i < w_svd.size(); i++)
+				w_svd[i] = (fabs(w_svd[i]) < 1000 * EQUALITY_TOLERANCE) ? 0.0 /*w_svd[i]*/ : 1.0 / w_svd[i];
+			Wsvd.set_diagonal(w_svd);
+			// check pseudo-inverse
+			// Matrix Ainv = Zsvd * Wsvd * M.transpose();
+			// assert(A * Ainv * A == A && Ainv * A * Ainv == Ainv);
+			cur_grad.mat = Zsvd * Wsvd * A.transpose() * cur_rhs;
+			cur_grad.rhs = Zsvd * Wsvd * A.transpose() * rest;
+		}
+		else
+		{
+			cur_grad.mat = sq_mat * A.transpose() * cur_rhs;
+			cur_grad.rhs = sq_mat * A.transpose() * rest;
+		}
+	
+	}
+
+	// Calculate cell-based gradients
+	value_t n_nodes_per_cell;
+	Gradients g;	g.stencil.reserve(MAX_STENCIL);	g.mat = Matrix(BLOCK_SIZE * ND, MAX_STENCIL * BLOCK_SIZE);	
+
+	for (cell_id = 0; cell_id < n_matrix; cell_id++)
+	{
+		const auto& cell_pts = nodes_per_cell[cell_id];
+		// number of nodes for current cell
+		n_nodes_per_cell = cell_pts.size();
+		// cell gradient
+		auto& cur_cell_grad = grad[cell_id];
+		// clean up gradients
+		g.stencil.clear();					g.mat.values = 0.0;					g.rhs.values = 0.0;
+		cur_cell_grad.stencil.clear();		cur_cell_grad.mat.values = 0.0;		cur_cell_grad.rhs = Matrix(BLOCK_SIZE * ND, 1);
+		for (const auto& node_id : cell_pts)
+		{
+			const auto& cur_node_grad = node_grad[node_id];
+			g = merge_stencils(g.stencil, g.mat, cur_node_grad.stencil, cur_node_grad.mat / n_nodes_per_cell);
+			cur_cell_grad.rhs += cur_node_grad.rhs / n_nodes_per_cell;
+		}
+
+		cur_cell_grad.stencil = g.stencil;
+		cur_cell_grad.mat = Matrix(BLOCK_SIZE * ND, BLOCK_SIZE * g.stencil.size());
+		cur_cell_grad.mat.values = g.mat(0, { BLOCK_SIZE * ND, BLOCK_SIZE * g.stencil.size() }, { (size_t)g.mat.N, 1 });
+	}
+
+	printf("Gradient reconstruction was done!\n");
+}
 void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 {
 	bool isStationary = dt == 0.0 ? true : false;

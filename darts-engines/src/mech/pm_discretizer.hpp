@@ -259,7 +259,7 @@ namespace pm
 
 		void init(const index_t _n_matrix, const index_t _n_fracs, std::vector<index_t>& _ref_contact_ids);
 		void reconstruct_gradients_per_cell(value_t dt);
-		//void reconstruct_gradients_per_node(value_t dt, index_t n_nodes);
+		void reconstruct_gradients_per_node(value_t dt, index_t n_nodes);
 		void reconstruct_gradients_thermal_per_cell(value_t dt);
 		void calc_all_fluxes_once(value_t dt);
 		void calc_border_flux(value_t dt, const Face& face, Approximation& flux, Approximation& flux_th_cond, Approximation& face_unknown);
