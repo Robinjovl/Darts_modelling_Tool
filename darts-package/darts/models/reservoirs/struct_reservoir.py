@@ -163,15 +163,20 @@ class StructReservoir:
         return well
 
     def add_perforation(self, well, i, j, k, well_radius=0.1524, well_index=-1, segment_direction='z_axis', skin=0,
-                        multi_segment=True,
-                        verbose=False):
+                        multi_segment=True, verbose=False):
         # calculate well index and get local index of reservoir block
-        res_block_local, wi = self.discretizer.calc_well_index(i=i, j=j, k=k, well_radius=well_radius,
+        res_block_local, wi, wid = self.discretizer.calc_well_index(i=i, j=j, k=k, well_radius=well_radius,
                                                                segment_direction=segment_direction,
                                                                skin=skin)
 
         if well_index == -1:
             well_index = wi
+            well_indexD = wid
+        elif well_index == -2:
+            well_index = 0
+            well_indexD = wid
+        else:
+            well_indexD = 0
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -184,17 +189,24 @@ class StructReservoir:
             if len(well.perforations) == 0:
                 well.well_head_depth = self.depth[res_block_local]
                 well.well_body_depth = well.well_head_depth
+                well_indexD *= self.rcond[res_block_local] # assume perforation condution = rock conduction
                 if self.discretizer.is_cpg:
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
-                    well.segment_depth_increment = dz
+                    if segment_direction == 'z_axis':
+                        well.segment_depth_increment = dz
+                    elif segment_direction == 'x_axis':
+                        well.segment_depth_increment = dx
+                    else:
+                        well.segment_depth_increment = dy
                 else:
                     well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
+
                 well.segment_volume *= well.segment_depth_increment
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))
                     return
-            well.perforations = well.perforations + [(well_block, res_block_local, well_index)]
+            well.perforations = well.perforations + [(well_block, res_block_local, well_index, well_indexD)]
             if verbose:
                 print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f' % (
                     well.name, res_block_local, i, j, k, well_index))

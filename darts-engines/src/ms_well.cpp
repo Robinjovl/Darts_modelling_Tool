@@ -114,8 +114,8 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   for (auto &p : perforations)
   {
     index_t i_w, i_r;
-    value_t wi;
-    std::tie(i_w, i_r, wi) = p;
+    value_t wi, wid;
+    std::tie(i_w, i_r, wi, wid) = p;
     i_w += well_body_idx;
 
     // find upstream for the perforation
@@ -194,8 +194,8 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
   for (auto &p : perforations)
   {
     index_t i_w, i_r;
-    value_t wi;
-    std::tie(i_w, i_r, wi) = p;
+    value_t wi, wid;
+    std::tie(i_w, i_r, wi, wid) = p;
     i_w += well_body_idx;
 
     // find upstream for the perforation
@@ -229,8 +229,8 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   for (auto &p : perforations)
   {
     index_t i_w, i_r;
-    value_t wi;
-    std::tie(i_w, i_r, wi) = p;
+    value_t wi, wid;
+    std::tie(i_w, i_r, wi, wid) = p;
     i_w += well_body_idx;
 
     // move the state from X
@@ -267,8 +267,8 @@ int ms_well::cross_flow(std::vector<value_t>& X)
   for (auto &p : perforations)
   {
     index_t i_w, i_r;
-    value_t wi;
-    std::tie(i_w, i_r, wi) = p;
+    value_t wi, wid;
+    std::tie(i_w, i_r, wi, wid) = p;
     value_t potential_diff = X[(i_w + well_head_idx + 1) * n_block_size + P_VAR] - X[i_r * n_block_size + P_VAR];
     bool is_cross_flow = (is_producer && potential_diff > 0) || (!(is_producer) && potential_diff < 0);
     if (is_cross_flow)

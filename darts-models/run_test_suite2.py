@@ -3,6 +3,7 @@ from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
 import sys, os, shutil
+from darts.engines import sim_params
 
 model_dir = r'.'
 
@@ -49,6 +50,7 @@ def check_performance(mod):
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
     m = mod.Model()
+    m.params.linear_type = sim_params.cpu_superlu
     m.init()
     m.run()
     m.print_stat()
