@@ -300,11 +300,12 @@ class UnstructReservoir:
         tran[15::16] = self.tran[15::16]
         rhs[3::4] = self.rhs[3::4]
 
-        tran_biot[12::16] = self.tran_biot[12::16]
-        tran_biot[13::16] = self.tran_biot[13::16]
-        tran_biot[14::16] = self.tran_biot[14::16]
-        tran_biot[15::16] = self.tran_biot[15::16]
-        rhs_biot[3::4] = self.rhs_biot[3::4]
+        if False:
+            tran_biot[12::16] = self.tran_biot[12::16]
+            tran_biot[13::16] = self.tran_biot[13::16]
+            tran_biot[14::16] = self.tran_biot[14::16]
+            tran_biot[15::16] = self.tran_biot[15::16]
+            rhs_biot[3::4] = self.rhs_biot[3::4]
 
         # for i in range(len(self.mesh.fault_conn_id)):
         #     conn_ids = self.mesh.fault_conn_id[i]
@@ -1040,29 +1041,33 @@ class UnstructReservoir:
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 10.0  # mD
 
-        self.proxy = False
-
-        if self.proxy == True:
-            mesh_file = 'meshes/transfinite1.msh'             #mesh for proxy
-        else:
-            #mesh_file = 'meshes/transfinite_outer_box.msh'
-            mesh_file = 'meshes/transfinite1_outer_box2.msh' #mesh for fully-coupled
+        #self.proxy = False
+        self.proxy = True
+        '''
+                if self.proxy == True:
+                    mesh_file = 'meshes/transfinite1.msh'             #mesh for proxy
+                else:
+                    #mesh_file = 'meshes/transfinite_outer_box.msh'
+                    mesh_file = 'meshes/transfinite1_outer_box2.msh' #mesh for fully-coupled
+        '''
+        mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
+        #mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
 
         from geomechanics import geomech
         self.geomech = geomech()
 
         # XY: 0 - outer - 50 - inner -  150 - outer - 200
         # Z : 0 - outer - 20 - inner -  30 - outer - 50
-        self.outer_box_x1_ = self.outer_box_y1_ = 50
-        self.outer_box_x2_ = self.outer_box_y2_ = 150
-        self.outer_box_z1_ = 20
-        self.outer_box_z2_ = 30
+        self.outer_box_x1 = self.outer_box_y1 = 500
+        self.outer_box_x2 = self.outer_box_y2 = 1500
+        self.outer_box_z1 = 2000
+        self.outer_box_z2 = 2500
 
         # no bounds, one region
-        self.outer_box_x1 = self.outer_box_y1 = -1e6
-        self.outer_box_x2 = self.outer_box_y2 = 1e6
-        self.outer_box_z1 = -1e6
-        self.outer_box_z2 = 1e6
+        #self.outer_box_x1 = self.outer_box_y1 = -1e6
+        #self.outer_box_x2 = self.outer_box_y2 = 1e6
+        #self.outer_box_z1 = -1e6
+        #self.outer_box_z2 = 1e6
 
         self.file_path = mesh_file
 
@@ -1114,7 +1119,7 @@ class UnstructReservoir:
         mech_ym = self.ROLLER
         mech_yp = self.ROLLER
         mech_zm = self.ROLLER
-        mech_zp = self.FREE
+        mech_zp = self.ROLLER
         # free = self.LOAD(0.0, [0.0, 0.0, 0.0])
 
         flow_xm = self.NO_FLOW
@@ -1153,13 +1158,13 @@ class UnstructReservoir:
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
             cell_in_outer_box = True
-            if self.outer_box_x1_ < cell.centroid[0] < self.outer_box_x2_ and \
-               self.outer_box_y1_ < cell.centroid[1] < self.outer_box_y2_ and \
-               self.outer_box_z1_ < cell.centroid[2] < self.outer_box_z2_:
+            if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
+               self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
+               self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
                 cell_in_outer_box = False
 
             if cell_in_outer_box:
-                permx = permy = permz = 1e-5 # no flow in outer box
+                permx = permy = permz = 1e-5  # no flow in outer box
             else:
                 permx = self.permx
                 permy = self.permy
@@ -1167,7 +1172,7 @@ class UnstructReservoir:
             self.pm.perms.append(matrix33(permx, permy, permz))
 
             self.pm.biots.append(matrix33(self.biot))
-            self.pm.stfs.append(Stiffness(self.lam, self.mu)) # main
+            self.pm.stfs.append(Stiffness(self.lam, self.mu))  # define Stiffness tensor
             self.biot_mean[9 * cell_id] = self.biot #?
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
@@ -1408,10 +1413,14 @@ class UnstructReservoir:
 
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
-                #if ith_step == 0:
-                #    cell_data[ith_geometry]['permx'] = self.permx[:]
-                #    cell_data[ith_geometry]['permy'] = self.permy[:]
-                #    cell_data[ith_geometry]['permz'] = self.permz[:]
+                if ith_step == 0:
+                    if 'permx' not in cell_data: cell_data['permx'] = []
+                    if 'permy' not in cell_data: cell_data['permy'] = []
+                    if 'permz' not in cell_data: cell_data['permz'] = []
+                    perms_arr = np.array(self.pm.perms, copy=False) #vector_matrix33
+                    cell_data['permx'].append(np.array([p.values[0] for p in perms_arr]))
+                    cell_data['permy'].append(np.array([p.values[4] for p in perms_arr]))
+                    cell_data['permz'].append(np.array([p.values[8] for p in perms_arr]))
             geom_id += 1
 
         arr = []
@@ -2054,8 +2063,8 @@ class UnstructReservoir:
         #print('self.prisms', self.prisms.shape)
 
         # centers
-        #self.centers, self.local_to_global = self.calc_centroid_inner_box()
-        self.centers, self.local_to_global = self.calc_centroid()
+        self.centers, self.local_to_global = self.calc_centroid_inner_box()
+        #self.centers, self.local_to_global = self.calc_centroid()
 
     def init_delta_pressure(self, P):
         '''

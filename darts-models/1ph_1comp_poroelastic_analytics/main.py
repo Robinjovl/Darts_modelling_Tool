@@ -192,7 +192,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     m.timer.node["update"] = timer_node()
 
     if case == 'prod_well':
-        # set equilibrium (including boundary conditions)
+        # set equilibrium (including boundary conditions) in case of initial stress (reservoir conditions)
         # calculate initial volumetric strain eps_vol_ref to use as initial afterwards
         m.reservoir.set_equilibrium()
         m.physics.engine.find_equilibrium = True
