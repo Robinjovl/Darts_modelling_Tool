@@ -192,6 +192,7 @@ class StructReservoir:
                 well_indexD *= self.rcond[res_block_local] # assume perforation condution = rock conduction
                 if self.discretizer.is_cpg:
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
+                    # TODO: need segment_depth_increment and segment_length logic
                     if segment_direction == 'z_axis':
                         well.segment_depth_increment = dz
                     elif segment_direction == 'x_axis':
