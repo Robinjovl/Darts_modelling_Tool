@@ -18,8 +18,6 @@ class Model(DartsModel):
         (nx, ny, nz) = (20 * res, 60 * res, 20 * res)
         nb = nx * ny * nz
         perm = np.ones(nb) * 2000
-        #perm = load_single_keyword('permXVanEssen.in', 'PERMX')
-        perm = perm[:nb]
 
         poro = np.ones(nb) * 0.2
         self.dx = 20 / res
