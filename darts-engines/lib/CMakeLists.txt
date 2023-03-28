@@ -12,7 +12,7 @@ unset(thirdparty_missing_components)
 # ------------------------------------------------------------------------------
 
 
-# Adds SuperLU -----------------------------------------------------------------
+# Adds linear_solvers ----------------------------------------------------------
 message(CHECK_START "   Importing linear_solvers")
 
 add_library(linear_solvers STATIC IMPORTED GLOBAL)
@@ -59,6 +59,16 @@ else()
       IMPORTED_LOCATION ${linear_solvers_library_path}
     INTERFACE_INCLUDE_DIRECTORIES ${linear_solvers_headers_path})
 endif()
+
+message(CHECK_PASS "done!")
+# ------------------------------------------------------------------------------
+
+
+# Adds pybind11 ----------------------------------------------------------------
+message(CHECK_START "   Importing pybind11")
+
+add_library(pybind11 INTERFACE)
+target_include_directories(pybind11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/pybind11")
 
 message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
