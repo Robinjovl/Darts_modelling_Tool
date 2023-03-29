@@ -1119,7 +1119,7 @@ class UnstructReservoir:
         mech_ym = self.ROLLER
         mech_yp = self.ROLLER
         mech_zm = self.ROLLER
-        mech_zp = self.ROLLER
+        mech_zp = self.FREE
         # free = self.LOAD(0.0, [0.0, 0.0, 0.0])
 
         flow_xm = self.NO_FLOW

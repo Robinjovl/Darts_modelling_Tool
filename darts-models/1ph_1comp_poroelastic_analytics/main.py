@@ -192,6 +192,8 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     m.timer.node["update"] = timer_node()
 
     if case == 'prod_well':
+        p = m.reservoir.proxy
+        m.reservoir.proxy = False # do not calc geomech on first tstep
         # set equilibrium (including boundary conditions) in case of initial stress (reservoir conditions)
         # calculate initial volumetric strain eps_vol_ref to use as initial afterwards
         m.reservoir.set_equilibrium()
@@ -199,6 +201,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         m.params.first_ts = 1
         run_python(m, 1.0, init_step=True)
         m.reinit_reference(m.physics, output_directory)
+        m.reservoir.proxy = p
 	    
     m.physics.engine.find_equilibrium = False
 
