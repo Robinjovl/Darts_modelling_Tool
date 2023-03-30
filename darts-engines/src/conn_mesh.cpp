@@ -2032,8 +2032,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
 {
 	if (verbose)
-		cout << "Added connection between well " << well1->name << " segment idx=" << well1->well_head_idx + iseg1 << " and well " <<
-																								well2->name << " segment idx=" << well2->well_head_idx + iseg2 << endl;
+		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
+																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
 	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
 	return 0;
 }
