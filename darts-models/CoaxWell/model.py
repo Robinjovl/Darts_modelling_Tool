@@ -59,10 +59,10 @@ class Model(DartsModel):
         # connect the last two perforations of two wells
         well_1 = self.reservoir.wells[0]
         well_2 = self.reservoir.wells[1]
-        perf_1 = len(well_1.perforations)
-        perf_2 = len(well_2.perforations)
-        verbose = True
-        self.reservoir.mesh.connect_segments(well_1, well_2, perf_1, perf_2, verbose)
+        perf_1 = len(well_1.perforations) - 1
+        perf_2 = len(well_2.perforations) - 1
+        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
+        self.reservoir.connected_well_segments = {(well_1.name, well_2.name): [(perf_1, perf_2)]}
 
         # self.reservoir.add_perforation(self.reservoir.wells[-1], self.iw[1], j_mid, n + 1, 0.16,
         #                                segment_direction='y_axis')
