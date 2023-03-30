@@ -1963,7 +1963,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     
     index_t n_segments = 0;
     // connections between well segments and reservoir
-    // conduction is switched off completely!
     for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
     {
       index_t i_w, i_r;
@@ -1974,7 +1973,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       n_segments = max(n_segments, i_w + 1);
     }
     // connections between segments
-    // conduction is switched off completely!
     for (index_t p = 0; p < n_segments; p++)
     {
       add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0); // connection between them
@@ -2030,9 +2028,12 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   return 0;
 }
 
-int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2)
+// segment_transmissibility of the first well used
+int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
 {
-	printf("Add connection between %d and %d!!!\n", well1->well_head_idx + iseg1, well2->well_head_idx + iseg2);
+	if (verbose)
+		cout << "Added connection between well " << well1->name << " segment idx=" << well1->well_head_idx + iseg1 << " and well " <<
+																								well2->name << " segment idx=" << well2->well_head_idx + iseg2 << endl;
 	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
 	return 0;
 }

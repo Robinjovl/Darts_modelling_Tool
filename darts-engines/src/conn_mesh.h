@@ -208,7 +208,7 @@ public:
   /// @brief discretize ms wells into reservoir
   int add_wells(std::vector<ms_well*> &wells);         
   int add_wells_mpfa(std::vector<ms_well*> &wells, const uint8_t P_VAR);
-  int connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2);
+  int connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose=0);
 
   void shift_boundary_ids_mpfa(const int n);
 
