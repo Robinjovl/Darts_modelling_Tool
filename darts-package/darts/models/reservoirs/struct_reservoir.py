@@ -162,21 +162,23 @@ class StructReservoir:
         self.wells.append(well)
         return well
 
-    def add_perforation(self, well, i, j, k, well_radius=0.1524, well_index=-1, segment_direction='z_axis', skin=0,
+    def add_perforation(self, well, i, j, k, well_radius=0.1524, well_index=-1, well_indexD=-1, segment_direction='z_axis', skin=0,
                         multi_segment=True, verbose=False):
+'''
+        well_indexD - thermal well index (for heat loss through the wellbore)
+        if -1, use computed value based on cell geometry; if 0 - no heat losses
+'''
         # calculate well index and get local index of reservoir block
         res_block_local, wi, wid = self.discretizer.calc_well_index(i=i, j=j, k=k, well_radius=well_radius,
                                                                segment_direction=segment_direction,
                                                                skin=skin)
 
-        if well_index == -1:
+        if well_index == -1: 
             well_index = wi
+
+        if well_indexD == -1:
             well_indexD = wid
-        elif well_index == -2:
-            well_index = 0
-            well_indexD = wid
-        else:
-            well_indexD = 0
+
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
