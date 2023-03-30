@@ -87,6 +87,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def("save_zmf", &conn_mesh::save_zmf)
 	  .def("save_temperature", &conn_mesh::save_temperature)
 	  .def("save_enthalpy", &conn_mesh::save_enthalpy)
+		.def("connect_segments", &conn_mesh::connect_segments)
 	  //properties
 	  .def_readwrite("n_blocks", &conn_mesh::n_blocks)
 	  .def_readwrite("n_res_blocks", &conn_mesh::n_res_blocks)
