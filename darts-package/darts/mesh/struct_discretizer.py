@@ -621,8 +621,8 @@ class StructDiscretizer:
                                    ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                     well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
 
-                    conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2)
-                    well_indexD = 2 * np.pi * dz / (np.log(peaceman_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2)/2.
+                    well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
             elif segment_direction == 'x_axis':
                 if kz * ky == 0:
                     well_index = 0.0
@@ -631,8 +631,8 @@ class StructDiscretizer:
                                    ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
                     well_index = 2 * np.pi * dx * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
 
-                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dy ** 2)
-                    well_indexD = 2 * np.pi * dx / (np.log(peaceman_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dy ** 2)/2.
+                    well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
             elif segment_direction == 'y_axis':
                 if kx * kz == 0:
                     well_index = 0.0
@@ -641,8 +641,8 @@ class StructDiscretizer:
                                    ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
                     well_index = 2 * np.pi * dy * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
 
-                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dx ** 2)
-                    well_indexD = 2 * np.pi * dy / (np.log(peaceman_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dx ** 2)/2.
+                    well_indexD = 2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
 
             well_index = well_index * StructDiscretizer.darcy_constant
         else:
