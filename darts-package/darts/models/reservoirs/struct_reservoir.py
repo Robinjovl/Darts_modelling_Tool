@@ -124,6 +124,8 @@ class StructReservoir:
         else:
             # CPG grid from COORD ZCORN
             self.vtk_grid_type = 1
+            
+        self.connected_well_segments = {}
 
     def set_boundary_volume(self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1):
         # get 3d shape
