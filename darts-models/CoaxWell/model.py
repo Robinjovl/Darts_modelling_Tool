@@ -8,21 +8,20 @@ from darts.engines import value_vector
 
 
 class Model(DartsModel):
-    def __init__(self, n_points=128):
+    def __init__(self, resolution=2, n_points=128):
         # call base class constructor
         super().__init__()
 
         self.timer.node["initialization"].start()
 
-        res = 2
-        (nx, ny, nz) = (20 * res, 60 * res, 20 * res)
+        (nx, ny, nz) = (20 * resolution, 60 * resolution, 20 * resolution)
         nb = nx * ny * nz
         perm = np.ones(nb) * 2000
 
         poro = np.ones(nb) * 0.2
-        self.dx = 20 / res
-        self.dy = 20 / res
-        dz = np.ones(nb) * 20 / res
+        self.dx = 20 / resolution
+        self.dy = 20 / resolution
+        dz = np.ones(nb) * 20 / resolution
 
         # discretize structured reservoir
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=self.dx, dy=self.dy, dz=dz, permx=perm,
@@ -31,8 +30,8 @@ class Model(DartsModel):
         self.reservoir.set_boundary_volume(xz_minus=1e8, xz_plus=1e8, yz_minus=1e8, yz_plus=1e8, xy_minus=1e8,
                                            xy_plus=1e8)
         # add well's locations
-        self.iw = [10*res, 10*res]
-        self.jw = [4*res, 56*res]
+        self.iw = [10*resolution, 10*resolution]
+        self.jw = [4*resolution, 56*resolution]
 
         n = int(nz/2)
         j_mid = int(ny/2)
@@ -46,7 +45,7 @@ class Model(DartsModel):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[0], j=j, k=n + 1,
                                            well_radius=well_radius, segment_direction='y_axis', well_index=0)
         self.reservoir.add_well("PRD")
-        # add perforations to te payzone
+        # add perforations with well_index=0 (closed pipe, only thermal losses)
         for j in range(self.jw[1], j_mid, -1):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[1], j=j, k=n + 1,
                                            well_radius=well_radius, segment_direction='y_axis', well_index=0)
@@ -58,9 +57,6 @@ class Model(DartsModel):
         perf_2 = len(well_2.perforations) - 1
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
         self.reservoir.connected_well_segments = {(well_1.name, well_2.name): [(perf_1, perf_2)]}
-
-        # self.reservoir.add_perforation(self.reservoir.wells[-1], self.iw[1], j_mid, n + 1, 0.16,
-        #                                segment_direction='y_axis')
 
         # rock heat capacity and rock thermal conduction
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
@@ -95,10 +91,8 @@ class Model(DartsModel):
     def set_boundary_conditions(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                #w.control = self.physics.new_rate_water_inj(8000, 300)
                 w.control = self.physics.new_bhp_water_inj(205, 300)
             else:
-                #w.control = self.physics.new_rate_water_prod(8000)
                 w.control = self.physics.new_bhp_prod(195)
 
     def compute_temperature(self, X):
@@ -116,7 +110,7 @@ class Model(DartsModel):
     def export_pro_vtk(self, file_name='Results'):
         X = np.array(self.physics.engine.X, copy=False)
         nb = self.reservoir.mesh.n_res_blocks
-        temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
+        temp = self.compute_temperature(X)
         local_cell_data = {'Temperature': temp,
                            'Perm': self.reservoir.global_data['permx'][self.reservoir.discretizer.local_to_global]}
 

@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-m = Model()
+m = Model(resolution=2)
 
 m.init()
 m.export_pro_vtk()
-m.run(365*10)
+m.run(30*10)
 m.print_timers()
 m.print_stat()
 m.export_pro_vtk()
