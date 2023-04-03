@@ -13,6 +13,7 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal', '2ph_
                  'Chem_benchmark_new',
                  #'CO2_foam_CCS',
                  'GeoRising',
+                 'CoaxWell'
                  ]
 
 test_dirs = ['1ph_1comp_poroelastic_analytics']
