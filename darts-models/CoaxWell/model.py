@@ -8,13 +8,13 @@ from darts.engines import value_vector
 
 
 class Model(DartsModel):
-    def __init__(self, resolution=2, n_points=128):
+    def __init__(self, resolution=20, n_points=128):
         # call base class constructor
         super().__init__()
 
         self.timer.node["initialization"].start()
-
-        (nx, ny, nz) = (20 * resolution, 60 * resolution, 20 * resolution)
+        y_scale = 3
+        (nx, ny, nz) = (resolution, y_scale * resolution, resolution)
         nb = nx * ny * nz
         perm = np.ones(nb) * 2000
 
@@ -29,12 +29,12 @@ class Model(DartsModel):
 
         self.reservoir.set_boundary_volume(xz_minus=1e8, xz_plus=1e8, yz_minus=1e8, yz_plus=1e8, xy_minus=1e8,
                                            xy_plus=1e8)
-        # add well's locations
-        self.iw = [10*resolution, 10*resolution]
-        self.jw = [4*resolution, 56*resolution]
+        # add well's start locations
+        self.iw = [resolution//2, resolution//2]
+        self.jw = [4, ny - 4]
 
-        n = int(nz/2)
-        j_mid = int(ny/2)
+        n = nz//2
+        j_mid = ny//2
 
         well_radius = 0.3
 
@@ -43,18 +43,18 @@ class Model(DartsModel):
         # add perforations with well_index=0 (closed pipe, only thermal losses)
         for j in range(self.jw[0], j_mid + 1):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[0], j=j, k=n + 1,
-                                           well_radius=well_radius, segment_direction='y_axis', well_index=0)
+                                           well_radius=well_radius, segment_direction='y_axis', well_index=0, verbose=True)
         self.reservoir.add_well("PRD")
         # add perforations with well_index=0 (closed pipe, only thermal losses)
         for j in range(self.jw[1], j_mid, -1):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[1], j=j, k=n + 1,
-                                           well_radius=well_radius, segment_direction='y_axis', well_index=0)
+                                           well_radius=well_radius, segment_direction='y_axis', well_index=0, verbose=True)
 
         # connect the last two perforations of two wells
         well_1 = self.reservoir.wells[0]
         well_2 = self.reservoir.wells[1]
-        perf_1 = len(well_1.perforations) - 1
-        perf_2 = len(well_2.perforations) - 1
+        perf_1 = len(well_1.perforations)  # last segment is n_perf+1
+        perf_2 = len(well_2.perforations)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
         self.reservoir.connected_well_segments = {(well_1.name, well_2.name): [(perf_1, perf_2)]}
 

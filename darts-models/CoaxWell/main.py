@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-m = Model(resolution=2)
+m = Model(resolution=10)
 
 m.init()
 m.export_pro_vtk()
