@@ -3,12 +3,14 @@ set srv=%1
 set lgn=%2
 set pwd=%3
 set commit=%4
+set odls=%5
 
-echo %commit%
+set fname=%commit%_%odls%.zip
+echo %fname%
 
-7z a -r %commit%.zip *.pkl
+7z a -r %fname% *.pkl
 net use \\%srv%\opendarts-private-artifacts %pwd% /user:WORKGROUP\%lgn%
 rem if (-not (Test-Path $target_dir)) {mkdir $target_dir}
-copy %commit%.zip \\darts-ci.citg.tudelft.nl\opendarts-private-artifacts\pkl_win\
+copy %fname% \\darts-ci.citg.tudelft.nl\opendarts-private-artifacts\pkl_win\
 
-del %commit%.zip
+del %fname%
