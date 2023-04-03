@@ -1,5 +1,7 @@
 commit=$4
-tar -czf $commit.tar.gz ./*/*.pkl
+odls=%5
+fname=$(commit)_$(odls).tar.gz
+tar -czf $fname ./*/*.pkl
 smbclient -U $2%$3 //$1/opendarts-private-artifacts -c "prompt OFF;mkdir pkl"
-smbclient -U $2%$3 //$1/opendarts-private-artifacts -c "put $commit.tar.gz" -D=pkl
-rm $commit.tar.gz
+smbclient -U $2%$3 //$1/opendarts-private-artifacts -c "put $fname" -D=pkl
+rm $fname
