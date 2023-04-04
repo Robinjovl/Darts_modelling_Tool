@@ -8,7 +8,7 @@ from darts.engines import value_vector
 
 
 class Model(DartsModel):
-    def __init__(self, resolution=20, n_points=128):
+    def __init__(self, resolution=10, n_points=128):
         # call base class constructor
         super().__init__()
 
@@ -19,12 +19,12 @@ class Model(DartsModel):
         perm = np.ones(nb) * 2000
 
         poro = np.ones(nb) * 0.2
-        self.dx = 20 / resolution
-        self.dy = 20 / resolution
-        dz = np.ones(nb) * 20 / resolution
+        self.dx = 20. / resolution
+        self.dy = 20. / resolution
+        self.dz = 20. / resolution
 
         # discretize structured reservoir
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=self.dx, dy=self.dy, dz=dz, permx=perm,
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=self.dx, dy=self.dy, dz=self.dz, permx=perm,
                                          permy=perm, permz=perm * 0.1, poro=poro, depth=2000)
 
         self.reservoir.set_boundary_volume(xz_minus=1e8, xz_plus=1e8, yz_minus=1e8, yz_plus=1e8, xy_minus=1e8,
