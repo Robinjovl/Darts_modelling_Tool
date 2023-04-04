@@ -51,7 +51,7 @@ def check_performance(mod):
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
     m = mod.Model()
-    m.params.linear_type = sim_params.cpu_superlu
+    #m.params.linear_type = sim_params.cpu_superlu
     m.init()
     m.run()
     m.print_stat()
@@ -87,6 +87,8 @@ if __name__ == '__main__':
     os.environ['OMP_NUM_THREADS'] = '1'
 
     failed = for_each_model(model_dir, check_performance, accepted_dirs)
+
+    # poromechanic tests
     n_tot, n_failed = run_tests(model_dir, test_dirs, test_args)
     failed += n_failed
 
