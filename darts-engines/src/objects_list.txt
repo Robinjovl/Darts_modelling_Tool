@@ -1,0 +1,47 @@
+OBJ =  conn_mesh.o \
+    ---> engine_base.o \
+    ---> interpolation/interpolator_base.o \
+    ---> engine_nc_cg_cpu.o \
+    ---> engine_nce_g_cpu.o \
+    ---> engine_nc_nonnewton_cpu.o \
+    ---> engine_nc_nl_cpu.o \
+    ---> mech/engine_elasticity_cpu.o \
+    ---> mech/pm_discretizer.o \
+    ---> mech/mech_operators.o \
+    ---> mech/engine_pm_cpu.o \
+    ---> mech/contact.o \
+    ---> globals.o \ 
+    ---> ms_well.o \
+    ---> well_controls.o \
+    ---> stream.o \
+    pybind11/py_engine_base.o \
+    pybind11/py_engine_nc_cg_cpu.o \
+    pybind11/py_engine_nc_nonnewton_cpu.o \
+    pybind11/py_engine_nc_nl_cpu.o \
+    pybind11/py_engine_nce_g_cpu.o \
+    pybind11/py_engine_super_cpu.o \
+    pybind11/py_engine_super_elastic_cpu.o \
+    pybind11/py_engine_elasticity_cpu.o \
+    pybind11/py_engine_pm_cpu.o \
+    pybind11/py_engine_super_mp_cpu.o \
+    pybind11/py_evaluator_iface.o \
+    pybind11/py_globals.o \
+    pybind11/py_ms_well.o \
+    pybind11/py_operator_set_interpolator_pz.o \
+    pybind11/py_operator_set_interpolator_pz_cap_gra.o \
+    pybind11/py_operator_set_interpolator_pz_cap_gra_dif.o \
+    pybind11/py_operator_set_interpolator_pz_dif.o \
+    pybind11/py_operator_set_interpolator_pz_kin.o \
+    pybind11/py_operator_set_interpolator_pz_kin_phi.o \
+    pybind11/py_operator_set_interpolator_pz_kin_dif.o \
+    pybind11/py_operator_set_interpolator_pz_kin_dif_np.o \
+    pybind11/py_operator_set_interpolator_pz_sol.o \
+    pybind11/py_operator_set_interpolator_pze.o \
+    pybind11/py_operator_set_interpolator_pze_dvelocity.o \
+    pybind11/py_operator_set_interpolator_pze_gra.o \
+    pybind11/py_operator_set_interpolator_pzt.o \
+    pybind11/py_operator_set_interpolator_pzt_kin.o \
+    pybind11/py_operator_set_interpolator_super.o \
+    pybind11/py_operator_set_interpolator_rates.o \
+    pybind11/py_well_controls.o \
+    engines_build_info.o
