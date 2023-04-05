@@ -958,11 +958,23 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 					res1 = findInVector(st, frac_grad.stencil[st_id]);
 					if (res1.first) { id = res1.second; }
 					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
+					
+					// The original code did not make the explicit conversion to std::valarray<value_t>
+					// This was added because gslice_array::operator-= requires a valarray as input:
+					// https://gcc.gnu.org/onlinedocs/gcc-12.2.0/libstdc++/api/a01589.html#gac25a53dfa03677767990c5a3af186cf8
+					// In gcc and windows MSVC a conversion is done implicitly without any 
+					// problems:
+					// https://gcc.gnu.org/onlinedocs/gcc-12.2.0/libstdc++/api/a01589.html#ga41d41b2154090e3aa77b2a8c8c1eafe2
+					// AppleClang has a slightly more general implicit conversion.
+					// This one gives errors in the compiler. For this reason, the solution 
+					// to have the code compilable on AppleClang is to explicitly add the
+					// conversion. There is no performance penalty because the conversion
+					// was already being performed (just implicitly).
 					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
 						{ BLOCK_SIZE, BLOCK_SIZE },
-						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(	st_id * BLOCK_SIZE,
+						{ (size_t)rhs_mult.N, 1 }) -= std::valarray<value_t>(frac_grad_mult(	st_id * BLOCK_SIZE,
 																		{ BLOCK_SIZE, BLOCK_SIZE }, 
-																		{ (size_t)frac_grad_mult.N, 1});
+																		{ (size_t)frac_grad_mult.N, 1}));
 				}
 				// no discontinuity in pressure
 				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = 0.0;
@@ -1943,11 +1955,23 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
 					res1 = findInVector(st, frac_grad.stencil[st_id]);
 					if (res1.first) { id = res1.second; }
 					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
+					
+					// The original code did not make the explicit conversion to std::valarray<value_t>
+					// This was added because gslice_array::operator-= requires a valarray as input:
+					// https://gcc.gnu.org/onlinedocs/gcc-12.2.0/libstdc++/api/a01589.html#gac25a53dfa03677767990c5a3af186cf8
+					// In gcc and windows MSVC a conversion is done implicitly without any 
+					// problems:
+					// https://gcc.gnu.org/onlinedocs/gcc-12.2.0/libstdc++/api/a01589.html#ga41d41b2154090e3aa77b2a8c8c1eafe2
+					// AppleClang has a slightly more general implicit conversion.
+					// This one gives errors in the compiler. For this reason, the solution 
+					// to have the code compilable on AppleClang is to explicitly add the
+					// conversion. There is no performance penalty because the conversion
+					// was already being performed (just implicitly).
 					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
 						{ BLOCK_SIZE, BLOCK_SIZE },
-						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(st_id * BLOCK_SIZE,
+						{ (size_t)rhs_mult.N, 1 }) -= std::valarray<value_t>(frac_grad_mult(st_id * BLOCK_SIZE,
 							{ BLOCK_SIZE, BLOCK_SIZE },
-							{ (size_t)frac_grad_mult.N, 1 });
+							{ (size_t)frac_grad_mult.N, 1 }));
 				}
 				// no discontinuity in pressure
 				rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = 0.0;
@@ -3545,5 +3569,3 @@ void pm_discretizer::calc_avg_matrix_flux(value_t dt, const Face& face, Approxim
 	flux.f(ND, 0) += w1(ND, ND) * dt / visc * (grav_vec * K1n).values[0] + w2(ND, ND) * dt / visc * (grav_vec * K2n).values[0];
 	flux.f_biot = w1 * biot_grad_coef1 * g1.rhs + w2 * biot_grad_coef2 * g2.rhs;
 }
-
-
