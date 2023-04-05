@@ -106,11 +106,15 @@ if __name__ == '__main__':
     failed += failed_ad
     # test for adjoint ------------------end---------------------------------
 
+    n_passed = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint) - failed
+    n_total = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)
+
+    print("Passed", n_passed, "of", n_total, "models. ")
 
     if len(sys.argv) == 1:
-        input("Passed %d of %d models. Press Enter to continue..." %
-              (len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint) - failed,
-               len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)))
+        input("Press Enter to continue...") # pause the screen
     else:
+        if os.environ['UPLOAD_PKL'] == 1:  # do not interrupt ci/cd for uploading generated pkls
+            exit(0)
         # exit with code equal to number of failed models
         exit(failed)
