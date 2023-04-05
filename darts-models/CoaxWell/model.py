@@ -43,12 +43,12 @@ class Model(DartsModel):
         # add perforations with well_index=0 (closed pipe, only thermal losses)
         for j in range(self.jw[0], j_mid + 1):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[0], j=j, k=n + 1,
-                                           well_radius=well_radius, segment_direction='y_axis', well_index=0, verbose=True)
+                                           well_radius=well_radius, segment_direction='y_axis', well_index=0)
         self.reservoir.add_well("PRD")
         # add perforations with well_index=0 (closed pipe, only thermal losses)
         for j in range(self.jw[1], j_mid, -1):
             self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[1], j=j, k=n + 1,
-                                           well_radius=well_radius, segment_direction='y_axis', well_index=0, verbose=True)
+                                           well_radius=well_radius, segment_direction='y_axis', well_index=0)
 
         # connect the last two perforations of two wells
         well_1 = self.reservoir.wells[0]
