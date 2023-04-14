@@ -395,7 +395,7 @@ class Model(DartsModel):
         """
         perf_data = dict()
         perf_data['solution'] = np.copy(self.physics.engine.X)
-        perf_data['variables'] = self.physics.n_vars
+        perf_data['variables'] = self.vars
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
@@ -450,11 +450,11 @@ def check_performance_data(ref_data, cur_data, prev_fail,
 
     # data = self.get_performance_data()
     nb = ref_data['reservoir blocks']
-    nv = ref_data['variables']
+    vars = ref_data['variables']
 
     # Check final solution - data[0]
     # Check every variable separately
-    for v in range(nv):
+    for v in range(len(vars)):
         sol_et = ref_data['solution'][v:nb * nv:nv]
         diff = cur_data['solution'][v:nb * nv:nv] - sol_et
         sol_range = np.max(sol_et) - np.min(sol_et) + 1.e-12
@@ -465,8 +465,8 @@ def check_performance_data(ref_data, cur_data, prev_fail,
         if diff_norm_normalized > diff_norm_normalized_tol or diff_abs_max_normalized > diff_abs_max_normalized_tol:
             fail += 1
             print(
-                '#%d solution check failed for variable %d (range %f): L2(diff)/len(diff)/range = %.2E (tol %.2E), max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
-                % (fail, v, sol_range, diff_norm_normalized, diff_norm_normalized_tol,
+                '#%d solution check failed for variable %d %s (range %.2E): L2(diff)/len(diff)/range = %.2E (tol %.2E), max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
+                % (fail, v, vars[v], sol_range, diff_norm_normalized, diff_norm_normalized_tol,
                    diff_abs_max_normalized, diff_abs_max_normalized_tol, np.max(diff_abs)))
     for key, value in sorted(cur_data.items()):
         if key == 'solution' or type(value) != int:
