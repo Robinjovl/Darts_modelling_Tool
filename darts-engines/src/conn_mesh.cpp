@@ -654,7 +654,7 @@ conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t tr
 }
 
 int
-conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, const uint8_t P_VAR)
+conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR)
 {
 	vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0), tblock_zero(n_vars * n_vars, 0.0), trhs(n_vars, 0.0);
 	tblock_pos[P_VAR * n_vars + P_VAR] = trans;
@@ -672,8 +672,8 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, const
 	one_way_offset.push_back(one_way_stencil.size());
 	if (one_way_tranD.size())
 	{
-		one_way_tranD.push_back(10 * trans);
-		one_way_tranD.push_back(-10 * trans);
+		one_way_tranD.push_back(transD);
+		one_way_tranD.push_back(-transD);
 	}
 	if (one_way_tran_biot.size())
 	{
@@ -1963,18 +1963,16 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     
     index_t n_segments = 0;
     // connections between well segments and reservoir
-    // conduction is switched off completely!
     for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
     {
       index_t i_w, i_r;
-      value_t wi;
-      std::tie(i_w, i_r, wi) = wells[iw]->perforations[p];
-      add_conn(i_w + well_head_idx + 1, i_r, wi, 0);
+      value_t wi, wid;
+      std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
+      add_conn(i_w + well_head_idx + 1, i_r, wi, wid);
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
     // connections between segments
-    // conduction is switched off completely!
     for (index_t p = 0; p < n_segments; p++)
     {
       add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0); // connection between them
@@ -1982,6 +1980,8 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     well_head_idx += n_segments + 1;
     wells[iw]->n_segments = n_segments;
   }
+
+  // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
 
   // Resize mesh arrays by number of well blocks and head blocks (one per well)
   volume.resize(well_head_idx);
@@ -2028,6 +2028,16 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   return 0;
 }
 
+// segment_transmissibility of the first well used
+int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
+{
+	if (verbose)
+		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
+																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
+	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
+	return 0;
+}
+
 int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR)
 {
 	index_t well_head_idx = n_blocks;
@@ -2035,13 +2045,13 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 
 	// calculate number of additional unknowns will be added
 	index_t dofs_num = 0, n_segments, i_w, i_r;
-	value_t wi;
+	value_t wi, wid;
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{
 		n_segments = 0;
 		for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
 		{
-			std::tie(i_w, i_r, wi) = wells[iw]->perforations[p];
+			std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
 			n_segments = max(n_segments, i_w + 1);
 		}
 		dofs_num += n_segments + 1;
@@ -2080,15 +2090,15 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// connections between well segments and reservoir
 		for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
 		{
-			std::tie(i_w, i_r, wi) = wells[iw]->perforations[p];
-			add_conn_block(i_w + well_head_idx + 1, i_r, wi, P_VAR);
+			std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
+			add_conn_block(i_w + well_head_idx + 1, i_r, wi, wid, P_VAR);
 			n_perfs++;
 			n_segments = max(n_segments, i_w + 1);
 		}
 		// connections between segments
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, P_VAR); // connection between them
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0, P_VAR); // connection between them
 		}
 		well_head_idx += n_segments + 1;
 		wells[iw]->n_segments = n_segments;

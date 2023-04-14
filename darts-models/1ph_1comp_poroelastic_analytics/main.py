@@ -139,7 +139,13 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
     time = 0.0
     data = []
 
-    file_name = 'perf_' + case + '_' + scheme + '_' + mesh + '_' + platform.system().lower()[:3] + '.pkl'
+    # poromech tests run with direct linear solvers (superlu), but somehow there is a difference
+    # while using old and new lib. To handle this, use '_iter' pkls for old lib
+    pkl_suffix = ''
+    if os.getenv('ODLS') == '0':
+        pkl_suffix = '_iter'
+    file_name = os.path.join('ref', 'perf_' + case + '_' + scheme + '_' + mesh + '_' +
+                             platform.system().lower()[:3] + pkl_suffix + '.pkl')
     failed = 0
 
     is_plk_exist = os.path.isfile(file_name)

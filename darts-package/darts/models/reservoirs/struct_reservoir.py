@@ -124,6 +124,8 @@ class StructReservoir:
         else:
             # CPG grid from COORD ZCORN
             self.vtk_grid_type = 1
+            
+        self.connected_well_segments = {}
 
     def set_boundary_volume(self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1):
         # get 3d shape
@@ -162,16 +164,23 @@ class StructReservoir:
         self.wells.append(well)
         return well
 
-    def add_perforation(self, well, i, j, k, well_radius=0.1524, well_index=-1, segment_direction='z_axis', skin=0,
-                        multi_segment=True,
-                        verbose=False):
+    def add_perforation(self, well, i, j, k, well_radius=0.1524, well_index=-1, well_indexD=-1, segment_direction='z_axis', skin=0,
+                        multi_segment=True, verbose=False):
+        '''
+                well_indexD - thermal well index (for heat loss through the wellbore)
+                if -1, use computed value based on cell geometry; if 0 - no heat losses
+        '''
         # calculate well index and get local index of reservoir block
-        res_block_local, wi = self.discretizer.calc_well_index(i=i, j=j, k=k, well_radius=well_radius,
+        res_block_local, wi, wid = self.discretizer.calc_well_index(i=i, j=j, k=k, well_radius=well_radius,
                                                                segment_direction=segment_direction,
                                                                skin=skin)
 
-        if well_index == -1:
+        if well_index == -1: 
             well_index = wi
+
+        if well_indexD == -1:
+            well_indexD = wid
+
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -184,17 +193,25 @@ class StructReservoir:
             if len(well.perforations) == 0:
                 well.well_head_depth = self.depth[res_block_local]
                 well.well_body_depth = well.well_head_depth
+                well_indexD *= self.rcond[res_block_local] # assume perforation condution = rock conduction
                 if self.discretizer.is_cpg:
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
-                    well.segment_depth_increment = dz
+                    # TODO: need segment_depth_increment and segment_length logic
+                    if segment_direction == 'z_axis':
+                        well.segment_depth_increment = dz
+                    elif segment_direction == 'x_axis':
+                        well.segment_depth_increment = dx
+                    else:
+                        well.segment_depth_increment = dy
                 else:
                     well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
+
                 well.segment_volume *= well.segment_depth_increment
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))
                     return
-            well.perforations = well.perforations + [(well_block, res_block_local, well_index)]
+            well.perforations = well.perforations + [(well_block, res_block_local, well_index, well_indexD)]
             if verbose:
                 print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f' % (
                     well.name, res_block_local, i, j, k, well_index))
@@ -202,10 +219,30 @@ class StructReservoir:
             if verbose:
                 print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
 
+    def get_well(self, well_name):
+        '''
+        find well by name
+        :param well_name:
+        :return: well object
+        '''
+        for w in self.wells:
+            if w.name == well_name:
+                return w
+
     def init_wells(self):
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
         self.mesh.add_wells(ms_well_vector(self.wells))
+
+        # connect perforations of wells (for example, for closed loop geothermal)
+        # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
+        # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
+        for well_pair in self.connected_well_segments.keys():
+            well_1 = self.get_well(well_pair[0])
+            well_2 = self.get_well(well_pair[1])
+            for perf_pair in self.connected_well_segments[well_pair]:
+                self.mesh.connect_segments(well_1, well_2, perf_pair[0], perf_pair[1], 1)
+
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
 
