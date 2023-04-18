@@ -410,6 +410,11 @@ class UnstructReservoir:
         if scheme == 'stabilized':
             self.pm.scheme = scheme_type.apply_eigen_splitting_new
             self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.pm.visc = 1#9.81e-2
@@ -553,6 +558,11 @@ class UnstructReservoir:
         if scheme == 'stabilized':
             self.pm.scheme = scheme_type.apply_eigen_splitting_new
             self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.pm.visc = 1#9.81e-2
@@ -707,6 +717,11 @@ class UnstructReservoir:
         if scheme == 'stabilized':
             self.pm.scheme = scheme_type.apply_eigen_splitting_new
             self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.kd_cur = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
@@ -850,6 +865,11 @@ class UnstructReservoir:
         if scheme == 'stabilized':
             self.pm.scheme = scheme_type.apply_eigen_splitting_new
             self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.kd_cur = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)

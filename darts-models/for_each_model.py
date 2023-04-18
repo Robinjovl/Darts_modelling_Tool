@@ -149,7 +149,7 @@ def run_single_test(dir, module_name, args, ret_value):
         # perform required procedures
         print("Running {:<30}".format(dir + ': ' + "_".join(args)), flush=True)
         log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(dir) + '.log')
-        f = open(log_file, "w")
+        f = open(log_file, "a")
         f.close()
         log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)

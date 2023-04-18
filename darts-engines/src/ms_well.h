@@ -128,7 +128,7 @@ public:
   int cross_flow(std::vector<value_t> &X);
 
   // These properties are only used in discretization, before simulation starts
-  std::vector<std::tuple<index_t, index_t, value_t>> perforations;
+  std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
   value_t segment_volume;
   value_t segment_transmissibility;
   value_t well_head_depth;

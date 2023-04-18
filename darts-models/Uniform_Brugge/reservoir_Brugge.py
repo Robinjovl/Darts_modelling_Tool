@@ -104,7 +104,7 @@ class UnstructReservoir:
         self.wells.append(well)
         return well
 
-    def add_perforation(self, well, res_block, well_index):
+    def add_perforation(self, well, res_block, well_index, well_indexD=0):
         """
         Class method which ads perforation to each (existing!) well
         :param well: data object which contains data of the particular well
@@ -117,7 +117,7 @@ class UnstructReservoir:
 
         well_block = len(well.perforations)
         # add completion
-        well.perforations = well.perforations + [(well_block, res_block, well_index)]
+        well.perforations = well.perforations + [(well_block, res_block, well_index, well_indexD)]
         return 0
 
     def init_wells(self):
@@ -165,11 +165,13 @@ class UnstructReservoir:
         for i in range(np.size(self.well_index_list)):
             if i < n_injector:
                 self.add_well("I" + str(i + 1))
-                self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]), well_index=self.well_index_list[i])
+                self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]),
+                                     well_index=self.well_index_list[i])
                 self.inj_wells.append(self.wells[i])
             else:
                 self.add_well("P" + str(i + 1 - n_injector))
-                self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]), well_index=self.well_index_list[i])
+                self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]),
+                                     well_index=self.well_index_list[i])
                 self.prod_wells.append(self.wells[i])
 
         # Add wells to the DARTS mesh object and sort connection (DARTS related):

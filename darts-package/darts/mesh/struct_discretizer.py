@@ -612,6 +612,7 @@ class StructDiscretizer:
 
 
             well_index = 0
+            well_indexD = 0
             if segment_direction == 'z_axis':
                 if kx * ky == 0:
                     well_index = 0.0
@@ -619,26 +620,35 @@ class StructDiscretizer:
                     peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
                                    ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                     well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
+
+                    conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2)/2.
+                    well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
             elif segment_direction == 'x_axis':
                 if kz * ky == 0:
                     well_index = 0.0
                 else:
                     peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kz) * dz ** 2 + np.sqrt(kz / ky) * dy ** 2) / \
                                    ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
-                    well_index = 2 * np.pi * dz * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
+                    well_index = 2 * np.pi * dx * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
+
+                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dy ** 2)/2.
+                    well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
             elif segment_direction == 'y_axis':
                 if kx * kz == 0:
                     well_index = 0.0
                 else:
                     peaceman_rad = 0.28 * np.sqrt(np.sqrt(kz / kx) * dx ** 2 + np.sqrt(kx / kz) * dz ** 2) / \
                                    ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
-                    well_index = 2 * np.pi * dz * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
+                    well_index = 2 * np.pi * dy * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
+
+                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dx ** 2)/2.
+                    well_indexD = 2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
 
             well_index = well_index * StructDiscretizer.darcy_constant
         else:
             well_index = 0.
 
-        return self.global_to_local[res_block], well_index
+        return self.global_to_local[res_block], well_index, well_indexD
 
     @staticmethod
     def dump_connection_list(cell_m, cell_p, conn, filename):

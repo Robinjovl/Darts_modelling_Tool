@@ -114,6 +114,7 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 def test(case='mandel', scheme='non_stabilized', mesh='rect'):
+    print('case', case, ', scheme', scheme, ', mesh', mesh)
     import platform
 
     nt = 20
@@ -133,7 +134,13 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
     time = 0.0
     data = []
 
-    file_name = 'perf_' + case + '_' + scheme + '_' + mesh + '_' + platform.system().lower()[:3] + '.pkl'
+    # poromech tests run with direct linear solvers (superlu), but somehow there is a difference
+    # while using old and new lib. To handle this, use '_iter' pkls for old lib
+    pkl_suffix = ''
+    if os.getenv('ODLS') == '0':
+        pkl_suffix = '_iter'
+    file_name = os.path.join('ref', 'perf_' + case + '_' + scheme + '_' + mesh + '_' +
+                             platform.system().lower()[:3] + pkl_suffix + '.pkl')
     failed = 0
 
     is_plk_exist = os.path.isfile(file_name)
@@ -150,7 +157,8 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect'):
         # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
         data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
         if is_plk_exist:
-            failed += check_performance_data(ref_data[ith_step], data[ith_step], failed)
+            failed += check_performance_data(ref_data[ith_step], data[ith_step], failed,
+                                             png_suffix=case+'_'+scheme+'_'+mesh+'_'+str(ith_step))
     if not is_plk_exist:
         m.save_performance_data(data=data, file_name=file_name)
     # m.print_timers()
@@ -321,4 +329,8 @@ def run_test(args: list = []):
 # for arg in test_args[0]:
 #     run_test(arg)
 
-# test(case='terzaghi', scheme='stabilized', mesh='rect')
+#test(case='terzaghi', scheme='stabilized', mesh='rect')
+
+#test(case='mandel', scheme='non_stabilized', mesh='rect')
+#test(case='mandel', scheme='stabilized', mesh='rect')
+
