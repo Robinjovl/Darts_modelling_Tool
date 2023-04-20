@@ -3,6 +3,7 @@ from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
 import sys, os, shutil
+from darts.engines import sim_params
 
 model_dir = r'.'
 
@@ -12,6 +13,7 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal', '2ph_
                  'Chem_benchmark_new',
                  #'CO2_foam_CCS',
                  'GeoRising',
+                 'CoaxWell'
                  ]
 
 test_dirs = ['1ph_1comp_poroelastic_analytics']
@@ -37,7 +39,7 @@ accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
 
 def check_performance(mod):
     pkl_suffix = ''
-    if os.getenv('ODLS') == '0':
+    if os.getenv('ODLS') != None or os.getenv('ODLS') == '0':
         pkl_suffix = '_iter'
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
@@ -49,11 +51,15 @@ def check_performance(mod):
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
     m = mod.Model()
+    #m.params.linear_type = sim_params.cpu_superlu
     m.init()
     m.run()
     m.print_stat()
     abort_redirection(log_stream)
-    failed = m.check_performance(overwrite=0, pkl_suffix=pkl_suffix)
+    overwrite = 0
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = 1
+    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
     log_stream = redirect_all_output(log_file)
     return failed
 
@@ -83,8 +89,14 @@ if __name__ == '__main__':
     # set single thread in case of MT version to match the performance characteristics
     os.environ['OMP_NUM_THREADS'] = '1'
 
+    overwrite = '0'
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = '1'
+
     failed = for_each_model(model_dir, check_performance, accepted_dirs)
-    n_tot, n_failed = run_tests(model_dir, test_dirs, test_args)
+
+    # poromechanic tests
+    n_tot, n_failed = run_tests(model_dir, test_dirs, test_args, overwrite)
     failed += n_failed
 
 
@@ -101,11 +113,17 @@ if __name__ == '__main__':
     failed += failed_ad
     # test for adjoint ------------------end---------------------------------
 
+    n_passed = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint) - failed
+    n_total = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)
+
+    print("Passed", n_passed, "of", n_total, "models. ")
 
     if len(sys.argv) == 1:
-        input("Passed %d of %d models. Press Enter to continue..." %
-              (len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint) - failed,
-               len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)))
+        input("Press Enter to continue...") # pause the screen
     else:
+        if os.getenv('UPLOAD_PKL') == '1':  # do not interrupt ci/cd for uploading generated pkls
+            print('exit 0 because of UPLOAD_PKL==1')
+            exit(0)
+        print('exit:', failed)
         # exit with code equal to number of failed models
         exit(failed)

@@ -32,7 +32,7 @@ setup(
     name='open-darts',
 
     # Version number (initial):
-    version='0.1.3',
+    version='0.1.4',
 
     # Application author details:
     author='Denis Voskov',
@@ -43,7 +43,7 @@ setup(
 
 
     # Now only include already built libraries
-    package_data={'darts': ['*.pyd', '*.so', '*.dll', 'html/*.*', 'docs/*.pdf', 'hdata/*.*', 'build_info.txt']},
+    package_data={'darts': ['*.pyd', '*.so', '*.dll', 'html/*.*', 'docs/*.pdf', 'hdata/*.*', 'build_info.txt', 'whatsnew.txt']},
     data_files = [('',['LICENSE'])],
 
     description='Delft Advanced Research Terra Simulator',

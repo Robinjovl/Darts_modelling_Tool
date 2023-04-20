@@ -137,6 +137,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
     return n_fails
 
 def run_single_test(dir, module_name, args, ret_value):
+    args_str = '_'.join(args[:-1]) #except last arg (overwrite flag)
     # step in target folder
     os.chdir(dir)
 
@@ -147,9 +148,10 @@ def run_single_test(dir, module_name, args, ret_value):
     try:
         mod = importlib.import_module(module_name)
         # perform required procedures
-        print("Running {:<30}".format(dir + ': ' + "_".join(args)), flush=True)
-        log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(dir) + '.log')
-        f = open(log_file, "w")
+        print("Running {:<30}".format(dir + ': ' + args_str), flush=True)
+        log_file = os.path.join(os.path.join(os.path.abspath(os.pardir), '_logs'),
+                                str(dir) + '_' + args_str + '.log')
+        f = open(log_file, 'w')
         f.close()
         log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
@@ -170,7 +172,7 @@ def run_single_test(dir, module_name, args, ret_value):
         print(err)
 
 
-def run_tests(root_path, test_dirs=[], test_args=[]):
+def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
     # set_start_method('spawn')
 
     # set working directory to folder which contains tests
@@ -183,7 +185,7 @@ def run_tests(root_path, test_dirs=[], test_args=[]):
         for arg in test_args[i]:
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
-            p = Process(target=run_single_test, args=(dir, 'main', arg, ret_value), )
+            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
             p.start()
             p.join(timeout=7200)
             p.terminate()

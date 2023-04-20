@@ -13,31 +13,48 @@ class Model(DartsModel):
         super().__init__()
 
         self.timer.node["initialization"].start()
+
+        (nx, ny, nz) = (60, 60, 3)
+        nb = nx * ny * nz
+        perm = np.ones(nb) * 2000
         perm = load_single_keyword('permXVanEssen.in', 'PERMX')
-        #perm = np.ones(60*60*7) * 3000
+        perm = perm[:nb]
 
-        self.reservoir = StructReservoir(self.timer, nx=60, ny=60, nz=7, dx=30, dy=30, dz=12, permx=perm,
-                                         permy=perm, permz=perm*0.1, poro=0.2, depth=2000)
+        poro = np.ones(nb) * 0.2
+        self.dx = 30
+        self.dy = 30
+        dz = np.ones(nb) * 30
 
-        self.reservoir.set_boundary_volume(xy_minus=30*30*400, xy_plus=30*30*400)
-        self.reservoir.add_well("I1")
-        n_perf = self.reservoir.nz
-        for n in range(n_perf):
-            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=30, j=14, k=n+1, well_radius=0.1,
-                                           well_index=10, multi_segment=False, verbose=True)
+        # discretize structured reservoir
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=self.dx, dy=self.dy, dz=dz, permx=perm,
+                                         permy=perm, permz=perm * 0.1, poro=poro, depth=2000)
 
-        self.reservoir.add_well("P1")
-        for n in range(n_perf):
-            self.reservoir.add_perforation(self.reservoir.wells[-1], 30, 46, n+1, well_radius=0.1, well_index=10,
-                                           multi_segment=False, verbose=True)
+        self.reservoir.set_boundary_volume(xz_minus=1e8, xz_plus=1e8, yz_minus=1e8, yz_plus=1e8)
+        # add well's locations
+        self.iw = [30, 30]
+        self.jw = [14, 46]
 
+        # add well
+        self.reservoir.add_well("INJ")
+        n_perf = nz
+        # add perforations to te payzone
+        for n in range(1, n_perf):
+            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.iw[0], j=self.jw[0], k=n + 1,
+                                           well_radius=0.16)
+
+        # add well
+        self.reservoir.add_well("PRD")
+        # add perforations to te payzone
+        for n in range(1, n_perf):
+            self.reservoir.add_perforation(self.reservoir.wells[-1], self.iw[1], self.jw[1], n + 1, 0.16)
+
+        # rock heat capacity and rock thermal conduction
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
-
         hcap.fill(2200)
-        rcond.fill(181.44)
+        rcond.fill(500)
 
-
+        # create pre-defined physics for geothermal
         self.physics = Geothermal(self.timer, n_points, 1, 351, 1000, 10000, cache=False)
 
         self.params.first_ts = 1e-3
@@ -53,18 +70,18 @@ class Model(DartsModel):
         self.params.newton_type = sim_params.newton_global_chop
         self.params.newton_params = value_vector([1])
 
-        self.runtime = 365
+        self.runtime = 3650
         # self.physics.engine.silent_mode = 0
         self.timer.node["initialization"].stop()
 
     def set_initial_conditions(self):
         self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=200,
-                                                    uniform_temperature=348.15)
+                                                    uniform_temperature=350)
 
     def set_boundary_conditions(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_water_inj(8000, 298.15)
+                w.control = self.physics.new_rate_water_inj(8000, 300)
                 # w.control = self.physics.new_bhp_water_inj(230, 308.15)
             else:
                 w.control = self.physics.new_rate_water_prod(8000)
