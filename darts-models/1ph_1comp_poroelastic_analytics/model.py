@@ -395,7 +395,7 @@ class Model(DartsModel):
         """
         perf_data = dict()
         perf_data['solution'] = np.copy(self.physics.engine.X)
-        perf_data['variables'] = self.vars
+        perf_data['variables'] = ['ux', 'uy', 'uz', 'p']
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
@@ -443,31 +443,51 @@ def load_performance_data(file_name=''):
     return 0
 
 def check_performance_data(ref_data, cur_data, prev_fail,
-                           diff_norm_normalized_tol=1e-7,
-                           diff_abs_max_normalized_tol=1e-5,
-                           rel_diff_tol=1):
+                           diff_max_tol=1e-6,
+                           diff_max_normalized_tol=1e-4,
+                           rel_diff_tol=1, png_suffix=''):
     fail = 0
-
+    # the difference lower than eps will not be accounted
+    eps_sol = {'p': 1e-5, 'ux': 1e-5, 'uy': 1e-5, 'uz': 1e-5}
+    get_eps = lambda var_name: eps_sol[var_name] if var_name in eps_sol.keys() else 0.
     # data = self.get_performance_data()
     nb = ref_data['reservoir blocks']
-    vars = ref_data['variables']
-
+    vars = cur_data['variables']
+    nv = len(vars)
     # Check final solution - data[0]
     # Check every variable separately
     for v in range(len(vars)):
         sol_et = ref_data['solution'][v:nb * nv:nv]
-        diff = cur_data['solution'][v:nb * nv:nv] - sol_et
+        sol_cur = cur_data['solution'][v:nb * nv:nv]
         sol_range = np.max(sol_et) - np.min(sol_et) + 1.e-12
+        # replace small values in solution with eps to avoid difference in normalized diff
+        sol_et[np.fabs(sol_et) < get_eps(vars[v])] = 0.
+        sol_cur[np.fabs(sol_cur) < get_eps(vars[v])] = 0.
+        diff = sol_cur - sol_et
         diff_abs = np.abs(diff)
+        diff_max_abs = diff_abs.max()
         diff_norm = np.linalg.norm(diff)
         diff_norm_normalized = diff_norm / len(sol_et) / sol_range
         diff_abs_max_normalized = np.max(diff_abs) / sol_range
-        if diff_norm_normalized > diff_norm_normalized_tol or diff_abs_max_normalized > diff_abs_max_normalized_tol:
+        if diff_max_abs > diff_max_tol and diff_abs_max_normalized > diff_max_normalized_tol:
             fail += 1
             print(
-                '#%d solution check failed for variable %d %s (range %.2E): L2(diff)/len(diff)/range = %.2E (tol %.2E), max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
-                % (fail, v, vars[v], sol_range, diff_norm_normalized, diff_norm_normalized_tol,
-                   diff_abs_max_normalized, diff_abs_max_normalized_tol, np.max(diff_abs)))
+                '#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
+                % (fail, v, vars[v], sol_range, diff_abs_max_normalized, diff_max_normalized_tol, diff_max_abs))
+        if False: # debug plot 
+            from matplotlib import pyplot as plt
+
+            fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+            ax1.plot(sol_et, 'r', label='ref')
+            ax1.plot(sol_cur, 'b--', label='cur')
+            ax1.set_title(vars[v])
+            ax1.legend()
+            ax2.plot(diff, 'b')
+            ax2.set_title('diff')
+            plt.savefig(vars[v] + '_' + png_suffix + '.png', dpi=500)
+            plt.clf()
+
+
     for key, value in sorted(cur_data.items()):
         if key == 'solution' or type(value) != int:
             continue

@@ -46,6 +46,7 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	contact_solver = pm::RETURN_MAPPING;
 	PRINT_LINEAR_SYSTEM = false;
 	TIME_DEPENDENT_DISCRETIZATION = false;
+	SCALE_ROWS = false;
 	geomechanics_mode.resize(mesh_->n_blocks, 0);
 	dt1 = 0.0;
 	momentum_inertia = 0.0;
@@ -288,6 +289,7 @@ int engine_pm_cpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list
 	fluxes_ref_n.resize(n_vars * mesh->n_conns, 0.0);
 	fluxes_biot_ref_n.resize(n_vars * mesh->n_conns, 0.0);
 	eps_vol.resize(mesh->n_matrix);
+	max_row_values.resize(mesh->n_blocks * N_VARS);
 
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -1278,7 +1280,8 @@ engine_pm_cpu::calc_well_residual_L2()
 		for (int v = 0; v < n_vars; v++)
 		{
 			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
+			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * 
+				PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 		}
 	}
 
@@ -1396,6 +1399,53 @@ int engine_pm_cpu::solve_linear_equation()
 	//exit(0);
 	//return 0;
 	}*/
+
+	// scaling rows
+	if (SCALE_ROWS)
+	{
+		index_t n_blocks = mesh->n_blocks;
+		value_t* Jac = Jacobian->get_values();
+		index_t* rows = Jacobian->get_rows_ptr();
+		index_t csr_idx_start, csr_idx_end;
+		value_t tmp;
+		std::fill_n(max_row_values.data(), n_blocks * N_VARS, 0.0);
+		for (index_t i = 0; i < n_blocks; i++)
+		{
+			csr_idx_start = rows[i];
+			csr_idx_end = rows[i + 1];
+			for (index_t j = csr_idx_start; j < csr_idx_end; j++)
+			{
+				for (uint8_t c = 0; c < N_VARS; c++)
+				{
+					for (uint8_t v = 0; v < N_VARS; v++)
+					{
+						tmp = fabs(Jac[j * N_VARS_SQ + c * N_VARS + v]);
+						if (max_row_values[i * N_VARS + c] < tmp)
+							max_row_values[i * N_VARS + c] = tmp;
+					}
+				}
+			}
+		}
+		for (index_t i = 0; i < n_blocks; i++)
+		{
+			csr_idx_start = rows[i];
+			csr_idx_end = rows[i + 1];
+			for (index_t j = csr_idx_start; j < csr_idx_end; j++)
+			{
+				for (uint8_t c = 0; c < N_VARS; c++)
+				{
+					for (uint8_t v = 0; v < N_VARS; v++)
+					{
+						Jac[j * N_VARS_SQ + c * N_VARS + v] /= max_row_values[i * N_VARS + c];
+					}
+				}
+			}
+			for (uint8_t c = 0; c < N_VARS; c++)
+			{
+				RHS[i * N_VARS + c] /= max_row_values[i * N_VARS + c];
+			}
+		}
+	}
 
 	timer->node["linear solver setup"].start();
 	//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(static_cast<linsolv_bos_gmres<N_VARS>*>(linear_solver)->prec)->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);

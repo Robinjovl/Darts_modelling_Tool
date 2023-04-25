@@ -68,6 +68,7 @@ build-linux-3.10-ODLS:
         
 build-linux-3.9-ODLS:
     rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .build-linux-dockcross
     variables:
@@ -171,6 +172,7 @@ build-windows-3.10-ODLS:
  
 build-windows-3.9-ODLS:
     rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .build-windows-ODLS
     variables:
@@ -342,6 +344,7 @@ test-linux-3.10-ODLS:
 
 test-linux-3.9-ODLS:
     rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .test-linux
     variables:
@@ -525,6 +528,7 @@ test-windows-3.10-ODLS:
 
 test-windows-3.9-ODLS:
     rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     extends: .test-windows
     variables:
@@ -600,7 +604,7 @@ test-windows-3.6-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./upload_pkl.sh $SMBNAME $SMBLOGIN $SMBPASS "$CI_COMMIT_SHORT_SHA" $ODLS
+        - ./upload_pkl.sh $SMBNAME $SMBLOGIN $SMBPASS "$CI_COMMIT_SHORT_SHA" $ODLS $PY_VER
         - cd ..
         - echo "test finished"
     artifacts:
@@ -634,7 +638,7 @@ test-windows-3.6-ODLS:
         - cd darts-models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS
+        - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS $PY_VER
         - cd ..
     artifacts:
       paths:
@@ -645,19 +649,20 @@ test-windows-3.6-ODLS:
 ###################################################################################
 
 deploy-pypi:
-    # Run only for main branch
-    only:
-        refs:
-            - main
+    # Publish the release
+    # Runs only for the main branch and if tag has a pattern: v#.#.#, for example "v1.2.3"
+    rules: 
+        - if: $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
     extends: .deploy-pypi
     variables:
         PYPI: 'pypi'
 
 deploy-testpypi:
-    # Run deploy only for main branch
+    # Test publishing the release
+    # Runs only manually, if variable UPLOAD_TEST_PYPI set to 1
     only:
         variables:
-            - $TESTPYPI == "1"
+            - $UPLOAD_TEST_PYPI == "1"
     extends: .deploy-pypi
     variables:
         PYPI: 'testpypi'

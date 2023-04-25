@@ -44,6 +44,7 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \
 		.def_readwrite("print_linear_system", &engine_pm_cpu::PRINT_LINEAR_SYSTEM) \
 		.def_readwrite("time_dependent_discretization", &engine_pm_cpu::TIME_DEPENDENT_DISCRETIZATION) \
+		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \
 		.def_readwrite("geomechanics_mode", &engine_pm_cpu::geomechanics_mode) \
 		.def_readwrite("newton_update_coefficient", &engine_pm_cpu::newton_update_coefficient) \
 		.def_readwrite("dev_u", &engine_pm_cpu::dev_u) \

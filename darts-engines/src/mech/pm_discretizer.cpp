@@ -455,12 +455,13 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 	value_t lam1, lam2;
 	Matrix C1(9, 9), C2(9, 9);
 	Matrix nblock(9, 3), nblock_t(3, 9), tblock(9, 9);
-	bool res;
+	bool res, grad_p_depends_on_displacements;
 	value_t r1, Ap, gamma, sign, angle;
 	Matrix y1(ND, 1), An(ND, ND), At(ND, ND), L(ND, ND), P(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), mult_p(ND, 1);
 	Matrix sq_mat(BLOCK_SIZE * ND, BLOCK_SIZE * ND), Wsvd(BLOCK_SIZE * ND, BLOCK_SIZE * ND), frac_grad_mult(BLOCK_SIZE, BLOCK_SIZE * ND);
 	value_t k_stab1, k_stab2, c_stab1, c_stab2;
 	Matrix B1nn(ND * ND, 1), B2nn(ND * ND, 1);
+	value_t max_dgrad_p_du = 0.0;
 
 	int face_id, face_id1, face_count_id, cell_id, bface_id, st_id, loop_face_id;
 	value_t r2_frac;
@@ -1002,12 +1003,54 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 			}
 		}
 		
+		// scaling of equations for pressure gradients for better condition number
+		const value_t PRESSURE_CONDITION_MULTIPLIER = (stfs[cell_id].values[0] + stfs[cell_id].values[7] + stfs[cell_id].values[14]) / 3 / 
+					(pm_discretizer::darcy_constant * (perms[cell_id].values[0] + perms[cell_id].values[4] + perms[cell_id].values[8]) / 3);
+		for (index_t ii = ND; ii < A.M; ii += BLOCK_SIZE)
+		{
+			for (index_t jj = 0; jj < A.N; jj++)
+			{
+				A(ii, jj) *= PRESSURE_CONDITION_MULTIPLIER;
+			}
+			for (index_t jj = 0; jj < BLOCK_SIZE * st.size(); jj++)
+			{
+				rhs_mult(ii, jj) *= PRESSURE_CONDITION_MULTIPLIER;
+			}
+			rest(ii, 0) *= PRESSURE_CONDITION_MULTIPLIER;
+		}
+
 		auto& cur_rhs = pre_cur_rhs[n_cur_faces][st.size()];
 		cur_rhs.values = rhs_mult(0, { 4 * n_cur_faces, 4 * st.size() }, { (size_t)rhs_mult.N, 1 });
 		auto& cur_grad = grad[cell_id];
 		cur_grad.stencil = st;
 
 		sq_mat = A.transpose() * A;
+
+		//// check if pressure gradients are well defined, i.e. there are at least 3 conditions
+		// calculate some reference
+		value_t ref_value = 0.0, tmp_value;
+		for (index_t ii = 0; ii < sq_mat.M; ii++)
+		{
+			tmp_value = sqrt(fabs(sq_mat(ii, ii)));
+			if (ref_value < tmp_value)
+				ref_value = tmp_value;
+		}
+		// check number of pressure conditions with above-precision coefficients
+		index_t num_conditions = 0;
+		for (index_t ii = ND; ii < A.M; ii += BLOCK_SIZE)
+		{
+			tmp_value = std::max(fabs(A(ii, ND* ND)), std::max(fabs(A(ii, ND* ND + 1)), fabs(A(ii, ND* ND + 2))));
+			if (tmp_value > EQUALITY_TOLERANCE * ref_value)
+				num_conditions++;
+		}
+
+		if (num_conditions < ND)
+		{
+			printf("Pressure gradients in cell %d are not well-defined, regularization applied\n", cell_id);
+			for (index_t dd = 0; dd < sq_mat.M; dd++)
+				sq_mat(dd, dd) += 100.0 * EQUALITY_TOLERANCE;
+		}
+
 		res = sq_mat.inv();
 		if (!res) 
 		{ 
@@ -1047,7 +1090,28 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
 			cur_grad.mat = sq_mat * A.transpose() * cur_rhs;
 			cur_grad.rhs = sq_mat * A.transpose() * rest;
 		}
+
+		//  check if pressure gradients depend on displacements (they should not)
+		grad_p_depends_on_displacements = false;
+		for (index_t ii = ND * ND; ii < cur_grad.mat.M; ii++)
+		{
+			for (index_t jj = 0; jj < st.size(); jj++)
+			{
+				for (index_t kk = 0; kk < ND; kk++)
+				{
+					value_t tmp = fabs(cur_grad.mat(ii, jj * BLOCK_SIZE + kk));
+					max_dgrad_p_du = std::max(max_dgrad_p_du, tmp);
+					if (tmp > EQUALITY_TOLERANCE)
+						grad_p_depends_on_displacements = true;
+				}
+			}
+		}
+		//if (grad_p_depends_on_displacements)
+		//	printf("Pressure gradients in cell %d depend on displacements!\n", cell_id);
 	}
+	
+	printf("Pressure gradients depend on displacements with a max coefficient: %.3e\n", max_dgrad_p_du);
+
 	printf("Gradient reconstruction was done!\n");
 }
 //void pm_discretizer::reconstruct_gradients_per_node(value_t dt, index_t n_nodes)

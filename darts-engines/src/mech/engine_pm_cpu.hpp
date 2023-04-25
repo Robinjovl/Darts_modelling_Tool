@@ -114,6 +114,9 @@ public:
   value_t dt1;
   value_t momentum_inertia;
 
+  // maximum absolute values in rows of jacobian
+  std::vector<value_t> max_row_values;
+
   /// @brief vector of variables in the current timestep provided for operator evaluation
   std::vector<value_t> Xop;
   void extract_Xop();
@@ -132,7 +135,7 @@ public:
 
 
 public:
-  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION;
+  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, SCALE_ROWS;
   pm::ContactSolver contact_solver;
 };
 #endif /* CPU_SIMULATOR_PM_HPP */

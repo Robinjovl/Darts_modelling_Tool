@@ -22,6 +22,7 @@ namespace pm
 	enum StateLaw { AGEING_LAW, SLIP_LAW, MIXED };
 	enum ContactSolver { FLUX_FROM_PREVIOUS_ITERATION, RETURN_MAPPING, LOCAL_ITERATIONS };
 	enum CriticalStress { TERZAGHI, BIOT };
+	enum NormalCondition { PENALIZED, ZERO_GAP_CHANGE };
 
 	struct RSF_props 
 	{ 
@@ -115,6 +116,8 @@ namespace pm
 		SlipDependentFriction_props sd_props;
 		// effective stresses used for friction criterion and beyond
 		CriticalStress friction_criterion;
+		// the type of normal condition used
+		NormalCondition normal_condition;
 		// fault tag to identify one particular fault in multi-fault system
 		index_t fault_tag;
 

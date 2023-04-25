@@ -39,7 +39,7 @@ accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
 
 def check_performance(mod):
     pkl_suffix = ''
-    if os.getenv('ODLS') == '0':
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '0':
         pkl_suffix = '_iter'
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
@@ -56,7 +56,10 @@ def check_performance(mod):
     m.run()
     m.print_stat()
     abort_redirection(log_stream)
-    failed = m.check_performance(overwrite=0, pkl_suffix=pkl_suffix)
+    overwrite = 0
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = 1
+    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
     log_stream = redirect_all_output(log_file)
     return failed
 
@@ -86,10 +89,14 @@ if __name__ == '__main__':
     # set single thread in case of MT version to match the performance characteristics
     os.environ['OMP_NUM_THREADS'] = '1'
 
+    overwrite = '0'
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = '1'
+
     failed = for_each_model(model_dir, check_performance, accepted_dirs)
 
     # poromechanic tests
-    n_tot, n_failed = run_tests(model_dir, test_dirs, test_args)
+    n_tot, n_failed = run_tests(model_dir, test_dirs, test_args, overwrite)
     failed += n_failed
 
 

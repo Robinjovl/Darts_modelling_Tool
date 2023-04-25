@@ -4,8 +4,11 @@ set lgn=%2
 set pwd=%3
 set commit=%4
 set odls=%5
+set py=%6
 
-set fname=%commit%_%odls%.zip
+if /I %UPLOAD_PKL% NEQ 1 exit
+
+set fname=%commit%_%odls%_%py%.zip
 echo %fname%
 
 "C:\Program files\7-Zip\7z.exe" a -r %fname% *.pkl
@@ -14,3 +17,4 @@ rem if (-not (Test-Path $target_dir)) {mkdir $target_dir}
 copy %fname% \\darts-ci.citg.tudelft.nl\opendarts-private-artifacts\pkl_win\
 
 del %fname%
+

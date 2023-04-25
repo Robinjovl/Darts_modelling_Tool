@@ -65,7 +65,8 @@ void pybind_contact(py::module &m)
 		.def_readwrite("eps_n", &contact::eps_n) \
 		.def_readwrite("eta", &contact::eta) \
 		.def_readwrite("rsf", &contact::rsf) \
-		.def_readwrite("sd_props", &contact::sd_props);
+		.def_readwrite("sd_props", &contact::sd_props)
+		.def_readwrite("normal_condition", &contact::normal_condition);
 
 	py::class_<RSF_props>(m, "rsf_props") \
 		.def(py::init<>()) \
@@ -111,9 +112,14 @@ void pybind_contact(py::module &m)
 		.export_values();
 
 	py::enum_<ContactSolver>(m, "contact_solver")
-		.value("flux_from_previous_iteration", ContactSolver::FLUX_FROM_PREVIOUS_ITERATION) \
-		.value("return_mapping", ContactSolver::RETURN_MAPPING) \
-		.value("local_iterations", ContactSolver::LOCAL_ITERATIONS) \
+		.value("FLUX_FROM_PREVIOUS_ITERATION", ContactSolver::FLUX_FROM_PREVIOUS_ITERATION) \
+		.value("RETURN_MAPPING", ContactSolver::RETURN_MAPPING) \
+		.value("LOCAL_ITERATIONS", ContactSolver::LOCAL_ITERATIONS) \
+		.export_values();
+
+	py::enum_<NormalCondition>(m, "normal_condition")
+		.value("PENALIZED", NormalCondition::PENALIZED) \
+		.value("ZERO_GAP_CHANGE", NormalCondition::ZERO_GAP_CHANGE)
 		.export_values();
 };
 

@@ -35,6 +35,7 @@ contact::contact()
 	local_solver = nullptr;
 	timer = nullptr;
 	output_counter = 0;
+	normal_condition = ZERO_GAP_CHANGE;
 }
 contact::~contact()
 {
@@ -595,12 +596,24 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 				//fprintf(pFile, "%d\t%d\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\t%.10e\n", i, 0, 0.0, 0.0, 0.0, 0.0, 0.0, g.values[1], dg.values[1]);
 			}
 			//printf("%d\tft=%.10e\tft_trial=%.10e\tgt=%.10e\tdgt=%.10e\n", i, flux.values[1], F_trial.values[1], g.values[1], dg.values[1]);
-			// set normal condition (first row)
-			// f_n - eps_n * <g_n> = 0
-			F(0, { (uint8_t)F.N }, { 1 }) = Fn.values;
-			Fpres(0, { (uint8_t)Fpres.N }, { 1 }) = Fn_pres.values;
-			F(0, ND * id) -= (g(0, 0) >= 0.0 ? 1.0 : 0.0) * eps_n[i];
-			flux(0, 0) -= eps_n[i] * ( g(0,0) + fabs(g(0,0)) ) / 2;
+			
+			//// set normal condition (first row)
+			if (normal_condition == PENALIZED)
+			{
+				//// f_n - eps_n * <g_n> = 0
+				F(0, { (uint8_t)F.N }, { 1 }) = Fn.values;
+				Fpres(0, { (uint8_t)Fpres.N }, { 1 }) = Fn_pres.values;
+				F(0, ND * id) -= (g(0, 0) >= 0.0 ? 1.0 : 0.0) * eps_n[i];
+				flux(0, 0) -= eps_n[i] * ( g(0,0) + fabs(g(0,0)) ) / 2;
+			}
+			else if (normal_condition == ZERO_GAP_CHANGE)
+			{
+				//// dg_n = 0
+				F(0, { (uint8_t)F.N }, { 1 }) = 0.0;
+				Fpres(0, { (uint8_t)Fpres.N }, { 1 }) = 0.0;
+				F(0, ND * id) = 1.0;
+				flux(0, 0) = dg(0, 0);
+			}
 
 			// scale the equations
 			F.values /= sqrt(eps_n[i]);
