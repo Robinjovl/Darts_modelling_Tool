@@ -1591,9 +1591,6 @@ int engine_base::report()
 	if (average_start_ts == time_data["time"].size())
 		return -1;
 
-	// add current time
-	time_data_report["time"].push_back(t);
-
 	//adjoint method
 	if (opt_history_matching)
 	{
@@ -1648,6 +1645,13 @@ int engine_base::report()
 			else
 			{
 				time_data_report[acc_vol].push_back(total_volume);
+			}
+		}
+		else
+		{
+			for (int ts = time_data["time"].size()-1; ts < time_data["time"].size(); ts++)
+			{
+				time_data_report[name].push_back(data[ts]);
 			}
 		}
 	}
