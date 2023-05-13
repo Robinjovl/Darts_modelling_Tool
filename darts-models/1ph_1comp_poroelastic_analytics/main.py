@@ -358,7 +358,10 @@ def write_time_data(m, pkl_fname, xls_fname):
     time_data.drop(columns=press_gridcells + chem_cols, inplace=True)
     writer = pd.ExcelWriter(xls_fname)
     time_data.to_excel(writer, 'Sheet1')
-    writer.save()
+    try:
+        writer.save()
+    except:
+        print('Error when saving xls. Skipped')
 
 def run_test(args: list = []):
     if len(args) > 3:
@@ -390,5 +393,5 @@ def run_test(args: list = []):
 #test(case='terzaghi', scheme='stabilized', mesh='rect')
 
 #test(case='mandel', scheme='non_stabilized', mesh='rect')
-#test(case='mandel', scheme='stabilized', mesh='rect')
+run_and_plot(case='prod_well', scheme='stabilized')
 

@@ -39,11 +39,11 @@ class UnstructReservoir:
         elif case == 'prod_well':
             self.prod_well(scheme, mesh)
 
-        self.unstr_discr.x_new = np.ones( (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4) )
-        self.unstr_discr.x_new[:,0] = self.u_init[0]
-        self.unstr_discr.x_new[:,1] = self.u_init[1]
-        self.unstr_discr.x_new[:,2] = self.u_init[2]
-        self.unstr_discr.x_new[:,3] = self.p_init
+        self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
+        self.unstr_discr.x_new[:, 0] = self.u_init[0]
+        self.unstr_discr.x_new[:, 1] = self.u_init[1]
+        self.unstr_discr.x_new[:, 2] = self.u_init[2]
+        self.unstr_discr.x_new[:, 3] = self.p_init
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -52,8 +52,8 @@ class UnstructReservoir:
         self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
         self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot, index_vector(self.ref_contact_cells))
         self.pm.reconstruct_gradients_per_cell(dt)
-        #n_nodes = self.unstr_discr.mesh_data.points.shape[0]
-        #self.pm.reconstruct_gradients_per_node(dt, n_nodes)
+        # n_nodes = self.unstr_discr.mesh_data.points.shape[0]
+        # self.pm.reconstruct_gradients_per_node(dt, n_nodes)
         self.pm.calc_all_fluxes_once(dt)
         # self.write_pm_conn_to_file(t_step=0)
         # check sparsity of gradients
@@ -137,7 +137,7 @@ class UnstructReservoir:
         self.depth[:] = self.unstr_discr.depth_all_cells[:]#self.unstr_discr.frac_cells_tot + self.unstr_discr.mat_cells_tot]
         self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
         for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
-            self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
+            self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i - self.unstr_discr.mat_cells_tot]
         self.bc_prev[:] = self.bc_rhs_prev
         self.bc[:] = self.bc_rhs
         self.bc_ref[:] = self.bc_rhs_ref
@@ -153,9 +153,9 @@ class UnstructReservoir:
         # Calculate well_index (very primitive way....):
         rw = 0.1
         coords = self.unstr_discr.mat_cell_info_dict[0].coord_nodes_to_cell
-        dx = np.max(coords[:,0]) - np.min(coords[:,0])
-        dy = np.max(coords[:,1]) - np.min(coords[:,1])
-        dz = np.max(coords[:,2]) - np.min(coords[:,2])
+        dx = np.max(coords[:, 0]) - np.min(coords[:, 0])
+        dy = np.max(coords[:, 1]) - np.min(coords[:, 1])
+        dz = np.max(coords[:, 2]) - np.min(coords[:, 2])
         # WIx
         wi_x = 0.0
         # WIy
@@ -181,7 +181,7 @@ class UnstructReservoir:
         # boundaries (should be consistent with values in .geo mesh file)
         # X- X+ Y- Y+ Z- Z+
         self.PHYSICAL_TAGS = [991, 992, 993, 994, 995, 996]
-        self.xp, self.xm, self.yp, self.ym, self.zp, self.zm = self.PHYSICAL_TAGS
+        self.xm, self.xp, self.ym, self.yp, self.zm, self.zp = self.PHYSICAL_TAGS
 
         # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
         # boundary conditions for flow
@@ -766,24 +766,24 @@ class UnstructReservoir:
         kd1 = self.props[99991]['E'] / 3 / (1 - 2 * self.props[99991]['nu'])
         self.props[99991]['kd'] = kd1
         self.props[99991]['M'] = 1.0 / ((self.props[99991]['b'] - self.props[99991]['poro']) * (1 - self.props[99991]['b']) / kd1 +
-                                        self.props[99991]['poro'] * self.fluid_compressibility)
+                    self.props[99991]['poro'] * self.fluid_compressibility)
 
         kd2 = self.props[99992]['E'] / 3 / (1 - 2 * self.props[99992]['nu'])
         self.props[99992]['kd'] = kd2
         self.props[99992]['M'] = 1.0 / ((self.props[99992]['b'] - self.props[99992]['poro']) * (1 - self.props[99992]['b']) / kd2 +
-                                        self.props[99992]['poro'] * self.fluid_compressibility)
+                    self.props[99992]['poro'] * self.fluid_compressibility)
 
 
         # some numbers for analytics
         for tag, p in self.props.items():
             p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
             # if tag == 99992:
-                # p['kd'] = kd1 * self.props[99991]['b'] * self.props[99991]['m'] / self.props[99992]['b'] / self.props[99992]['m'] / \
-                #               (1 + kd1 * self.props[99991]['b'] * self.props[99991]['m'] * (self.props[99991]['b'] - self.props[99992]['b']))
+            # p['kd'] = kd1 * self.props[99991]['b'] * self.props[99991]['m'] / self.props[99992]['b'] / self.props[99992]['m'] / \
+            #               (1 + kd1 * self.props[99991]['b'] * self.props[99991]['m'] * (self.props[99991]['b'] - self.props[99992]['b']))
             p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
             p['c'] = TC.darcy_constant * p['perm'] / self.fluid_viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
 
-        assert( np.fabs(self.props[99991]['skempton'] - self.props[99992]['skempton']) < 1.e-6 )
+        assert (np.fabs(self.props[99991]['skempton'] - self.props[99992]['skempton']) < 1.e-6)
 
         self.unstr_discr.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = [99991, 99992]
@@ -794,13 +794,13 @@ class UnstructReservoir:
 
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
         LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
         STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
-        self.F = -100.0 # bar * m
+        self.F = -100.0  # bar * m
 
         mech_xm = ROLLER
         mech_xp = LOAD(self.F, [0.0, 0.0, 0.0])
@@ -847,8 +847,8 @@ class UnstructReservoir:
             for face_id in range(len(faces)):
                 face = faces[face_id]
                 fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
+                               face.face_id1, face.face_id2,
+                               face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
             self.pm.faces.append(fs)
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
@@ -865,7 +865,7 @@ class UnstructReservoir:
             self.pm.stfs.append(Stiffness(lam, mu))
             self.pm.perms.append(matrix33(k, k, k))
             self.pm.biots.append(matrix33(biot))
-            self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
+            self.kd_cur[cell_id] = kd  # (biot - self.porosity) * (1 - biot) * kd
             self.biot_mean[9 * cell_id] = biot
             self.biot_mean[9 * cell_id + 4] = biot
             self.biot_mean[9 * cell_id + 8] = biot
@@ -884,11 +884,11 @@ class UnstructReservoir:
             P = np.identity(3) - np.outer(n, n)
             mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
             flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            #if flow['a'] == 1.0:
+            # if flow['a'] == 1.0:
             #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
             #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
             #    else: bc.extend([0.0, 1.0, 0.0])
-            #else:
+            # else:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
@@ -897,7 +897,7 @@ class UnstructReservoir:
             self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
-        #self.bc_rhs_prev = np.copy(self.bc_rhs)
+        # self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
@@ -922,17 +922,17 @@ class UnstructReservoir:
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
 
-        self.visc = 1#9.81e-2
-        self.props = {      99991: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.0, 'poro': 0.0, 'perm': 1e-10 },
-                            99992: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1  }     }
+        self.visc = 1  # 9.81e-2
+        self.props = {99991: {'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.0, 'poro': 0.0, 'perm': 1e-10},
+                      99992: {'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1}}
 
         kd1 = self.props[99991]['E'] / 3 / (1 - 2 * self.props[99991]['nu'])
         self.props[99991]['kd'] = kd1
-        #self.props[99991]['M'] = kd1 / (self.props[99991]['b'] - self.props[99991]['poro']) / (1 - self.props[99991]['b'])
+        # self.props[99991]['M'] = kd1 / (self.props[99991]['b'] - self.props[99991]['poro']) / (1 - self.props[99991]['b'])
 
         kd2 = self.props[99992]['E'] / 3 / (1 - 2 * self.props[99992]['nu'])
         self.props[99992]['kd'] = kd2
-        #self.props[99992]['M'] = kd2 / (self.props[99992]['b'] - self.props[99992]['poro']) / (1 - self.props[99992]['b'])
+        # self.props[99992]['M'] = kd2 / (self.props[99992]['b'] - self.props[99992]['poro']) / (1 - self.props[99992]['b'])
 
         self.unstr_discr.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = [99991, 99992]
@@ -943,13 +943,13 @@ class UnstructReservoir:
 
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
         LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
         STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
-        self.F = -100.0 # bar * m
+        self.F = -100.0  # bar * m
 
         mech_xm = ROLLER
         mech_xp = LOAD(self.F, [0.0, 0.0, 0.0])
@@ -996,8 +996,8 @@ class UnstructReservoir:
             for face_id in range(len(faces)):
                 face = faces[face_id]
                 fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
+                               face.face_id1, face.face_id2,
+                               face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
             self.pm.faces.append(fs)
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
@@ -1014,7 +1014,7 @@ class UnstructReservoir:
             self.pm.stfs.append(Stiffness(lam, mu))
             self.pm.perms.append(matrix33(k, k, k))
             self.pm.biots.append(matrix33(biot))
-            self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
+            self.kd_cur[cell_id] = kd  # (biot - self.porosity) * (1 - biot) * kd
             self.biot_mean[9 * cell_id] = biot
             self.biot_mean[9 * cell_id + 4] = biot
             self.biot_mean[9 * cell_id + 8] = biot
@@ -1033,11 +1033,11 @@ class UnstructReservoir:
             P = np.identity(3) - np.outer(n, n)
             mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
             flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            #if flow['a'] == 1.0:
+            # if flow['a'] == 1.0:
             #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
             #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
             #    else: bc.extend([0.0, 1.0, 0.0])
-            #else:
+            # else:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
@@ -1046,7 +1046,7 @@ class UnstructReservoir:
             self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
-        #self.bc_rhs_prev = np.copy(self.bc_rhs)
+        # self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
@@ -1061,7 +1061,7 @@ class UnstructReservoir:
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 10.0  # mD
 
-        #self.proxy = False
+        # self.proxy = False
         self.proxy = True
         '''
                 if self.proxy == True:
@@ -1070,8 +1070,8 @@ class UnstructReservoir:
                     #mesh_file = 'meshes/transfinite_outer_box.msh'
                     mesh_file = 'meshes/transfinite1_outer_box2.msh' #mesh for fully-coupled
         '''
-        mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
-        #mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
+        # mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
+        mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
 
         from geomechanics import geomech
         self.geomech = geomech()
@@ -1092,7 +1092,7 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         use_pkl = False
-        #use_pkl = True # speedup mesh initialization
+        # use_pkl = True # speedup mesh initialization
         if use_pkl:
             pkl_file = open('unstr_discr.pkl', 'rb')
             self.unstr_discr = pickle.load(pkl_file)
@@ -1118,8 +1118,8 @@ class UnstructReservoir:
         self.unstr_discr.physical_tags['matrix'] = [self.MATRIX]
         self.unstr_discr.physical_tags['fracture_shape'] = []
         # define rock geomechanical properties
-        E = 10000 # young, bar
-        nu = 0.25 # poisson
+        E = 10000  # young, bar
+        nu = 0.25  # poisson
         # Lame coefficients, used to construct Stiffness  tensor
         self.lam = E * nu / (1 + nu) / (1 - 2 * nu)
         self.mu = E / 2 / (1 + nu)
@@ -1149,19 +1149,19 @@ class UnstructReservoir:
         flow_zm = self.NO_FLOW
         flow_zp = self.NO_FLOW
 
-        self.unstr_discr.boundary_conditions[self.xp] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.xm] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.yp] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.ym] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.zp] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.zm] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.xm] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.xp] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.ym] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.yp] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.zm] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.zp] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)  # gravity vector (to turn on use [0,0,9.8] or [0,0,-0.98])
-        self.pm.visc = 1 # don't change here 
+        self.pm.visc = 1  # don't change here
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
         for cell_id in range(len(self.unstr_discr.faces)):
@@ -1170,8 +1170,8 @@ class UnstructReservoir:
             for face_id in range(len(faces)):
                 face = faces[face_id]
                 fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid)))
+                               face.face_id1, face.face_id2,
+                               face.area, list(face.n), list(face.centroid)))
             self.pm.faces.append(fs)
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
@@ -1179,11 +1179,11 @@ class UnstructReservoir:
 
             cell_in_outer_box = True
             if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
-               self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
-               self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
+                    self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
+                    self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
                 cell_in_outer_box = False
 
-            if cell_in_outer_box:
+            if False: #cell_in_outer_box:
                 permx = permy = permz = 1e-5  # no flow in outer box
             else:
                 permx = self.permx
@@ -1193,7 +1193,7 @@ class UnstructReservoir:
 
             self.pm.biots.append(matrix33(self.biot))
             self.pm.stfs.append(Stiffness(self.lam, self.mu))  # define Stiffness tensor
-            self.biot_mean[9 * cell_id] = self.biot #?
+            self.biot_mean[9 * cell_id] = self.biot  # ?
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
 
@@ -1210,11 +1210,11 @@ class UnstructReservoir:
             P = np.identity(3) - np.outer(n, n)
             mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
             flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            #if flow['a'] == 1.0:
+            # if flow['a'] == 1.0:
             #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
             #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
             #    else: bc.extend([0.0, 1.0, 0.0])
-            #else:
+            # else:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
@@ -1223,10 +1223,10 @@ class UnstructReservoir:
             self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
-        #self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc # save vals from previous timestep, needed to compute time-derivatives
+        # self.bc_rhs_prev = np.copy(self.bc_rhs)
+        self.pm.bc_prev = self.pm.bc  # save vals from previous timestep, needed to compute time-derivatives
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))  #source/sink
-        self.tD = 1.0 # this vars are used to make time/pressure dimensionless
+        self.tD = 1.0  # this vars are used to make time/pressure dimensionless
         self.pD = 1.0
 
     def add_well(self, name, depth):
@@ -1282,7 +1282,7 @@ class UnstructReservoir:
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
         self.mesh.reverse_and_sort_pm()
-        #self.mesh.init_grav_coef()
+        # self.mesh.init_grav_coef()
         return 0
 
     def get_normal_to_bound_face(self, b_id):
@@ -1297,7 +1297,7 @@ class UnstructReservoir:
                 return n
 
     def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
-        #self.check_positive_negative_sides()
+        # self.check_positive_negative_sides()
         path = 'pm_conn' + str(t_step) + '.dat'
         block_size = 4
         f = open(path, 'w')
@@ -1381,11 +1381,11 @@ class UnstructReservoir:
         fluxes = np.array(physics.engine.fluxes, copy=False)
         # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
         fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
+        # vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
         #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
         self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
-        #poro = np.array(self.mesh.poro, copy=False)
-        #print('poro', poro.sum()) #? poro=182.0
+        # poro = np.array(self.mesh.poro, copy=False)
+        # print('poro', poro.sum()) #? poro=182.0
         self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
                                           self.mesh.bc, physics.engine.op_vals_arr)
         # else:
@@ -1404,8 +1404,8 @@ class UnstructReservoir:
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
                     cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
 
-                #if 'velocity' not in cell_data: cell_data['velocity'] = []
-                #cell_data['velocity'].append(vels)
+                # if 'velocity' not in cell_data: cell_data['velocity'] = []
+                # cell_data['velocity'].append(vels)
                 # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
                 #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
                 #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
@@ -1437,7 +1437,7 @@ class UnstructReservoir:
                     if 'permx' not in cell_data: cell_data['permx'] = []
                     if 'permy' not in cell_data: cell_data['permy'] = []
                     if 'permz' not in cell_data: cell_data['permz'] = []
-                    perms_arr = np.array(self.pm.perms, copy=False) #vector_matrix33
+                    perms_arr = np.array(self.pm.perms, copy=False)  # vector_matrix33
                     cell_data['permx'].append(np.array([p.values[0] for p in perms_arr]))
                     cell_data['permy'].append(np.array([p.values[4] for p in perms_arr]))
                     cell_data['permz'].append(np.array([p.values[8] for p in perms_arr]))
@@ -1445,33 +1445,34 @@ class UnstructReservoir:
 
         arr = []
         arr_names = []
-        if self.proxy:# and ti == n_time_steps - 1: # calc geomech only on last tstep
-            #m.timer.node["displs"] = timer_node()
-            #m.timer.node["displs"].start()
+        if self.proxy:  # and ti == n_time_steps - 1: # calc geomech only on last tstep
+            # m.timer.node["displs"] = timer_node()
+            # m.timer.node["displs"].start()
             print('calc_displs..')
             P = self.get_pressure(physics)
             [ux, uy, uz, dp] = self.calc_displs(P, only_1st_layer=False)
             print('ok!')
-            #m.timer.node["displs"].stop()
+            # m.timer.node["displs"].stop()
 
             arr = [ux, uy, uz, dp]
             arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
-            #m.timer.node["stress"] = timer_node()
-            #m.timer.node["stress"].start()
-            print('calc_stress..')
-            stress, strain = self.geomech.calc_strain_stress(self.centers,
-                                                            self.prisms,
-                                                            self.delta_pressure)
-            s_list = []
-            for s in stress:
-                s_list.append(self.get_full_vector(s))
-            #[Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
-            print('ok!')
-            #m.timer.node["stress"].stop()
+            if True: # calc stresses
+                # m.timer.node["stress"] = timer_node()
+                # m.timer.node["stress"].start()
+                print('calc_stress..')
+                stress, strain = self.geomech.calc_strain_stress(self.centers,
+                                                                 self.prisms,
+                                                                 self.delta_pressure)
+                s_list = []
+                for s in stress:
+                    s_list.append(self.get_full_vector(s))
+                # [Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
+                print('ok!')
+                # m.timer.node["stress"].stop()
 
-            arr += s_list #[Sx, Sy, Sz, Syz, Sxz, Sxy]
-            arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
+                arr += s_list  # [Sx, Sy, Sz, Syz, Sxz, Sxy]
+                arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
 
             for i in range(len(arr_names)):
                 cell_data[arr_names[i]] = [arr[i]]
@@ -1480,7 +1481,9 @@ class UnstructReservoir:
             for data_key in cell_data.keys():
                 if data_key == 'stress':
                     continue
-                print(data_key, 'min:', cell_data[data_key][0].min(), 'max:', cell_data[data_key][0].max())
+                fmt = lambda x: "{:.5f}".format(x)
+                print(data_key, 'min:', fmt(cell_data[data_key][0].min()),
+                      'max:', fmt(cell_data[data_key][0].max()))
 
         # Store solution for each time-step:
         mesh = meshio.Mesh(
@@ -1641,7 +1644,7 @@ class UnstructReservoir:
                     continue
 
                 face = self.unstr_discr.faces[cell_m][face_id]
-                assert(face.cell_id2 == cell_p or face.face_id2 + self.mesh.n_blocks == cell_p)
+                assert (face.cell_id2 == cell_p or face.face_id2 + self.mesh.n_blocks == cell_p)
 
                 if face.n_pts == 4:
                     tag = 'quad'
@@ -1677,11 +1680,11 @@ class UnstructReservoir:
                 cell_data['total_traction'].append(np.zeros((len(self.face_cells[geom]), nd)))
                 cell_data['effective_traction'].append(np.zeros((len(self.face_cells[geom]), nd)))
 
-                cell_data['total_traction'][-1][:,0] = (fluxes[n_fluxes * self.faces_conn_ids[geom]] +
+                cell_data['total_traction'][-1][:, 0] = (fluxes[n_fluxes * self.faces_conn_ids[geom]] +
                                                         fluxes_biot[n_fluxes * self.faces_conn_ids[geom]]) / self.faces_flux_mults[geom]
-                cell_data['total_traction'][-1][:,1] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 1] +
+                cell_data['total_traction'][-1][:, 1] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 1] +
                                                         fluxes_biot[n_fluxes * self.faces_conn_ids[geom] + 1]) / self.faces_flux_mults[geom]
-                cell_data['total_traction'][-1][:,2] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 2] +
+                cell_data['total_traction'][-1][:, 2] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 2] +
                                                         fluxes_biot[n_fluxes * self.faces_conn_ids[geom] + 2]) / self.faces_flux_mults[geom]
 
                 cell_data['effective_traction'][-1][:,0] = fluxes[n_fluxes * self.faces_conn_ids[geom]] / self.faces_flux_mults[geom]
@@ -1738,7 +1741,7 @@ class UnstructReservoir:
         # Compute exact north boundary condition for the given time `t`
         uy_sum = np.sum(
             ((np.sin(aa_n) * np.cos(aa_n)) / (aa_n - np.sin(aa_n) * np.cos(aa_n)))
-            * np.exp((-(aa_n**2) * c_f * t) / (a**2)),
+            * np.exp((-(aa_n ** 2) * c_f * t) / (a ** 2)),
             axis=0,
         )
 
@@ -1824,7 +1827,7 @@ class UnstructReservoir:
             p_sum_0 = np.sum(
                 ((np.sin(aa_n)) / (aa_n - (np.sin(aa_n) * np.cos(aa_n))))
                 * (np.cos((aa_n * xc) / a) - np.cos(aa_n))
-                * np.exp((-(aa_n**2) * c_f * t) / (a**2)),
+                * np.exp((-(aa_n ** 2) * c_f * t) / (a ** 2)),
                 axis=0,
             )
             p = c0 * p_sum_0
@@ -1849,7 +1852,7 @@ class UnstructReservoir:
             sum_series += (
                     (((-1) ** (i - 1)) / (2 * i - 1))
                     * np.cos((2 * i - 1) * (np.pi / 2) * (xc / h))
-                    * np.exp((-((2 * i - 1) ** 2)) * (np.pi ** 2 / 4) * dimless_t) )
+                    * np.exp((-((2 * i - 1) ** 2)) * (np.pi ** 2 / 4) * dimless_t))
         p = (4 / np.pi) * vertical_load * sum_series
         return p
     def terzaghi_exact_pressure(self, t, xc) -> np.ndarray:
@@ -1870,7 +1873,7 @@ class UnstructReservoir:
 
         h = self.a
         vertical_load = np.fabs(self.F)
-        dimless_t = t# / self.tD
+        dimless_t = t  # / self.tD
 
         n = 1000
 
@@ -1880,9 +1883,9 @@ class UnstructReservoir:
         if dimless_t > 0:
             sum_series = np.zeros_like(xc)
             for m in range(0, n):
-                sum_series += (-1) ** m * (erfc( ((1 + 2*m) * h + xc) / np.sqrt(4 * c * dimless_t) ) +
-                                           erfc( ((1 + 2*m) * h - xc) / np.sqrt(4 * c * dimless_t) ) )
-            p =  p0 * (1 - sum_series)
+                sum_series += (-1) ** m * (erfc(((1 + 2 * m) * h + xc) / np.sqrt(4 * c * dimless_t)) +
+                                           erfc(((1 + 2 * m) * h - xc) / np.sqrt(4 * c * dimless_t)))
+            p = p0 * (1 - sum_series)
         else:
             p = p0
         return p
@@ -1907,15 +1910,15 @@ class UnstructReservoir:
         x0 = np.pi / 2  # initial point
         for i in range(n_series):
             a_n[i] = opt.newton(
-                func=f,         # function
-                x0=x0,          # point
-                fprime=dfdx,    # derivative
-                tol=1e-30,      # absolute tolerance
-                rtol=1e-14,     # relative tolerance
+                func=f,  # function
+                x0=x0,  # point
+                fprime=dfdx,  # derivative
+                tol=1e-30,  # absolute tolerance
+                rtol=1e-14,  # relative tolerance
             )
             x0 += np.pi  # apply a phase change of pi to get the next root
 
-        assert( np.unique(a_n).size == a_n.size )
+        assert (np.unique(a_n).size == a_n.size)
 
         return a_n / (1 + self.theta)
     def terzaghi_two_layers_exact_pressure(self, t, xc, n_roots=1000) -> np.ndarray:
@@ -1932,20 +1935,20 @@ class UnstructReservoir:
         xi = xc - h2
         skempton = self.props[99991]['skempton']
 
-        assert(n_roots <= self.omega.size)
+        assert (n_roots <= self.omega.size)
 
         g = 2 * skempton * np.fabs(self.F) / self.omega * \
-            np.exp(-c2 * t * self.omega ** 2 / h2 ** 2 ) / \
-            ( (1 + self.beta * self.theta) * np.cos(self.theta * self.omega) * np.sin(self.omega) + \
-              (self.beta + self.theta) * np.sin(self.theta * self.omega) * np.cos(self.omega) )
+            np.exp(-c2 * t * self.omega ** 2 / h2 ** 2) / \
+            ((1 + self.beta * self.theta) * np.cos(self.theta * self.omega) * np.sin(self.omega) + \
+             (self.beta + self.theta) * np.sin(self.theta * self.omega) * np.cos(self.omega))
 
         t1 = np.cos(self.omega) * np.cos(self.theta * np.outer(xi, self.omega) / h1) - \
-                self.beta * np.sin(self.omega) * np.sin(self.theta * np.outer(xi, self.omega) / h1)
+             self.beta * np.sin(self.omega) * np.sin(self.theta * np.outer(xi, self.omega) / h1)
         t2 = np.cos(self.omega) * np.cos(np.outer(xi, self.omega) / h2) - \
-                np.sin(self.omega) * np.sin(np.outer(xi, self.omega) / h2)
+             np.sin(self.omega) * np.sin(np.outer(xi, self.omega) / h2)
 
-        p = np.sum((g * t1)[:,:n_roots], axis=1)
-        p[xi < 0] = np.sum((g * t2)[:,:n_roots], axis=1)[xi < 0]
+        p = np.sum((g * t1)[:, :n_roots], axis=1)
+        p[xi < 0] = np.sum((g * t2)[:, :n_roots], axis=1)[xi < 0]
 
         return p
     def terzaghi_two_layers_exact_displacement(self, t, xc, n_roots=1000) -> np.ndarray:
@@ -1966,23 +1969,23 @@ class UnstructReservoir:
         xi = xc - h2
         skempton = self.props[99991]['skempton']
 
-        assert(n_roots <= self.omega.size)
+        assert (n_roots <= self.omega.size)
 
         g = 2 * skempton * np.fabs(self.F) / self.omega * \
-            np.exp(-c2 * t * self.omega ** 2 / h2 ** 2 ) / \
-            ( (1 + self.beta * self.theta) * np.cos(self.theta * self.omega) * np.sin(self.omega) + \
-              (self.beta + self.theta) * np.sin(self.theta * self.omega) * np.cos(self.omega) )
+            np.exp(-c2 * t * self.omega ** 2 / h2 ** 2) / \
+            ((1 + self.beta * self.theta) * np.cos(self.theta * self.omega) * np.sin(self.omega) + \
+             (self.beta + self.theta) * np.sin(self.theta * self.omega) * np.cos(self.omega))
 
         t1 = b1 * m1 * h1 * (np.cos(self.omega) * np.sin(self.theta * np.outer(xi, self.omega) / h1) + \
-                self.beta * np.sin(self.omega) * np.cos(self.theta * np.outer(xi, self.omega) / h1)) - \
-            b1 * m1 * h1 * self.beta * np.sin(self.omega) + b2 * m2 * h2 * self.theta * np.sin(self.omega)
-        t2 = b2 * m2 * h2 * self.theta * ( np.cos(self.omega) * np.sin(np.outer(xi, self.omega) / h2) + \
-                np.sin(self.omega) * np.cos(np.outer(xi, self.omega) / h2) )
+                             self.beta * np.sin(self.omega) * np.cos(self.theta * np.outer(xi, self.omega) / h1)) - \
+             b1 * m1 * h1 * self.beta * np.sin(self.omega) + b2 * m2 * h2 * self.theta * np.sin(self.omega)
+        t2 = b2 * m2 * h2 * self.theta * (np.cos(self.omega) * np.sin(np.outer(xi, self.omega) / h2) + \
+                                          np.sin(self.omega) * np.cos(np.outer(xi, self.omega) / h2))
 
         u = np.fabs(self.F) * (m1 * xi + m2 * h2) \
-            - np.sum((g * t1 / self.omega)[:,:n_roots], axis=1) / self.theta
+            - np.sum((g * t1 / self.omega)[:, :n_roots], axis=1) / self.theta
         u[xi < 0] = (np.fabs(self.F) * m2 * (xi + h2) \
-            - np.sum((g * t2 / self.omega)[:,:n_roots], axis=1) / self.theta)[xi < 0]
+                     - np.sum((g * t2 / self.omega)[:, :n_roots], axis=1) / self.theta)[xi < 0]
 
         return -u
 
@@ -1993,7 +1996,7 @@ class UnstructReservoir:
         self.geomech.young = 10000
 
         # thermal expansion coefficient
-        self.thermal_exp_coeff = 0 # 1/°C
+        self.thermal_exp_coeff = 0  # 1/°C
 
         # Mohr-Coulomb
         self.cohesion = 0  # assume no cohesion due to healing
@@ -2011,13 +2014,13 @@ class UnstructReservoir:
         centroid_list_y = []
         centroid_list_z = []
 
-        local_to_global = np.zeros(self.n_cells, dtype=np.int32) # actual size will be less
+        local_to_global = np.zeros(self.n_cells, dtype=np.int32)  # actual size will be less
 
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
             if self.outer_box_x1 < c[0] < self.outer_box_x2 and \
-               self.outer_box_y1 < c[1] < self.outer_box_y2 and \
-               self.outer_box_z1 < c[2] < self.outer_box_z2:
+                    self.outer_box_y1 < c[1] < self.outer_box_y2 and \
+                    self.outer_box_z1 < c[2] < self.outer_box_z2:
                 centroid_list_x.append(c[0])
                 centroid_list_y.append(c[1])
                 centroid_list_z.append(c[2])
@@ -2027,8 +2030,8 @@ class UnstructReservoir:
 
         centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
 
-        local_to_global = local_to_global[:inner_box_cell_count] #  shrink array to actual size
-        #local_to_global = np.array(list(local_to_global.values()))
+        local_to_global = local_to_global[:inner_box_cell_count]  # shrink array to actual size
+        # local_to_global = np.array(list(local_to_global.values()))
         return centroids, local_to_global
 
     def calc_centroid(self):
@@ -2037,7 +2040,7 @@ class UnstructReservoir:
         :return:
         """
         tot_cell_count = 0
-        #for ith_cell in self.frac_cell_info_dict:
+        # for ith_cell in self.frac_cell_info_dict:
         #    self.centroid_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].centroid
         #    tot_cell_count += 1
 
@@ -2046,9 +2049,10 @@ class UnstructReservoir:
         centroid_list_z = []
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
-            if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
-                    self.outer_box_y1 < c[1] < self.outer_box_y2 and \
-                    self.outer_box_z1 < c[2] < self.outer_box_z2:
+            if True:
+                # if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
+                #        self.outer_box_y1 < c[1] < self.outer_box_y2 and \
+                #        self.outer_box_z1 < c[2] < self.outer_box_z2:
                 centroid_list_x.append(c[0])
                 centroid_list_y.append(c[1])
                 centroid_list_z.append(c[2])
@@ -2080,11 +2084,12 @@ class UnstructReservoir:
             self.prisms[k][4] = np.amax(zloc)
             self.prisms[k][5] = np.amin(zloc)
 
-        #print('self.prisms', self.prisms.shape)
+        # print('self.prisms', self.prisms.shape)
 
         # centers
-        self.centers, self.local_to_global = self.calc_centroid_inner_box()
-        #self.centers, self.local_to_global = self.calc_centroid()
+        # self.centers, self.local_to_global = self.calc_centroid_inner_box()
+        self.centers, self.local_to_global = self.calc_centroid()
+        #self.centers += 0.005  # shift center to avoid instability in proxy-solution
 
     def init_delta_pressure(self, P):
         '''
@@ -2117,14 +2122,14 @@ class UnstructReservoir:
         self.init_delta_pressure(P)
 
         if only_1st_layer:  # calc displs only for the 1-st layer
-            assert (True) #(not implemented for unstructured grid)
+            assert (True)  # (not implemented for unstructured grid)
             n_act_cells_1st_layer = 0
             centers_ptr = self.centers[:, :n_act_cells_1st_layer]
             print('n_act_cells_1st_layer', n_act_cells_1st_layer)
         else:
             centers_ptr = self.centers
 
-        #print('centers_ptr', centers_ptr.shape)
+        # print('centers_ptr', centers_ptr.shape)
         ux1, uy1, uz1 = self.geomech.calc_displacements(centers_ptr, self.prisms, self.delta_pressure)
 
         if only_1st_layer:  # fill the rest displ values with zeros

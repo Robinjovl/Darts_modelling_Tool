@@ -24,7 +24,7 @@ class geomech():
     def __init__(self):
         # elastic constants
         self.poisson = 0.25
-        self.young = 3300.
+        self.young = 1000.  # MPa
 
         # thermal expansion coefficient
         self.thermal_exp_coeff = 1.3e-5  # 1/°C
