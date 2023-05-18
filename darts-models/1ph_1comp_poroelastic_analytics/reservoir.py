@@ -1080,7 +1080,7 @@ class UnstructReservoir:
         # Z : 0 - outer - 20 - inner -  30 - outer - 50
         self.outer_box_x1 = self.outer_box_y1 = 500
         self.outer_box_x2 = self.outer_box_y2 = 1500
-        self.outer_box_z1 = 2000
+        self.outer_box_z1 = 1500
         self.outer_box_z2 = 2500
 
         # no bounds, one region
@@ -1138,8 +1138,8 @@ class UnstructReservoir:
         mech_xp = self.ROLLER
         mech_ym = self.ROLLER
         mech_yp = self.ROLLER
-        mech_zm = self.ROLLER
-        mech_zp = self.FREE
+        mech_zm = self.FREE
+        mech_zp = self.ROLLER
         # free = self.LOAD(0.0, [0.0, 0.0, 0.0])
 
         flow_xm = self.NO_FLOW
@@ -1160,12 +1160,15 @@ class UnstructReservoir:
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)  # gravity vector (to turn on use [0,0,9.8] or [0,0,-0.98])
+        self.pm.grav = matrix([0,0,0], 1, 3)  # gravity vector (to turn on use [0,0,9.8/1e5] or [0,0,-0.98/1e5])
+        #self.pm.grav = matrix([0,0,9.81/1e5], 1, 3) # gravity for Darcy flow
         self.pm.visc = 1  # don't change here
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
         for cell_id in range(len(self.unstr_discr.faces)):
             faces = self.unstr_discr.faces[cell_id]
+
             fs = face_vector()
             for face_id in range(len(faces)):
                 face = faces[face_id]
@@ -1177,11 +1180,11 @@ class UnstructReservoir:
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
-            cell_in_outer_box = True
-            if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
-                    self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
-                    self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
-                cell_in_outer_box = False
+            #cell_in_outer_box = True
+            #if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
+            #        self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
+            #        self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
+            #    cell_in_outer_box = False
 
             if False: #cell_in_outer_box:
                 permx = permy = permz = 1e-5  # no flow in outer box
@@ -1196,6 +1199,11 @@ class UnstructReservoir:
             self.biot_mean[9 * cell_id] = self.biot  # ?
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
+
+            # gravity for mechanics
+            #self.rho_total = 2000.
+            #gravity = 9.81
+            #self.unstr_discr.f[4 * cell_id + 2] = self.rho_total * gravity / 1.E+5
 
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
@@ -1457,7 +1465,7 @@ class UnstructReservoir:
             arr = [ux, uy, uz, dp]
             arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
-            if True: # calc stresses
+            if False: # calc stresses
                 # m.timer.node["stress"] = timer_node()
                 # m.timer.node["stress"].start()
                 print('calc_stress..')
