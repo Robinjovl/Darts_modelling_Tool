@@ -4,16 +4,16 @@ ay = 2000;
 lc = 100;
 l = 100;
 
-h = 2000;
+h = 4400;
 
 Nx_pt = 15 + 1;
 Ny_pt = 15 + 1;
-Nz = 15;
+Nz = 11;
 
-Point(1) = {0,  0,  2000, lc};
-Point(2) = {ax, 0,  2000, lc};
-Point(3) = {ax, ay, 2000, lc};
-Point(4) = {0,  ay, 2000, lc};
+Point(1) = {0,  0,  0, lc};
+Point(2) = {ax, 0,  0, lc};
+Point(3) = {ax, ay, 0, lc};
+Point(4) = {0,  ay, 0, lc};
 
 Line(1) = {1,2};
 Line(2) = {3,2};
