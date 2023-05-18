@@ -1121,20 +1121,23 @@ class UnstructReservoir:
         self.unstr_discr.physical_tags['matrix'] = [self.MATRIX]
         self.unstr_discr.physical_tags['fracture_shape'] = []
         # define rock geomechanical properties
-        E = 10000  # young, bar
-        nu = 1e-5#0.25  # poisson
+        self.E = 10000  # young, bar
+        self.nu = 1e-5 #0.25  # poisson
+
+        self.geomech_init_params(self.E, self.nu)
+
         # Lame coefficients, used to construct Stiffness  tensor
-        self.lam = E * nu / (1 + nu) / (1 - 2 * nu)
-        self.mu = E / 2 / (1 + nu)
+        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
+        self.mu = self.E / 2 / (1 + self.nu)
 
         self.biot = 1
-        self.kd_cur = E / 3 / (1 - 2 * nu)  # bulk modulus
+        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)  # bulk modulus
 
         # fluid properties
         self.fluid_compressibility = 1.e-5  # 1/bar
         self.fluid_viscosity = 1.0  # cP
 
-        self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': E, 'nu': nu}})
+        self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': self.E, 'nu': self.nu}})
         self.unstr_discr.physical_tags['boundary'] = self.PHYSICAL_TAGS
 
         mech_xm = self.ROLLER
@@ -1999,17 +2002,17 @@ class UnstructReservoir:
         return -u
 
     # parameters should be the same as E in self.prod_well
-    def geomech_init_params(self):
+    def geomech_init_params(self, young, poisson):
         # elastic constants
-        self.geomech.poisson = 0.25
-        self.geomech.young = 10000
+        self.geomech.poisson = poisson
+        self.geomech.young = young / 10. # convert bar to MPa
 
         # thermal expansion coefficient
-        self.thermal_exp_coeff = 0  # 1/°C
+        self.geomech.thermal_exp_coeff = 0  # 1/°C
 
         # Mohr-Coulomb
-        self.cohesion = 0  # assume no cohesion due to healing
-        self.friction = 0.15
+        self.geomech.cohesion = 0  # assume no cohesion due to healing
+        self.geomech.friction = 0.15
 
     def calc_centroid_inner_box(self):
         """
