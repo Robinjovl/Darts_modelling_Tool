@@ -300,7 +300,9 @@ class UnstructReservoir:
         tran[15::16] = self.tran[15::16]
         rhs[3::4] = self.rhs[3::4]
 
-        if False:
+        set_zero_biot_tran = True # to fit with proxy
+        if set_zero_biot_tran:
+            # porosity will not depend on mechanics
             tran_biot[12::16] = self.tran_biot[12::16]
             tran_biot[13::16] = self.tran_biot[13::16]
             tran_biot[14::16] = self.tran_biot[14::16]
@@ -1076,18 +1078,19 @@ class UnstructReservoir:
         from geomechanics import geomech
         self.geomech = geomech()
 
-        # XY: 0 - outer - 50 - inner -  150 - outer - 200
-        # Z : 0 - outer - 20 - inner -  30 - outer - 50
-        self.outer_box_x1 = self.outer_box_y1 = 500
-        self.outer_box_x2 = self.outer_box_y2 = 1500
-        self.outer_box_z1 = 1500
-        self.outer_box_z2 = 2500
-
-        # no bounds, one region
-        #self.outer_box_x1 = self.outer_box_y1 = -1e6
-        #self.outer_box_x2 = self.outer_box_y2 = 1e6
-        #self.outer_box_z1 = -1e6
-        #self.outer_box_z2 = 1e6
+        self.use_outer_box = False#True
+        if self.use_outer_box:
+            # box : z_min - outer - z1 - inner -  z2 - outer - z_max
+            self.outer_box_x1 = self.outer_box_y1 = 500
+            self.outer_box_x2 = self.outer_box_y2 = 1500
+            self.outer_box_z1 = 500
+            self.outer_box_z2 = 1500
+        else:
+            # no bounds, one region
+            self.outer_box_x1 = self.outer_box_y1 = -1e6
+            self.outer_box_x2 = self.outer_box_y2 = 1e6
+            self.outer_box_z1 = -1e6
+            self.outer_box_z2 = 1e6
 
         self.file_path = mesh_file
 
@@ -1119,7 +1122,7 @@ class UnstructReservoir:
         self.unstr_discr.physical_tags['fracture_shape'] = []
         # define rock geomechanical properties
         E = 10000  # young, bar
-        nu = 0.25  # poisson
+        nu = 1e-5#0.25  # poisson
         # Lame coefficients, used to construct Stiffness  tensor
         self.lam = E * nu / (1 + nu) / (1 - 2 * nu)
         self.mu = E / 2 / (1 + nu)
@@ -1140,7 +1143,6 @@ class UnstructReservoir:
         mech_yp = self.ROLLER
         mech_zm = self.FREE
         mech_zp = self.ROLLER
-        # free = self.LOAD(0.0, [0.0, 0.0, 0.0])
 
         flow_xm = self.NO_FLOW
         flow_xp = self.NO_FLOW
@@ -1180,13 +1182,13 @@ class UnstructReservoir:
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
-            #cell_in_outer_box = True
-            #if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
-            #        self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
-            #        self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
-            #    cell_in_outer_box = False
+            cell_in_outer_box = True
+            if self.outer_box_x1 < cell.centroid[0] < self.outer_box_x2 and \
+                    self.outer_box_y1 < cell.centroid[1] < self.outer_box_y2 and \
+                    self.outer_box_z1 < cell.centroid[2] < self.outer_box_z2:
+                cell_in_outer_box = False
 
-            if False: #cell_in_outer_box:
+            if cell_in_outer_box:
                 permx = permy = permz = 1e-5  # no flow in outer box
             else:
                 permx = self.permx
@@ -1200,10 +1202,9 @@ class UnstructReservoir:
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
 
-            # gravity for mechanics
+            # gravity for mechanics +0 -x-axis; +1 -y-axis; +2 -z-axis
             #self.rho_total = 2000.
-            #gravity = 9.81
-            #self.unstr_discr.f[4 * cell_id + 2] = self.rho_total * gravity / 1.E+5
+            #self.unstr_discr.f[4 * cell_id + 2] = self.rho_total * 9.81 / 1.E+5
 
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
@@ -2057,13 +2058,9 @@ class UnstructReservoir:
         centroid_list_z = []
         for ith_cell in self.unstr_discr.mat_cell_info_dict:
             c = self.unstr_discr.mat_cell_info_dict[ith_cell].centroid
-            if True:
-                # if      self.outer_box_x1 < c[0] < self.outer_box_x2 and \
-                #        self.outer_box_y1 < c[1] < self.outer_box_y2 and \
-                #        self.outer_box_z1 < c[2] < self.outer_box_z2:
-                centroid_list_x.append(c[0])
-                centroid_list_y.append(c[1])
-                centroid_list_z.append(c[2])
+            centroid_list_x.append(c[0])
+            centroid_list_y.append(c[1])
+            centroid_list_z.append(c[2])
             tot_cell_count += 1
         centroids = np.vstack([np.array(centroid_list_y), np.array(centroid_list_x), np.array(centroid_list_z)])
         return centroids, None
