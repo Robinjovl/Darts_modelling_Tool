@@ -1078,7 +1078,7 @@ class UnstructReservoir:
         from geomechanics import geomech
         self.geomech = geomech()
 
-        self.use_outer_box = False#True
+        self.use_outer_box = True#False
         if self.use_outer_box:
             # box : z_min - outer - z1 - inner -  z2 - outer - z_max
             self.outer_box_x1 = self.outer_box_y1 = 500
@@ -1122,7 +1122,7 @@ class UnstructReservoir:
         self.unstr_discr.physical_tags['fracture_shape'] = []
         # define rock geomechanical properties
         self.E = 10000  # young, bar
-        self.nu = 1e-5 #0.25  # poisson
+        self.nu = 0.25  # poisson
 
         self.geomech_init_params(self.E, self.nu)
 
@@ -1130,7 +1130,7 @@ class UnstructReservoir:
         self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
         self.mu = self.E / 2 / (1 + self.nu)
 
-        self.biot = 1
+        self.biot = 0.8
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)  # bulk modulus
 
         # fluid properties

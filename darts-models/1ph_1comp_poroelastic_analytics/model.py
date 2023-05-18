@@ -33,6 +33,7 @@ class Model(DartsModel):
 
         if case == 'prod_well':
             self.add_wells()
+            pass
         #self.add_wells_frac()
 
         self.timer.node["initialization"].stop()
