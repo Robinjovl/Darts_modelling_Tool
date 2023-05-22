@@ -1130,11 +1130,11 @@ class UnstructReservoir:
         self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
         self.mu = self.E / 2 / (1 + self.nu)
 
-        self.biot = 0.8
+        self.biot = 1.0
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)  # bulk modulus
 
         # fluid properties
-        self.fluid_compressibility = 1.e-5  # 1/bar
+        self.fluid_compressibility = 1e-10  # 1/bar
         self.fluid_viscosity = 1.0  # cP
 
         self.unstr_discr.init_matrix_stiffness({self.MATRIX: {'E': self.E, 'nu': self.nu}})
@@ -1469,7 +1469,7 @@ class UnstructReservoir:
             arr = [ux, uy, uz, dp]
             arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
-            if True: # calc stresses
+            if False: # calc stresses
                 # m.timer.node["stress"] = timer_node()
                 # m.timer.node["stress"].start()
                 print('calc_stress..')
