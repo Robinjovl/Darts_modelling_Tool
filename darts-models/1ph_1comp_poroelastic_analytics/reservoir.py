@@ -1469,7 +1469,7 @@ class UnstructReservoir:
             arr = [ux, uy, uz, dp]
             arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
 
-            if False: # calc stresses
+            if True: # calc stresses
                 # m.timer.node["stress"] = timer_node()
                 # m.timer.node["stress"].start()
                 print('calc_stress..')
@@ -2105,7 +2105,8 @@ class UnstructReservoir:
         P current pressure array
         '''
         self.delta_pressure = P - self.p_init
-        self.delta_pressure *= 0.1  # convert units bar->MPa
+        self.delta_pressure *= 0.1 * self.biot  # 0.1 - convert units bar->MPa
+
 
 
     def get_full_vector(self, u_inner):

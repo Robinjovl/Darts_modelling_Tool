@@ -78,6 +78,7 @@ class geomech():
 
 
     # calculate strain and stress tensors from displacements on fault_surface
+    # return units: bars
     #@njit
     def calc_strain_stress(self, fault_surface, prisms, delta_pressure):
         # compute displacement derivatives
@@ -138,7 +139,7 @@ class geomech():
 
         stress = self.young * (strain + self.poisson / (1 - 2 * self.poisson) *
                                volumetric_strain * kronecker) / (1 + self.poisson)
-        return stress, strain
+        return stress * 0.1, strain * 0.1 # convert to bars
 
 
 class fault():
