@@ -221,18 +221,29 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     m.physics.engine.find_equilibrium = False
 
     # for rectangular grid
-    nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
-    ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
-    x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
-    pres = { 'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
-    disp = { 'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
-    if case == 'mandel':
-        pres['analytics'][0] = m.reservoir.mandel_exact_pressure(t=0.0, xc=x)
-    elif case == 'terzaghi':
-        pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(t=0.0, xc=x)
-    elif case == 'terzaghi_two_layers':
-        pres['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_pressure(t=0, xc=x)
-        disp['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_displacement(t=0, xc=x)
+    x_centers = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in
+              range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)
+    x_centers = np.unique(x_centers)
+    y_centers = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[1] for i in
+              range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)
+    y_centers = np.unique(y_centers)
+    z_centers = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[2] for i in
+              range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)
+    z_centers = np.unique(z_centers)
+    nx = x_centers.size
+    ny = y_centers.size
+    nz = z_centers.size
+    middle_x = (x_centers.max() + x_centers.min()) / 2.
+    middle_y = (y_centers.max() + y_centers.min()) / 2.
+    middle_z = (z_centers.max() + z_centers.min()) / 2.
+    # middle lines
+    #half_x = ny//2
+    #half_z = nx * ny // 2
+    #x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny + half_x].centroid[0] for i in range(nx)])
+    #y = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[j * ny + half_y].centroid[0] for j in range(ny)])
+    #z = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[k * nx * ny + half_z].centroid[2] for k in range(nz)])
+
+    plot_data = {}
 
     time = 0.0
     for ith_step, dt in enumerate(t):
@@ -244,29 +255,88 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         # save pressure at the right boundary of grid
         X = np.array(m.physics.engine.X, copy=False)
         end_idx = m.reservoir.mesh.n_res_blocks * m.physics.engine.N_VARS  # to skip additional cells for wells, 2 cells per well
-        pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
-        disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR:end_idx:m.physics.engine.N_VARS][::ny] # for rectangular grid
-        if case == 'mandel':
-            pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
-        elif case == 'terzaghi':
-            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(t=time, xc=x)
-        elif case == 'terzaghi_two_layers':
-            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_pressure(t=time, xc=x)
-            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_displacement(t=time, xc=x)
 
-        pres['time'][ith_step + 1] = time
-        disp['time'][ith_step + 1] = time
+        pressure = X[m.physics.engine.P_VAR:end_idx:m.physics.engine.N_VARS]
+        ux = X[m.physics.engine.U_VAR:end_idx:m.physics.engine.N_VARS]
+        uy = X[m.physics.engine.U_VAR+1:end_idx:m.physics.engine.N_VARS]
+        uz = X[m.physics.engine.U_VAR+2:end_idx:m.physics.engine.N_VARS]
+
+        # prepare eval data along x-axis
+        eval_points = np.zeros((3, x_centers.size))
+        eval_points[0, :] = middle_y
+        eval_points[1, :] = x_centers
+        eval_points[2, :] = middle_z
+
+        n_eval_points = eval_points.shape[1]
+        eval_idx = np.zeros(n_eval_points, dtype=np.int32)
+        for i in range(n_eval_points):
+            eval_idx[i] = m.reservoir.get_cell_id_by_coord(eval_points[:,i])
+
+        arr = m.reservoir.calc_geomech(m.physics, eval_points, eval_idx, dirs=['x'])
+
+        # prepare eval data along z-axis
+        eval_points_z = np.zeros((3, z_centers.size))
+        eval_points_z[0, :] = middle_y
+        eval_points_z[1, :] = middle_x
+        eval_points_z[2, :] = z_centers
+
+        n_eval_points_z = eval_points_z.shape[1]
+        eval_idx_z = np.zeros(n_eval_points_z, dtype=np.int32)
+        for i in range(n_eval_points_z):
+            eval_idx_z[i] = m.reservoir.get_cell_id_by_coord(eval_points_z[:,i])
+
+        arr_z = m.reservoir.calc_geomech(m.physics, eval_points_z, eval_idx_z, dirs=['z'])
+
+        if 'x' not in plot_data.keys(): # first timestep - init arrays
+            plot_data['darts'] = dict()
+            plot_data['proxy'] = dict()
+            plot_data['darts']['u_x'] = np.zeros((len(t), n_eval_points))  # u_x along x
+            plot_data['proxy']['u_x'] = np.zeros((len(t), n_eval_points))
+            plot_data['darts']['u_z'] = np.zeros((len(t), n_eval_points_z))  # u_z along z
+            plot_data['proxy']['u_z'] = np.zeros((len(t), n_eval_points_z))
+            plot_data['time'] = np.zeros(len(t))
+            plot_data['x'] = x_centers
+            plot_data['y'] = y_centers
+            plot_data['z'] = z_centers
+            plot_data['mid_x'] = middle_x
+            plot_data['mid_y'] = middle_y
+            plot_data['mid_z'] = middle_z
+
+        plot_data['time'][ith_step] = time
+        plot_data['darts']['u_x'][ith_step] = ux[eval_idx]
+        plot_data['proxy']['u_x'][ith_step] = arr['u_x']
+        plot_data['darts']['u_z'][ith_step] = uz[eval_idx_z]
+        plot_data['proxy']['u_z'][ith_step] = arr_z['u_z']
+
         # write a vtk snapshot
         m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics, verbose=True)
+
 
     write_time_data(m, case + '.pkl', case + '.xlsx')
     m.print_timers()
 
-    if case != 'terzaghi_two_layers_no_analytics':
-        save_data = True
-        plot_comparison(m, pres, scheme, case, save_data=save_data)
-        if case == 'terzaghi_two_layers':
-            plot_comparison(m, disp, scheme, case, save_data=save_data)
+    plot_comparison_proxy(m, plot_data)
+
+def plot_comparison_proxy(m, data):
+    prefix = 'sol_poromechanics/'
+    x = data['x']
+    z = data['z']
+    ts = -1 # last timestep
+
+    fig, (ax1, ax2) = plt.subplots(2)
+    ax1.plot(x, data['darts']['u_x'][ts,:], 'r', label='darts')
+    ax1.plot(x, data['proxy']['u_x'][ts,:], 'b--', label='proxy')
+    ax1.set_title('u_x')
+    ax1.set_xlabel('x')
+
+    ax2.plot(z, data['darts']['u_z'][ts,:], 'r', label='darts')
+    ax2.plot(z, data['proxy']['u_z'][ts,:], 'b--', label='proxy')
+    ax2.set_title('u_z')
+    ax2.set_xlabel('z')
+    plt.legend()
+    plt.savefig(prefix + 'compare_proxy.png', dpi=500)
+    plt.show()
+
 
 def plot_comparison(m, data, scheme, case, save_data=False):
     prefix = 'sol_poromechanics/'

@@ -1057,6 +1057,26 @@ class UnstructReservoir:
         self.tD = 1.0
         self.pD = 1.0
 
+    def get_cell_id_by_coord(self, coord):
+        '''
+
+        Parameters
+        ----------
+        coord   order YXZ
+
+        Returns
+        -------
+
+        '''
+        dist = 1.E+10
+        id = -1
+        for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items():
+            cur_dist = (cell.centroid[0] - coord[1]) ** 2 + (cell.centroid[1] - coord[0]) ** 2 + \
+                       (cell.centroid[2] - coord[2]) ** 2
+            if dist > cur_dist:
+                dist = cur_dist
+                id = cell_id
+        return id
     def prod_well(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 100  # bar
@@ -1366,7 +1386,42 @@ class UnstructReservoir:
                     cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
         return cell_data['p'][-1]
 
-    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False):
+
+    def calc_geomech(self, physics, eval_points, eval_idx, dirs=['x','y','z']):
+        arr = {}
+        if self.proxy:  # and ti == n_time_steps - 1: # calc geomech only on last tstep
+            # m.timer.node["displs"] = timer_node()
+            # m.timer.node["displs"].start()
+            print('calc_displs..')
+            P = self.get_pressure(physics)
+            [ux, uy, uz, dp] = self.calc_displs(P, eval_points, dirs=['x','y','z'])
+            print('ok!')
+            # m.timer.node["displs"].stop()
+
+            arr['u_x'] = ux
+            arr['u_y'] = uy
+            arr['u_z'] = uz
+            arr['dp'] = dp
+
+            if False: # calc stresses
+                # m.timer.node["stress"] = timer_node()
+                # m.timer.node["stress"].start()
+                print('calc_stress..')
+                stress, strain = self.geomech.calc_strain_stress(self.centers,
+                                                                 self.prisms,
+                                                                 self.delta_pressure)
+                s_list = []
+                for s in stress:
+                    s_list.append(self.get_full_vector(s))
+                # [Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
+                print('ok!')
+                # m.timer.node["stress"].stop()
+
+                arr += s_list  # [Sx, Sy, Sz, Syz, Sxz, Sxy]
+                arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
+        return arr
+
+    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False, arr = [], arr_names = []):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -1454,37 +1509,6 @@ class UnstructReservoir:
                     cell_data['permy'].append(np.array([p.values[4] for p in perms_arr]))
                     cell_data['permz'].append(np.array([p.values[8] for p in perms_arr]))
             geom_id += 1
-
-        arr = []
-        arr_names = []
-        if self.proxy:  # and ti == n_time_steps - 1: # calc geomech only on last tstep
-            # m.timer.node["displs"] = timer_node()
-            # m.timer.node["displs"].start()
-            print('calc_displs..')
-            P = self.get_pressure(physics)
-            [ux, uy, uz, dp] = self.calc_displs(P, only_1st_layer=False)
-            print('ok!')
-            # m.timer.node["displs"].stop()
-
-            arr = [ux, uy, uz, dp]
-            arr_names = ['Ux_proxy', 'Uy_proxy', 'Uz_proxy', 'DP_proxy']
-
-            if False: # calc stresses
-                # m.timer.node["stress"] = timer_node()
-                # m.timer.node["stress"].start()
-                print('calc_stress..')
-                stress, strain = self.geomech.calc_strain_stress(self.centers,
-                                                                 self.prisms,
-                                                                 self.delta_pressure)
-                s_list = []
-                for s in stress:
-                    s_list.append(self.get_full_vector(s))
-                # [Sx, Sy, Sz, Syz, Sxz, Sxy] = stress
-                print('ok!')
-                # m.timer.node["stress"].stop()
-
-                arr += s_list  # [Sx, Sy, Sz, Syz, Sxz, Sxy]
-                arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
 
             for i in range(len(arr_names)):
                 cell_data[arr_names[i]] = [arr[i]]
@@ -2096,7 +2120,7 @@ class UnstructReservoir:
 
         # centers
         # self.centers, self.local_to_global = self.calc_centroid_inner_box()
-        self.centers, self.local_to_global = self.calc_centroid()
+        #self.centers, self.local_to_global = self.calc_centroid()
         #self.centers += 0.005  # shift center to avoid instability in proxy-solution
 
     def init_delta_pressure(self, P):
@@ -2121,7 +2145,7 @@ class UnstructReservoir:
         u[self.local_to_global] = u_inner[:]
         return u
 
-    def calc_displs(self, P, only_1st_layer=False):
+    def calc_displs(self, P, eval_points, dirs=['x','y','z']):
         '''
         return list of 3 displacement vectors, values are  in meters
         displs computed at the centers of cells
@@ -2130,26 +2154,9 @@ class UnstructReservoir:
         self.geomech_init_geometry()
         self.init_delta_pressure(P)
 
-        if only_1st_layer:  # calc displs only for the 1-st layer
-            assert (True)  # (not implemented for unstructured grid)
-            n_act_cells_1st_layer = 0
-            centers_ptr = self.centers[:, :n_act_cells_1st_layer]
-            print('n_act_cells_1st_layer', n_act_cells_1st_layer)
-        else:
-            centers_ptr = self.centers
-
         # print('centers_ptr', centers_ptr.shape)
-        ux1, uy1, uz1 = self.geomech.calc_displacements(centers_ptr, self.prisms, self.delta_pressure)
-
-        if only_1st_layer:  # fill the rest displ values with zeros
-            n_act_cells_rest_layers = self.discr_mesh.n_cells - n_act_cells_1st_layer
-            ux = np.hstack([ux1, np.zeros(n_act_cells_rest_layers)])
-            uy = np.hstack([uy1, np.zeros(n_act_cells_rest_layers)])
-            uz = np.hstack([uz1, np.zeros(n_act_cells_rest_layers)])
-        else:
-            ux = self.get_full_vector(ux1)
-            uy = self.get_full_vector(uy1)
-            uz = self.get_full_vector(uz1)
+        ux, uy, uz = self.geomech.calc_displacements(eval_points, self.prisms,
+                                                     self.delta_pressure, dirs)
 
         return ux, uy, uz, self.delta_pressure
 

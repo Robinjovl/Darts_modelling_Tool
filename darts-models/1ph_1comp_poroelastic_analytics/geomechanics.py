@@ -64,16 +64,20 @@ class geomech():
 
         return stress_thermoelastic
 
-    def calc_displacements(self, points, prisms, delta_pressure):
+    def calc_displacements(self, points, prisms, delta_pressure, dirs=['x','y','z']):
         '''
         arg: points: points where to compute
         arg: prisms, cells geometry
         arg: delta_pressure, in MPa
         return: displacements at points, in meters
         '''
-        ux = cpt.displacement_x_component(points, prisms, delta_pressure, self.poisson, self.young)
-        uy = cpt.displacement_y_component(points, prisms, delta_pressure, self.poisson, self.young)
-        uz = cpt.displacement_z_component(points, prisms, delta_pressure, self.poisson, self.young)
+        ux = uy = uz = None
+        if 'x' in dirs:
+            ux = cpt.displacement_x_component(points, prisms, delta_pressure, self.poisson, self.young)
+        if 'y' in dirs:
+            uy = cpt.displacement_y_component(points, prisms, delta_pressure, self.poisson, self.young)
+        if 'z' in dirs:
+            uz = cpt.displacement_z_component(points, prisms, delta_pressure, self.poisson, self.young)
         return ux, uy, uz
 
 
