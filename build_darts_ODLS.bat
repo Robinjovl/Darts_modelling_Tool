@@ -26,10 +26,8 @@ cd ..
 
 rem 4 Build wheel
 echo 'build darts.whl for windows started'
-cd darts-package
 rem copy VS redist libraries 
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
 python setup.py build bdist_wheel --plat-name=win-amd64
-cd ..
