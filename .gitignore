@@ -1,2 +1,19 @@
 # macOS files
 .DS_Store
+
+# binaries
+darts/*.so
+darts/*.pyd
+darts/*.dll
+/dist
+/open_darts.egg-info
+
+docs/_build
+__pycache__/
+darts/__pycache__/
+
+*.exp
+*.iobj
+*.ipdb
+*.lib
+*.pdb
