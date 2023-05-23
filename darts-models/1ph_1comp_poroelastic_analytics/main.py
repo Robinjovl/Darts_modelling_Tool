@@ -200,8 +200,9 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     # t = np.append(t, 86400 * np.ones(int((17280000-86400) / 86400)) / 86400)
     # nt = t.size
 
-    mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
-    mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
+    #mesh_file = 'meshes/transfinite1_outer_box2.msh'
+    #mesh_file = 'meshes/transfinite1_outer_box2_debug_21.msh'
+    mesh_file = 'meshes/transfinite1_outer_box2_debug_11.msh'
 
     m = Model(case=case, scheme=scheme, mesh=mesh_file)
     m.init()
@@ -210,7 +211,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     m.timer.node["update"] = timer_node()
 
     if case == 'prod_well':
-        p = m.reservoir.proxy
+        proxy_flag = m.reservoir.proxy
         m.reservoir.proxy = False # do not calc geomech on first tstep
         # set equilibrium (including boundary conditions) in case of initial stress (reservoir conditions)
         # calculate initial volumetric strain eps_vol_ref to use as initial afterwards
@@ -219,7 +220,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         m.params.first_ts = 1
         run_python(m, 1.0, init_step=True)
         m.reinit_reference(m.physics, output_directory)
-        m.reservoir.proxy = p
+        m.reservoir.proxy = proxy_flag
 	    
     m.physics.engine.find_equilibrium = False
 
@@ -259,6 +260,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         uz = X[m.physics.engine.U_VAR+2:end_idx:m.physics.engine.N_VARS]
 
         # prepare eval data along x-axis
+        eval_eps = 0.01 # to avoid instab of proxy
         eval_points = np.zeros((3, x_centers.size))
         eval_points[0, :] = middle_y
         eval_points[1, :] = x_centers
@@ -269,7 +271,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         for i in range(n_eval_points):
             eval_idx[i] = m.reservoir.get_cell_id_by_coord(eval_points[:,i])
 
-        arr = m.reservoir.calc_geomech(m.physics, eval_points, eval_idx, dirs=['x'])
+        arr = m.reservoir.calc_geomech(m.physics, eval_points + eval_eps, eval_idx, dirs=['x'])
 
         # prepare eval data along z-axis
         eval_points_z = np.zeros((3, z_centers.size))
@@ -282,7 +284,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         for i in range(n_eval_points_z):
             eval_idx_z[i] = m.reservoir.get_cell_id_by_coord(eval_points_z[:,i])
 
-        arr_z = m.reservoir.calc_geomech(m.physics, eval_points_z, eval_idx_z, dirs=['z'])
+        arr_z = m.reservoir.calc_geomech(m.physics, eval_points_z + eval_eps, eval_idx_z, dirs=['z'])
 
         if 'x' not in plot_data.keys(): # first timestep - init arrays
             plot_data['darts'] = dict()
@@ -291,6 +293,8 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
             plot_data['proxy']['u_x'] = np.zeros((len(t), n_eval_points))
             plot_data['darts']['u_z'] = np.zeros((len(t), n_eval_points_z))  # u_z along z
             plot_data['proxy']['u_z'] = np.zeros((len(t), n_eval_points_z))
+            plot_data['p_x'] = np.zeros((len(t), n_eval_points))  # p along x
+            plot_data['p_z'] = np.zeros((len(t), n_eval_points_z))  # p along z
             plot_data['time'] = np.zeros(len(t))
             plot_data['x'] = x_centers
             plot_data['y'] = y_centers
@@ -302,8 +306,12 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         plot_data['time'][ith_step] = time
         plot_data['darts']['u_x'][ith_step] = ux[eval_idx]
         plot_data['proxy']['u_x'][ith_step] = arr['u_x']
+
         plot_data['darts']['u_z'][ith_step] = uz[eval_idx_z]
         plot_data['proxy']['u_z'][ith_step] = arr_z['u_z']
+
+        plot_data['p_x'][ith_step] = pressure[eval_idx]
+        plot_data['p_z'][ith_step] = pressure[eval_idx_z]
 
         # write a vtk snapshot
         m.reservoir.write_to_vtk(output_directory, ith_step + 1,
@@ -321,20 +329,32 @@ def plot_comparison_proxy(m, data):
     z = data['z']
     ts = -1 # last timestep
 
-    fig, (ax1, ax2) = plt.subplots(2, sharex=True)
-    ax1.plot(x, data['darts']['u_x'][ts,:], 'r', label='darts')
-    ax1.plot(x, data['proxy']['u_x'][ts,:], 'b--', label='proxy')
-    ax1.set_title('u_x')
-    ax1.set_xlabel('x')
-    ax1.legend()
-    ax1.grid(True)
+    fig, ax = plt.subplots(2, 2)
+    ax[0,0].plot(x, np.fabs(data['darts']['u_x'][ts,:]), 'r-o', label='darts')
+    ax[0,0].plot(x, np.fabs(data['proxy']['u_x'][ts,:]), 'b--o', label='proxy')
+    ax[0,0].set_title('u_x')
+    ax[0,0].set_xlabel('x')
+    ax[0,0].legend()
+    ax[0,0].grid(True)
 
-    ax2.plot(z, data['darts']['u_z'][ts,:], 'r', label='darts')
-    ax2.plot(z, data['proxy']['u_z'][ts,:], 'b--', label='proxy')
-    ax2.set_title('u_z')
-    ax2.set_xlabel('z')
-    ax2.legend()
-    ax2.grid(True)
+    ax[0,1].plot(z, np.fabs(data['darts']['u_z'][ts,:]), 'r-o', label='darts')
+    ax[0,1].plot(z, np.fabs(data['proxy']['u_z'][ts,:]), 'b--o', label='proxy')
+    ax[0,1].set_title('u_z')
+    ax[0,1].set_xlabel('z')
+    ax[0,1].legend()
+    ax[0,1].grid(True)
+
+    ax[1,0].plot(x, np.fabs(data['p_x'][ts,:]), 'r-o')
+    ax[1,0].set_title('p')
+    ax[1,0].set_xlabel('x')
+    ax[1,0].legend()
+    ax[1,0].grid(True)
+
+    ax[1,1].plot(z, np.fabs(data['p_z'][ts,:]), 'r-o')
+    ax[1,1].set_title('p')
+    ax[1,1].set_xlabel('z')
+    ax[1,1].legend()
+    ax[1,1].grid(True)
 
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)

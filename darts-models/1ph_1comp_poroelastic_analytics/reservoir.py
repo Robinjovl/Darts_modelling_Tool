@@ -1081,7 +1081,7 @@ class UnstructReservoir:
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 100  # bar
         self.porosity = 0.2
-        self.permx = self.permy = self.permz = 10.0  # mD
+        self.permx = self.permy = self.permz = 100.0  # mD
 
         # self.proxy = False
         self.proxy = True
@@ -1412,7 +1412,7 @@ class UnstructReservoir:
                 arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
         return arr
 
-    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False, arr):
+    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False, arr={}):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
