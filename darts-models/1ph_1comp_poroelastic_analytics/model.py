@@ -53,7 +53,7 @@ class Model(DartsModel):
         # create physics
         # self.physics = Poromechanics(timer=self.timer, physics_filename='input/physics.in',
         #             n_points=self.n_points, min_p=-1000, max_p=1000, max_u=1.E+20)
-        self.physics = Poroelasticity(self.property_container, self.timer, n_points=400,
+        self.physics = Poroelasticity(self.property_container, self.timer, n_points=1000,
                                      min_p=-10, max_p=1000)
 
         self.reservoir.P_VAR = self.physics.engine.P_VAR #index of pressure value in unknown vector

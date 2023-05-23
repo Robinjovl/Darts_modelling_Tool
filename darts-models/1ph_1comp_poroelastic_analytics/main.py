@@ -260,7 +260,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         uz = X[m.physics.engine.U_VAR+2:end_idx:m.physics.engine.N_VARS]
 
         # prepare eval data along x-axis
-        eval_eps = 0.01 # to avoid instab of proxy
+        eval_eps = 0#0.01 # to avoid instab of proxy
         eval_points = np.zeros((3, x_centers.size))
         eval_points[0, :] = middle_y
         eval_points[1, :] = x_centers
@@ -488,5 +488,5 @@ def run_test(args: list = []):
 #test(case='terzaghi', scheme='stabilized', mesh='rect')
 
 #test(case='mandel', scheme='non_stabilized', mesh='rect')
-run_and_plot(case='prod_well', scheme='stabilized')
+run_and_plot(case='prod_well', scheme='non_stabilized')
 

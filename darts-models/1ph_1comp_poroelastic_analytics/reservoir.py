@@ -1182,6 +1182,15 @@ class UnstructReservoir:
         self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
         self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
 
+        if scheme == 'stabilized':
+            self.pm.scheme = scheme_type.apply_eigen_splitting_new
+            self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
+
         for cell_id in range(len(self.unstr_discr.faces)):
             faces = self.unstr_discr.faces[cell_id]
 
