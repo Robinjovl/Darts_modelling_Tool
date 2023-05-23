@@ -187,6 +187,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     max_dt = 30  # sec
     # generate log-increasing timesteps
     t = np.logspace(-3, np.log10(max_dt), nt)
+    #t = [0.1, 0.5, 1, 5, 10]
     t = [10]
     # nt = 200
     # max_t = 200
@@ -201,8 +202,9 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     # nt = t.size
 
     #mesh_file = 'meshes/transfinite1_outer_box2.msh'
+    mesh_file = 'meshes/transfinite1_outer_box2_debug_51.msh'
     #mesh_file = 'meshes/transfinite1_outer_box2_debug_21.msh'
-    mesh_file = 'meshes/transfinite1_outer_box2_debug_11.msh'
+    #mesh_file = 'meshes/transfinite1_outer_box2_debug_11.msh'
 
     m = Model(case=case, scheme=scheme, mesh=mesh_file)
     m.init()

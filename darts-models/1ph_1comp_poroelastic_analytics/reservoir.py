@@ -1081,7 +1081,7 @@ class UnstructReservoir:
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 100  # bar
         self.porosity = 0.2
-        self.permx = self.permy = self.permz = 100.0  # mD
+        self.permx = self.permy = self.permz = 10.0  # mD
 
         # self.proxy = False
         self.proxy = True
@@ -1141,7 +1141,7 @@ class UnstructReservoir:
         self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
         self.mu = self.E / 2 / (1 + self.nu)
 
-        self.biot = 1.0
+        self.biot = 0.6
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)  # bulk modulus
 
         # fluid properties
@@ -2129,7 +2129,7 @@ class UnstructReservoir:
         P current pressure array
         '''
         self.delta_pressure = P - self.p_init
-        self.delta_pressure *= 0.1 * self.biot  # 0.1 - convert units bar->MPa
+        self.delta_pressure *= 0.1 #* self.biot  # 0.1 - convert units bar->MPa
 
 
 
