@@ -200,7 +200,10 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     # t = np.append(t, 86400 * np.ones(int((17280000-86400) / 86400)) / 86400)
     # nt = t.size
 
-    m = Model(case=case, scheme=scheme)
+    mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
+    mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
+
+    m = Model(case=case, scheme=scheme, mesh=mesh_file)
     m.init()
     redirect_darts_output('log.txt')
     output_directory = 'sol_{:s}'.format(m.physics_type)
@@ -236,12 +239,6 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     middle_x = (x_centers.max() + x_centers.min()) / 2.
     middle_y = (y_centers.max() + y_centers.min()) / 2.
     middle_z = (z_centers.max() + z_centers.min()) / 2.
-    # middle lines
-    #half_x = ny//2
-    #half_z = nx * ny // 2
-    #x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny + half_x].centroid[0] for i in range(nx)])
-    #y = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[j * ny + half_y].centroid[0] for j in range(ny)])
-    #z = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[k * nx * ny + half_z].centroid[2] for k in range(nz)])
 
     plot_data = {}
 
@@ -309,7 +306,8 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         plot_data['proxy']['u_z'][ith_step] = arr_z['u_z']
 
         # write a vtk snapshot
-        m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics, verbose=True)
+        m.reservoir.write_to_vtk(output_directory, ith_step + 1,
+                                 m.physics, verbose=True)
 
 
     write_time_data(m, case + '.pkl', case + '.xlsx')
@@ -323,20 +321,27 @@ def plot_comparison_proxy(m, data):
     z = data['z']
     ts = -1 # last timestep
 
-    fig, (ax1, ax2) = plt.subplots(2)
+    fig, (ax1, ax2) = plt.subplots(2, sharex=True)
     ax1.plot(x, data['darts']['u_x'][ts,:], 'r', label='darts')
     ax1.plot(x, data['proxy']['u_x'][ts,:], 'b--', label='proxy')
     ax1.set_title('u_x')
     ax1.set_xlabel('x')
+    ax1.legend()
+    ax1.grid(True)
 
     ax2.plot(z, data['darts']['u_z'][ts,:], 'r', label='darts')
     ax2.plot(z, data['proxy']['u_z'][ts,:], 'b--', label='proxy')
     ax2.set_title('u_z')
     ax2.set_xlabel('z')
-    plt.legend()
+    ax2.legend()
+    ax2.grid(True)
+
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    fig.tight_layout()
+
     plt.savefig(prefix + 'compare_proxy.png', dpi=500)
     plt.show()
-
 
 def plot_comparison(m, data, scheme, case, save_data=False):
     prefix = 'sol_poromechanics/'

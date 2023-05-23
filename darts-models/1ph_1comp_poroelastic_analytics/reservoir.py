@@ -1077,7 +1077,7 @@ class UnstructReservoir:
                 dist = cur_dist
                 id = cell_id
         return id
-    def prod_well(self, scheme='non_stabilized', mesh='rect'):
+    def prod_well(self, scheme='non_stabilized', mesh_file=''):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 100  # bar
         self.porosity = 0.2
@@ -1085,15 +1085,6 @@ class UnstructReservoir:
 
         # self.proxy = False
         self.proxy = True
-        '''
-                if self.proxy == True:
-                    mesh_file = 'meshes/transfinite1.msh'             #mesh for proxy
-                else:
-                    #mesh_file = 'meshes/transfinite_outer_box.msh'
-                    mesh_file = 'meshes/transfinite1_outer_box2.msh' #mesh for fully-coupled
-        '''
-        # mesh_file = 'meshes/transfinite1_outer_box2.msh'  # mesh for fully-coupled
-        mesh_file = 'meshes/transfinite1_outer_box2_debug.msh'  # mesh for fully-coupled
 
         from geomechanics import geomech
         self.geomech = geomech()
@@ -1421,7 +1412,7 @@ class UnstructReservoir:
                 arr_names += ['Sxx_proxy', 'Syy_proxy', 'Szz_proxy', 'Syz_proxy', 'Sxz_proxy', 'Sxy_proxy']
         return arr
 
-    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False, arr = [], arr_names = []):
+    def write_to_vtk(self, output_directory, ith_step, physics, verbose=False, arr):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -1510,8 +1501,8 @@ class UnstructReservoir:
                     cell_data['permz'].append(np.array([p.values[8] for p in perms_arr]))
             geom_id += 1
 
-            for i in range(len(arr_names)):
-                cell_data[arr_names[i]] = [arr[i]]
+            for i in arr.keys():
+                cell_data[i] = [arr[i]]
 
         if verbose:
             for data_key in cell_data.keys():
