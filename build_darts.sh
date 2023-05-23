@@ -72,10 +72,10 @@ cd ..
 # build darts.whl
 
 # generating build info of darts-package
-python darts-package/darts/print_build_info.py
+python darts/print_build_info.py
 
 python3 setup.py clean
 python3 setup.py build bdist_wheel
 
 # installing
-#python3 -m pip install .
+python3 -m pip install .
