@@ -6,7 +6,8 @@ darts/*.so
 darts/*.pyd
 darts/*.dll
 /dist
-/open_darts.egg-info
+open_darts.egg-info
+build/
 
 docs/_build
 __pycache__/
@@ -17,3 +18,6 @@ darts/__pycache__/
 *.ipdb
 *.lib
 *.pdb
+
+# logs from models
+darts-models/_logs
