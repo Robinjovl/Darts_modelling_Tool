@@ -23,7 +23,7 @@ license = {file = "LICENSE"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: C++",
-    "License :: OSI Approved :: Apache Software License"
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
 
 [project.urls]
