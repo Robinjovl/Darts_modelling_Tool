@@ -9,9 +9,13 @@ darts/*.dll
 open_darts.egg-info
 build/
 
+# cache
 docs/_build
 __pycache__/
 darts/__pycache__/
+
+# building info
+darts/build_info.txt
 
 *.exp
 *.iobj

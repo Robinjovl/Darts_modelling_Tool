@@ -11,6 +11,8 @@ then
 fi
 
 echo "ODLS=$ODLS NT=$NT"
+echo -e "\n- Update submodules: START\n"
+git submodule update --recursive --remote --init
 
 which python3-config
 export PYTHON_IFLAGS=`python3-config --includes`
