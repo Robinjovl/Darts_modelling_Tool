@@ -19,7 +19,7 @@ CSOURCES = $(shell find ./src/opm -name '*.c')
 CPPOBJECTS = $(CPPSOURCES:%.cpp=%.o)
 COBJECTS = $(CSOURCES:%.c=%.o)
 
-EXECUTABLE = ../darts-package/darts/discretizer.so
+EXECUTABLE = ../darts/discretizer.so
 
 BUILD_MACHINE := $(shell whoami)@$(shell hostname)
 BUILD_DATE := $(shell TZ=Europe/Amsterdam date +"%d/%m/%Y, %H:%M:%S")
