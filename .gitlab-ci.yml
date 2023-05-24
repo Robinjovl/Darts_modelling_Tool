@@ -285,7 +285,7 @@ build-windows-3.6-ODLS:
         # Build whl package
         - echo 'build darts.whl for windows started'
         # Generate build info of darts-package
-        - python darts-package/darts/print_build_info.py
+        - python darts/print_build_info.py
         # copy VS redist libraries 
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
@@ -323,7 +323,7 @@ build-windows-3.6-ODLS:
         - cd ..
         # Build whl package
         - echo 'build darts.whl for windows started'
-        - python darts-package\darts\print_build_info.py
+        - python darts\print_build_info.py
         # copy VS redist libraries 
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
@@ -607,7 +607,7 @@ test-windows-3.6-ODLS:
         - pip install --upgrade --upgrade-strategy eager ./dist/$WHEEL_NAME
     script:
         # run simulation fot test models set
-        - cd darts-models
+        - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
@@ -616,7 +616,7 @@ test-windows-3.6-ODLS:
         - echo "test finished"
     artifacts:
       paths:
-        - './darts-models/_logs/*.log'
+        - './models/_logs/*.log'
       when: always
       expire_in: 1 year
 
@@ -642,14 +642,14 @@ test-windows-3.6-ODLS:
         - pip install --upgrade --upgrade-strategy eager .\dist\$env:WHEEL_NAME
     script:
         # run simulation fot test models set
-        - cd darts-models
+        - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS $PY_VER
         - cd ..
     artifacts:
       paths:
-        - '.\darts-models\_logs\*.log'
+        - '.\models\_logs\*.log'
       when: always
       expire_in: 1 year
 
@@ -675,7 +675,7 @@ deploy-testpypi:
         PYPI: 'testpypi'
 
 # pick all whl ODLS-artifacts (windows/linux, different python versions) and upload to test pipy
-# TODO auto-increment package version (in darts-package/setup.py and .gitlab-ci.yml) and add git tag; now it is done manually
+# TODO auto-increment package version (in setup.py and .gitlab-ci.yml) and add git tag; now it is done manually
 .deploy-pypi:
     stage: deploy
     # just for twine
