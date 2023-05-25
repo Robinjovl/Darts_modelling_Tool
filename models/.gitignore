@@ -7,3 +7,5 @@ darts
 *.xlsx
 *.vts
 .idea
+
+_logs/*.log
