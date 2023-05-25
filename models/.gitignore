@@ -6,5 +6,4 @@ workspace.xml
 darts
 *.xlsx
 *.vts
-*.pkl
 .idea
