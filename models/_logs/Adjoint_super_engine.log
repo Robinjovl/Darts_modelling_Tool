@@ -1,1644 +1,0 @@
-darts-linear-solvers built on May  1 2023 11:41:06 by lorozco@login04 from GITDIR-NOTFOUND
-darts-engines built on 15/05/2023, 14:52:47 by lorozco@login03 from 8e8f836-dirty
-darts-package built on 15/05/2023 14:56:21 by lorozco@login03 from 8e8f836-dirty
-Building connection list...
-Added perforation for well I1 to block 84 [5, 5, 1] with WI=200.000000
-Added perforation for well I1 to block 284 [5, 5, 2] with WI=200.000000
-Added perforation for well P1 to block 54 [15, 3, 1] with WI=200.000000
-Added perforation for well P1 to block 254 [15, 3, 2] with WI=200.000000
-Added perforation for well P2 to block 154 [15, 8, 1] with WI=200.000000
-Added perforation for well P2 to block 354 [15, 8, 2] with WI=200.000000
-Processing mesh: 400 reservoir blocks, 6 well blocks, 949 connections
-2-phase 3-component isothermal flow with kinetic reaction and diffusion CPU engine
-Sim params: 
-	First ts: 	0.001
-	Max ts: 	1
-	Mult ts: 	2
-	Max i newton: 	10
-	Max i linear: 	50
-	Tol newton: 	0.01
-	Tol linear: 	0.001
-
-START SIMULATION
--------------------------------------------------------------------------------------------------------------
-Well I1 initialized with BHP injector
-Well P1 initialized with BHP producer
-Well P2 initialized with BHP producer
-	 #1 (2.0546e-02, 3.4176e+03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.001, DT = 0.001, NI = 1, LI = 1, RES = 8.6e-06 (1.0e-01), CFL=0.001 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (3.5269e-03, 2.0536e-01): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.003, DT = 0.002, NI = 1, LI = 1, RES = 1.5e-05 (2.0e-03), CFL=0.003 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (4.7932e-03, 4.0873e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.007, DT = 0.004, NI = 1, LI = 1, RES = 3.4e-05 (8.7e-04), CFL=0.004 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (7.6598e-03, 1.7550e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.015, DT = 0.008, NI = 1, LI = 1, RES = 1.1e-04 (1.7e-03), CFL=0.008 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (1.1537e-02, 3.4691e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.031, DT = 0.016, NI = 1, LI = 1, RES = 6.8e-04 (2.6e-03), CFL=0.013 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (1.6803e-02, 5.1554e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.063, DT = 0.032, NI = 1, LI = 1, RES = 7.2e-04 (1.8e-02), CFL=0.023 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (7.3476e-03, 3.5280e-02): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.127, DT = 0.064, NI = 1, LI = 1, RES = 9.3e-04 (4.6e-04), CFL=0.050 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (1.3247e-02, 9.1170e-04): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.255, DT = 0.128, NI = 1, LI = 1, RES = 3.7e-03 (1.7e-03), CFL=0.134 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (2.5583e-02, 3.4714e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 0.511, DT = 0.256, NI = 1, LI = 1, RES = 5.0e-03 (1.1e-02), CFL=0.312 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (5.9787e-02, 2.0097e-02): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
-	 #2 (5.2590e-02, 7.5731e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 1, DT = 0.489, NI = 2, LI = 2, RES = 3.7e-03 (5.2e-03), CFL=0.445 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (5.4224e-02, 1.0548e-02): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
-	 #2 (6.0883e-02, 3.0017e-02): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 2, DT = 1, NI = 2, LI = 2, RES = 4.1e-03 (5.7e-03), CFL=1.051 (ELAPSED 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (4.3865e-02, 5.7212e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
-	 #2 (5.3605e-02, 7.6851e-04): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 3, DT = 1, NI = 2, LI = 2, RES = 3.3e-03 (4.6e-03), CFL=1.011 (ELAPSED 00:00:00, REMAINING 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (3.6313e-02, 4.5837e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
-	 #2 (3.7346e-02, 4.8649e-04): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 4, DT = 1, NI = 2, LI = 2, RES = 2.4e-03 (1.1e-05), CFL=1.029 (ELAPSED 00:00:00, REMAINING 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-	 #1 (3.4155e-02, 1.1602e-05): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
-	 #2 (3.2063e-02, 4.0895e-03): lin 1 (0.0e+00)
-Composition correction applied in 2 block(s)
--------------------------------------------------------------------------------------------------------------
- T = 5, DT = 1, NI = 2, LI = 2, RES = 1.6e-03 (3.6e-03), CFL=1.012 (ELAPSED 00:00:00, REMAINING 00:00:00 )
--------------------------------------------------------------------------------------------------------------
-Total elapsed 1.047606 sec
-	initialization 0.002527 sec
-		connection list generation 0.000603 sec
-	newton update 0.000000 sec
-	simulation 0.252117 sec
-		jacobian assembly 0.149065 sec
-			interpolation 0.141980 sec
-				customized component interpolation 0.005019 sec
-					body generation 0.004334 sec
-						point generation 0.003665 sec
-				reservoir 0 interpolation 0.932678 sec
-					body generation 0.929274 sec
-						point generation 0.928034 sec
-				well controls interpolation 0.001181 sec
-					body generation 0.001108 sec
-						point generation 0.001095 sec
-				wellbore interpolation 0.000000 sec
-		linear solver setup 0.000025 sec
-			SUPERLU 0.000004 sec
-		linear solver solve 0.092579 sec
-			SUPERLU 0.090388 sec
-		newton update 0.001415 sec
-			composition correction 0.000961 sec
-
-
-Total steps 14 (0) newton 19 (0) linear 19 (0)
----OBL Statistics---
-Number of operators: 28
-Number of points: 200
-Number of interpolations: 386512 
-Number of points used: 1269 (0.016%)
-Total elapsed 0.252117 sec
-	jacobian assembly 0.149065 sec
-		interpolation 0.141980 sec
-			customized component interpolation 0.005019 sec
-				body generation 0.004334 sec
-					point generation 0.003665 sec
-			reservoir 0 interpolation 0.932678 sec
-				body generation 0.929274 sec
-					point generation 0.928034 sec
-			well controls interpolation 0.001181 sec
-				body generation 0.001108 sec
-					point generation 0.001095 sec
-			wellbore interpolation 0.000000 sec
-	linear solver setup 0.000025 sec
-		SUPERLU 0.000004 sec
-	linear solver solve 0.092579 sec
-		SUPERLU 0.090388 sec
-	newton update 0.001415 sec
-		composition correction 0.000961 sec
-The time data results are saved!!!
-darts-linear-solvers built on May  1 2023 11:41:06 by lorozco@login04 from GITDIR-NOTFOUND
-darts-engines built on 15/05/2023, 14:52:47 by lorozco@login03 from 8e8f836-dirty
-darts-package built on 15/05/2023 14:56:21 by lorozco@login03 from 8e8f836-dirty
-Building connection list...
-Added perforation for well I1 to block 84 [5, 5, 1] with WI=200.000000
-Added perforation for well I1 to block 284 [5, 5, 2] with WI=200.000000
-Added perforation for well P1 to block 54 [15, 3, 1] with WI=200.000000
-Added perforation for well P1 to block 254 [15, 3, 2] with WI=200.000000
-Added perforation for well P2 to block 154 [15, 8, 1] with WI=200.000000
-Added perforation for well P2 to block 354 [15, 8, 2] with WI=200.000000
-
-
-The number of control variables: 946
-
-
- fval: 3.9099775639040657
- Run 1: 0.200246 s/forward_obj fval: 3.9099775944759165
- Run 2: 0.144264 s/forward_obj fval: 3.909977734867198
- Run 3: 0.125390 s/forward_obj fval: 3.909978229875204
- Run 4: 0.116517 s/forward_obj fval: 3.909979521744621
- Run 5: 0.111440 s/forward_obj fval: 3.9099821026104564
- Run 6: 0.161722 s/forward_obj fval: 3.9099850138731314
- Run 7: 0.151171 s/forward_obj fval: 3.909987622340186
- Run 8: 0.143342 s/forward_obj fval: 3.909988921727455
- Run 9: 0.137250 s/forward_obj fval: 3.9099896941509504
- Run 10: 0.132386 s/forward_obj fval: 3.9099910517551857
- Run 11: 0.128408 s/forward_obj fval: 3.9099905879215022
- Run 12: 0.125283 s/forward_obj fval: 3.909990104665281
- Run 13: 0.122451 s/forward_obj fval: 3.9099884448761766
- Run 14: 0.119968 s/forward_obj fval: 3.90998402311568
- Run 15: 0.118019 s/forward_obj fval: 3.9099786922623716
- Run 16: 0.117472 s/forward_obj fval: 3.909977671597581
- Run 17: 0.116354 s/forward_obj fval: 3.9099775666588457
- Run 18: 0.115046 s/forward_obj fval: 3.909977562059424
- Run 19: 0.113842 s/forward_obj fval: 3.909977563468912
- Run 20: 0.112754 s/forward_obj fval: 3.909977573536297
- Run 21: 0.111961 s/forward_obj fval: 3.9099776383373146
- Run 22: 0.110980 s/forward_obj fval: 3.909977933911486
- Run 23: 0.110059 s/forward_obj fval: 3.909979247914336
- Run 24: 0.109237 s/forward_obj fval: 3.9099825681353906
- Run 25: 0.108472 s/forward_obj fval: 3.9099860544168066
- Run 26: 0.107888 s/forward_obj fval: 3.909988417946571
- Run 27: 0.107276 s/forward_obj fval: 3.9099900150947784
- Run 28: 0.106741 s/forward_obj fval: 3.9099903217301235
- Run 29: 0.106091 s/forward_obj fval: 3.9099911640370997
- Run 30: 0.105534 s/forward_obj fval: 3.909991334846494
- Run 31: 0.105106 s/forward_obj fval: 3.9099915009952433
- Run 32: 0.104710 s/forward_obj fval: 3.909991175123281
- Run 33: 0.104205 s/forward_obj fval: 3.9099890281002256
- Run 34: 0.103793 s/forward_obj fval: 3.909977622832663
- Run 35: 0.103507 s/forward_obj fval: 3.909977566656033
- Run 36: 0.103058 s/forward_obj fval: 3.909977568964068
- Run 37: 0.102685 s/forward_obj fval: 3.9099775653629276
- Run 38: 0.102328 s/forward_obj fval: 3.909977564136322
- Run 39: 0.101952 s/forward_obj fval: 3.909977565653771
- Run 40: 0.102153 s/forward_obj fval: 3.909977566506272
- Run 41: 0.101851 s/forward_obj fval: 3.909977576780641
- Run 42: 0.101507 s/forward_obj fval: 3.909978161214586
- Run 43: 0.101206 s/forward_obj fval: 3.9099845447452393
- Run 44: 0.100902 s/forward_obj fval: 3.9099888681938153
- Run 45: 0.100603 s/forward_obj fval: 3.9099910597437084
- Run 46: 0.100371 s/forward_obj fval: 3.9099914621477274
- Run 47: 0.100155 s/forward_obj fval: 3.909991521487926
- Run 48: 0.099915 s/forward_obj fval: 3.909991405649519
- Run 49: 0.099681 s/forward_obj fval: 3.9099919729386965
- Run 50: 0.099438 s/forward_obj fval: 3.9099931994041954
- Run 51: 0.099219 s/forward_obj fval: 3.909998003620138
- Run 52: 0.098997 s/forward_obj fval: 3.910025019655879
- Run 53: 0.098806 s/forward_obj fval: 3.909987905661095
- Run 54: 0.098631 s/forward_obj fval: 3.9099784606144534
- Run 55: 0.098481 s/forward_obj fval: 3.909977654976745
- Run 56: 0.098310 s/forward_obj fval: 3.909977574972922
- Run 57: 0.098166 s/forward_obj fval: 3.9099775650624466
- Run 58: 0.098010 s/forward_obj fval: 3.909977616455745
- Run 59: 0.097854 s/forward_obj fval: 3.909977852556098
- Run 60: 0.097683 s/forward_obj fval: 3.9099784267852944
- Run 61: 0.097625 s/forward_obj fval: 3.9099787465420137
- Run 62: 0.097484 s/forward_obj fval: 3.909993794659874
- Run 63: 0.097355 s/forward_obj fval: 3.9099981526811827
- Run 64: 0.097233 s/forward_obj fval: 3.909996086146882
- Run 65: 0.097094 s/forward_obj fval: 3.909993354632446
- Run 66: 0.096947 s/forward_obj fval: 3.9099926106413845
- Run 67: 0.096819 s/forward_obj fval: 3.9099914535992126
- Run 68: 0.096688 s/forward_obj fval: 3.909991591778906
- Run 69: 0.096566 s/forward_obj fval: 3.9099911270038303
- Run 70: 0.096475 s/forward_obj fval: 3.9099914838870817
- Run 71: 0.096457 s/forward_obj fval: 3.909988425472427
- Run 72: 0.096351 s/forward_obj fval: 3.909977639056444
- Run 73: 0.096240 s/forward_obj fval: 3.9099775640458394
- Run 74: 0.096223 s/forward_obj fval: 3.9099775669198196
- Run 75: 0.096113 s/forward_obj fval: 3.9099775647600254
- Run 76: 0.096001 s/forward_obj fval: 3.90997756402635
- Run 77: 0.095908 s/forward_obj fval: 3.9099776820484697
- Run 78: 0.096082 s/forward_obj fval: 3.9099784191471176
- Run 79: 0.095977 s/forward_obj fval: 3.9099837274119396
- Run 80: 0.095892 s/forward_obj fval: 3.9099954817726936
- Run 81: 0.095823 s/forward_obj fval: 3.910032775026391
- Run 82: 0.095720 s/forward_obj fval: 3.9100196636568634
- Run 83: 0.095626 s/forward_obj fval: 3.9100028165542766
- Run 84: 0.095539 s/forward_obj fval: 3.9099947831823734
- Run 85: 0.095475 s/forward_obj fval: 3.9099925487598814
- Run 86: 0.095517 s/forward_obj fval: 3.909991305867464
- Run 87: 0.095461 s/forward_obj fval: 3.909990790597809
- Run 88: 0.095371 s/forward_obj fval: 3.909989750340657
- Run 89: 0.095411 s/forward_obj fval: 3.9099880891718026
- Run 90: 0.095375 s/forward_obj fval: 3.909983767833668
- Run 91: 0.095313 s/forward_obj fval: 3.909978740597855
- Run 92: 0.095232 s/forward_obj fval: 3.909977708456175
- Run 93: 0.095149 s/forward_obj fval: 3.9099775792695106
- Run 94: 0.095076 s/forward_obj fval: 3.9099775652222535
- Run 95: 0.094991 s/forward_obj fval: 3.9099775639895213
- Run 96: 0.095074 s/forward_obj fval: 3.9099776137416424
- Run 97: 0.095572 s/forward_obj fval: 3.9099778356303228
- Run 98: 0.095731 s/forward_obj fval: 3.909978449891246
- Run 99: 0.096636 s/forward_obj fval: 3.9099789225836097
- Run 100: 0.097076 s/forward_obj fval: 3.909994419666851
- Run 101: 0.108222 s/forward_obj fval: 3.9099982348539863
- Run 102: 0.108062 s/forward_obj fval: 3.9099958025160713
- Run 103: 0.107865 s/forward_obj fval: 3.909992909353932
- Run 104: 0.107726 s/forward_obj fval: 3.909991410099848
- Run 105: 0.107535 s/forward_obj fval: 3.909991050972433
- Run 106: 0.107390 s/forward_obj fval: 3.909990361866882
- Run 107: 0.107310 s/forward_obj fval: 3.9099894104746924
- Run 108: 0.107226 s/forward_obj fval: 3.909987519052038
- Run 109: 0.107044 s/forward_obj fval: 3.909983618877622
- Run 110: 0.106953 s/forward_obj fval: 3.909978754508802
- Run 111: 0.106782 s/forward_obj fval: 3.909977752719023
- Run 112: 0.108515 s/forward_obj fval: 3.9099775892608952
- Run 113: 0.109299 s/forward_obj fval: 3.9099775673453583
- Run 114: 0.109132 s/forward_obj fval: 3.9099775642439756
- Run 115: 0.108941 s/forward_obj fval: 3.909977565355661
- Run 116: 0.108781 s/forward_obj fval: 3.9099775654532016
- Run 117: 0.108614 s/forward_obj fval: 3.909977579483522
- Run 118: 0.108524 s/forward_obj fval: 3.9099780959532255
- Run 119: 0.108350 s/forward_obj fval: 3.9099843361896407
- Run 120: 0.108843 s/forward_obj fval: 3.9099891166254013
- Run 121: 0.108672 s/forward_obj fval: 3.909990419355127
- Run 122: 0.108515 s/forward_obj fval: 3.9099907194169115
- Run 123: 0.109865 s/forward_obj fval: 3.909990130827246
- Run 124: 0.109786 s/forward_obj fval: 3.9099903805101865
- Run 125: 0.109613 s/forward_obj fval: 3.909990277354006
- Run 126: 0.109451 s/forward_obj fval: 3.909989962168182
- Run 127: 0.109309 s/forward_obj fval: 3.9099897429378454
- Run 128: 0.109146 s/forward_obj fval: 3.909987164678492
- Run 129: 0.109002 s/forward_obj fval: 3.909977747199228
- Run 130: 0.109033 s/forward_obj fval: 3.9099775626863122
- Run 131: 0.110070 s/forward_obj fval: 3.9099775620736836
- Run 132: 0.110359 s/forward_obj fval: 3.9099775633743583
- Run 133: 0.110199 s/forward_obj fval: 3.9099775638245062
- Run 134: 0.110050 s/forward_obj fval: 3.9099775783899795
- Run 135: 0.109891 s/forward_obj fval: 3.909977651025695
- Run 136: 0.109727 s/forward_obj fval: 3.9099779546137805
- Run 137: 0.109582 s/forward_obj fval: 3.909979131290777
- Run 138: 0.109419 s/forward_obj fval: 3.9099819599809575
- Run 139: 0.109265 s/forward_obj fval: 3.909985393653641
- Run 140: 0.109109 s/forward_obj fval: 3.909987866987627
- Run 141: 0.108957 s/forward_obj fval: 3.909988320845777
- Run 142: 0.108822 s/forward_obj fval: 3.909989307311393
- Run 143: 0.108734 s/forward_obj fval: 3.9099898598768315
- Run 144: 0.108640 s/forward_obj fval: 3.909989868051892
- Run 145: 0.108502 s/forward_obj fval: 3.9099908579524056
- Run 146: 0.108362 s/forward_obj fval: 3.9099946872616576
- Run 147: 0.108226 s/forward_obj fval: 3.91001378826739
- Run 148: 0.108082 s/forward_obj fval: 3.909983676162814
- Run 149: 0.107953 s/forward_obj fval: 3.9099779432858366
- Run 150: 0.107817 s/forward_obj fval: 3.909977580543638
- Run 151: 0.107682 s/forward_obj fval: 3.90997756292108
- Run 152: 0.107680 s/forward_obj fval: 3.909977563555502
- Run 153: 0.107854 s/forward_obj fval: 3.909977610164318
- Run 154: 0.108617 s/forward_obj fval: 3.9099777986839017
- Run 155: 0.116603 s/forward_obj fval: 3.909978306120161
- Run 156: 0.117427 s/forward_obj fval: 3.909979452633134
- Run 157: 0.119958 s/forward_obj fval: 3.909981526767227
- Run 158: 0.119768 s/forward_obj fval: 3.9099840060382944
- Run 159: 0.119575 s/forward_obj fval: 3.9099861935428692
- Run 160: 0.119378 s/forward_obj fval: 3.909987190060985
- Run 161: 0.119180 s/forward_obj fval: 3.9099882782712716
- Run 162: 0.119119 s/forward_obj fval: 3.9099891403059863
- Run 163: 0.118932 s/forward_obj fval: 3.90998932223964
- Run 164: 0.118745 s/forward_obj fval: 3.909989326919125
- Run 165: 0.118565 s/forward_obj fval: 3.9099891137260885
- Run 166: 0.118388 s/forward_obj fval: 3.90998687287458
- Run 167: 0.118214 s/forward_obj fval: 3.909977751711051
- Run 168: 0.118036 s/forward_obj fval: 3.9099775607728855
- Run 169: 0.117868 s/forward_obj fval: 3.9099775608036667
- Run 170: 0.117699 s/forward_obj fval: 3.909977562865023
- Run 171: 0.117522 s/forward_obj fval: 3.909977563702441
- Run 172: 0.117373 s/forward_obj fval: 3.909977630150804
- Run 173: 0.117199 s/forward_obj fval: 3.909977885795097
- Run 174: 0.117031 s/forward_obj fval: 3.9099784766824563
- Run 175: 0.116881 s/forward_obj fval: 3.9099795320887654
- Run 176: 0.116733 s/forward_obj fval: 3.9099813927887035
- Run 177: 0.116578 s/forward_obj fval: 3.9099836027240147
- Run 178: 0.116413 s/forward_obj fval: 3.9099853295937863
- Run 179: 0.116257 s/forward_obj fval: 3.9099866673073143
- Run 180: 0.116138 s/forward_obj fval: 3.909987884789708
- Run 181: 0.115984 s/forward_obj fval: 3.90998850767697
- Run 182: 0.115829 s/forward_obj fval: 3.9099888646024388
- Run 183: 0.115673 s/forward_obj fval: 3.9099881466278728
- Run 184: 0.115518 s/forward_obj fval: 3.9099867017941587
- Run 185: 0.115367 s/forward_obj fval: 3.9099831539509973
- Run 186: 0.115245 s/forward_obj fval: 3.909978782179665
- Run 187: 0.115107 s/forward_obj fval: 3.9099777677873124
- Run 188: 0.114965 s/forward_obj fval: 3.9099775971009234
- Run 189: 0.114821 s/forward_obj fval: 3.9099775695431527
- Run 190: 0.114682 s/forward_obj fval: 3.9099775646426775
- Run 191: 0.114542 s/forward_obj fval: 3.9099775943635566
- Run 192: 0.114409 s/forward_obj fval: 3.909977735492018
- Run 193: 0.114307 s/forward_obj fval: 3.9099782340493503
- Run 194: 0.114199 s/forward_obj fval: 3.9099795184702413
- Run 195: 0.114215 s/forward_obj fval: 3.909982065453529
- Run 196: 0.114091 s/forward_obj fval: 3.909985086183973
- Run 197: 0.113983 s/forward_obj fval: 3.909987511851797
- Run 198: 0.113870 s/forward_obj fval: 3.9099889792509823
- Run 199: 0.113748 s/forward_obj fval: 3.909989777512019
- Run 200: 0.113631 s/forward_obj fval: 3.909990903438139
- Run 201: 0.113509 s/forward_obj fval: 3.909990768874745
- Run 202: 0.113412 s/forward_obj fval: 3.909989952752518
- Run 203: 0.113315 s/forward_obj fval: 3.909988474897842
- Run 204: 0.113194 s/forward_obj fval: 3.9099840793584977
- Run 205: 0.113110 s/forward_obj fval: 3.9099786730712265
- Run 206: 0.112992 s/forward_obj fval: 3.9099776724349873
- Run 207: 0.112871 s/forward_obj fval: 3.909977566637088
- Run 208: 0.112753 s/forward_obj fval: 3.909977562044508
- Run 209: 0.112635 s/forward_obj fval: 3.9099775634711915
- Run 210: 0.112523 s/forward_obj fval: 3.9099775738476996
- Run 211: 0.112403 s/forward_obj fval: 3.9099776380983733
- Run 212: 0.112290 s/forward_obj fval: 3.909977940845058
- Run 213: 0.112184 s/forward_obj fval: 3.9099792267432347
- Run 214: 0.112273 s/forward_obj fval: 3.909982580364147
- Run 215: 0.112157 s/forward_obj fval: 3.909986051109276
- Run 216: 0.112041 s/forward_obj fval: 3.9099883502031596
- Run 217: 0.111929 s/forward_obj fval: 3.9099900449430236
- Run 218: 0.111822 s/forward_obj fval: 3.9099904716254192
- Run 219: 0.111711 s/forward_obj fval: 3.909991116101765
- Run 220: 0.111611 s/forward_obj fval: 3.909991210550624
- Run 221: 0.111600 s/forward_obj fval: 3.9099915724132694
- Run 222: 0.111493 s/forward_obj fval: 3.909991182684917
- Run 223: 0.111452 s/forward_obj fval: 3.9099889952875566
- Run 224: 0.111349 s/forward_obj fval: 3.909977625721499
- Run 225: 0.111243 s/forward_obj fval: 3.909977567495896
- Run 226: 0.111148 s/forward_obj fval: 3.9099775688615126
- Run 227: 0.111067 s/forward_obj fval: 3.9099775653360407
- Run 228: 0.111003 s/forward_obj fval: 3.9099775641303305
- Run 229: 0.110928 s/forward_obj fval: 3.909977565653771
- Run 230: 0.115854 s/forward_obj fval: 3.9099775667513335
- Run 231: 0.116792 s/forward_obj fval: 3.9099775767503995
- Run 232: 0.116722 s/forward_obj fval: 3.9099781911407465
- Run 233: 0.116615 s/forward_obj fval: 3.9099845063367247
- Run 234: 0.116515 s/forward_obj fval: 3.909988849752853
- Run 235: 0.116422 s/forward_obj fval: 3.9099909898182306
- Run 236: 0.116326 s/forward_obj fval: 3.9099914944016985
- Run 237: 0.116227 s/forward_obj fval: 3.909991548070706
- Run 238: 0.116105 s/forward_obj fval: 3.909991470931706
- Run 239: 0.115992 s/forward_obj fval: 3.9099918732301893
- Run 240: 0.115883 s/forward_obj fval: 3.909993222370362
- Run 241: 0.115766 s/forward_obj fval: 3.9099980167842254
- Run 242: 0.115649 s/forward_obj fval: 3.9100256536881988
- Run 243: 0.115537 s/forward_obj fval: 3.9099882806765147
- Run 244: 0.115436 s/forward_obj fval: 3.909978445349352
- Run 245: 0.116336 s/forward_obj fval: 3.9099776545111955
- Run 246: 0.116222 s/forward_obj fval: 3.909977575051354
- Run 247: 0.116161 s/forward_obj fval: 3.9099775650779924
- Run 248: 0.116047 s/forward_obj fval: 3.909977617002746
- Run 249: 0.115938 s/forward_obj fval: 3.9099778460634385
- Run 250: 0.115829 s/forward_obj fval: 3.9099784231813337
- Run 251: 0.115723 s/forward_obj fval: 3.9099786979997946
- Run 252: 0.115611 s/forward_obj fval: 3.9099937713043906
- Run 253: 0.115551 s/forward_obj fval: 3.9099980993109136
- Run 254: 0.115490 s/forward_obj fval: 3.9099958430370365
- Run 255: 0.115408 s/forward_obj fval: 3.9099932652324845
- Run 256: 0.115313 s/forward_obj fval: 3.9099925312946797
- Run 257: 0.115205 s/forward_obj fval: 3.9099915851323863
- Run 258: 0.115096 s/forward_obj fval: 3.909991575629355
- Run 259: 0.114995 s/forward_obj fval: 3.9099910866911225
- Run 260: 0.114891 s/forward_obj fval: 3.9099914496438606
- Run 261: 0.114790 s/forward_obj fval: 3.9099885691063294
- Run 262: 0.114688 s/forward_obj fval: 3.909977628969195
- Run 263: 0.114590 s/forward_obj fval: 3.909977563731298
- Run 264: 0.114488 s/forward_obj fval: 3.909977566880158
- Run 265: 0.114389 s/forward_obj fval: 3.909977564774576
- Run 266: 0.114303 s/forward_obj fval: 3.9099775640142793
- Run 267: 0.114202 s/forward_obj fval: 3.909977681078619
- Run 268: 0.114101 s/forward_obj fval: 3.9099784130858963
- Run 269: 0.114016 s/forward_obj fval: 3.909983662632911
- Run 270: 0.113921 s/forward_obj fval: 3.9099924459770077
- Run 271: 0.113829 s/forward_obj fval: 3.9100337512055217
- Run 272: 0.113730 s/forward_obj fval: 3.9100193203382143
- Run 273: 0.113643 s/forward_obj fval: 3.9100026874416236
- Run 274: 0.113551 s/forward_obj fval: 3.9099943732870037
- Run 275: 0.113478 s/forward_obj fval: 3.9099926174096686
- Run 276: 0.113404 s/forward_obj fval: 3.9099912803979064
- Run 277: 0.113314 s/forward_obj fval: 3.9099907297321117
- Run 278: 0.113238 s/forward_obj fval: 3.90998976569979
- Run 279: 0.113145 s/forward_obj fval: 3.9099880950716552
- Run 280: 0.113067 s/forward_obj fval: 3.9099837903525345
- Run 281: 0.113003 s/forward_obj fval: 3.9099787376083066
- Run 282: 0.112929 s/forward_obj fval: 3.9099777077880824
- Run 283: 0.112847 s/forward_obj fval: 3.909977579432065
- Run 284: 0.112761 s/forward_obj fval: 3.9099775652166238
- Run 285: 0.112674 s/forward_obj fval: 3.9099775639698073
- Run 286: 0.112594 s/forward_obj fval: 3.909977613959037
- Run 287: 0.112507 s/forward_obj fval: 3.909977833264113
- Run 288: 0.112423 s/forward_obj fval: 3.909978410264223
- Run 289: 0.112335 s/forward_obj fval: 3.9099786787588897
- Run 290: 0.112249 s/forward_obj fval: 3.9099942999250734
- Run 291: 0.112164 s/forward_obj fval: 3.9099982388612955
- Run 292: 0.112084 s/forward_obj fval: 3.909995530569073
- Run 293: 0.112004 s/forward_obj fval: 3.9099927892136623
- Run 294: 0.111926 s/forward_obj fval: 3.909991536518184
- Run 295: 0.111847 s/forward_obj fval: 3.9099910375485987
- Run 296: 0.111768 s/forward_obj fval: 3.909990326572707
- Run 297: 0.111685 s/forward_obj fval: 3.90998944491417
- Run 298: 0.111608 s/forward_obj fval: 3.9099874922119637
- Run 299: 0.111529 s/forward_obj fval: 3.9099836014776743
- Run 300: 0.111451 s/forward_obj fval: 3.909978763591182
- Run 301: 0.111370 s/forward_obj fval: 3.9099777509604765
- Run 302: 0.111302 s/forward_obj fval: 3.909977589571857
- Run 303: 0.111235 s/forward_obj fval: 3.9099775673678274
- Run 304: 0.111178 s/forward_obj fval: 3.909977564271818
- Run 305: 0.111101 s/forward_obj fval: 3.9099775655593128
- Run 306: 0.111031 s/forward_obj fval: 3.90997756529724
- Run 307: 0.110953 s/forward_obj fval: 3.909977578925243
- Run 308: 0.110881 s/forward_obj fval: 3.909978101914307
- Run 309: 0.110809 s/forward_obj fval: 3.9099843367766733
- Run 310: 0.110741 s/forward_obj fval: 3.9099890676258346
- Run 311: 0.110695 s/forward_obj fval: 3.909990429210129
- Run 312: 0.110626 s/forward_obj fval: 3.9099906339565433
- Run 313: 0.110555 s/forward_obj fval: 3.909990239179427
- Run 314: 0.110485 s/forward_obj fval: 3.9099903749339764
- Run 315: 0.110420 s/forward_obj fval: 3.909990197806819
- Run 316: 0.111030 s/forward_obj fval: 3.9099899639418187
- Run 317: 0.111013 s/forward_obj fval: 3.9099897799381935
- Run 318: 0.110945 s/forward_obj fval: 3.9099871520544034
- Run 319: 0.110887 s/forward_obj fval: 3.9099777458161693
- Run 320: 0.110817 s/forward_obj fval: 3.909977563059448
- Run 321: 0.110751 s/forward_obj fval: 3.9099775621077115
- Run 322: 0.110682 s/forward_obj fval: 3.909977563375494
- Run 323: 0.110613 s/forward_obj fval: 3.9099775638290346
- Run 324: 0.110546 s/forward_obj fval: 3.909977578623924
- Run 325: 0.110474 s/forward_obj fval: 3.909977650243468
- Run 326: 0.110413 s/forward_obj fval: 3.909977956762736
- Run 327: 0.110347 s/forward_obj fval: 3.9099791226953644
- Run 328: 0.110286 s/forward_obj fval: 3.9099819913500533
- Run 329: 0.110228 s/forward_obj fval: 3.9099853749771194
- Run 330: 0.110164 s/forward_obj fval: 3.909987830836473
- Run 331: 0.110098 s/forward_obj fval: 3.909988432270112
- Run 332: 0.110029 s/forward_obj fval: 3.909989193724666
- Run 333: 0.110020 s/forward_obj fval: 3.909989824611342
- Run 334: 0.110380 s/forward_obj fval: 3.909989950389202
- Run 335: 0.111166 s/forward_obj fval: 3.9099908573529545
- Run 336: 0.112826 s/forward_obj fval: 3.909994688722243
- Run 337: 0.112753 s/forward_obj fval: 3.9100140742422718
- Run 338: 0.112772 s/forward_obj fval: 3.9099838316727693
- Run 339: 0.112850 s/forward_obj fval: 3.9099779377092028
- Run 340: 0.112795 s/forward_obj fval: 3.9099775804822614
- Run 341: 0.112807 s/forward_obj fval: 3.909977562908414
- Run 342: 0.113158 s/forward_obj fval: 3.909977563567145
- Run 343: 0.113871 s/forward_obj fval: 3.9099776102511483
- Run 344: 0.113880 s/forward_obj fval: 3.909977798740374
- Run 345: 0.113844 s/forward_obj fval: 3.9099783020139993
- Run 346: 0.113849 s/forward_obj fval: 3.909979447123269
- Run 347: 0.113775 s/forward_obj fval: 3.9099815578293247
- Run 348: 0.113714 s/forward_obj fval: 3.9099839928165356
- Run 349: 0.113912 s/forward_obj fval: 3.9099862130807663
- Run 350: 0.117785 s/forward_obj fval: 3.9099871201143337
- Run 351: 0.117748 s/forward_obj fval: 3.9099883386033176
- Run 352: 0.117700 s/forward_obj fval: 3.9099890465214764
- Run 353: 0.117619 s/forward_obj fval: 3.909989388666615
- Run 354: 0.117534 s/forward_obj fval: 3.909989327455995
- Run 355: 0.117453 s/forward_obj fval: 3.909989155485395
- Run 356: 0.117373 s/forward_obj fval: 3.909986886625731
- Run 357: 0.117294 s/forward_obj fval: 3.9099777453311666
- Run 358: 0.117212 s/forward_obj fval: 3.909977560756746
- Run 359: 0.117132 s/forward_obj fval: 3.909977560764243
- Run 360: 0.117049 s/forward_obj fval: 3.909977562884378
- Run 361: 0.116970 s/forward_obj fval: 3.9099775637139826
- Run 362: 0.116895 s/forward_obj fval: 3.9099776293450312
- Run 363: 0.116813 s/forward_obj fval: 3.9099778864193433
- Run 364: 0.116781 s/forward_obj fval: 3.9099784795277337
- Run 365: 0.116705 s/forward_obj fval: 3.9099795280683924
- Run 366: 0.116627 s/forward_obj fval: 3.909981422527683
- Run 367: 0.116591 s/forward_obj fval: 3.909983496679329
- Run 368: 0.116697 s/forward_obj fval: 3.9099854851091536
- Run 369: 0.121612 s/forward_obj fval: 3.9099865752517533
- Run 370: 0.121983 s/forward_obj fval: 3.9099878980263423
- Run 371: 0.123186 s/forward_obj fval: 3.9099884529294084
- Run 372: 0.123172 s/forward_obj fval: 3.9099889876816505
- Run 373: 0.123243 s/forward_obj fval: 3.9099880612971507
- Run 374: 0.123149 s/forward_obj fval: 3.9099866950078743
- Run 375: 0.123053 s/forward_obj fval: 3.9099831926741797
- Run 376: 0.122962 s/forward_obj fval: 3.9099787770416294
- Run 377: 0.122878 s/forward_obj fval: 3.9099777663751265
- Run 378: 0.122783 s/forward_obj fval: 3.909977597036318
- Run 379: 0.122916 s/forward_obj fval: 3.9099775696378
- Run 380: 0.122822 s/forward_obj fval: 3.909977564629145
- Run 381: 0.122776 s/forward_obj fval: 3.9099775930271976
- Run 382: 0.122711 s/forward_obj fval: 3.9099776250949305
- Run 383: 0.122633 s/forward_obj fval: 3.9099777144983534
- Run 384: 0.122665 s/forward_obj fval: 3.9099779191489463
- Run 385: 0.122612 s/forward_obj fval: 3.9099780500009675
- Run 386: 0.122559 s/forward_obj fval: 3.9099779134332535
- Run 387: 0.122477 s/forward_obj fval: 3.909977730887374
- Run 388: 0.122387 s/forward_obj fval: 3.909977645573375
- Run 389: 0.122302 s/forward_obj fval: 3.9099775800385133
- Run 390: 0.122212 s/forward_obj fval: 3.9099775652629356
- Run 391: 0.122131 s/forward_obj fval: 3.909977564210471
- Run 392: 0.122051 s/forward_obj fval: 3.9099775701480444
- Run 393: 0.121964 s/forward_obj fval: 3.9099776379864677
- Run 394: 0.121877 s/forward_obj fval: 3.9099780034492486
- Run 395: 0.121791 s/forward_obj fval: 3.9099798337659992
- Run 396: 0.122093 s/forward_obj fval: 3.9099780663736605
- Run 397: 0.122036 s/forward_obj fval: 3.909977631421061
- Run 398: 0.122105 s/forward_obj fval: 3.909977569597779
- Run 399: 0.122022 s/forward_obj fval: 3.909977563650882
- Run 400: 0.121937 s/forward_obj fval: 3.9099775635116725
- Run 401: 0.121853 s/forward_obj fval: 3.909977641966328
- Run 402: 0.121771 s/forward_obj fval: 3.909977739675836
- Run 403: 0.121685 s/forward_obj fval: 3.9099781148280397
- Run 404: 0.121629 s/forward_obj fval: 3.9099791230559924
- Run 405: 0.123301 s/forward_obj fval: 3.9099804742279467
- Run 406: 0.124068 s/forward_obj fval: 3.909979195085098
- Run 407: 0.124001 s/forward_obj fval: 3.9099782640931458
- Run 408: 0.123951 s/forward_obj fval: 3.909977772723892
- Run 409: 0.123923 s/forward_obj fval: 3.9099776290021473
- Run 410: 0.123918 s/forward_obj fval: 3.909977571619388
- Run 411: 0.123832 s/forward_obj fval: 3.9099775662388185
- Run 412: 0.123820 s/forward_obj fval: 3.909977563426363
- Run 413: 0.123732 s/forward_obj fval: 3.9099776251523664
- Run 414: 0.123838 s/forward_obj fval: 3.909978734110141
- Run 415: 0.123754 s/forward_obj fval: 3.9099985758804703
- Run 416: 0.123667 s/forward_obj fval: 3.9099787579707708
- Run 417: 0.123579 s/forward_obj fval: 3.9099776236153407
- Run 418: 0.123492 s/forward_obj fval: 3.909977563207547
- Run 419: 0.123411 s/forward_obj fval: 3.909977562394039
- Run 420: 0.123329 s/forward_obj fval: 3.909977563219143
- Run 421: 0.123243 s/forward_obj fval: 3.909977616103637
- Run 422: 0.123163 s/forward_obj fval: 3.9099777369337283
- Run 423: 0.123176 s/forward_obj fval: 3.9099783798512977
- Run 424: 0.123103 s/forward_obj fval: 3.9099812801731555
- Run 425: 0.123045 s/forward_obj fval: 3.909990575779263
- Run 426: 0.122975 s/forward_obj fval: 3.9099824569242165
- Run 427: 0.122893 s/forward_obj fval: 3.9099789988556393
- Run 428: 0.122809 s/forward_obj fval: 3.9099778069929823
- Run 429: 0.122729 s/forward_obj fval: 3.909977621014728
- Run 430: 0.122695 s/forward_obj fval: 3.9099775716963685
- Run 431: 0.122614 s/forward_obj fval: 3.9099775691838485
- Run 432: 0.122611 s/forward_obj fval: 3.909977578390771
- Run 433: 0.122531 s/forward_obj fval: 3.9099777224480063
- Run 434: 0.122451 s/forward_obj fval: 3.9099789788636614
- Run 435: 0.122379 s/forward_obj fval: 3.910000437723966
- Run 436: 0.122300 s/forward_obj fval: 3.9099791597063986
- Run 437: 0.122221 s/forward_obj fval: 3.909977711809975
- Run 438: 0.122651 s/forward_obj fval: 3.9099775843260236
- Run 439: 0.122882 s/forward_obj fval: 3.9099775680109414
- Run 440: 0.122890 s/forward_obj fval: 3.9099775652531283
- Run 441: 0.122815 s/forward_obj fval: 3.909977563834137
- Run 442: 0.122745 s/forward_obj fval: 3.909977578085053
- Run 443: 0.122668 s/forward_obj fval: 3.9099778210240506
- Run 444: 0.122601 s/forward_obj fval: 3.909981449990231
- Run 445: 0.122527 s/forward_obj fval: 3.910006944960441
- Run 446: 0.122449 s/forward_obj fval: 3.9099841359293364
- Run 447: 0.122372 s/forward_obj fval: 3.9099786757706343
- Run 448: 0.123246 s/forward_obj fval: 3.9099777329562153
- Run 449: 0.123610 s/forward_obj fval: 3.909977563175045
- Run 450: 0.123532 s/forward_obj fval: 3.909977563618071
- Run 451: 0.123457 s/forward_obj fval: 3.909977564069918
- Run 452: 0.123380 s/forward_obj fval: 3.9099775862497217
- Run 453: 0.123304 s/forward_obj fval: 3.909977681382486
- Run 454: 0.123236 s/forward_obj fval: 3.9099782567755743
- Run 455: 0.123174 s/forward_obj fval: 3.909980250019231
- Run 456: 0.123097 s/forward_obj fval: 3.909978276231121
- Run 457: 0.123024 s/forward_obj fval: 3.9099777061379566
- Run 458: 0.122950 s/forward_obj fval: 3.9099775925787403
- Run 459: 0.122874 s/forward_obj fval: 3.9099775705759066
- Run 460: 0.122796 s/forward_obj fval: 3.9099775661429743
- Run 461: 0.122724 s/forward_obj fval: 3.9099776755251012
- Run 462: 0.122650 s/forward_obj fval: 3.9099777706040824
- Run 463: 0.122577 s/forward_obj fval: 3.909978299497216
- Run 464: 0.122502 s/forward_obj fval: 3.9099827059523515
- Run 465: 0.122430 s/forward_obj fval: 3.910012270872318
- Run 466: 0.122355 s/forward_obj fval: 3.9099858503793334
- Run 467: 0.122283 s/forward_obj fval: 3.9099790374884122
- Run 468: 0.122211 s/forward_obj fval: 3.9099779037584663
- Run 469: 0.122139 s/forward_obj fval: 3.909977606881704
- Run 470: 0.122397 s/forward_obj fval: 3.9099775649928072
- Run 471: 0.122336 s/forward_obj fval: 3.909977559701706
- Run 472: 0.122544 s/forward_obj fval: 3.9099775558331555
- Run 473: 0.122480 s/forward_obj fval: 3.909977552424422
- Run 474: 0.122409 s/forward_obj fval: 3.9099775595392536
- Run 475: 0.122339 s/forward_obj fval: 3.909977553875299
- Run 476: 0.122272 s/forward_obj fval: 3.9099775664952032
- Run 477: 0.122202 s/forward_obj fval: 3.9099775635582192
- Run 478: 0.122133 s/forward_obj fval: 3.909977563829069
- Run 479: 0.122061 s/forward_obj fval: 3.909977563688622
- Run 480: 0.121991 s/forward_obj fval: 3.9099775637147136
- Run 481: 0.121919 s/forward_obj fval: 3.9099778818966406
- Run 482: 0.121862 s/forward_obj fval: 3.9099781257997934
- Run 483: 0.121795 s/forward_obj fval: 3.9099790945594055
- Run 484: 0.121728 s/forward_obj fval: 3.909982710269052
- Run 485: 0.121663 s/forward_obj fval: 3.9099934019790585
- Run 486: 0.121685 s/forward_obj fval: 3.909984722630315
- Run 487: 0.123701 s/forward_obj fval: 3.90997961151178
- Run 488: 0.124592 s/forward_obj fval: 3.909978015291137
- Run 489: 0.124665 s/forward_obj fval: 3.9099777066229815
- Run 490: 0.124599 s/forward_obj fval: 3.909977602773768
- Run 491: 0.124772 s/forward_obj fval: 3.909977571799337
- Run 492: 0.124697 s/forward_obj fval: 3.9099775653163333
- Run 493: 0.124623 s/forward_obj fval: 3.9099775790088236
- Run 494: 0.124553 s/forward_obj fval: 3.9099777912492746
- Run 495: 0.124484 s/forward_obj fval: 3.9099788226923446
- Run 496: 0.124412 s/forward_obj fval: 3.9099777748705193
- Run 497: 0.124338 s/forward_obj fval: 3.9099775621112096
- Run 498: 0.124270 s/forward_obj fval: 3.9099775530851426
- Run 499: 0.124197 s/forward_obj fval: 3.909977559110825
- Run 500: 0.124125 s/forward_obj fval: 3.909977561636223
- Run 501: 0.124053 s/forward_obj fval: 3.9099779413904625
- Run 502: 0.123981 s/forward_obj fval: 3.9099781600873205
- Run 503: 0.123909 s/forward_obj fval: 3.9099787762207234
- Run 504: 0.123840 s/forward_obj fval: 3.9099801869752167
- Run 505: 0.123776 s/forward_obj fval: 3.909982009308628
- Run 506: 0.123713 s/forward_obj fval: 3.9099804196770185
- Run 507: 0.123673 s/forward_obj fval: 3.909978738045416
- Run 508: 0.123643 s/forward_obj fval: 3.9099780627690452
- Run 509: 0.123691 s/forward_obj fval: 3.9099776915565254
- Run 510: 0.124446 s/forward_obj fval: 3.9099776198407965
- Run 511: 0.126212 s/forward_obj fval: 3.9099775887610244
- Run 512: 0.126152 s/forward_obj fval: 3.909977570583377
- Run 513: 0.126173 s/forward_obj fval: 3.909977608065519
- Run 514: 0.126100 s/forward_obj fval: 3.909978313875907
- Run 515: 0.126028 s/forward_obj fval: 3.90999190906806
- Run 516: 0.125967 s/forward_obj fval: 3.909978304248744
- Run 517: 0.125893 s/forward_obj fval: 3.909977583721754
- Run 518: 0.125821 s/forward_obj fval: 3.909977557267412
- Run 519: 0.125747 s/forward_obj fval: 3.90997756091892
- Run 520: 0.125675 s/forward_obj fval: 3.9099775625717266
- Run 521: 0.125607 s/forward_obj fval: 3.909977796906965
- Run 522: 0.125534 s/forward_obj fval: 3.9099778974622166
- Run 523: 0.125462 s/forward_obj fval: 3.9099781524653845
- Run 524: 0.125389 s/forward_obj fval: 3.9099785725786105
- Run 525: 0.125354 s/forward_obj fval: 3.909978834965554
- Run 526: 0.125284 s/forward_obj fval: 3.9099786120512596
- Run 527: 0.125214 s/forward_obj fval: 3.9099781484252167
- Run 528: 0.125147 s/forward_obj fval: 3.909977806000625
- Run 529: 0.125076 s/forward_obj fval: 3.909977662520873
- Run 530: 0.125007 s/forward_obj fval: 3.909977589102691
- Run 531: 0.124944 s/forward_obj fval: 3.9099775660577616
- Run 532: 0.124874 s/forward_obj fval: 3.909977563020273
- Run 533: 0.124812 s/forward_obj fval: 3.9099776199095175
- Run 534: 0.124756 s/forward_obj fval: 3.90997852286945
- Run 535: 0.124694 s/forward_obj fval: 3.9099931357575195
- Run 536: 0.124626 s/forward_obj fval: 3.9099785947596173
- Run 537: 0.124571 s/forward_obj fval: 3.909977656469669
- Run 538: 0.124524 s/forward_obj fval: 3.9099775764151423
- Run 539: 0.124464 s/forward_obj fval: 3.909977566283811
- Run 540: 0.124408 s/forward_obj fval: 3.9099775645829014
- Run 541: 0.124342 s/forward_obj fval: 3.909977631288643
- Run 542: 0.124275 s/forward_obj fval: 3.9099776550654814
- Run 543: 0.124217 s/forward_obj fval: 3.9099777119818757
- Run 544: 0.124151 s/forward_obj fval: 3.9099777931749626
- Run 545: 0.124083 s/forward_obj fval: 3.9099778216663235
- Run 546: 0.124017 s/forward_obj fval: 3.9099777889050196
- Run 547: 0.123952 s/forward_obj fval: 3.90997771906712
- Run 548: 0.123888 s/forward_obj fval: 3.9099776229536367
- Run 549: 0.123824 s/forward_obj fval: 3.9099775886392663
- Run 550: 0.123759 s/forward_obj fval: 3.909977573094066
- Run 551: 0.123695 s/forward_obj fval: 3.9099775636922036
- Run 552: 0.123630 s/forward_obj fval: 3.909977567938909
- Run 553: 0.123567 s/forward_obj fval: 3.909977622345403
- Run 554: 0.123502 s/forward_obj fval: 3.909977945256594
- Run 555: 0.123439 s/forward_obj fval: 3.9099792629533834
- Run 556: 0.123385 s/forward_obj fval: 3.9099779794341836
- Run 557: 0.123363 s/forward_obj fval: 3.9099776338791803
- Run 558: 0.123302 s/forward_obj fval: 3.9099775758474857
- Run 559: 0.123240 s/forward_obj fval: 3.909977566233782
- Run 560: 0.123178 s/forward_obj fval: 3.909977564595209
- Run 561: 0.123118 s/forward_obj fval: 3.9099775932330805
- Run 562: 0.123064 s/forward_obj fval: 3.909977624474544
- Run 563: 0.123003 s/forward_obj fval: 3.9099777144459313
- Run 564: 0.122942 s/forward_obj fval: 3.9099779153033163
- Run 565: 0.122880 s/forward_obj fval: 3.909978055073066
- Run 566: 0.122818 s/forward_obj fval: 3.909977904310748
- Run 567: 0.122758 s/forward_obj fval: 3.9099777358137655
- Run 568: 0.122705 s/forward_obj fval: 3.9099776449085795
- Run 569: 0.122645 s/forward_obj fval: 3.9099775808472375
- Run 570: 0.122584 s/forward_obj fval: 3.90997756486865
- Run 571: 0.122526 s/forward_obj fval: 3.909977563739006
- Run 572: 0.122465 s/forward_obj fval: 3.9099775670867802
- Run 573: 0.122406 s/forward_obj fval: 3.9099776429011706
- Run 574: 0.122348 s/forward_obj fval: 3.909978010570311
- Run 575: 0.122288 s/forward_obj fval: 3.9099798021300414
- Run 576: 0.122227 s/forward_obj fval: 3.909978071748535
- Run 577: 0.122182 s/forward_obj fval: 3.9099776307493945
- Run 578: 0.122126 s/forward_obj fval: 3.909977569552986
- Run 579: 0.122078 s/forward_obj fval: 3.9099775636615757
- Run 580: 0.122032 s/forward_obj fval: 3.9099775635150458
- Run 581: 0.121979 s/forward_obj fval: 3.9099776411356646
- Run 582: 0.121921 s/forward_obj fval: 3.909977739743
- Run 583: 0.121864 s/forward_obj fval: 3.909978118246922
- Run 584: 0.121815 s/forward_obj fval: 3.909979132941341
- Run 585: 0.121762 s/forward_obj fval: 3.9099804295479514
- Run 586: 0.121704 s/forward_obj fval: 3.9099791782047206
- Run 587: 0.121645 s/forward_obj fval: 3.909978255465091
- Run 588: 0.121593 s/forward_obj fval: 3.90997776769044
- Run 589: 0.121535 s/forward_obj fval: 3.909977626191239
- Run 590: 0.121479 s/forward_obj fval: 3.909977573850537
- Run 591: 0.121424 s/forward_obj fval: 3.9099775658553733
- Run 592: 0.121368 s/forward_obj fval: 3.9099775639086816
- Run 593: 0.121313 s/forward_obj fval: 3.9099776253868583
- Run 594: 0.121264 s/forward_obj fval: 3.9099787360940916
- Run 595: 0.121214 s/forward_obj fval: 3.909999051679401
- Run 596: 0.121159 s/forward_obj fval: 3.90997873306673
- Run 597: 0.121103 s/forward_obj fval: 3.909977623800713
- Run 598: 0.121046 s/forward_obj fval: 3.9099775632291123
- Run 599: 0.120990 s/forward_obj fval: 3.9099775623889776
- Run 600: 0.120937 s/forward_obj fval: 3.9099775632042544
- Run 601: 0.120889 s/forward_obj fval: 3.909977616792547
- Run 602: 0.120844 s/forward_obj fval: 3.90997773919572
- Run 603: 0.120799 s/forward_obj fval: 3.9099783690633965
- Run 604: 0.120746 s/forward_obj fval: 3.9099812606245976
- Run 605: 0.120691 s/forward_obj fval: 3.9099900188641956
- Run 606: 0.120639 s/forward_obj fval: 3.909982413880734
- Run 607: 0.120611 s/forward_obj fval: 3.9099789358843475
- Run 608: 0.120559 s/forward_obj fval: 3.9099777919934726
- Run 609: 0.120505 s/forward_obj fval: 3.9099776216733693
- Run 610: 0.120454 s/forward_obj fval: 3.909977574804968
- Run 611: 0.120401 s/forward_obj fval: 3.9099775703359834
- Run 612: 0.120369 s/forward_obj fval: 3.909977577112298
- Run 613: 0.120316 s/forward_obj fval: 3.909977725610197
- Run 614: 0.120265 s/forward_obj fval: 3.9099790024214642
- Run 615: 0.120216 s/forward_obj fval: 3.910000763419922
- Run 616: 0.120166 s/forward_obj fval: 3.909979143640361
- Run 617: 0.120114 s/forward_obj fval: 3.909977711645644
- Run 618: 0.120061 s/forward_obj fval: 3.909977584372315
- Run 619: 0.120008 s/forward_obj fval: 3.909977568022676
- Run 620: 0.119958 s/forward_obj fval: 3.9099775652224165
- Run 621: 0.119907 s/forward_obj fval: 3.909977563837073
- Run 622: 0.119857 s/forward_obj fval: 3.909977577219175
- Run 623: 0.119805 s/forward_obj fval: 3.9099778210903313
- Run 624: 0.119760 s/forward_obj fval: 3.9099813727948183
- Run 625: 0.119719 s/forward_obj fval: 3.9100002881647584
- Run 626: 0.119671 s/forward_obj fval: 3.9099839537961203
- Run 627: 0.119622 s/forward_obj fval: 3.9099785607198587
- Run 628: 0.119571 s/forward_obj fval: 3.909977699768289
- Run 629: 0.119536 s/forward_obj fval: 3.909977563353137
- Run 630: 0.119488 s/forward_obj fval: 3.909977562289704
- Run 631: 0.119448 s/forward_obj fval: 3.909977564519818
- Run 632: 0.119411 s/forward_obj fval: 3.9099775896453988
- Run 633: 0.119362 s/forward_obj fval: 3.909977682642221
- Run 634: 0.119316 s/forward_obj fval: 3.9099782506124825
- Run 635: 0.119751 s/forward_obj fval: 3.909980294733268
- Run 636: 0.119702 s/forward_obj fval: 3.9099782721619327
- Run 637: 0.119657 s/forward_obj fval: 3.909977706413661
- Run 638: 0.119610 s/forward_obj fval: 3.9099775926155313
- Run 639: 0.119562 s/forward_obj fval: 3.909977570556287
- Run 640: 0.119511 s/forward_obj fval: 3.9099775661643354
- Run 641: 0.119461 s/forward_obj fval: 3.9099776743191774
- Run 642: 0.119413 s/forward_obj fval: 3.909977767226552
- Run 643: 0.119367 s/forward_obj fval: 3.909978291751773
- Run 644: 0.119324 s/forward_obj fval: 3.9099824004710015
- Run 645: 0.119283 s/forward_obj fval: 3.9100043843556556
- Run 646: 0.119290 s/forward_obj fval: 3.9099856378768516
- Run 647: 0.119247 s/forward_obj fval: 3.9099789557672553
- Run 648: 0.119206 s/forward_obj fval: 3.909977849819503
- Run 649: 0.119168 s/forward_obj fval: 3.9099776036146037
- Run 650: 0.120016 s/forward_obj fval: 3.9099775649961703
- Run 651: 0.119968 s/forward_obj fval: 3.9099775598039064
- Run 652: 0.119918 s/forward_obj fval: 3.9099775554777882
- Run 653: 0.119872 s/forward_obj fval: 3.9099775512302344
- Run 654: 0.119827 s/forward_obj fval: 3.909977558346879
- Run 655: 0.119779 s/forward_obj fval: 3.90997755585725
- Run 656: 0.119731 s/forward_obj fval: 3.9099775661100717
- Run 657: 0.119685 s/forward_obj fval: 3.9099775636163856
- Run 658: 0.119637 s/forward_obj fval: 3.9099775638133862
- Run 659: 0.121062 s/forward_obj fval: 3.9099775636545293
- Run 660: 0.121017 s/forward_obj fval: 3.909977563720346
- Run 661: 0.120980 s/forward_obj fval: 3.909977884487341
- Run 662: 0.120934 s/forward_obj fval: 3.909978126147773
- Run 663: 0.120886 s/forward_obj fval: 3.909979094237828
- Run 664: 0.120838 s/forward_obj fval: 3.9099826125987356
- Run 665: 0.120790 s/forward_obj fval: 3.909993418527778
- Run 666: 0.120741 s/forward_obj fval: 3.9099848865916957
- Run 667: 0.120692 s/forward_obj fval: 3.9099795131781234
- Run 668: 0.120644 s/forward_obj fval: 3.9099780131236637
- Run 669: 0.120596 s/forward_obj fval: 3.9099777087119194
- Run 670: 0.120548 s/forward_obj fval: 3.9099776032105256
- Run 671: 0.120499 s/forward_obj fval: 3.909977572233513
- Run 672: 0.120449 s/forward_obj fval: 3.909977564502233
- Run 673: 0.120403 s/forward_obj fval: 3.9099775759036404
- Run 674: 0.120355 s/forward_obj fval: 3.909977792373557
- Run 675: 0.120309 s/forward_obj fval: 3.9099788283982586
- Run 676: 0.120269 s/forward_obj fval: 3.9099777715415347
- Run 677: 0.120223 s/forward_obj fval: 3.909977562527477
- Run 678: 0.120176 s/forward_obj fval: 3.9099775531456356
- Run 679: 0.120131 s/forward_obj fval: 3.9099775591451524
- Run 680: 0.120086 s/forward_obj fval: 3.909977561623846
- Run 681: 0.120038 s/forward_obj fval: 3.909977939118054
- Run 682: 0.120000 s/forward_obj fval: 3.9099781627506514
- Run 683: 0.119957 s/forward_obj fval: 3.909978772896664
- Run 684: 0.119918 s/forward_obj fval: 3.9099801914469876
- Run 685: 0.119877 s/forward_obj fval: 3.9099819351556184
- Run 686: 0.119839 s/forward_obj fval: 3.909980418104001
- Run 687: 0.119806 s/forward_obj fval: 3.9099787351165647
- Run 688: 0.119760 s/forward_obj fval: 3.9099780514084532
- Run 689: 0.119724 s/forward_obj fval: 3.9099777067739625
- Run 690: 0.119684 s/forward_obj fval: 3.9099776146339984
- Run 691: 0.119638 s/forward_obj fval: 3.9099775839232063
- Run 692: 0.119593 s/forward_obj fval: 3.9099775722969214
- Run 693: 0.119546 s/forward_obj fval: 3.9099776114033418
- Run 694: 0.119504 s/forward_obj fval: 3.9099783171724276
- Run 695: 0.119460 s/forward_obj fval: 3.9099921196278706
- Run 696: 0.119414 s/forward_obj fval: 3.909978300985269
- Run 697: 0.119373 s/forward_obj fval: 3.9099775837919637
- Run 698: 0.119328 s/forward_obj fval: 3.9099775573203983
- Run 699: 0.119283 s/forward_obj fval: 3.909977560930206
- Run 700: 0.119242 s/forward_obj fval: 3.909977562576785
- Run 701: 0.119197 s/forward_obj fval: 3.909977798261026
- Run 702: 0.119154 s/forward_obj fval: 3.909977898158449
- Run 703: 0.119109 s/forward_obj fval: 3.9099781555652373
- Run 704: 0.119125 s/forward_obj fval: 3.9099785683549286
- Run 705: 0.120065 s/forward_obj fval: 3.9099788332853214
- Run 706: 0.120035 s/forward_obj fval: 3.9099786110827908
- Run 707: 0.119995 s/forward_obj fval: 3.9099781488600756
- Run 708: 0.119950 s/forward_obj fval: 3.9099778151929234
- Run 709: 0.119905 s/forward_obj fval: 3.90997765096665
- Run 710: 0.121966 s/forward_obj fval: 3.9099775913373476
- Run 711: 0.122041 s/forward_obj fval: 3.9099775658383775
- Run 712: 0.122042 s/forward_obj fval: 3.9099775632228218
- Run 713: 0.121995 s/forward_obj fval: 3.9099776217863904
- Run 714: 0.121948 s/forward_obj fval: 3.9099785186693037
- Run 715: 0.121902 s/forward_obj fval: 3.9099932883608544
- Run 716: 0.121856 s/forward_obj fval: 3.909978584936814
- Run 717: 0.121809 s/forward_obj fval: 3.909977656625211
- Run 718: 0.121763 s/forward_obj fval: 3.90997757638966
- Run 719: 0.121716 s/forward_obj fval: 3.90997756629224
- Run 720: 0.121669 s/forward_obj fval: 3.909977564570238
- Run 721: 0.121623 s/forward_obj fval: 3.9099776311152397
- Run 722: 0.121578 s/forward_obj fval: 3.9099776537902216
- Run 723: 0.121531 s/forward_obj fval: 3.909977710717786
- Run 724: 0.123025 s/forward_obj fval: 3.9099777953165433
- Run 725: 0.122979 s/forward_obj fval: 3.9099778245214143
- Run 726: 0.122932 s/forward_obj fval: 3.9099777913711966
- Run 727: 0.124052 s/forward_obj fval: 3.9099777063875263
- Run 728: 0.124038 s/forward_obj fval: 3.9099776268820543
- Run 729: 0.123989 s/forward_obj fval: 3.9099775898948907
- Run 730: 0.123941 s/forward_obj fval: 3.909977572484919
- Run 731: 0.123892 s/forward_obj fval: 3.9099775637072853
- Run 732: 0.123844 s/forward_obj fval: 3.909977566624141
- Run 733: 0.123847 s/forward_obj fval: 3.909977623447673
- Run 734: 0.123797 s/forward_obj fval: 3.9099779571512316
- Run 735: 0.123776 s/forward_obj fval: 3.909979272393254
- Run 736: 0.123729 s/forward_obj fval: 3.9099779779199286
- Run 737: 0.123680 s/forward_obj fval: 3.9099776337747825
- Run 738: 0.123632 s/forward_obj fval: 3.90997757591496
- Run 739: 0.123583 s/forward_obj fval: 3.9099775662146583
- Run 740: 0.123537 s/forward_obj fval: 3.9099775646030177
- Run 741: 0.123489 s/forward_obj fval: 3.9099775639040657
- Run 742: 0.123442 s/forward_obj fval: 3.9099775639040657
- Run 743: 0.123396 s/forward_obj fval: 3.9099775639040657
- Run 744: 0.123349 s/forward_obj fval: 3.9099775639074834
- Run 745: 0.123300 s/forward_obj fval: 3.9099775639040657
- Run 746: 0.123252 s/forward_obj fval: 3.9099775639428422
- Run 747: 0.123205 s/forward_obj fval: 3.909977563931301
- Run 748: 0.123161 s/forward_obj fval: 3.9099775640138583
- Run 749: 0.123541 s/forward_obj fval: 3.9099775639040657
- Run 750: 0.123498 s/forward_obj fval: 3.9099775639894645
- Run 751: 0.123450 s/forward_obj fval: 3.909977564019507
- Run 752: 0.123405 s/forward_obj fval: 3.9099775640910845
- Run 753: 0.123377 s/forward_obj fval: 3.9099775639529333
- Run 754: 0.123330 s/forward_obj fval: 3.909977563893085
- Run 755: 0.123283 s/forward_obj fval: 3.9099775639546235
- Run 756: 0.123235 s/forward_obj fval: 3.909977563893085
- Run 757: 0.123188 s/forward_obj fval: 3.9099775639040657
- Run 758: 0.123145 s/forward_obj fval: 3.909977563893085
- Run 759: 0.123100 s/forward_obj fval: 3.9099775639040657
- Run 760: 0.123056 s/forward_obj fval: 3.9099775639040657
- Run 761: 0.123110 s/forward_obj fval: 3.9099775639040657
- Run 762: 0.123129 s/forward_obj fval: 3.9099775639040657
- Run 763: 0.123125 s/forward_obj fval: 3.9099775639040657
- Run 764: 0.123096 s/forward_obj fval: 3.909977563931773
- Run 765: 0.123054 s/forward_obj fval: 3.9099775639074834
- Run 766: 0.123009 s/forward_obj fval: 3.9099775639040657
- Run 767: 0.122984 s/forward_obj fval: 3.9099775639040657
- Run 768: 0.122992 s/forward_obj fval: 3.9099775639894645
- Run 769: 0.123240 s/forward_obj fval: 3.909977563931301
- Run 770: 0.123544 s/forward_obj fval: 3.9099775641276073
- Run 771: 0.123553 s/forward_obj fval: 3.90997756397564
- Run 772: 0.123540 s/forward_obj fval: 3.9099775639573746
- Run 773: 0.123787 s/forward_obj fval: 3.909977563893085
- Run 774: 0.123740 s/forward_obj fval: 3.909977563893085
- Run 775: 0.123695 s/forward_obj fval: 3.909977563893085
- Run 776: 0.123649 s/forward_obj fval: 3.9099775639130354
- Run 777: 0.123607 s/forward_obj fval: 3.909977563893085
- Run 778: 0.123570 s/forward_obj fval: 3.9099775639040657
- Run 779: 0.123532 s/forward_obj fval: 3.9099775639040657
- Run 780: 0.123487 s/forward_obj fval: 3.9099775639040657
- Run 781: 0.123445 s/forward_obj fval: 3.9099775639040657
- Run 782: 0.123400 s/forward_obj fval: 3.9099775639040657
- Run 783: 0.123357 s/forward_obj fval: 3.9099775639074834
- Run 784: 0.123311 s/forward_obj fval: 3.9099775638802514
- Run 785: 0.123268 s/forward_obj fval: 3.9099775642251307
- Run 786: 0.123224 s/forward_obj fval: 3.9099775640024785
- Run 787: 0.123180 s/forward_obj fval: 3.9099775639368444
- Run 788: 0.123134 s/forward_obj fval: 3.909977563919025
- Run 789: 0.123092 s/forward_obj fval: 3.9099775639040657
- Run 790: 0.123048 s/forward_obj fval: 3.9099775639130354
- Run 791: 0.123004 s/forward_obj fval: 3.90997756404446
- Run 792: 0.122961 s/forward_obj fval: 3.9099775638990724
- Run 793: 0.122918 s/forward_obj fval: 3.9099775639040657
- Run 794: 0.122874 s/forward_obj fval: 3.909977563914721
- Run 795: 0.122831 s/forward_obj fval: 3.909977566325347
- Run 796: 0.122790 s/forward_obj fval: 3.9099775639774537
- Run 797: 0.122745 s/forward_obj fval: 3.909977563893085
- Run 798: 0.122701 s/forward_obj fval: 3.909977563893085
- Run 799: 0.122686 s/forward_obj fval: 3.9099775639040657
- Run 800: 0.122736 s/forward_obj fval: 3.9099775639040657
- Run 801: 0.122783 s/forward_obj fval: 3.9099775639040657
- Run 802: 0.122787 s/forward_obj fval: 3.9099775639040657
- Run 803: 0.122757 s/forward_obj fval: 3.909977563922893
- Run 804: 0.122713 s/forward_obj fval: 3.9099775638932726
- Run 805: 0.122671 s/forward_obj fval: 3.9099775689503633
- Run 806: 0.122632 s/forward_obj fval: 3.9099775648854154
- Run 807: 0.122589 s/forward_obj fval: 3.9099775645487584
- Run 808: 0.122547 s/forward_obj fval: 3.9099775640864056
- Run 809: 0.122503 s/forward_obj fval: 3.9099775639074834
- Run 810: 0.122695 s/forward_obj fval: 3.909977564039402
- Run 811: 0.122730 s/forward_obj fval: 3.909977563931301
- Run 812: 0.122749 s/forward_obj fval: 3.9099775639130354
- Run 813: 0.122735 s/forward_obj fval: 3.909977563891399
- Run 814: 0.122693 s/forward_obj fval: 3.909977563931301
- Run 815: 0.122707 s/forward_obj fval: 3.9099775641383783
- Run 816: 0.122669 s/forward_obj fval: 3.9099775639046266
- Run 817: 0.122645 s/forward_obj fval: 3.9099775639040657
- Run 818: 0.122602 s/forward_obj fval: 3.9099775639040657
- Run 819: 0.122573 s/forward_obj fval: 3.9099775639040657
- Run 820: 0.122538 s/forward_obj fval: 3.909977563893085
- Run 821: 0.122507 s/forward_obj fval: 3.9099775639040657
- Run 822: 0.122466 s/forward_obj fval: 3.9099775639040657
- Run 823: 0.122426 s/forward_obj fval: 3.909977563896504
- Run 824: 0.122384 s/forward_obj fval: 3.909977563890352
- Run 825: 0.122368 s/forward_obj fval: 3.9099775751917485
- Run 826: 0.122334 s/forward_obj fval: 3.909977563098224
- Run 827: 0.122312 s/forward_obj fval: 3.909977565955317
- Run 828: 0.122272 s/forward_obj fval: 3.9099775642232846
- Run 829: 0.122231 s/forward_obj fval: 3.909977563916904
- Run 830: 0.122190 s/forward_obj fval: 3.9099775639296177
- Run 831: 0.122153 s/forward_obj fval: 3.9099775639074834
- Run 832: 0.122114 s/forward_obj fval: 3.909977563931301
- Run 833: 0.122074 s/forward_obj fval: 3.9099775639130354
- Run 834: 0.122034 s/forward_obj fval: 3.909977563911352
- Run 835: 0.121993 s/forward_obj fval: 3.9099775638990724
- Run 836: 0.121953 s/forward_obj fval: 3.9099775639074834
- Run 837: 0.121912 s/forward_obj fval: 3.9099775639074834
- Run 838: 0.121872 s/forward_obj fval: 3.9099775639040657
- Run 839: 0.121833 s/forward_obj fval: 3.9099775639040657
- Run 840: 0.121792 s/forward_obj fval: 3.9099775639040657
- Run 841: 0.121751 s/forward_obj fval: 3.9099775639040657
- Run 842: 0.121713 s/forward_obj fval: 3.9099775639040657
- Run 843: 0.121673 s/forward_obj fval: 3.9099775639040657
- Run 844: 0.121634 s/forward_obj fval: 3.9099775644401618
- Run 845: 0.121595 s/forward_obj fval: 3.9099775682478604
- Run 846: 0.121557 s/forward_obj fval: 3.909977564436646
- Run 847: 0.121517 s/forward_obj fval: 3.9099775641030354
- Run 848: 0.121477 s/forward_obj fval: 3.9099775639512315
- Run 849: 0.121441 s/forward_obj fval: 3.909977564009456
- Run 850: 0.121401 s/forward_obj fval: 3.9099775639456
- Run 851: 0.121362 s/forward_obj fval: 3.909977563923466
- Run 852: 0.121322 s/forward_obj fval: 3.909977563893085
- Run 853: 0.121284 s/forward_obj fval: 3.9099775639130354
- Run 854: 0.121245 s/forward_obj fval: 3.9099775638990724
- Run 855: 0.121645 s/forward_obj fval: 3.909977563910856
- Run 856: 0.121666 s/forward_obj fval: 3.9099775639074834
- Run 857: 0.121627 s/forward_obj fval: 3.9099775639007617
- Run 858: 0.121619 s/forward_obj fval: 3.9099775639040657
- Run 859: 0.121638 s/forward_obj fval: 3.9099775639040657
- Run 860: 0.121618 s/forward_obj fval: 3.9099775639040657
- Run 861: 0.121627 s/forward_obj fval: 3.9099775639040657
- Run 862: 0.121588 s/forward_obj fval: 3.9099775639040657
- Run 863: 0.121550 s/forward_obj fval: 3.9099775639040657
- Run 864: 0.121511 s/forward_obj fval: 3.9099775639074834
- Run 865: 0.121475 s/forward_obj fval: 3.909977563975022
- Run 866: 0.121437 s/forward_obj fval: 3.9099775640207883
- Run 867: 0.121400 s/forward_obj fval: 3.909977563928985
- Run 868: 0.121368 s/forward_obj fval: 3.909977563911352
- Run 869: 0.121330 s/forward_obj fval: 3.909977563954668
- Run 870: 0.121291 s/forward_obj fval: 3.9099775639495675
- Run 871: 0.121810 s/forward_obj fval: 3.909977563927926
- Run 872: 0.121825 s/forward_obj fval: 3.9099775639130354
- Run 873: 0.122055 s/forward_obj fval: 3.909977563911352
- Run 874: 0.123478 s/forward_obj fval: 3.909977563893085
- Run 875: 0.123527 s/forward_obj fval: 3.9099775639012564
- Run 876: 0.123490 s/forward_obj fval: 3.9099775639041114
- Run 877: 0.123450 s/forward_obj fval: 3.9099775639074834
- Run 878: 0.123409 s/forward_obj fval: 3.9099775639040657
- Run 879: 0.123371 s/forward_obj fval: 3.9099775639040657
- Run 880: 0.123331 s/forward_obj fval: 3.9099775639040657
- Run 881: 0.123292 s/forward_obj fval: 3.9099775639040657
- Run 882: 0.123253 s/forward_obj fval: 3.9099775639040657
- Run 883: 0.123213 s/forward_obj fval: 3.9099775639040657
- Run 884: 0.123172 s/forward_obj fval: 3.9099775639040657
- Run 885: 0.123132 s/forward_obj fval: 3.9099775639074834
- Run 886: 0.123094 s/forward_obj fval: 3.9099775639196603
- Run 887: 0.123055 s/forward_obj fval: 3.9099775639040657
- Run 888: 0.123022 s/forward_obj fval: 3.909977563911352
- Run 889: 0.122985 s/forward_obj fval: 3.9099775640559815
- Run 890: 0.122947 s/forward_obj fval: 3.909977563911352
- Run 891: 0.122908 s/forward_obj fval: 3.909977563984406
- Run 892: 0.122876 s/forward_obj fval: 3.9099775639074834
- Run 893: 0.122838 s/forward_obj fval: 3.909977563905797
- Run 894: 0.122802 s/forward_obj fval: 3.9099775639012564
- Run 895: 0.122762 s/forward_obj fval: 3.909977564591849
- Run 896: 0.122723 s/forward_obj fval: 3.909977563924557
- Run 897: 0.122691 s/forward_obj fval: 3.9099775639040657
- Run 898: 0.122660 s/forward_obj fval: 3.9099775639035137
- Run 899: 0.122623 s/forward_obj fval: 3.9099775639040657
- Run 900: 0.122584 s/forward_obj fval: 3.9099775639040657
- Run 901: 0.122546 s/forward_obj fval: 3.9099775639040657
- Run 902: 0.122510 s/forward_obj fval: 3.9099775639040657
- Run 903: 0.122472 s/forward_obj fval: 3.9099775639040657
- Run 904: 0.122437 s/forward_obj fval: 3.9099775639040657
- Run 905: 0.122403 s/forward_obj fval: 3.9099775639074834
- Run 906: 0.122364 s/forward_obj fval: 3.909977563911352
- Run 907: 0.122326 s/forward_obj fval: 3.9099775639040657
- Run 908: 0.122289 s/forward_obj fval: 3.909977563911352
- Run 909: 0.122306 s/forward_obj fval: 3.9099775639456
- Run 910: 0.122268 s/forward_obj fval: 3.9099775639074834
- Run 911: 0.122230 s/forward_obj fval: 3.9099775640143957
- Run 912: 0.122193 s/forward_obj fval: 3.9099775639035137
- Run 913: 0.122155 s/forward_obj fval: 3.9099775639074834
- Run 914: 0.122120 s/forward_obj fval: 3.9099775639212067
- Run 915: 0.122083 s/forward_obj fval: 3.9099775639517906
- Run 916: 0.122051 s/forward_obj fval: 3.9099775639040657
- Run 917: 0.122013 s/forward_obj fval: 3.909977563893085
- Run 918: 0.121977 s/forward_obj fval: 3.9099775639040657
- Run 919: 0.121944 s/forward_obj fval: 3.9099775639040657
- Run 920: 0.121919 s/forward_obj fval: 3.9099775639040657
- Run 921: 0.121889 s/forward_obj fval: 3.9099775639040657
- Run 922: 0.121853 s/forward_obj fval: 3.9099775639040657
- Run 923: 0.121815 s/forward_obj fval: 3.9099775639040657
- Run 924: 0.121779 s/forward_obj fval: 3.9099775639040657
- Run 925: 0.121747 s/forward_obj fval: 3.9099775639040657
- Run 926: 0.121710 s/forward_obj fval: 3.9099775639495675
- Run 927: 0.121678 s/forward_obj fval: 3.909977564118995
- Run 928: 0.121643 s/forward_obj fval: 3.909977564069801
- Run 929: 0.121607 s/forward_obj fval: 3.9099775639074834
- Run 930: 0.121573 s/forward_obj fval: 3.9099775639040657
- Run 931: 0.121536 s/forward_obj fval: 3.90997756398609
- Run 932: 0.121501 s/forward_obj fval: 3.9099775639916925
- Run 933: 0.121472 s/forward_obj fval: 3.909977563911352
- Run 934: 0.121450 s/forward_obj fval: 3.909977563922331
- Run 935: 0.121623 s/forward_obj fval: 3.9099775639074834
- Run 936: 0.122346 s/forward_obj fval: 3.909977563893085
- Run 937: 0.122309 s/forward_obj fval: 3.9099775639040657
- Run 938: 0.122273 s/forward_obj fval: 3.909977563893085
- Run 939: 0.122237 s/forward_obj fval: 3.9099775639040657
- Run 940: 0.122202 s/forward_obj fval: 3.9099775639040657
- Run 941: 0.122166 s/forward_obj fval: 3.909978552381976
- Run 942: 0.122217 s/forward_obj fval: 3.9099780232659085
- Run 943: 0.122182 s/forward_obj fval: 3.9099782794262103
- Run 944: 0.122146 s/forward_obj fval: 3.9099785216557734
- Run 945: 0.122130 s/forward_obj fval: 3.9099779888441506
- Run 946: 0.122153 s/forward_obj fval: 3.9099782653353303
- Run 947: 0.122286 s/forward_obj  NIT    FC           OBJFUN            GNORM
-    1   947     3.909978E+00     2.358210E+03
-Iteration limit reached    (Exit mode 9)
-            Current function value: 3.9099775639040657
-            Iterations: 1
-            Function evaluations: 947
-            Gradient evaluations: 1
- fval: 3.9099775639040657
- Run 948: 0.122242 s/forward_obj, 0.064548 s/lin_adj, 0.000016 s/nlin_num  NIT    FC           OBJFUN            GNORM
-    1     1     3.909978E+00     2.402010E+03
-Iteration limit reached    (Exit mode 9)
-            Current function value: 3.9099775639040657
-            Iterations: 1
-            Function evaluations: 1
-            Gradient evaluations: 1
-Total elapsed 84.020103 sec
-	initialization 0.002221 sec
-		connection list generation 0.000444 sec
-	newton update 0.000000 sec
-	simulation 80.223737 sec
-		jacobian assembly 7.760875 sec
-			interpolation 2.410361 sec
-				customized component interpolation 0.003734 sec
-					body generation 0.002885 sec
-						point generation 0.002551 sec
-				reservoir 0 interpolation 2.459387 sec
-					body generation 0.109760 sec
-						point generation 0.108838 sec
-				well controls interpolation 0.015929 sec
-					body generation 0.000931 sec
-						point generation 0.000924 sec
-				wellbore interpolation 0.000000 sec
-		linear solver for adjoint method - setup 0.000016 sec
-			SUPERLU 0.000002 sec
-		linear solver for adjoint method - solve 0.055034 sec
-			SUPERLU 0.055012 sec
-		linear solver setup 0.015973 sec
-			SUPERLU 0.003612 sec
-		linear solver solve 68.655194 sec
-			SUPERLU 66.976249 sec
-		newton update 0.167412 sec
-			composition correction 0.036146 sec
-
-
-The numerical gradients are:
-[ 3.05718508e-01  1.70963132e+00  6.65971138e+00  1.95784056e+01
-  4.53870639e+01  7.44996907e+01  1.00584361e+02  1.13578234e+02
-  1.21302469e+02  1.34878511e+02  1.30240174e+02  1.25407612e+02
-  1.08809721e+02  6.45921161e+01  1.12835831e+01  1.07693515e+00
-  2.75477996e-02 -1.84464177e-02 -4.35153691e-03  9.63223146e-02
-  7.44332489e-01  3.70007420e+00  1.68401027e+01  5.00423132e+01
-  8.49051274e+01  1.08540425e+02  1.24511907e+02  1.27578261e+02
-  1.36001330e+02  1.37709424e+02  1.39370912e+02  1.36112192e+02
-  1.14641962e+02  5.89285971e-01  2.75196710e-02  5.06000220e-02
-  1.45886192e-02  2.32256436e-03  1.74970527e-02  2.60220645e-02
-  1.28765754e-01  5.97310520e+00  6.98084117e+01  1.13042897e+02
-  1.34958396e+02  1.38982437e+02  1.39575839e+02  1.38417455e+02
-  1.44090346e+02  1.56355001e+02  2.04397161e+02  4.74557518e+02
-  1.03417570e+02  8.96710388e+00  9.10726792e-01  1.10688565e-01
-  1.15838095e-02  5.25516795e-01  2.88652032e+00  8.62881229e+00
-  1.18263795e+01  1.62307558e+02  2.05887771e+02  1.85222428e+02
-  1.57907284e+02  1.50467373e+02  1.38896951e+02  1.40278748e+02
-  1.35630998e+02  1.39199830e+02  1.08615684e+02  7.51523781e-01
-  1.41773704e-03  3.01575387e-02  8.55959748e-03  1.22284405e-03
-  1.18144404e+00  8.55243052e+00  6.16350787e+01  1.79178686e+02
-  5.52111223e+02  4.20997528e+02  2.52526502e+02  1.72192783e+02
-  1.49848558e+02  1.37419634e+02  1.32266937e+02  1.21864366e+02
-  1.05252677e+02  6.20392960e+01  1.17669379e+01  1.44552109e+00
-  1.53654449e-01  1.31818778e-02  8.54556426e-04  4.98375767e-01
-  2.71726257e+00  8.85987181e+00  1.35867954e+01  1.68557628e+02
-  2.06709499e+02  1.82386120e+02  1.53454499e+02  1.38461958e+02
-  1.34870684e+02  1.27979628e+02  1.18465706e+02  9.95514797e+01
-  6.05497356e+01  1.19060474e+01  1.88814957e+00  2.53568295e-01
-  3.44129258e-02  3.39909878e-03  1.45159529e-02  1.54913593e-02
-  1.55794564e-01  5.32049160e+00  6.77228558e+01  1.15527213e+02
-  1.28554511e+02  1.31555128e+02  1.25669232e+02  1.28166061e+02
-  1.27134499e+02  1.23982641e+02  1.21790338e+02  9.60077443e+01
-  1.83295162e+00 -1.21775345e-02 -1.83038207e-02 -5.29707389e-03
- -7.95594701e-04  1.44859138e-01  8.71216295e-01  3.90709715e+00
-  1.56738671e+01  4.39607689e+01  7.82974958e+01  1.03030836e+02
-  1.07569417e+02  1.17434073e+02  1.22959728e+02  1.23041478e+02
-  1.32940483e+02  1.71233576e+02  3.62243633e+02  6.11225875e+01
-  3.79381771e+00  1.66395724e-01 -9.82985693e-03 -3.48563844e-03
-  4.62602525e-01  2.34779836e+00  7.42216095e+00  1.88872907e+01
-  3.96286316e+01  6.44213423e+01  8.62963880e+01  9.62615692e+01
-  1.07143672e+02  1.15764019e+02  1.17583356e+02  1.17630151e+02
-  1.15498220e+02  9.30897051e+01  1.87806986e+00 -3.13118020e-02
- -3.10039905e-02 -1.03904263e-02 -2.01624495e-03  6.62467383e-01
-  3.21891031e+00  9.12778391e+00  1.96818470e+01  3.82888464e+01
-  6.03881995e+01  7.76568972e+01  9.10340325e+01  1.03208856e+02
-  1.09437729e+02  1.13006984e+02  1.05827238e+02  9.13789009e+01
-  5.59004693e+01  1.21827560e+01  2.03883247e+00  3.31968577e-01
-  5.63908698e-02  7.38611838e-03  3.04594909e-01  1.71587952e+00
-  6.70145285e+00  1.95456618e+01  4.50154946e+01  7.52227991e+01
-  9.94794773e+01  1.14153469e+02  1.22136080e+02  1.33395341e+02
-  1.32049707e+02  1.23888485e+02  1.09109938e+02  6.51545443e+01
-  1.10916716e+01  1.08530922e+00  2.73302225e-02 -1.85955784e-02
- -4.32874181e-03  9.94363392e-02  7.41943076e-01  3.76940992e+00
-  1.66283917e+01  5.01646008e+01  8.48720521e+01  1.07862991e+02
-  1.24810390e+02  1.29077214e+02  1.35521977e+02  1.36466466e+02
-  1.40085092e+02  1.36187809e+02  1.14313835e+02  6.18174334e-01
-  3.59183039e-02  4.95744690e-02  1.43197498e-02  2.26264785e-03
-  1.74970527e-02  2.84726775e-02  1.28463338e-01  6.27236681e+00
-  6.94243266e+01  1.12858488e+02  1.34259142e+02  1.39304976e+02
-  1.39841666e+02  1.39070276e+02  1.43093261e+02  1.56584663e+02
-  2.04528802e+02  4.80897841e+02  1.07167724e+02  8.81445286e+00
-  9.06071298e-01  1.11472884e-01  1.17392673e-02  5.30986801e-01
-  2.82159373e+00  8.59277268e+00  1.13409573e+01  1.62074003e+02
-  2.05354068e+02  1.82791330e+02  1.57013284e+02  1.49673906e+02
-  1.40212283e+02  1.40117253e+02  1.35227871e+02  1.38857398e+02
-  1.10052023e+02  6.50651293e-01 -1.72767578e-03  2.97609226e-02
-  8.70510330e-03  1.10213616e-03  1.17174553e+00  8.49181831e+00
-  6.09872885e+01  1.48820729e+02  5.61873015e+02  4.17564341e+02
-  2.51235376e+02  1.68093829e+02  1.50535056e+02  1.37164938e+02
-  1.31658280e+02  1.22017957e+02  1.05311676e+02  6.22644847e+01
-  1.17370424e+01  1.43884017e+00  1.55279993e-01  1.31255806e-02
-  6.57416344e-04  5.00549713e-01  2.69360047e+00  8.46360158e+00
-  1.11485482e+01  1.67360210e+02  2.06749572e+02  1.79666650e+02
-  1.52253096e+02  1.39726141e+02  1.34736445e+02  1.27626686e+02
-  1.18810101e+02  9.92830790e+01  6.03757361e+01  1.19968712e+01
-  1.87056411e+00  2.56677914e-01  3.46376172e-02  3.67752495e-03
-  1.65524705e-02  1.39317446e-02  1.50211772e-01  5.38010241e+00
-  6.77287261e+01  1.15037218e+02  1.28653061e+02  1.30700525e+02
-  1.26752754e+02  1.28110299e+02  1.26339028e+02  1.24000378e+02
-  1.22160341e+02  9.58815034e+01  1.81912104e+00 -8.44617709e-03
- -1.79635418e-02 -5.28571853e-03 -7.50310925e-04  1.47198582e-01
-  8.63394023e-01  3.92858670e+00  1.55879130e+01  4.42744599e+01
-  7.81107305e+01  1.02669324e+02  1.08683660e+02  1.16298206e+02
-  1.22607073e+02  1.23864851e+02  1.32934489e+02  1.71248182e+02
-  3.65103382e+02  6.26776870e+01  3.73805137e+00  1.65781957e-01
- -9.95651561e-03 -3.36920714e-03  4.63470826e-01  2.34836308e+00
-  7.38109934e+00  1.88321920e+01  3.99392526e+01  6.42891247e+01
-  8.64917670e+01  9.55621027e+01  1.07746993e+02  1.14826174e+02
-  1.18247625e+02  1.17635519e+02  1.15915813e+02  9.32272167e+01
-  1.81427101e+00 -3.14731974e-02 -3.13982262e-02 -1.01968789e-02
- -1.90083060e-03  6.54409655e-01  3.22515278e+00  9.15623668e+00
-  1.96416433e+01  3.85862362e+01  5.93277526e+01  7.92120509e+01
-  9.01134769e+01  1.03341223e+02  1.08890253e+02  1.14237776e+02
-  1.04973931e+02  9.13110381e+01  5.62877011e+01  1.21313756e+01
-  2.02471061e+00  3.31322525e-01  5.73373438e-02  7.25079108e-03
-  2.91231319e-01  6.11908648e-01  1.50594288e+00  3.55244881e+00
-  4.86096902e+00  3.49529188e+00  1.66983309e+00  8.16693091e-01
-  1.61344476e-01  1.35886991e-02  3.06405123e-03  6.24397867e-02
-  7.40824020e-01  4.39545183e+00  2.26986193e+01  5.02469595e+00
-  6.75169951e-01  5.69371350e-02 -2.53183696e-03 -3.92393229e-03
-  7.80622624e-01  1.75771770e+00  5.50923974e+00  1.55915193e+01
-  2.91032388e+01  1.63118103e+01  7.00189080e+00  2.08819826e+00
-  6.50980816e-01  7.71532216e-02  2.33475284e-02 -4.77702766e-03
-  6.12483007e-01  1.17020608e+01  2.10119764e+02  1.19406671e+01
-  5.97112750e-01 -6.96518843e-03 -1.51002677e-02 -6.84922785e-03
-  5.21995713e-01  1.73029663e+00  8.15947232e+00  3.71626909e+01
-  1.30118752e+02  4.89302015e+01  1.43495157e+01  2.43088917e+00
-  5.71106624e-01  7.79230280e-02  5.27978283e-02  1.44867052e-01
-  1.58543941e+00  1.41495960e+01  2.28738199e+02  1.59580233e+01
-  1.47905909e+00  2.04219579e-01  4.10687573e-02  1.34906264e-02
- -6.99285074e-04  1.41809875e-01  2.57119985e+00  3.88608617e+01
-  2.93810564e+02  6.57202527e+01  1.11186657e+01  1.69052150e+00
- -7.29020844e-03 -2.85994783e-03  1.65852221e-03  2.23456560e-01
-  1.17478420e+00  6.92871509e+00  2.68611517e+01  7.12327055e+00
-  1.42233891e+00  2.86746746e-01  6.67184086e-02  2.23890861e-02
-  1.11621036e+00  2.06700017e+00  7.35593150e+00  5.14204829e+01
-  3.47069683e+02  8.28647527e+01  1.47358435e+01  3.39854401e+00
-  4.29776383e-01  1.08874154e-02 -4.20235979e-02 -8.07091016e-02
- -1.14796439e-01 -4.36481207e-02 -1.00287667e-01  2.59113753e-02
- -3.45846463e-03 -7.49968976e-04 -2.15443663e-03 -1.89352090e-03
-  3.17992575e+00  5.61895728e+00  1.53065534e+01  5.14636499e+01
-  1.58380750e+02  7.15872625e+01  2.04760771e+01  4.51387071e+00
-  1.42718916e+00  3.88697021e-01  7.89527110e-02  1.41226764e-02
-  1.51047579e-01  2.27345209e+00  1.25878828e+01  2.10966454e+00
- -1.79285609e-02 -1.08189231e-01 -4.79324092e-02 -2.26784280e-02
-  3.77486397e+00  5.96183255e+00  1.21231666e+01  2.62307115e+01
-  4.44540456e+01  2.85577295e+01  1.17414135e+01  4.98864980e+00
-  1.27652460e+00  5.59367308e-01  2.48569587e-01  6.67931133e-02
-  4.41614532e-01  7.49971842e+00  1.43451640e+02  7.40344678e+00
-  1.98176884e-01 -6.63665389e-02 -2.98514591e-02 -1.33233913e-02
-  2.33002899e+00  3.33558151e+00  5.88561319e+00  1.00867454e+01
-  1.27106149e+01  1.04814719e+01  5.84521151e+00  2.42096559e+00
-  9.86168072e-01  2.51986254e-01  2.15369589e-02 -8.83792595e-03
-  5.60054518e-01  9.58965384e+00  1.55718535e+02  1.03085555e+01
-  9.25656032e-01  1.25110766e-01  2.37974529e-02  6.78835654e-03
-  6.73845775e-01  9.11614157e-01  1.48077810e+00  2.29270897e+00
-  2.57762258e+00  2.25000954e+00  1.55163054e+00  5.90495710e-01
-  2.47352006e-01  9.19000032e-02 -2.11862083e-03  4.03484313e-02
-  5.84413371e-01  3.81352528e+00  1.69904932e+01  4.15530118e+00
-  6.99751146e-01  1.19434200e-01  2.32971642e-02  6.91143143e-03
-  2.93290148e-01  6.05704784e-01  1.50541866e+00  3.51399251e+00
-  4.91169000e+00  3.40406682e+00  1.71909700e+00  8.10045138e-01
-  1.69431718e-01  9.64584412e-03 -1.65059522e-03  3.18271454e-02
-  7.89971049e-01  4.46666245e+00  2.23822598e+01  5.07844469e+00
-  6.68453288e-01  5.64892044e-02 -2.42490028e-03 -3.89019927e-03
-  7.72315989e-01  1.75838934e+00  5.54342857e+00  1.56903728e+01
-  2.86564389e+01  1.61430065e+01  6.91561025e+00  2.03786374e+00
-  6.22871732e-01  9.94647120e-02  1.95130756e-02  4.61586325e-05
-  6.14827926e-01  1.17219003e+01  2.14877753e+02  1.16916266e+01
-  5.98966472e-01 -6.74953426e-03 -1.51508806e-02 -6.99811320e-03
-  5.28884812e-01  1.75291654e+00  8.05159331e+00  3.69672053e+01
-  1.24549601e+02  4.84997667e+01  1.37198028e+01  2.28089407e+00
-  5.77693036e-01  1.09009024e-01  6.43191767e-02  1.32082323e-01
-  1.61706131e+00  1.43851740e+01  2.31995159e+02  1.57973630e+01
-  1.47741578e+00  2.04682493e-01  4.11861034e-02  1.31835076e-02
- -6.69926337e-04  1.33151095e-01  2.57186266e+00  3.80889075e+01
-  2.27242607e+02  6.38989205e+01  9.96815793e+00  1.35864223e+00
- -5.50928636e-03 -1.61436153e-02  6.15752338e-03  2.57413331e-01
-  1.18738155e+00  6.86708417e+00  2.73082920e+01  7.08257867e+00
-  1.42509595e+00  2.87114656e-01  6.65222144e-02  2.26026975e-02
-  1.10415112e+00  2.03322486e+00  7.27847707e+00  4.83656694e+01
-  2.68204516e+02  8.07397279e+01  1.39186319e+01  2.85915437e+00
-  3.97105380e-01  1.09210463e-02 -4.10015932e-02 -8.42627745e-02
- -1.26738313e-01 -5.55718671e-02 -8.04681566e-02  2.20600604e-02
- -2.87680102e-03 -9.06794639e-04 -2.49536392e-03 -1.83719706e-03
-  3.20583275e+00  5.62243707e+00  1.53033376e+01  5.04869467e+01
-  1.58546237e+02  7.32268763e+01  1.94927406e+01  4.49219598e+00
-  1.44807854e+00  3.93064599e-01  8.32944735e-02  5.98167293e-03
-  1.19995747e-01  2.28469491e+00  1.26449419e+01  2.07637469e+00
- -1.37658862e-02 -1.07584301e-01 -4.75891326e-02 -2.28021957e-02
-  3.75213988e+00  5.98846586e+00  1.20899260e+01  2.62754292e+01
-  4.37125155e+01  2.85419994e+01  1.17121250e+01  4.87504388e+00
-  1.42869897e+00  5.07299327e-01  2.00191406e-01  8.39285574e-02
-  4.74992761e-01  7.53268362e+00  1.45557238e+02  7.37081203e+00
-  1.98878980e-01 -6.58366739e-02 -2.97385983e-02 -1.32728051e-02
-  2.34356961e+00  3.34254383e+00  5.91661172e+00  1.00445086e+01
-  1.26938126e+01  1.04717873e+01  5.84956010e+00  2.51288858e+00
-  8.70625843e-01  2.74332819e-01  1.93431182e-02 -6.81243950e-03
-  5.78823247e-01  9.54765238e+00  1.57244568e+02  1.02103275e+01
-  9.27211454e-01  1.24855943e-01  2.38817410e-02  6.66172451e-03
-  6.72111740e-01  8.98861559e-01  1.46813720e+00  2.31412478e+00
-  2.60617349e+00  2.27467131e+00  1.42483461e+00  6.29779886e-01
-  2.59908250e-01  8.58085336e-02 -1.96780370e-03  2.72007528e-02
-  5.95436074e-01  3.93247166e+00  1.70848919e+01  4.14015863e+00
-  6.98707168e-01  1.20108945e-01  2.31059261e-02  6.98952007e-03
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  3.41771056e-05
-  0.00000000e+00  3.87765375e-04  2.72351031e-04  1.09792619e-03
-  0.00000000e+00  8.53987991e-04  1.15441434e-03  1.87018845e-03
-  4.88675767e-04 -1.09805498e-04  5.05577802e-04 -1.09805498e-04
-  0.00000000e+00 -1.09805498e-04  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  2.77071699e-04
-  3.41771056e-05  0.00000000e+00  0.00000000e+00  8.53987991e-04
-  2.72351031e-04  2.23541630e-03  7.15743020e-04  5.33089128e-04
- -1.09805498e-04 -1.09805498e-04 -1.09805498e-04  8.96971386e-05
- -1.09805498e-04  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  3.41771056e-05 -2.38142839e-04
-  3.21064952e-03  9.84128334e-04  3.27786687e-04  1.49591450e-04
-  0.00000000e+00  8.96971386e-05  1.40394363e-03 -4.99333908e-05
-  0.00000000e+00  1.06554765e-04  2.42128140e-02  7.33879624e-04
- -1.09805498e-04 -1.09805498e-04  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  1.88271621e-04 -1.07931442e-04
-  5.04629760e-02  9.81349668e-03  6.44692744e-03  1.82339921e-03
-  3.41771056e-05  1.35336187e-03  2.72351031e-04  8.96971386e-05
- -1.26667565e-04  2.72351031e-04  2.34312569e-03  5.60884672e-06
-  0.00000000e+00  0.00000000e+00  0.00000000e+00 -1.09805498e-04
-  0.00000000e+00  0.00000000e+00 -7.56150698e-05 -1.37139189e-04
-  1.12876828e-01 -8.05841616e-03  2.05125117e-02  3.19218874e-03
-  1.28381750e-04  2.55520050e-04  3.41771056e-05  2.72351031e-04
-  8.96971386e-05  7.28617167e-05 -4.99333908e-05  3.41771056e-05
-  3.41771056e-05  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  5.36096056e-03
-  4.34379466e-02  5.32580202e-03  1.98969730e-03  4.71658268e-04
-  1.05390363e-03  4.15343315e-04  1.94004812e-04 -1.09805498e-04
-  8.96971386e-05 -4.99333908e-05  6.79012402e-05  3.41771056e-05
- -3.30402372e-05  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  3.41771056e-05
-  7.09561299e-04  1.16722632e-03  2.49191778e-04  7.28617167e-05
-  5.06021891e-04  4.55018245e-04  2.38604692e-04  8.96971386e-05
-  7.28617167e-05 -1.09805498e-04 -2.80930834e-05  4.57411886e-07
-  3.41771056e-05  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  3.41771056e-05  1.55946367e-04  0.00000000e+00  7.28617167e-05
-  1.51915813e-03  7.28617167e-05  8.03401790e-04  3.41771056e-05
-  1.73150383e-05 -2.80930834e-05  6.87783164e-03  2.04911643e-04
-  0.00000000e+00 -5.52002888e-06  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  3.41771056e-05  7.28617167e-05  0.00000000e+00  7.28617167e-05
-  4.15343315e-04  3.41771056e-05  1.10329967e-03 -5.52002888e-06
-  3.41771056e-05  1.71409553e-04  4.77249351e-04  0.00000000e+00
- -1.09805498e-04  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  0.00000000e+00  0.00000000e+00  0.00000000e+00
-  0.00000000e+00  4.55018245e-04  2.14929408e-03  1.65735425e-03
-  3.41771056e-05  0.00000000e+00  8.20241652e-04  8.76267947e-04
-  7.28617167e-05  1.82653892e-04  3.41771056e-05 -1.09805498e-04
-  0.00000000e+00 -1.09805498e-04  0.00000000e+00  0.00000000e+00
-  9.88477910e+00  4.59361843e+00  7.15522145e+00  9.57751708e+00
-  4.24940085e+00  7.01431265e+00]
-
-The adjoint gradients are:
-[ 3.02640926e-01  1.70020292e+00  6.66569216e+00  1.97226894e+01
-  4.57653705e+01  7.55839551e+01  1.02164214e+02  1.15311396e+02
-  1.23062522e+02  1.36740595e+02  1.31961716e+02  1.27008954e+02
-  1.10168017e+02  6.54023051e+01  1.14492515e+01  1.10132013e+00
-  3.10763517e-02 -1.78243258e-02 -4.20132517e-03  9.35369035e-02
-  7.29354457e-01  3.66770984e+00  1.69990144e+01  5.01459336e+01
-  8.63997058e+01  1.10394605e+02  1.26455105e+02  1.29429833e+02
-  1.37867437e+02  1.39514551e+02  1.41127482e+02  1.37771753e+02
-  1.16016964e+02  6.10778128e-01  2.74463768e-02  5.04787097e-02
-  1.46754828e-02  2.29865663e-03  1.92770948e-02  3.32408913e-02
-  1.21554403e-01  6.08682911e+00  6.85337175e+01  1.16306438e+02
-  1.37516161e+02  1.41153519e+02  1.41566639e+02  1.40287606e+02
-  1.45954957e+02  1.58294831e+02  2.06811651e+02  4.79843030e+02
-  1.04381717e+02  9.03685044e+00  9.15368859e-01  1.11020014e-01
-  1.16415059e-02  5.30341568e-01  2.92552694e+00  8.97444566e+00
-  1.17499153e+01  1.64188555e+02  2.07993238e+02  1.87389591e+02
-  1.60036744e+02  1.52495632e+02  1.40720958e+02  1.42072321e+02
-  1.37315552e+02  1.40884303e+02  1.09909121e+02  7.73688952e-01
-  1.35222385e-03  3.00317427e-02  8.57590261e-03  1.25168705e-03
-  1.17085029e+00  8.31789003e+00  5.62450115e+01  2.00750514e+02
-  5.66977955e+02  4.24252154e+02  2.53463630e+02  1.73862147e+02
-  1.51783010e+02  1.39177364e+02  1.33938297e+02  1.23385517e+02
-  1.06553040e+02  6.28056253e+01  1.19253889e+01  1.46849782e+00
-  1.57020202e-01  1.36677729e-02  9.05895089e-04  5.04048924e-01
-  2.76340487e+00  9.25320259e+00  1.30307587e+01  1.69999509e+02
-  2.07836978e+02  1.84072847e+02  1.55221599e+02  1.40153995e+02
-  1.36546720e+02  1.29575929e+02  1.19948255e+02  1.00797652e+02
-  6.13109004e+01  1.20540394e+01  1.91168942e+00  2.56811802e-01
-  3.48929850e-02  3.62121006e-03  1.61185171e-02  2.29485850e-02
-  1.57773320e-01  5.34255968e+00  6.77302633e+01  1.16353878e+02
-  1.29864216e+02  1.33044095e+02  1.27166323e+02  1.29731260e+02
-  1.28708700e+02  1.25537911e+02  1.23341263e+02  9.72448737e+01
-  1.85005901e+00 -1.22790510e-02 -1.83781140e-02 -5.30020227e-03
- -7.60196990e-04  1.43886034e-01  8.68862323e-01  3.94263329e+00
-  1.63035461e+01  4.43725138e+01  7.91060250e+01  1.04156767e+02
-  1.08800494e+02  1.18825188e+02  1.24449970e+02  1.24560839e+02
-  1.34614104e+02  1.73450287e+02  3.67110431e+02  6.20647823e+01
-  3.86253702e+00  1.71478238e-01 -9.51440434e-03 -3.34332128e-03
-  4.66992146e-01  2.37519174e+00  7.54013849e+00  1.92794545e+01
-  4.01504099e+01  6.51781785e+01  8.72915773e+01  9.73848511e+01
-  1.08416693e+02  1.17163861e+02  1.19029111e+02  1.19099860e+02
-  1.16966088e+02  9.42838909e+01  1.89411741e+00 -3.14939053e-02
- -3.09547806e-02 -1.03989851e-02 -1.89865676e-03  6.71013423e-01
-  3.26462931e+00  9.27209471e+00  2.00057077e+01  3.88102915e+01
-  6.11304525e+01  7.85773255e+01  9.21096204e+01  1.04439885e+02
-  1.10760140e+02  1.14392278e+02  1.07141469e+02  9.25240043e+01
-  5.65975926e+01  1.23220869e+01  2.05866114e+00  3.34653491e-01
-  5.67400771e-02  7.50353647e-03  3.01574324e-01  1.70650273e+00
-  6.70723227e+00  1.96911285e+01  4.53874397e+01  7.63195656e+01
-  1.01042528e+02  1.15895738e+02  1.23908166e+02  1.35236793e+02
-  1.33795088e+02  1.25470173e+02  1.10471972e+02  6.59716132e+01
-  1.12548744e+01  1.10991238e+00  3.09768163e-02 -1.79571663e-02
- -4.21199474e-03  9.65368300e-02  7.26846256e-01  3.73318137e+00
-  1.68035522e+01  5.02215225e+01  8.64054829e+01  1.09711648e+02
-  1.26759493e+02  1.30950453e+02  1.37380794e+02  1.38255526e+02
-  1.41850601e+02  1.37848121e+02  1.15685009e+02  6.40084780e-01
-  3.57076150e-02  4.93987247e-02  1.43008172e-02  2.30933274e-03
-  1.93320190e-02  3.68294086e-02  1.22901614e-01  5.80114239e+00
-  7.31389718e+01  1.16590140e+02  1.36850643e+02  1.41485523e+02
-  1.41836589e+02  1.40949306e+02  1.44944382e+02  1.58528242e+02
-  2.06944237e+02  4.86251070e+02  1.08168311e+02  8.88279966e+00
-  9.10842504e-01  1.11676203e-01  1.17615551e-02  5.36302060e-01
-  2.86676351e+00  8.90977123e+00  1.09282862e+01  1.68077870e+02
-  2.08855248e+02  1.85246061e+02  1.59163649e+02  1.51695304e+02
-  1.42054195e+02  1.41908425e+02  1.36907065e+02  1.40538085e+02
-  1.11362311e+02  6.71181849e-01 -1.78101237e-03  2.96822703e-02
-  8.70997176e-03  1.19925805e-03  1.16562106e+00  8.44283344e+00
-  6.27431749e+01  1.52890150e+02  5.96356497e+02  4.24632908e+02
-  2.57737938e+02  1.70282119e+02  1.52494448e+02  1.38919741e+02
-  1.33321921e+02  1.23541146e+02  1.06612489e+02  6.30337869e+01
-  1.18949579e+01  1.46179636e+00  1.58743760e-01  1.36487325e-02
-  7.55381679e-04  5.06707433e-01  2.74560565e+00  8.83751489e+00
-  1.13554779e+01  1.69064835e+02  2.09214981e+02  1.81788390e+02
-  1.54040956e+02  1.41436961e+02  1.36410861e+02  1.29219033e+02
-  1.20296473e+02  1.00526540e+02  6.11347934e+01  1.21458717e+01
-  1.89393048e+00  2.59904538e-01  3.51639512e-02  3.74824958e-03
-  1.82481311e-02  2.14001393e-02  1.55638325e-01  5.34818405e+00
-  6.92606888e+01  1.16250040e+02  1.29993367e+02  1.32183075e+02
-  1.28262450e+02  1.29675326e+02  1.27903290e+02  1.25555589e+02
-  1.23715237e+02  9.71168482e+01  1.83613843e+00 -8.60103552e-03
- -1.79433147e-02 -5.30150979e-03 -7.55228474e-04  1.46344634e-01
-  8.60841035e-01  3.96392747e+00  1.62212159e+01  4.46655269e+01
-  7.89359431e+01  1.03794114e+02  1.09927702e+02  1.17676370e+02
-  1.24092712e+02  1.25394499e+02  1.34608577e+02  1.73465220e+02
-  3.70009480e+02  6.36430943e+01  3.80594024e+00  1.70955579e-01
- -9.45721477e-03 -3.33969998e-03  4.67910874e-01  2.37580770e+00
-  7.49834825e+00  1.92241683e+01  4.04634212e+01  6.50451082e+01
-  8.74895697e+01  9.66772705e+01  1.09026974e+02  1.16214925e+02
-  1.19701432e+02  1.19105332e+02  1.17389131e+02  9.44232180e+01
-  1.82958699e+00 -3.14974093e-02 -3.13069626e-02 -1.01574492e-02
- -1.89717299e-03  6.62886773e-01  3.27081119e+00  9.30090903e+00
-  1.99646781e+01  3.91117355e+01  6.00570484e+01  8.01510104e+01
-  9.11783007e+01  1.04573844e+02  1.10206171e+02  1.15638274e+02
-  1.06277484e+02  9.24552512e+01  5.69896553e+01  1.22700491e+01
-  2.04441688e+00  3.33896233e-01  5.77783471e-02  7.37421262e-03
-  2.90363025e-01  6.13383855e-01  1.52135274e+00  3.61537765e+00
-  4.91835832e+00  3.62904906e+00  1.71059095e+00  8.25327581e-01
-  1.60617578e-01  1.29344088e-02  2.93752583e-03  6.43987461e-02
-  7.51864758e-01  4.44738119e+00  2.29489998e+01  5.08270868e+00
-  6.84193679e-01  5.81900818e-02 -2.31405864e-03 -3.82663441e-03
-  7.73949076e-01  1.75313883e+00  5.54533685e+00  1.58975100e+01
-  2.90941852e+01  1.71444401e+01  7.11518957e+00  2.08589887e+00
-  6.44405865e-01  7.44058131e-02  2.25292819e-02 -3.21305588e-03
-  6.25159230e-01  1.18460482e+01  2.12391591e+02  1.20827811e+01
-  6.07329867e-01 -5.94844135e-03 -1.49941652e-02 -6.82753400e-03
-  5.10218059e-01  1.70130726e+00  8.06567833e+00  3.73474257e+01
-  1.29907484e+02  4.64848999e+01  1.37812692e+01  2.34443119e+00
-  5.52803171e-01  7.41011931e-02  5.14277017e-02  1.43799857e-01
-  1.59211773e+00  1.42658844e+01  2.30997240e+02  1.60966606e+01
-  1.48839601e+00  2.04918161e-01  4.11852069e-02  1.35106469e-02
- -2.46450331e-04  1.29732307e-01  2.36860710e+00  3.99122190e+01
-  3.14783517e+02  6.32323194e+01  1.03686359e+01  1.34294865e+00
- -4.73978612e-03 -2.77014459e-03  1.58901050e-03  2.22137982e-01
-  1.17732294e+00  6.97409238e+00  2.70873725e+01  7.17503769e+00
-  1.42993565e+00  2.87640824e-01  6.68287639e-02  2.24033711e-02
-  1.12633708e+00  2.05452771e+00  7.05772011e+00  5.28581551e+01
-  3.66327764e+02  8.06352451e+01  1.45434070e+01  3.17141576e+00
-  4.60160813e-01  1.85326314e-02 -3.71386667e-02 -7.85700714e-02
- -1.13442794e-01 -4.33687975e-02 -1.00023024e-01  2.60355004e-02
- -3.37174543e-03 -7.47123756e-04 -2.10137276e-03 -1.76869472e-03
-  3.20733408e+00  5.64511474e+00  1.53050555e+01  5.18593240e+01
-  1.61821617e+02  6.98620287e+01  2.05466634e+01  4.59395381e+00
-  1.46763900e+00  4.06387164e-01  8.81581719e-02  2.28227907e-02
-  1.67240982e-01  2.34022282e+00  1.28359259e+01  2.16974172e+00
- -8.32458010e-03 -1.06734674e-01 -4.76574546e-02 -2.25854789e-02
-  3.82510459e+00  6.05244904e+00  1.23960075e+01  2.73939737e+01
-  4.33929230e+01  2.87541529e+01  1.18687410e+01  5.06404492e+00
-  1.30417373e+00  5.75960457e-01  2.59269811e-01  7.39596786e-02
-  4.59646897e-01  7.64352684e+00  1.45622406e+02  7.54192056e+00
-  2.08835364e-01 -6.51589493e-02 -2.96241913e-02 -1.31951577e-02
-  2.36704554e+00  3.39613877e+00  6.01768198e+00  1.03447265e+01
-  1.27267433e+01  1.05591724e+01  5.90663652e+00  2.45409783e+00
-  1.00375809e+00  2.58746847e-01  2.36084833e-02 -8.76541088e-03
-  5.63316418e-01  9.70210655e+00  1.57821472e+02  1.04327172e+01
-  9.33908426e-01  1.25722555e-01  2.38461216e-02  6.80450943e-03
-  6.85373675e-01  9.28688633e-01  1.51172863e+00  2.33794906e+00
-  2.59596591e+00  2.26849899e+00  1.56786639e+00  5.98239898e-01
-  2.51480261e-01  9.41282339e-02 -1.91776290e-03  4.02975297e-02
-  5.89904732e-01  3.86025028e+00  1.72151948e+01  4.20725893e+00
-  7.07379560e-01  1.20409512e-01  2.34530939e-02  7.06289210e-03
-  2.92352846e-01  6.07142127e-01  1.52107710e+00  3.58088638e+00
-  4.96545307e+00  3.54438210e+00  1.76172893e+00  8.18695645e-01
-  1.68672522e-01  9.00124262e-03 -1.49017226e-03  3.30137548e-02
-  8.01688868e-01  4.51953532e+00  2.26291102e+01  5.13709748e+00
-  6.77467609e-01  5.76509643e-02 -2.25707621e-03 -3.81290732e-03
-  7.65806037e-01  1.75423888e+00  5.58606134e+00  1.61634324e+01
-  2.83414807e+01  1.72722159e+01  7.04054605e+00  2.03595293e+00
-  6.16226049e-01  9.66510232e-02  1.87893886e-02  1.86035644e-03
-  6.27601414e-01  1.18660528e+01  2.17199689e+02  1.18309652e+01
-  6.09352535e-01 -5.76965326e-03 -1.50334214e-02 -6.79859450e-03
-  5.17047774e-01  1.72398784e+00  7.96261222e+00  3.69157648e+01
-  1.32654087e+02  5.88824316e+01  1.33485476e+01  2.20581433e+00
-  5.59706586e-01  1.04684766e-01  6.27310229e-02  1.30995600e-01
-  1.62402455e+00  1.45036769e+01  2.34286231e+02  1.59344327e+01
-  1.48665195e+00  2.05370332e-01  4.12722520e-02  1.32497004e-02
- -2.86763319e-04  1.22562810e-01  2.45741450e+00  3.87988481e+01
-  2.29041361e+02  6.70504218e+01  1.02830732e+01  1.18601966e+00
- -3.07193347e-03 -1.49242110e-02  5.96613121e-03  2.56028046e-01
-  1.18992727e+00  6.91201976e+00  2.75387273e+01  7.13411448e+00
-  1.43285560e+00  2.88033375e-01  6.66736188e-02  2.26235532e-02
-  1.11449667e+00  2.02637933e+00  7.14575744e+00  5.07399314e+01
-  2.63353763e+02  8.16640650e+01  1.49582172e+01  2.82326552e+00
-  4.27334925e-01  1.86976428e-02 -3.60847139e-02 -8.18449082e-02
- -1.25155134e-01 -5.52972094e-02 -8.03236416e-02  2.21366878e-02
- -2.86760686e-03 -8.60367169e-04 -2.36830985e-03 -1.71313592e-03
-  3.23359832e+00  5.64975249e+00  1.53163348e+01  5.07693246e+01
-  1.62497767e+02  7.56027527e+01  1.98456681e+01  4.58515789e+00
-  1.48950833e+00  4.10945675e-01  9.27705988e-02  1.45572490e-02
-  1.35473580e-01  2.35127760e+00  1.28932855e+01  2.13573059e+00
- -4.26807518e-03 -1.06012318e-01 -4.73244295e-02 -2.27016441e-02
-  3.80208064e+00  6.07979965e+00  1.23636294e+01  2.74796778e+01
-  4.25350949e+01  2.89362435e+01  1.18518733e+01  4.94975269e+00
-  1.45901853e+00  5.22732314e-01  2.09671040e-01  9.14498010e-02
-  4.93739123e-01  7.67735448e+00  1.47759646e+02  7.50873632e+00
-  2.09613793e-01 -6.46469858e-02 -2.95664029e-02 -1.31486456e-02
-  2.38085843e+00  3.40323849e+00  6.04929639e+00  1.03027859e+01
-  1.27061729e+01  1.05571796e+01  5.91186308e+00  2.54730382e+00
-  8.86501629e-01  2.81637217e-01  2.14158216e-02 -6.80722757e-03
-  5.82114813e-01  9.65966525e+00  1.59369089e+02  1.03332575e+01
-  9.35372196e-01  1.25433219e-01  2.39273633e-02  6.78517940e-03
-  6.83563554e-01  9.15741816e-01  1.49889313e+00  2.35974498e+00
-  2.62446188e+00  2.29360920e+00  1.43957213e+00  6.38010012e-01
-  2.64299209e-01  8.79857655e-02 -1.74981983e-03  2.71180632e-02
-  6.01115747e-01  3.98059765e+00  1.73109547e+01  4.19186196e+00
-  7.06317724e-01  1.21183143e-01  2.31890280e-02  7.11359642e-03
-  2.44276418e-08  6.64262717e-07  2.55528741e-06  9.27586213e-05
-  3.73099706e-05  4.79951030e-04  4.11985835e-04  1.24914134e-03
-  6.67846294e-05  8.92666727e-04  1.19698383e-03  2.01811551e-03
-  5.54691912e-04  8.24978914e-05  6.77832767e-04  7.48633987e-06
-  1.59535605e-06  5.70432798e-07 -1.26287316e-08 -7.08433186e-08
-  2.84771784e-06  1.01148188e-05  2.92704599e-06  3.50889350e-04
-  2.36564460e-05 -2.31356538e-06  7.46979925e-07  1.00470688e-03
-  3.30154326e-04  2.34865075e-03  7.68524938e-04  6.60074996e-04
-  2.21193682e-05  6.32630786e-05  5.56739206e-05  8.62998409e-05
-  7.80274804e-06 -4.05670603e-07 -1.59076384e-08  9.35387344e-09
-  8.72183363e-06  7.72153418e-06  4.86263229e-05  3.05089929e-04
-  1.53417957e-03 -1.63972816e-03  2.48744520e-04  2.08112618e-04
-  2.19809326e-07  1.20368443e-04  1.51096671e-03  8.29415605e-06
-  3.89466911e-05  1.16576157e-04  2.45042329e-02  7.31490756e-04
-  1.77975762e-06  1.02318229e-06  2.58750700e-09  2.41399581e-07
-  3.28157907e-06  3.47555563e-05  1.29933030e-04 -3.70368686e-04
- -6.92733674e-03  1.21168963e-02  4.01750470e-03  1.23903792e-03
-  2.62846834e-05  1.40460549e-03  3.45284612e-04  1.36871416e-04
-  3.16142719e-05  4.13566231e-04  2.37242387e-03  4.62998869e-05
-  1.81619568e-07  3.05775300e-07  2.53361102e-08  3.31402380e-07
-  2.22472685e-06  1.19470487e-05  1.24751985e-03 -2.07563026e-03
-  1.89209737e-02 -5.84352716e-03  1.78365531e-02  1.76316911e-03
-  1.61462565e-04  3.58745851e-04  6.41758811e-05  3.47762345e-04
-  1.35518244e-04  7.66916123e-05  3.12660204e-05 -1.79466136e-06
-  1.98300518e-06 -3.03191852e-07 -1.04267675e-07 -1.27032725e-07
-  1.67809128e-05  3.55518139e-05 -3.56271932e-06  2.02306505e-03
- -5.44260374e-03  5.52571056e-03  7.59775605e-04  2.63644282e-04
-  1.20717020e-03  3.73616731e-04  1.82584110e-04  4.55871716e-06
-  1.87775711e-04 -2.80944060e-06  1.19042359e-04  4.53783044e-06
-  1.58947790e-05  1.41318095e-07 -5.03239801e-07 -3.28640530e-08
-  1.03799128e-05  2.49622908e-05  7.67707648e-07  4.30543287e-05
-  7.44517357e-04  2.59784394e-03  9.68658328e-05  1.41158060e-04
-  6.58205805e-04  5.21679160e-04  4.15192278e-04  2.29550657e-04
-  2.06854648e-04  3.43204757e-06  1.24735165e-05  8.35837979e-05
-  2.85058326e-06  1.56853915e-08 -2.93321930e-09 -1.05072357e-09
-  7.14695827e-06  3.08806750e-07  1.41172793e-05  2.49466846e-06
-  6.64922239e-05  1.90837099e-04  1.72561255e-05  1.88662093e-04
-  1.61252428e-03  1.60386158e-04  8.22926108e-04  7.38878019e-05
-  6.94918750e-05  7.85308574e-05  7.11132959e-03  2.29276383e-04
-  6.24125891e-07 -4.92512389e-07 -4.69553876e-08 -2.44705714e-08
-  3.27299341e-06  6.15465215e-06  7.18634160e-06  2.44017520e-05
-  1.26090582e-04  1.80012925e-04  2.67412383e-05  2.48502995e-04
-  4.06149714e-04  8.29745550e-05  1.21170759e-03  1.61703480e-05
-  1.42601714e-05  2.48152247e-04  5.25330767e-04 -2.21424139e-07
-  1.80545253e-06  4.41428493e-08  1.05583274e-07 -6.50599302e-09
-  5.11850026e-07  1.81492481e-05  6.50447339e-06  4.74207130e-06
-  5.83123050e-06  4.72426080e-04  2.22904519e-03  1.69000520e-03
-  5.67327720e-05  9.61056602e-07  7.46996167e-04  9.46042210e-04
-  1.22327015e-04  2.14163485e-04  1.29392085e-04  1.56448464e-05
-  1.00250195e-06  2.90309810e-06  1.93447118e-07  9.39522322e-08
-  9.98795566e+00  4.72588798e+00  7.25651896e+00  9.67750313e+00
-  4.27810849e+00  7.11354344e+00]
-
-
-The angle is 1.045163
-
