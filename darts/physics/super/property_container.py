@@ -32,8 +32,6 @@ class PropertyContainer:
             self.thermal = True
             self.temperature = None
 
-        self.rock_comp = rock_comp
-        self.p_ref = 1.0
         self.diff_coef = diff_coef
 
         # Allocate (empty) evaluators for functions

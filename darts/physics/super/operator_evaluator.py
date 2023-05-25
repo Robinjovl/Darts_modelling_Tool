@@ -38,7 +38,6 @@ class ReservoirOperators(operator_set_evaluator_iface):
         self.ph, self.sat, self.x, rho, self.rho_m, self.mu, self.kr, pc, mass_source = self.property.evaluate(state)
 
         self.compr = self.property.rock_compr_ev.evaluate(pressure)
-        self.compr = (1 + self.property.rock_comp * (pressure - self.property.p_ref))  # compressible rock
 
         density_tot = np.sum(self.sat * self.rho_m)
         zc = np.append(vec_state_as_np[1:nc], 1 - np.sum(vec_state_as_np[1:nc]))
@@ -190,7 +189,6 @@ class WellOperators(operator_set_evaluator_iface):
         ph, sat, x, rho, rho_m, mu, kr, pc, mass_source = self.property.evaluate(state)
 
         self.compr = self.property.rock_compr_ev.evaluate(pressure)
-        self.compr = (1 + self.property.rock_comp * (pressure - self.property.p_ref))  # compressible rock
 
         density_tot = np.sum(sat * rho_m)
         zc = np.append(vec_state_as_np[1:nc], 1 - np.sum(vec_state_as_np[1:nc]))
