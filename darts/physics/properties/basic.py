@@ -45,7 +45,8 @@ class PhaseRelPerm:
 
 
 class CapillaryPressure:
-    def __init__(self, p_entry=0, swc=0, labda=2):
+    def __init__(self, nph=2, p_entry=0, swc=0, labda=2):
+        self.nph = nph
         self.swc = swc
         self.p_entry = p_entry
         self.labda = labda
@@ -57,18 +58,27 @@ class CapillaryPressure:
         :param sat: saturation
         :return: Pc
         '''
-        Se = (sat - self.swc)/(1 - self.swc)
+        Se = (sat[1] - self.swc)/(1 - self.swc)
         if Se < self.eps:
             Se = self.eps
         pc = self.p_entry * Se ** (-1/self.labda)
 
-        Pc = np.array([0, pc], dtype=object)
+        Pc = np.zeros(self.nph, dtype=object)
+        Pc[1] = pc
 
         return Pc
 
 
+class Diffusion:
+    def __init__(self, diff_coeff=0.):
+        self.D = diff_coeff
+
+    def evaluate(self):
+        return self.D
+
+
 class RockCompactionEvaluator:
-    def __init__(self, pref=1, compres=1.45e-5):
+    def __init__(self, pref=1., compres=1.45e-5):
         self.Pref = pref
         self.compres = compres
 
