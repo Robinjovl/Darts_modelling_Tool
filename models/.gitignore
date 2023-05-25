@@ -8,4 +8,4 @@ darts
 *.vts
 .idea
 
-_logs/
+_logs/*.log
