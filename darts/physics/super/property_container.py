@@ -20,10 +20,10 @@ class PropertyContainer:
         self.min_z = min_z
 
         self.solid_dens = solid_dens if solid_dens is not None else []
-        self.nm = len(solid_dens)
+        self.nm = len(self.solid_dens)
         self.ncfl = self.nc - self.nm
         for i in range(self.nm):
-            solid_dens[i] /= Mw[i + self.ncfl]
+            self.solid_dens[i] /= Mw[i + self.ncfl]
 
         if temperature:  # constant T specified
             self.thermal = False
