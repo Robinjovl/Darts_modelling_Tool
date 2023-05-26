@@ -3,17 +3,19 @@ from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params
 
-from darts.models.physics_sup.properties_basic import PhaseRelPerm, CapillaryPressure, RockEnergyEvaluator, ConstFunc
-from darts.models.physics_sup.property_container import PropertyContainer
+from darts.physics.super.physics import Compositional
+from darts.physics.super.property_container import PropertyContainer
+from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator
 
-from darts.models.physics_sup.physics_comp_sup import Compositional
-from darts.models.physics_sup.operator_evaluator_sup import DefaultPropertyEvaluator
+from darts.physics.properties.basic import PhaseRelPerm, CapillaryPressure, RockEnergyEvaluator, ConstFunc
+from darts.physics.properties.density import Garcia2001
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
+from darts.physics.properties.enthalpy import EnthalpyIdeal
 
-from darts.models.physics_sup.flash.flash import NF2
-from dartsflash import PR, Ziabakhsh2012, FlashParams
-from darts.models.physics_sup.flash.components import ComponentProperties
-from darts.models.physics_sup.flash.properties import DensityBrineCO2, ViscosityCO2, ViscosityAq, EnthalpyIdeal
-from darts.models.physics_sup.flash.eos_properties import EoSDensity, EoSEnthalpy
+from dartsflash.flash import NF2
+from dartsflash.libflash import PR, Ziabakhsh2012, FlashParams
+from dartsflash.components import ComponentProperties
+from dartsflash.eos_properties import EoSDensity, EoSEnthalpy
 
 
 class Model(DartsModel):
@@ -129,9 +131,9 @@ class Model(DartsModel):
 
         self.property_container.flash_ev = NF2(nc, flash_params)
         self.property_container.density_ev = dict([('V', EoSDensity(pr, comp_data["Mw"])),
-                                                   ('Aq', DensityBrineCO2(self.components))])
-        self.property_container.viscosity_ev = dict([('V', ViscosityCO2()),
-                                                     ('Aq', ViscosityAq(self.components))])
+                                                   ('Aq', Garcia2001(self.components))])
+        self.property_container.viscosity_ev = dict([('V', Fenghour1998()),
+                                                     ('Aq', Islam2012(self.components))])
         self.property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas")),
                                                     ('Aq', PhaseRelPerm("oil"))])
 
@@ -140,9 +142,6 @@ class Model(DartsModel):
                                                     ('Aq', EoSEnthalpy(aq, h_ideal))])
         self.property_container.conductivity_ev = dict([('V', ConstFunc(0.)),
                                                         ('Aq', ConstFunc(0.)), ])
-
-        self.property_container.capillary_pressure_ev = CapillaryPressure()
-        self.property_container.rock_energy_ev = RockEnergyEvaluator()
 
         self.nc = self.ne = len(self.components)
         self.vars = ['P'] + self.components[:-1]
@@ -158,7 +157,7 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if self.thermal:
-            self.physics.set_uniform_T_initial_conditions(self.reservoir.mesh, self.p_init, self.ini_stream, self.init_temp)
+            self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.p_init, self.ini_stream, self.init_temp)
         else:
             self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.p_init, self.ini_stream)
 
@@ -210,9 +209,9 @@ class PropertyEvaluator(DefaultPropertyEvaluator):
         :param values: values of the operators (used for storing the operator values)
         :return: updated value for operators, stored in values
         """
-        (self.sat, self.x, rho, self.rho_m, self.mu, kin_rates, self.kr, self.pc, self.ph) = self.property.evaluate(state)
+        ph, sat, x, dens, dens_m, mu, kr, pc, mass_source = self.property.evaluate(state)
 
-        values[0] = self.sat[0]
-        values[1] = self.x[0, 0]
+        values[0] = sat[0]
+        values[1] = x[0, 0]
 
         return 0
