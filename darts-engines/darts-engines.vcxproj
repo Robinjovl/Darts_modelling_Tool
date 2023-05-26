@@ -100,7 +100,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetName>engines</TargetName>
     <TargetExt>.pyd</TargetExt>
     <CustomBuildAfterTargets>
@@ -108,21 +108,21 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_ODLS|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetName>engines</TargetName>
     <TargetExt>.pyd</TargetExt>
     <CustomBuildAfterTargets />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugMT|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>darts\</OutDir>
     <TargetName>engines</TargetName>
     <TargetExt>.pyd</TargetExt>
     <CustomBuildAfterTargets />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetExt>.pyd</TargetExt>
     <TargetName>engines</TargetName>
     <CustomBuildAfterTargets>
@@ -130,14 +130,14 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_ODLS|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetExt>.pyd</TargetExt>
     <TargetName>engines</TargetName>
     <CustomBuildAfterTargets />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseMT|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>..\darts-package\darts\</OutDir>
+    <OutDir>darts\</OutDir>
     <TargetExt>.pyd</TargetExt>
     <TargetName>engines</TargetName>
     <CustomBuildAfterTargets />
