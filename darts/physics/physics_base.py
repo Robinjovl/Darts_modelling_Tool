@@ -1,3 +1,4 @@
+import abc
 import hashlib
 import os
 import pickle
@@ -12,7 +13,8 @@ from darts.engines import *
 
 
 class PhysicsBase:
-    def __init__(self, cache=True):
+    def __init__(self, timer, cache=True):
+        self.timer = timer.node["simulation"]
         self.cache = cache
         # list of created interpolators
         # is used on destruction to save cache data
@@ -20,46 +22,65 @@ class PhysicsBase:
             self.created_itors = []
             atexit.register(self.write_cache)
 
-    """
-        Create interpolator object according to specified parameters
+    def init_physics(self, regions: list = [0], output_props=None,
+                     platform='cpu', itor_type='multilinear', itor_mode='adaptive', itor_precision='d'):
+        self.set_operators(regions, output_props)
+        self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
+        self.set_well_controls()
+        return
 
-        Parameters
-        ----------
-        evaluator : an operator_set_evaluator_iface object
-            State operators to be interpolated. Evaluator object is used to generate supporting points
-        n_dims : integer
-            The number of dimensions for interpolation (parameter space dimensionality)
-        n_ops : integer
-            The number of operators to be interpolated. Should be consistent with evaluator.
-        axes_n_points: an index_vector, pybind-type vector of integers
-            The number of supporting points for each axis.
-        axes_min : a value_vector, pybind-type vector of floats
-            The minimum value for each axis.
-        axes_max : a value_vector, pybind-type vector of floats
-            The maximum value for each axis.
-        type : string
-            interpolator type:
-            'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on
-                                      rectangles
-            'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
-        type : string
-            interpolator mode:
-            'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly
-            'static' - all supporting points are evaluated during itor object construction
-        platform : string
-            platform used for interpolation calculations :
-            'cpu' (default) - interpolation happens on CPU
-            'gpu' - interpolation happens on GPU
-        precision : string
-            precision used in interpolation calculations:
-            'd' (default) - supporting points are stored and interpolation is performed using double precision
-            's' - supporting points are stored and interpolation is performed using single precision
-    """
+    @abc.abstractmethod
+    def add_property_region(self, property_container, region=0):
+        pass
+
+    def set_operators(self, regions, output_properties=None):
+        pass
+
+    def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive', itor_precision='d'):
+        pass
+
+    def set_well_controls(self):
+        pass
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, n_dims: int, n_ops: int,
                             axes_n_points: index_vector, axes_min: value_vector, axes_max: value_vector,
                             algorithm: str = 'multilinear', mode: str = 'adaptive',
                             platform: str = 'cpu', precision: str = 'd'):
+        """
+                Create interpolator object according to specified parameters
+
+                Parameters
+                ----------
+                evaluator : an operator_set_evaluator_iface object
+                    State operators to be interpolated. Evaluator object is used to generate supporting points
+                n_dims : integer
+                    The number of dimensions for interpolation (parameter space dimensionality)
+                n_ops : integer
+                    The number of operators to be interpolated. Should be consistent with evaluator.
+                axes_n_points: an index_vector, pybind-type vector of integers
+                    The number of supporting points for each axis.
+                axes_min : a value_vector, pybind-type vector of floats
+                    The minimum value for each axis.
+                axes_max : a value_vector, pybind-type vector of floats
+                    The maximum value for each axis.
+                type : string
+                    interpolator type:
+                    'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on
+                                              rectangles
+                    'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
+                type : string
+                    interpolator mode:
+                    'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly
+                    'static' - all supporting points are evaluated during itor object construction
+                platform : string
+                    platform used for interpolation calculations :
+                    'cpu' (default) - interpolation happens on CPU
+                    'gpu' - interpolation happens on GPU
+                precision : string
+                    precision used in interpolation calculations:
+                    'd' (default) - supporting points are stored and interpolation is performed using double precision
+                    's' - supporting points are stored and interpolation is performed using single precision
+            """
         # verify then inputs are valid
         assert len(axes_n_points) == n_dims
         assert len(axes_min) == n_dims
@@ -126,19 +147,17 @@ class PhysicsBase:
                 pickle.dump(itor.point_data, fp, protocol=4)
         return itor
 
-    """
-            Create timers for interpolators.
-
-            Parameters
-            ----------
-            itor : an operator_set_gradient_evaluator_iface object
-                The object which performes evaluation of operator gradient (interpolators currently, AD-based in future) 
-            timer_name: string
-                Timer name to be used for the given interpolator
-        """
-
     def create_itor_timers(self, itor, timer_name: str):
+        """
+                Create timers for interpolators.
 
+                Parameters
+                ----------
+                itor : an operator_set_gradient_evaluator_iface object
+                    The object which performes evaluation of operator gradient (interpolators currently, AD-based in future)
+                timer_name: string
+                    Timer name to be used for the given interpolator
+            """
         try:
             # in case this is a subsequent call, create only timer node for the given timer
             self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name] = timer_node()
