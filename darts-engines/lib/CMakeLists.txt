@@ -64,30 +64,20 @@ message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
 
 
-# Adds pybind11 ----------------------------------------------------------------
-message(CHECK_START "   Importing pybind11")
-
-add_library(pybind11 INTERFACE)
-target_include_directories(pybind11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/pybind11")
-
-message(CHECK_PASS "done!")
-# ------------------------------------------------------------------------------
-
-
 # Adds python ------------------------------------------------------------------
 message(CHECK_START "   Importing python3")
 
-find_package (Python3 COMPONENTS Development.Module)
+find_package (Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
-# Check if python3 was found
-if(NOT Python3_FOUND)
-  message(FATAL_ERROR "      python3 not found!")
-endif()
-
-# Check if development module was found
-if(NOT Python3_Development.Module_FOUND)
-  message(FATAL_ERROR "   python3 Development.Module not found! You may need to intall python development tools.")
-endif()
+# # Check if python3 was found
+# if(NOT Python3_FOUND)
+#   message(FATAL_ERROR "      python3 not found!")
+# endif()
+# 
+# # Check if development module was found
+# if(NOT Python3_Development.Module_FOUND)
+#   message(FATAL_ERROR "   python3 Development.Module not found! You may need to intall python development tools.")
+# endif()
 
 # Some user feedback info
 message(STATUS "      Python version: ${Python3_VERSION}")
@@ -96,6 +86,19 @@ message(STATUS "      Additional Link options: ${Python3_LINK_OPTIONS}")
 
 message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
+
+
+# Adds pybind11 ----------------------------------------------------------------
+message(CHECK_START "   Importing pybind11")
+
+# add_library(pybind11 INTERFACE)
+# target_include_directories(pybind11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/pybind11")
+
+add_subdirectory(pybind11_new)
+
+message(CHECK_PASS "done!")
+# ------------------------------------------------------------------------------
+
 
 # Finalize reporting and check if all libraries have been added ----------------
 message(CHECK_PASS "done!")

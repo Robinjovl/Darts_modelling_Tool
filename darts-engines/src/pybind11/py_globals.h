@@ -35,8 +35,3 @@ PYBIND11_MAKE_OPAQUE(std::vector<operator_set_gradient_evaluator_iface*>);
 
 
 #endif
-
-
-
-
-

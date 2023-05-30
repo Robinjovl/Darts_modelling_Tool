@@ -7,22 +7,21 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/engines_build_info.cpp.in ${CMAKE_CUR
 # Build opendarts_engines ------------------------------------------------------
 
 # opendarts_engines is built by parts:
+# - interpolation
+# - mech
 # - globals
-# - interpolators
-# - engines
 # - conn_mesh
-# - mechanics
-# - wells
-# - stream
+# - engines
+# - wells (including stream)
 # - python_interface
 
 
-# Include interpolators --------------------------------------------------------
+# --- Include interpolators ----------------------------------------------------
 add_subdirectory(interpolation)
 # ------------------------------------------------------------------------------
 
 
-# Include mechanics ------------------------------------------------------------
+# --- Include mechanics --------------------------------------------------------
 add_subdirectory(mech)
 # ------------------------------------------------------------------------------
 
@@ -79,6 +78,137 @@ install(TARGETS engines_global
 )
 
 install(TARGETS engines_global
+  CONFIGURATIONS DEBUG     
+  DESTINATION lib
+)
+
+# # Install the public header files
+# install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
+#         DESTINATION include
+#         COMPONENT header_files
+#         FILES_MATCHING PATTERN "*.hpp")
+
+# ------------------------------------------------------------------------------
+
+
+# --- Build engines_build_info -------------------------------------------------
+# Set library files
+
+# First the source files (private headers should also go here)
+set(OD_ENGINES_BUILD_INFO_SRC_FILES
+  ${CMAKE_CURRENT_BINARY_DIR}/engines/src/engines_build_info.cpp
+)
+
+# Then the public headers
+set(OD_ENGINES_BUILD_INFO_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/engines_build_info.h
+)
+
+# Define the engines_build_info library
+# This is always a static library since we wish to use it internally only
+add_library(engines_build_info OBJECT "")
+
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# the opendarts linear solvers, otherwise it uses the old linear solvers
+target_compile_definitions(engines_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
+
+target_sources(engines_build_info
+  PRIVATE
+    ${OD_ENGINES_BUILD_INFO_SRC_FILES}
+    ${OD_ENGINES_BUILD_INFO_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+)
+
+target_link_libraries(engines_build_info
+  PUBLIC
+    opendarts_compiler_flags
+)
+
+# Define the include directories required internally (BUILD_INTERFACE)
+# and the ones to propagate when linking to this library (INSTALL_INTERFACE)
+target_include_directories(engines_build_info
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
+)
+
+# Setup IDE directory structure for engines_build_info
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_BUILD_INFO_SRC_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_BUILD_INFO_PUBLIC_HEADER_FILES})
+
+# Install the library file of engines_build_info
+install(TARGETS engines_build_info 
+  CONFIGURATIONS RELEASE    
+  DESTINATION lib
+)
+
+install(TARGETS engines_build_info
+  CONFIGURATIONS DEBUG     
+  DESTINATION lib
+)
+
+# # Install the public header files
+# install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
+#         DESTINATION include
+#         COMPONENT header_files
+#         FILES_MATCHING PATTERN "*.hpp")
+
+# ------------------------------------------------------------------------------
+
+
+# --- Build engines_conn_mesh --------------------------------------------------
+# Set library files
+
+# First the source files (private headers should also go here)
+set(OD_ENGINES_CONN_MESH_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/conn_mesh.cpp
+)
+
+# Then the public headers
+set(OD_ENGINES_CONN_MESH_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/conn_mesh.h
+)
+
+# Define the engines_conn_mesh library
+# This is always a static library since we wish to use it internally only
+add_library(engines_conn_mesh OBJECT "")
+
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# the opendarts linear solvers, otherwise it uses the old linear solvers
+target_compile_definitions(engines_conn_mesh PUBLIC OPENDARTS_LINEAR_SOLVERS)
+
+target_sources(engines_conn_mesh
+  PRIVATE
+    ${OD_ENGINES_CONN_MESH_SRC_FILES}
+    ${OD_ENGINES_CONN_MESH_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+)
+
+target_link_libraries(engines_conn_mesh
+  PUBLIC
+    engines_global
+    engines_wells
+    opendarts_compiler_flags
+    linear_solvers
+)
+
+# Define the include directories required internally (BUILD_INTERFACE)
+# and the ones to propagate when linking to this library (INSTALL_INTERFACE)
+target_include_directories(engines_conn_mesh
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
+)
+
+# Setup IDE directory structure for engines_conn_mesh
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_SRC_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_PUBLIC_HEADER_FILES})
+
+# Install the library file of engines_conn_mesh
+install(TARGETS engines_conn_mesh
+  CONFIGURATIONS RELEASE    
+  DESTINATION lib
+)
+
+install(TARGETS engines_conn_mesh
   CONFIGURATIONS DEBUG     
   DESTINATION lib
 )
@@ -235,5 +365,12 @@ install(TARGETS engines_wells
 #         FILES_MATCHING PATTERN "*.hpp")
 
 # ------------------------------------------------------------------------------
+
+
+# Include python interface -----------------------------------------------------
+add_subdirectory(pybind11)
+# ------------------------------------------------------------------------------
+
+
 
 # ------------------------------------------------------------------------------

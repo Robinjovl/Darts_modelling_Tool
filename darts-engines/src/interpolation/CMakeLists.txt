@@ -11,14 +11,20 @@ set(OD_ENGINES_INTERPOLATOR_SRC_FILES
 # Then the public headers
 set(OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/interpolator_base.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.hpp 
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_adaptive_cpu_interpolator.tpp 
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.hpp 
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_cpu_interpolator_base.tpp 
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_static_cpu_interpolator.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linear_static_cpu_interpolator.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_cpu_interpolator.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_cpu_interpolator.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_common.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.hpp     
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.hpp 
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_static_cpu_interpolator.tpp 
+  ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.h    
 )
 
 # Define the engines_interpolator library
