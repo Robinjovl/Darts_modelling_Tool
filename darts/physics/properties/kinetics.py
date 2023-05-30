@@ -54,7 +54,7 @@ class HydrateKinetics(Kinetics):
 
         self.water_idx = components.index("H2O")
         self.guest_idx = 0 if self.water_idx == 1 else 1
-        self.hydrate_idx = components.index("H")
+        # self.hydrate_idx = components.index("H")
 
         self.stoich = stoich
         if stoich is not None:
@@ -69,7 +69,7 @@ class HydrateKinetics(Kinetics):
 
         self.enthalpy = enthalpy
 
-    def evaluate(self, pressure, temperature, x, sat):
+    def calc_df(self, pressure, temperature, x):
         # Calculate fugacity difference between water in fluid phases and water in hydrate phase
         if x[0, 0] != 0.:
             f0 = self.flash.flash.fugacity(pressure, temperature, x[0, :], self.fluid_eos[0])
@@ -77,10 +77,15 @@ class HydrateKinetics(Kinetics):
             f0 = self.flash.flash.fugacity(pressure, temperature, x[1, :], self.fluid_eos[1])
 
         self.hydrate_eos.component_parameters(pressure, temperature)
-        fwH = self.hydrate_eos.fwH(f0)
+        fwH = self.hydrate_eos.fw(f0)
 
         df = fwH - f0[self.water_idx]  # if df < 0 formation, if df > 0 dissociation
         xH = self.hydrate_eos.xH()
+
+        return df, xH
+
+    def evaluate(self, pressure, temperature, x, sat):
+        df, xH = self.calc_df(pressure, temperature, x)
 
         # Reaction rate following Yin (2018)
         # surface area

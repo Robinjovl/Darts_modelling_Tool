@@ -82,3 +82,6 @@ class SolidFlash:
             X[self.np_fl+j, self.nc_fl+j] = 1.
 
         return NU, X
+
+    def fugacity(self, pressure, temperature, x, eos_name: str):
+        return self.flash.fugacity(pressure, temperature, x[:self.nc_fl], eos_name)
