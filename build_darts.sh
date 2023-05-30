@@ -1,7 +1,7 @@
 # Exit when any command fails
 set -e
 
-ODLS="0" # default linear solvers
+ODLS="1" # default linear solvers
 if [ $# -gt 0 ] # use the first cmd argument if it is passed
 then 
     ODLS=$1
