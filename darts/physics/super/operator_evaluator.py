@@ -88,8 +88,28 @@ class ReservoirOperators(operator_set_evaluator_iface):
         values[shift + 3 + 2 * nph] = phi
 
         #print(state, values)
+        # self.print_operators(state, values)
 
         return 0
+
+    def print_operators(self, state, values):
+        """Method for printing operators, grouped"""
+        nc = self.property.nc
+        nph = self.property.nph
+        ne = nc + self.thermal
+
+        print("================================================")
+        print("STATE", state)
+        print("ALPHA (accumulation)", values[0:ne])
+        for j in self.ph:
+            print("BETA (flux) {}".format(j), values[(ne + ne * j):(ne + ne * (j+1))])
+        print("GAMMA (diffusion)", values[(ne + ne * nph):(ne + ne * nph + nph + nph * ne)])
+        print("DELTA (reaction)", values[(ne + ne * nph + nph + nph * ne):(ne + ne * nph + nph + nph * ne + ne)])
+        print("GRAVITY", values[(ne + ne * nph + nph + nph * ne + ne + 3):(ne + ne * nph + nph + nph * ne + ne + 3 + nph)])
+        print("CAPILLARITY", values[(ne + ne * nph + nph + nph * ne + ne + 3 + nph):(ne + ne * nph + nph + nph * ne + ne + 3 + nph + nph)])
+        print("POROSITY", values[(ne + ne * nph + nph + nph * ne + ne + 3 + nph + nph)])
+        print("ROCK ENERGY", values[(ne + ne * nph + nph + nph * ne + ne):(ne + ne * nph + nph + nph * ne + ne + 3)])
+        return
 
 
 class ReservoirThermalOperators(ReservoirOperators):
@@ -149,6 +169,7 @@ class ReservoirThermalOperators(ReservoirOperators):
         values[shift + 2] = 1 / self.compr  # kJ/m3
 
         #print(state, values)
+        # self.print_operators(state, values)
 
         return 0
 

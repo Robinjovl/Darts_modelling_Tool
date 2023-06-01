@@ -79,7 +79,7 @@ class Compositional(PhysicsBase):
                                                         self.n_axes_points, self.n_axes_min, self.n_axes_max,
                                                         platform=platform)
 
-        self.property_itor = self.create_interpolator(self.property_operators, self.n_vars, self.property_operators.n_props,
+        self.property_itor = self.create_interpolator(self.property_operators, self.n_vars, self.n_ops,
                                                       self.n_axes_points, self.n_axes_min, self.n_axes_max,
                                                       platform=platform)
 

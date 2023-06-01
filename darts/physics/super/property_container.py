@@ -166,10 +166,9 @@ class PropertyContainer:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
 
         mass_source = np.zeros(self.nc)
-        for j, reaction in enumerate(self.kinetic_rate_ev):
-            rate = reaction.evaluate(pressure, temperature, self.x, zc[-1])
-            # rate = reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
-            mass_source += rate
+        for j, reaction in self.kinetic_rate_ev.items():
+            # mass_source += reaction.evaluate(pressure, temperature, self.x, zc[-1])
+            mass_source += reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
 
         return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
 
@@ -192,7 +191,7 @@ class PropertyContainer:
         if self.energy_source_ev:
             energy_source += self.energy_source_ev.evaluate(state)
 
-        for j, reaction in enumerate(self.kinetic_rate_ev):
+        for j, reaction in self.kinetic_rate_ev.items():
             energy_source += reaction.evaluate_enthalpy(pressure, temperature, self.x, self.sat[-1])
 
         return self.enthalpy, self.kappa, energy_source
