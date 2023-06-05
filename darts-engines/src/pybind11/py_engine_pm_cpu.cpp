@@ -84,7 +84,23 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_property_readonly_static("FLUX_OP", [](py::object) {return engine_pm_cpu::FLUX_OP; }) \
 		.def_property_readonly_static("GRAV_OP", [](py::object) {return engine_pm_cpu::GRAV_OP; });
 
-		py::bind_vector<std::vector<pm::contact>>(m, "contact_vector");
+	py::bind_vector<std::vector<pm::contact>>(m, "contact_vector")
+		.def(py::pickle(
+			[](const std::vector<pm::contact>& p) { // __getstate__
+				py::tuple t(p.size());
+				for (int i = 0; i < p.size(); i++)
+					t[i] = p[i];
+
+				return t;
+			},
+			[](py::tuple t) { // __setstate__
+				std::vector<pm::contact> p(t.size());
+
+				for (int i = 0; i < p.size(); i++)
+					p[i] = t[i].cast<pm::contact>();
+
+				return p;
+			}));
 };
 
 #endif //PYBIND11_ENABLED

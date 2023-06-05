@@ -152,8 +152,8 @@ def run(discr_type, init_filename=None):
 
     # run injector
     pressure = np.array(m.physics.engine.X, copy=False)[::2]
-    if not init_filename:
-        m.reservoir.wells[0].control = m.physics.new_rate_inj(m.inj_rate, m.inj_stream, 0)
+    #if not init_filename:
+    #    m.reservoir.wells[0].control = m.physics.new_rate_inj(m.inj_rate, m.inj_stream, 0)
         #m.reservoir.wells[1].control = m.physics.new_bhp_prod(pressure[m.reservoir.well_cells[1]] - 0.3)
 
     # Run over all reporting time-steps:

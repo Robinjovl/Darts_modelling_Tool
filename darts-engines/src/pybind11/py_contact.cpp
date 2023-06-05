@@ -65,23 +65,124 @@ void pybind_contact(py::module &m)
 		.def_readwrite("eta", &contact::eta) \
 		.def_readwrite("rsf", &contact::rsf) \
 		.def_readwrite("sd_props", &contact::sd_props)
-		.def_readwrite("normal_condition", &contact::normal_condition);
+		.def_readwrite("normal_condition", &contact::normal_condition)
+		.def(py::pickle(
+			[](const contact& c) { // __getstate__
+				py::tuple t(18);
 
-	py::class_<RSF_props>(m, "rsf_props") \
-		.def(py::init<>()) \
-		.def_readwrite("theta", &RSF_props::theta) \
-		.def_readwrite("theta_n", &RSF_props::theta_n) \
-		.def_readwrite("ref_velocity", &RSF_props::vel0) \
-		.def_readwrite("crit_distance", &RSF_props::Dc) \
-		.def_readwrite("a", &RSF_props::a) \
-		.def_readwrite("b", &RSF_props::b) \
-		.def_readwrite("min_vel", &RSF_props::min_vel) \
-		.def_readwrite("law", &RSF_props::law);
+				t[0] = c.cell_ids;
+				t[1] = c.f_scale;
+				t[2] = c.num_of_change_sign;
+				t[3] = c.N_VARS;
+				t[4] = c.U_VAR;
+				t[5] = c.P_VAR;
+				t[6] = c.NT;
+				t[7] = c.U_VAR_T;
+				t[8] = c.P_VAR_T;
+				//t[9] = c.friction_model;
+				//t[10] = c.friction_criterion;
+				t[9] = c.mu0;
+				t[10] = c.mu;
+				t[11] = c.fault_stress;
+				t[12] = c.phi;
+				t[13] = c.S;
+				//t[16] = c.states;
+				t[14] = c.fault_tag;
+				t[15] = c.eps_n;
+				t[16] = c.eps_t;
+				t[17] = c.eta;
+
+				return t;
+			},
+			[](py::tuple t) { // __setstate__
+				contact c;
+
+				c.cell_ids = t[0].cast<std::vector<index_t>>();
+				c.f_scale = t[1].cast<value_t>();
+				c.num_of_change_sign = t[2].cast<index_t>();
+				c.N_VARS = t[3].cast<uint8_t>();
+				c.U_VAR = t[4].cast<uint8_t>();
+				c.P_VAR = t[5].cast<uint8_t>();
+				c.NT = t[6].cast<uint8_t>();
+				c.U_VAR_T = t[7].cast<uint8_t>();
+				c.P_VAR_T = t[8].cast<uint8_t>();
+				//c.friction_model = t[9].cast<FrictionModel>();
+				//c.friction_criterion = t[10].cast<CriticalStress>();
+				c.mu0 = t[9].cast<std::vector<value_t>>();
+				c.mu = t[10].cast<std::vector<value_t>>();
+				c.fault_stress = t[11].cast<std::vector<value_t>>();
+				c.phi = t[12].cast<std::vector<value_t>>();
+				c.S = t[13].cast<std::vector<Matrix>>();
+				//c.states = t[16].cast<std::vector<ContactState>>();
+				c.fault_tag = t[14].cast<index_t>();
+				c.eps_n = t[15].cast<std::vector<value_t>>();
+				c.eps_t = t[16].cast<std::vector<value_t>>();
+				c.eta = t[17].cast<std::vector<value_t>>();
+
+				return c;
+			}));
+
+		py::class_<RSF_props>(m, "rsf_props") \
+			.def(py::init<>()) \
+			.def_readwrite("theta", &RSF_props::theta) \
+			.def_readwrite("theta_n", &RSF_props::theta_n) \
+			.def_readwrite("ref_velocity", &RSF_props::vel0) \
+			.def_readwrite("crit_distance", &RSF_props::Dc) \
+			.def_readwrite("a", &RSF_props::a) \
+			.def_readwrite("b", &RSF_props::b) \
+			.def_readwrite("min_vel", &RSF_props::min_vel) \
+			.def_readwrite("law", &RSF_props::law)
+			.def(py::pickle(
+				[](const RSF_props& p) { // __getstate__
+					py::tuple t(7);
+
+					t[0] = p.theta;
+					t[1] = p.theta_n;
+					t[2] = p.vel0;
+					t[3] = p.Dc;
+					t[4] = p.a;
+					t[5] = p.b;
+					t[6] = p.min_vel;
+					//t[7] = p.law;
+
+					return t;
+				},
+				[](py::tuple t) { // __setstate__
+					RSF_props p;
+
+					p.theta = t[0].cast<std::vector<value_t>>();
+					p.theta_n = t[1].cast<std::vector<value_t>>();
+					p.vel0 = t[2].cast<value_t>();
+					p.Dc = t[3].cast<value_t>();
+					p.a = t[4].cast<value_t>();
+					p.b = t[5].cast<value_t>();
+					p.min_vel = t[6].cast<value_t>();
+					//p.law = t[7].cast<StateLaw>();
+
+					return p;
+				}));
 
 	py::class_<SlipDependentFriction_props>(m, "sd_props") \
 		.def(py::init<>()) \
 		.def_readwrite("crit_distance", &SlipDependentFriction_props::Dc) \
-		.def_readwrite("mu_dyn", &SlipDependentFriction_props::mu_d);
+		.def_readwrite("mu_dyn", &SlipDependentFriction_props::mu_d)
+		.def(py::pickle(
+			[](const SlipDependentFriction_props& p) { // __getstate__
+				py::tuple t(2);
+
+				t[0] = p.Dc;
+				t[1] = p.mu_d;
+
+				return t;
+			},
+			[](py::tuple t) { // __setstate__
+				SlipDependentFriction_props p;
+
+				p.Dc = t[0].cast<value_t>();
+				p.mu_d = t[1].cast<value_t>();
+
+				return p;
+			}));
 
 	py::enum_<ContactState>(m, "contact_state") \
 		.value("TRUE_STUCK", ContactState::TRUE_STUCK) \

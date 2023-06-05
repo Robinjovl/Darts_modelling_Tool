@@ -398,8 +398,8 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_L2()
     for (int ip = 0; ip < nperf; ip++)
     {
       index_t i_w, i_r;
-      value_t wi;
-      std::tie(i_w, i_r, wi) = w->perforations[ip];
+      value_t wi, wid;
+      std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
       for (int c = 0; c < nc; c++)
       {
@@ -438,8 +438,8 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_Linf()
     for (int ip = 0; ip < nperf; ip++)
     {
       index_t i_w, i_r;
-      value_t wi;
-      std::tie(i_w, i_r, wi) = w->perforations[ip];
+      value_t wi, wid;
+      std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
       for (int c = 0; c < nc; c++)
       {

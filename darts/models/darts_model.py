@@ -5,7 +5,7 @@ import numpy as np
 
 from darts.engines import *
 from darts.engines import print_build_info as engines_pbi
-#from darts.discretizer import print_build_info as discretizer_pbi
+from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
 
@@ -21,7 +21,7 @@ class DartsModel:
         """
         # print out build information
         engines_pbi()
-        #discretizer_pbi()
+        discretizer_pbi()
         package_pbi()
         self.timer = timer_node()  # Create time_node object for time record
         self.timer.start()  # Start time record

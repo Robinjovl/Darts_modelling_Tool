@@ -309,8 +309,15 @@ class Model(DartsModel):
                 self.physics.set_uniform_T_initial_conditions(self.reservoir.mesh, uniform_pressure=self.pres_in,
                                                               uniform_composition=self.ini_stream[:-1], uniform_temp=self.ini_stream[-1])
             else:
+                c = np.array([cent.values[2] for cent in self.reservoir.discr_mesh.centroids])
+                nb = self.reservoir.mesh.n_res_blocks
+                init_composition = np.zeros(nb)
+                init_composition[c[:nb] > 0.4] = 0.008 * (1.0 - (0.5 - c[:nb][c[:nb] > 0.4]) / (0.5 - 0.4))
+                init_composition[init_composition < 0] = self.zero
+                #print(init_composition.min(), init_composition.max())
+                #print(init_composition[c[:nb] > 0.4])
                 self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=self.pres_in,
-                                                            uniform_composition=self.ini_stream)
+                                                            uniform_composition=init_composition)#self.ini_stream)
 
     def set_boundary_conditions(self):
         if not self.init_filename:
@@ -517,7 +524,7 @@ class ModCapillaryPressure:
         #     pc = 0
 
         #pc = self.p_entry
-        #pc = 0.0#self.p_entry
+        pc = 0.0#self.p_entry
         Pc = np.array([0, pc], dtype=object)  # V, Aq
         return Pc
 

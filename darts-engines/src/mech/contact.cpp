@@ -178,7 +178,7 @@ int contact::init_fault()
 		eps_t.push_back(f_scale * avg_mu * face1.area * face1.area / avg_vol );
 		eps_n.push_back(f_scale * avg_young * face1.area * face1.area / avg_vol );
 		value_t density = 2500.0;
-		value_t s_velocity = sqrt(avg_mu / density) * 86400.0;
+		value_t s_velocity = sqrt(avg_mu * 1e+5 / density) * 86400.0;
 		eta.push_back(avg_mu / s_velocity / 2.0);
 	}
 	phi.resize(cell_ids.size());

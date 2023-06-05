@@ -1,28 +1,31 @@
 # Exit when any command fails
 set -e
 
-ODLS="1" # default linear solvers
+ODLS="0" # default linear solvers
+
+# update submodules
+echo -e "\n- Update submodules: START\n"
+git submodule update --recursive --remote --init
+
 if [ $# -gt 0 ] # use the first cmd argument if it is passed
-then 
+then
     ODLS=$1
 fi
 
 NT="-j 1" # number of threads used to compile
 if [ $# -gt 1 ] # use the second cmd argument if it is passed
-then 
+then
     NT="-j $2"
 fi
 
 echo "ODLS=$ODLS NT=$NT"
-echo -e "\n- Update submodules: START\n"
-git submodule update --recursive --remote --init
 
 which python3-config
 export PYTHON_IFLAGS=`python3-config --includes`
 
 # build linear solvers
 rm -rf ./darts-engines/lib/darts_linear_solvers
-if [ $ODLS == "0" ] 
+if [ $ODLS == "0" ]
 then # deprecated linear solvers
 	cd darts-engines
 	./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS

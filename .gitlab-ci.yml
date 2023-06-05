@@ -257,40 +257,12 @@ build-windows-3.6-ODLS:
         - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
         # make sure wheel package could be installed
         - pip install wheel
-        - echo 'build *.pyd ODLS for windows started'
-
-        # build opendarts linear solvers step
-        - cd opendarts_linear_solvers
-        # build superLU
-        - cd thirdparty\SuperLU_5.2.1
-        - msbuild superlu.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:2
-        # build opendarts linear solvers
-        - cd ..\..
-        - mkdir build
-        - cd build
-        - cmake -DCMAKE_INSTALL_PREFIX=install -DENABLE_TESTING=TRUE ..
-        - msbuild opendarts_linear_solvers.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:2
-        - msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:1
-        - move install ..\..\darts-engines\lib\darts_linear_solvers
-        - cd ..\..
-        
-        # Compile engines
-        - cd darts-engines
-        - msbuild darts-engines.vcxproj /p:Configuration=Release_ODLS /p:Platform=x64 -maxCpuCount:2 
-        - cd ..
-        # Compile discretizer
-        - cd darts-discretizer
-        - msbuild darts-discretizer.vcxproj /p:Configuration=Release_ODLS /p:Platform=x64 -maxCpuCount:2 
-        - cd ..
-        # Build whl package
-        - echo 'build darts.whl for windows started'
-        # Generate build info of darts-package
-        - python darts/print_build_info.py
         # copy VS redist libraries 
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-        - python setup.py build bdist_wheel --plat-name=win-amd64
+        # compile and make the wheel
+        - .\build_darts_ODLS.bat
     artifacts:
       paths:
         - '.\dist\*.whl'
@@ -311,24 +283,15 @@ build-windows-3.6-ODLS:
         - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
         # make sure wheel package could be installed
         - pip install wheel
-        - echo 'build *.pyd for windows started'
-        - cd darts-engines
-        - .\update_private_artifacts.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS
-        # Compile engines
-        - msbuild darts-engines.vcxproj /p:Configuration=ReleaseMT /p:Platform=x64 -maxCpuCount:2 
-        - cd ..
-        # Compile discretizer
-        - cd darts-discretizer
-        - msbuild darts-discretizer.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:2 
-        - cd ..
-        # Build whl package
-        - echo 'build darts.whl for windows started'
-        - python darts\print_build_info.py
         # copy VS redist libraries 
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-        - python setup.py build bdist_wheel --plat-name=win-amd64
+        - cd darts-engines
+        - .\update_private_artifacts.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS
+        - cd ..
+        # compile and make the wheel
+        - .\build_darts_iter.bat
     artifacts:
       paths:
         - '.\dist\*.whl'
