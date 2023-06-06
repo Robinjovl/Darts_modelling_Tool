@@ -17,7 +17,7 @@ bin/
 
 # cache
 docs/_build
-__pycache__/
+**/__pycache__/
 darts/__pycache__/
 models/__pycache__/
 
