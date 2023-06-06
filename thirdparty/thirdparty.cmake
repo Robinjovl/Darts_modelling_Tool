@@ -22,8 +22,8 @@ if(import_externals_as_msvc)
   # For Windows we need to set the .lib file, which has a different name from the .a file
   
   # Check if the required files and paths exist
-  set(SuperLU_library_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/x64/Release/SuperLU.lib")  # set the location of blas library file (full path)
-  set(SuperLU_headers_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
+  set(SuperLU_library_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/x64/Release/SuperLU.lib")  # set the location of blas library file (full path)
+  set(SuperLU_headers_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/SRC")  # set the location of blas header files 
   set(SuperLU_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
 
   if(NOT EXISTS ${SuperLU_library_path})
@@ -43,8 +43,8 @@ else()
   # For Linux and macOS, we provide the .a file
   
   # Check if the required files and paths exist
-  set(SuperLU_library_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/libsuperlu_5.1.a")  # set the location of blas library file (full path)
-  set(SuperLU_headers_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
+  set(SuperLU_library_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/libsuperlu_5.1.a")  # set the location of blas library file (full path)
+  set(SuperLU_headers_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/SRC")  # set the location of blas header files 
   set(SuperLU_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
 
   if(NOT EXISTS ${SuperLU_library_path})
@@ -75,8 +75,8 @@ if(import_externals_as_msvc)
   # For Windows we need to set the .lib file, which has a different name from the .a file
   
   # Check if the required files and paths exist
-  set(blas_library_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/x64/Release/slu_blas.lib")  # set the location of blas library file (full path)
-  set(blas_headers_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
+  set(blas_library_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/x64/Release/slu_blas.lib")  # set the location of blas library file (full path)
+  set(blas_headers_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/SRC")  # set the location of blas header files 
   # set(blas_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
 
   if(NOT EXISTS ${blas_library_path})
@@ -95,8 +95,8 @@ else()
   # For Linux and macOS, we provide the .a file
   
   # Check if the required files and paths exist
-  set(blas_library_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/libblas.a")  # set the location of blas library file (full path)
-  set(blas_headers_path "${CMAKE_CURRENT_SOURCE_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
+  set(blas_library_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/libblas.a")  # set the location of blas library file (full path)
+  set(blas_headers_path "${CMAKE_SOURCE_DIR}/../thirdparty/SuperLU_5.2.1/SRC")  # set the location of blas header files 
   # set(blas_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
 
   if(NOT EXISTS ${blas_library_path})
