@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 
 # Setup shell script run -------------------------------------------------------
@@ -47,34 +47,34 @@ if [[ "$clean_mode" == true ]]; then
     
     # Cleaning thirdparty libs 
     echo 'Time for some cleaning!'
-    echo -e '   Cleaning thirdparty libs\n'
-    cd ../thirdparty/SuperLU_5.2.1
+    echo '\n   Cleaning thirdparty libs\n'
+    cd ../../thirdparty/SuperLU_5.2.1
     make clean 
-    cd ../../helper_scripts
+    cd ../../solvers/helper_scripts
     
-    # Clearning opendart-linear-solvers
-    echo '\n   Cleaning opendarts-linear-solvers'
+    # Clearning solvers
+    echo '\n   Cleaning opendarts-solvers'
     rm -r ../build_make
 else
   # Build 
   
   # Startup information ----------------------------------------------------------
-  echo -e "\n========================================================================"
-  echo "| Building opendarts-linear-solvers: START"
-  echo -e "========================================================================\n"
+  echo "\n========================================================================"
+  echo "| Building opendarts-solvers: START"
+  echo "========================================================================\n"
   # ------------------------------------------------------------------------------
   
   # Build thirparty libraries ----------------------------------------------------
-  echo -e "\n- Building thirdparty libs: START\n"
-  cd ../thirdparty/
+  echo "\n- Building thirdparty libs: START\n"
+  cd ../../thirdparty/
   
   # -- Build SuperLU -------------------------------------------------------------
-  echo -e "\n--- Building SuperLU: START\n"
+  echo "\n--- Building SuperLU: START\n"
   cd SuperLU_5.2.1
 
   # Setup Makefile include files to macOS 
-  cp conf_gcc_linux.mk conf.mk
-  cp make_gcc_linux.inc make.inc 
+  cp conf_gcc-11_macOS_m1.mk conf.mk
+  cp make_gcc-11_macOS_m1.inc make.inc 
 
   # Build SuperLU 
   make 
@@ -84,25 +84,25 @@ else
 
   # Return to start directory 
   cd ../
-  echo -e "\n--- Building SuperLU: DONE!\n"
+  echo "\n--- Building SuperLU: DONE!\n"
   # ------------------------------------------------------------------------------
 
-  cd ../helper_scripts
-  echo -e "\n- Building thirdparty libs: DONE!\n"
+  cd ../solvers/helper_scripts
+  echo "\n- Building thirdparty libs: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Build opendarts-linear_solvers -----------------------------------------------
-  echo -e "\n- Building opendarts-linear-solvers: START\n"
+  echo "\n- Building opendarts-solvers: START\n"
   # Setup build folder 
   cd ..
   mkdir -p build_make
   cd build_make
 
   # Setup install folder 
-  mkdir -p ../../darts-engines/lib/opendarts_linear_solvers
+  mkdir -p ../../darts-engines/lib/solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/opendarts_linear_solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make
@@ -114,13 +114,13 @@ else
   make install
   
   cd ../helper_scripts
-  echo -e "\n- Building opendarts-linear-solvers: DONE!\n"
+  echo "\n- Building opendarts-solvers: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Close up information ---------------------------------------------------------
-  echo -e "\n========================================================================"
-  echo -e "| Building opendarts-linear-solvers: DONE!"
-  echo -e "========================================================================\n"
+  echo "\n========================================================================"
+  echo "| Building opendarts-solvers: DONE!"
+  echo "========================================================================\n"
   # ------------------------------------------------------------------------------
 fi
 # ------------------------------------------------------------------------------
