@@ -23,22 +23,21 @@ echo "ODLS=$ODLS NT=$NT"
 which python3-config
 export PYTHON_IFLAGS=`python3-config --includes`
 
-# build linear solvers
-rm -rf ./darts-engines/lib/darts_linear_solvers
+# build solvers
+rm -rf ./engines/lib/darts_linear_solvers
 if [ $ODLS == "0" ]
 then # deprecated linear solvers
-	cd darts-engines
+	cd engines
 	./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS
 	cd ..
-else  #open-darts linear solvers
-	cd opendarts_linear_solvers
-	cd helper_scripts
+else  #open-darts solvers
+	cd solvers/helper_scripts
 	./build_linux.sh
 	cd ../..
 fi
 
 # compile engines
-cd darts-engines
+cd engines
 make clean
 if [ $ODLS == "0" ] #no cmd arguments
 then
@@ -58,7 +57,7 @@ fi
 cd ..
 
 # compile discretizer
-cd darts-discretizer
+cd discretizer
 make clean
 if [ $ODLS == "0" ] #no cmd arguments
 then

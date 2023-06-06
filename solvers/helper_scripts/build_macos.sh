@@ -99,10 +99,10 @@ else
   cd build_make
 
   # Setup install folder 
-  mkdir -p ../../darts-engines/lib/solvers
+  mkdir -p ../../engines/lib/solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make
