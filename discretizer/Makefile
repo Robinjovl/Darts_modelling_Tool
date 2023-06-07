@@ -6,7 +6,7 @@ INCLUDEFLAGS = -I./src \
 				-I../engines/src \
 				-I../engines/src/interpolation \
 				-I$(LINEAR_SOLVERS_DIR)/include  \
-				-I../engines/lib/pybind11 \
+				-I../thirdparty/pybind11 \
 				-I../thirdparty/eigen \
 				$(shell python3-config --includes)
 #LFLAGS = $(shell python3-config --libs)
