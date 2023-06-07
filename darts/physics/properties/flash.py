@@ -20,7 +20,9 @@ class ConstantK(Flash):
         self.K_values = np.array(ki)
 
     def evaluate(self, pressure, temperature, zc):
-        return RR2(self.K_values, zc, self.min_z)
+        V, x = RR2(self.K_values, zc, self.min_z)
+        return np.array(V), np.array(x)
+        # return RR2(self.K_values, zc, self.min_z)
 
 
 from numba import jit
@@ -48,7 +50,7 @@ def RR2(k, zc, eps):
     x = zc / (V * (k - 1) + 1)
     y = k * x
 
-    return np.array([V, 1-V]), np.array([y, x])
+    return [V, 1-V], [y, x]
 
 
 class SolidFlash:
