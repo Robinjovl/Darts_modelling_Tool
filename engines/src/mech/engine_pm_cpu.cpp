@@ -289,7 +289,8 @@ int engine_pm_cpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list
 	fluxes_ref_n.resize(n_vars * mesh->n_conns, 0.0);
 	fluxes_biot_ref_n.resize(n_vars * mesh->n_conns, 0.0);
 	eps_vol.resize(mesh->n_matrix);
-	max_row_values.resize(mesh->n_blocks * N_VARS);
+	max_row_values.resize(n_vars * mesh->n_blocks);
+	jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
 
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -757,6 +758,8 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 #endif
 	for (auto &contact : contacts)
 	{
+		contact.implicit_scheme_multiplier = 1.0;
+
 		if (FIND_EQUILIBRIUM)
 			contact.set_state(pm::TRUE_STUCK);
 
@@ -1088,6 +1091,8 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 #endif
 	for (auto &contact : contacts)
 	{
+		contact.implicit_scheme_multiplier = 1.0;
+
 		if (FIND_EQUILIBRIUM)
 			contact.set_state(pm::TRUE_STUCK);
 
@@ -1110,6 +1115,318 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	}
 	return 0;
 };
+
+int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
+{
+	dt = _dt;
+	// We need extended connection list for that with all connections for each block
+
+	index_t n_blocks = mesh->n_blocks;
+	index_t n_matrix = mesh->n_matrix;
+	index_t n_res_blocks = mesh->n_res_blocks;
+	index_t n_bounds = mesh->n_bounds;
+	index_t n_conns = mesh->n_conns;
+	index_t* diag_ind = jacobian->get_diag_ind();
+	index_t* rows = jacobian->get_rows_ptr();
+	index_t* cols = jacobian->get_cols_ind();
+	index_t* row_thread_starts = jacobian->get_row_thread_starts();
+
+	const index_t* block_m = mesh->block_m.data();
+	const index_t* block_p = mesh->block_p.data();
+	const index_t* stencil = mesh->stencil.data();
+	const index_t* offset = mesh->offset.data();
+	const value_t* tran = mesh->tran.data();
+	const value_t* tran_biot = mesh->tran_biot.data();
+	value_t* bc = mesh->bc.data();
+	value_t* bc_prev = mesh->bc_n.data();
+	value_t* bc_ref = mesh->bc_ref.data();
+	const value_t* rhs = mesh->rhs.data();
+	const value_t* rhs_biot = mesh->rhs_biot.data();
+	const value_t* f = mesh->f.data();
+	const value_t* V = mesh->volume.data();
+	const value_t* kd = mesh->drained_compressibility.data();
+	const value_t* biot = mesh->biot.data();
+	const value_t* poro = mesh->poro.data();
+	value_t* pz_bounds = mesh->pz_bounds.data();
+	//const value_t *p_ref = mesh->ref_pressure.data();
+	const value_t* eps_vol_ref = mesh->ref_eps_vol.data();
+
+#ifdef _OPENMP
+	//#pragma omp parallel reduction (max: CFL_max)
+#pragma omp parallel
+	{
+		int id = omp_get_thread_num();
+		index_t start = row_thread_starts[id];
+		index_t end = row_thread_starts[id + 1];
+#else
+	index_t start = 0;
+	index_t end = n_blocks;
+#endif //_OPENMP
+
+	std::fill(RHS.begin(), RHS.end(), 0.0);
+	std::fill(fluxes.begin(), fluxes.end(), 0.0);
+	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
+
+	int connected_with_well;
+	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
+	value_t CFL_mech[ND_];
+	value_t CFL_max_global = 0, CFL_max_local;
+	value_t p_diff, gamma, * cur_bc, * cur_bc_prev, * ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, * buf, * buf_prev, p_ref_cur, * n;
+	uint8_t d, v;
+	value_t tmp;
+
+	for (i = start; i < end; ++i)
+	{
+		// index of diagonal block entry for block i in CSR values array
+		diag_idx = N_VARS_SQ * diag_ind[i];
+		// index of first entry for block i in CSR cols array
+		csr_idx_start = rows[i];
+		// index of last entry for block i in CSR cols array
+		csr_idx_end = rows[i + 1];
+		// index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
+		//index_t conn_idx = csr_idx_start - i;
+		connected_with_well = 0;
+
+		//jac_idx = N_VARS_SQ * csr_idx_start;
+		CFL_mech[0] = CFL_mech[1] = CFL_mech[2] = biot_mult = 0.0;
+		for (; block_m[conn_id] == i && conn_id < n_conns; conn_id++)
+		{
+			j = block_p[conn_id];
+			if (j >= n_res_blocks && j < n_blocks)
+				connected_with_well = 1;
+
+			// Fluid flux evaluation & biot flux
+			gamma = 0.0;
+			for (conn_st_id = offset[conn_id]; conn_st_id < offset[conn_id + 1]; conn_st_id++)
+			{
+				if (stencil[conn_st_id] < n_blocks)
+				{
+					buf = &X[N_VARS * stencil[conn_st_id]];
+					buf_prev = &Xn[N_VARS * stencil[conn_st_id]];
+				}
+				else
+				{
+					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
+					buf_prev = &bc_prev[N_VARS * (stencil[conn_st_id] - n_blocks)];
+				}
+				for (v = 0; v < N_VARS; v++)
+				{
+					gamma += tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v];
+					biot_mult += tran_biot[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * buf[v];
+					fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v] * (buf[v] - buf_prev[v]) / dt;
+				}
+			}
+
+			gamma += op_vals_arr[i * N_OPS + GRAV_OP] * rhs[N_VARS * conn_id + P_VAR];
+			biot_mult += op_vals_arr[i * N_OPS + GRAV_OP] * rhs_biot[N_VARS * conn_id + P_VAR];
+
+			// Identify upwind direction
+			if (gamma >= 0)
+			{
+				upwd_idx = i;
+				upwd_jac_idx = diag_ind[i];
+				fluxes[N_VARS * conn_id + P_VAR] = gamma * op_vals_arr[i * N_OPS + FLUX_OP] / op_vals_arr[i * N_OPS + ACC_OP];
+			}
+			else
+			{
+				upwd_idx = j;
+				if (j > n_blocks)
+					upwd_jac_idx = csr_idx_end;
+				fluxes[N_VARS * conn_id + P_VAR] = gamma * op_vals_arr[j * N_OPS + FLUX_OP] / op_vals_arr[j * N_OPS + ACC_OP];
+			}
+
+			// Inner contribution
+			conn_st_id = offset[conn_id];
+			for (st_id = csr_idx_start; st_id < csr_idx_end && conn_st_id < offset[conn_id + 1]; st_id++)
+			{
+				if (stencil[conn_st_id] == cols[st_id])
+				{
+					if (gamma < 0 && stencil[conn_st_id] == j)
+						upwd_jac_idx = st_id;
+
+					p_ref_cur = Xref[N_VARS * stencil[conn_st_id] + P_VAR];
+					// momentum balance
+					for (d = 0; d < ND_; d++)
+					{
+						for (v = 0; v < ND_; v++)
+						{
+							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
+							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
+						}
+						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
+						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
+					}
+					// mass balance
+					for (v = 0; v < N_VARS; v++)
+					{
+						// biot
+						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * (X[stencil[conn_st_id] * N_VARS + v] - Xref[stencil[conn_st_id] * N_VARS + v]);
+						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] *
+							(op_vals_arr[i * N_OPS + ACC_OP] * X[stencil[conn_st_id] * N_VARS + v] -
+								op_vals_arr_n[i * N_OPS + ACC_OP] * Xn[stencil[conn_st_id] * N_VARS + v]);
+					}
+					conn_st_id++;
+				}
+			}
+			// Boundary contribution
+			for (; conn_st_id < offset[conn_id + 1]; conn_st_id++)
+			{
+				if (stencil[conn_st_id] >= n_blocks)
+				{
+					idx = N_VARS * (stencil[conn_st_id] - n_blocks);
+					cur_bc = &bc[idx];
+					cur_bc_prev = &bc_prev[idx];
+					ref_bc = &bc_ref[idx];
+					// momentum balance
+					for (d = 0; d < ND_; d++)
+					{
+						for (v = 0; v < N_VARS; v++)
+						{
+							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - ref_bc[v]);
+							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - ref_bc[v]);
+						}
+					}
+					// mass balance
+					for (v = 0; v < N_VARS; v++)
+					{
+						// biot
+						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * (cur_bc[v] - ref_bc[v]);
+						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] *
+							(op_vals_arr[i * N_OPS + ACC_OP] * cur_bc[v] - op_vals_arr_n[i * N_OPS + ACC_OP] * cur_bc_prev[v]);
+					}
+				}
+			}
+
+			for (d = 0; d < ND_; d++)
+			{
+				fluxes[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs[N_VARS * conn_id + U_VAR + d];
+				fluxes_biot[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs_biot[N_VARS * conn_id + U_VAR + d];
+			}
+			fluxes_biot[N_VARS * conn_id + P_VAR] += rhs_biot[N_VARS * conn_id + P_VAR] * op_vals_arr[i * N_OPS + GRAV_OP];
+
+			// gravity
+
+			for (d = 0; d < ND_; d++)
+			{
+				RHS[i * N_VARS + U_VAR + d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d];
+				RHS[i * N_VARS + U_VAR + d] += fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
+				CFL_mech[d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d] +
+					fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
+			}
+			RHS[i * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * gamma;
+			//RHS[i * N_VARS + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP] * (fluxes_biot_ref[N_VARS * conn_id + P_VAR] + fluxes_biot[N_VARS * conn_id + P_VAR]) -
+			//							op_vals_arr_n[i * N_OPS + ACC_OP] * (fluxes_biot_ref_n[N_VARS * conn_id + P_VAR] + fluxes_biot_n[N_VARS * conn_id + P_VAR]);
+
+			RHS[i * N_VARS + P_VAR] += rhs_biot[N_VARS * conn_id + P_VAR] *
+				(op_vals_arr[i * N_OPS + ACC_OP] * op_vals_arr[i * N_OPS + GRAV_OP] - op_vals_arr_n[i * N_OPS + ACC_OP] * op_vals_arr_n[i * N_OPS + GRAV_OP]);
+		}
+
+		// porosity
+		if (i >= n_matrix)
+		{
+			biot_mult = comp_mult = 0.0;
+			phi = poro[i];
+			phi_n = poro[i];
+		}
+		else
+		{
+			eps_vol[i] = biot_mult / V[i];
+			biot_mult -= V[i] * eps_vol_ref[i];
+			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
+			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
+			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
+			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
+		}
+
+		if (FIND_EQUILIBRIUM || geomechanics_mode[i])
+		{
+			jacobian_explicit_scheme[i * N_VARS + P_VAR] = V[i];
+		}
+		else
+		{
+			RHS[i * N_VARS + P_VAR] += V[i] * (phi * op_vals_arr[i * N_OPS + ACC_OP] - phi_n * op_vals_arr_n[i * N_OPS + ACC_OP]);
+			jacobian_explicit_scheme[i * N_VARS + P_VAR] = (V[i] * phi + biot_mult) * op_ders_arr[(i * N_OPS + ACC_OP) * NC_];
+			jacobian_explicit_scheme[i * N_VARS + P_VAR] += V[i] * comp_mult * op_vals_arr[i * N_OPS + ACC_OP];
+		}
+
+		if (!FIND_EQUILIBRIUM)
+		{
+			// momentum inertia
+			if (dt > 0.0)
+			{
+				for (d = 0; d < ND_; d++)
+				{
+					RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+					jacobian_explicit_scheme[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+				}
+
+				if (dt1 > 0.0)
+				{
+					for (d = 0; d < ND_; d++)
+					{
+						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+					}
+				}
+			}
+		}
+
+		// calc CFL for reservoir cells, not connected with wells
+		if (i < n_res_blocks)
+		{
+			if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
+			{
+				CFL_max_local = 0.0;
+				for (uint8_t d = 0; d < ND_; d++)
+				{
+					tmp = engine_pm_cpu::BAR_DAY2_TO_PA_S2 * CFL_mech[d] / momentum_inertia / mesh->volume[i] /
+						((X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt);
+					CFL_max_local += tmp * tmp;
+				}
+				if (fabs(X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) > EQUALITY_TOLERANCE)
+					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
+			}
+
+			// volumetric forces and source/sink 
+			for (d = 0; d < ND_; d++)
+			{
+				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
+			}
+			RHS[i * N_VARS + P_VAR] += V[i] * dt * f[i * N_VARS + P_VAR];
+		}
+	}
+
+#ifdef _OPENMP
+#pragma omp critical
+	{
+		if (CFL_max < CFL_max_local)
+			CFL_max = CFL_max_local;
+	}
+	}
+#else
+	CFL_max = CFL_max_global;
+#endif
+	for (auto& contact : contacts)
+	{
+		contact.implicit_scheme_multiplier = 0.0;
+
+		if (FIND_EQUILIBRIUM)
+			contact.set_state(pm::TRUE_STUCK);
+
+		if (contact_solver == pm::FLUX_FROM_PREVIOUS_ITERATION)
+			contact.add_to_jacobian_linear(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+		else if (contact_solver == pm::RETURN_MAPPING)
+			contact.add_to_jacobian_return_mapping(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+		else if (contact_solver == pm::LOCAL_ITERATIONS)
+			contact.add_to_jacobian_local_iters(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+	}
+	for (ms_well* w : wells)
+	{
+		value_t* jac_well_head = explicit_scheme_dummy_well_jacobian.data();
+		w->add_to_jacobian(dt, X, jac_well_head, RHS);
+	}
+	return 0;
+}
 
 void engine_pm_cpu::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {

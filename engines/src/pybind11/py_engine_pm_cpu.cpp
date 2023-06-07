@@ -38,6 +38,7 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def(py::init<>()) \
 		.def("init", (int (engine_pm_cpu::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_pm_cpu::init, "Initialize simulator by mesh and params", py::keep_alive<1, 5>()) \
 		.def("calc_newton_dev", &engine_pm_cpu::calc_newton_dev) \
+		.def("assemble_residual", &engine_pm_cpu::assemble_residual) \
 		.def("apply_newton_update", &engine_pm_cpu::apply_newton_update) \
 		.def("post_newtonloop", &engine_pm_cpu::post_newtonloop) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
@@ -73,6 +74,7 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("Xn_ref", &engine_pm_cpu::Xn_ref) \
 		.def_readwrite("dX", &engine_pm_cpu::dX) \
 		.def_readwrite("RHS", &engine_pm_cpu::RHS) \
+		.def_readwrite("jacobian_explicit_scheme", &engine_pm_cpu::jacobian_explicit_scheme) \
 		.def_readwrite("contact_solver", &engine_pm_cpu::contact_solver) \
 		.def_property_readonly_static("P_VAR", [](py::object) {return engine_pm_cpu::P_VAR; }) \
 		.def_property_readonly_static("Z_VAR", [](py::object) {return engine_pm_cpu::Z_VAR; }) \

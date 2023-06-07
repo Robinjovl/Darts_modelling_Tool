@@ -99,6 +99,7 @@ public:
 
   int assemble_jacobian_array(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int assemble_jacobian_array_time_dependent_discr(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
+  int assemble_residual(value_t _dt, std::vector<value_t> &X, csr_matrix_base* jacobian, std::vector<value_t> &RHS);
   void update_uu_jacobian();
 
   int solve_linear_equation();
@@ -130,6 +131,8 @@ public:
 
   std::vector<pm::contact> contacts;
   std::vector<index_t> geomechanics_mode;
+  std::array<value_t, 2 * N_VARS_SQ> explicit_scheme_dummy_well_jacobian;
+  std::vector<value_t> jacobian_explicit_scheme;
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
