@@ -54,7 +54,7 @@ void pybind_elem(py::module &m)
 		.export_values();
 	py::bind_vector<std::vector<mesh::ElemType>>(m, "elem_type_vector");
 
-  py::enum_<mesh::ElemLoc>(m, "elem_loc")  \
+	py::enum_<mesh::ElemLoc>(m, "elem_loc")  \
 		.value("FRACTURE_BOUNDARY", mesh::ElemLoc::FRACTURE_BOUNDARY)		 \
 		.value("BOUNDARY", mesh::ElemLoc::BOUNDARY)		 \
 		.value("FRACTURE", mesh::ElemLoc::FRACTURE)		 \
@@ -63,4 +63,30 @@ void pybind_elem(py::module &m)
 		.export_values();
 	py::bind_vector<std::vector<mesh::ElemLoc>>(m, "elem_loc_vector");
 
+	py::enum_<mesh::ConnType>(m, "conn_type")  \
+		.value("MAT_MAT", mesh::ConnType::MAT_MAT)		 \
+		.value("MAT_BOUND", mesh::ConnType::MAT_BOUND)		 \
+		.value("MAT_FRAC", mesh::ConnType::MAT_FRAC)		 \
+		.value("FRAC_MAT", mesh::ConnType::FRAC_MAT)	 \
+		.value("FRAC_FRAC", mesh::ConnType::FRAC_FRAC) \
+		.value("FRAC_BOUND", mesh::ConnType::FRAC_BOUND)
+		.export_values();
+	py::bind_vector<std::vector<mesh::ConnType>>(m, "conn_type_vector");
+
+
+	py::class_<mesh::Connection>(m, "Connection", "Connection between higher-dimensional elements")
+		.def(py::init<>())
+
+		// expose params
+		.def_readwrite("type", &mesh::Connection::type)
+		.def_readwrite("n_pts", &mesh::Connection::n_pts)
+		.def_readwrite("conn_id", &mesh::Connection::conn_id)
+		.def_readwrite("elem_id1", &mesh::Connection::elem_id1)
+		.def_readwrite("elem_id2", &mesh::Connection::elem_id2)
+		.def_readwrite("pts_offset", &mesh::Connection::pts_offset)
+		.def_readwrite("n", &mesh::Connection::n)
+		.def_readwrite("c", &mesh::Connection::c)
+		.def_readwrite("area", &mesh::Connection::area);
+	py::bind_vector<std::vector<mesh::Connection>>(m, "conn_vector");
+  
 }

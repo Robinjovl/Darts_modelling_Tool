@@ -44,6 +44,7 @@ void pybind_contact(py::module &m)
 		.def("set_state", &contact::set_state) \
 		.def_readwrite("cell_ids", &contact::cell_ids) \
 		.def_readwrite("f_scale", &contact::f_scale) \
+		.def_readwrite("implicit_scheme_multiplier", &contact::implicit_scheme_multiplier) \
 		.def_readwrite("num_of_change_sign", &contact::num_of_change_sign) \
 		.def_readwrite("N_VARS", &contact::N_VARS) \
 		.def_readwrite("U_VAR", &contact::U_VAR) \

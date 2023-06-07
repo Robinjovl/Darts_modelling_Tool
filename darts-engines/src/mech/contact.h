@@ -96,6 +96,7 @@ namespace pm
 		std::vector<index_t> cell_ids;
 		std::vector<ContactState> states, states_n;
 		std::vector<Matrix> S, Sinv, S_fault;
+		index_t min_cell_id;
 
 		//// friction properties
 		// friction model
@@ -128,6 +129,10 @@ namespace pm
 		value_t max_allowed_gap_change;
 		// number of segments that with different gap direction
 		index_t num_of_change_sign;
+		// multiplier to switch to fully-explicit scheme
+		value_t implicit_scheme_multiplier;
+		// diagonal values of jacobian in the case of fully-explicit scheme
+		std::vector<value_t> jacobian_explicit_scheme;
 
 		contact();
 		~contact();
@@ -135,14 +140,17 @@ namespace pm
 		int init_fault();
 		int init_local_iterations();
 
+		// returm-mapping algorithm for penalized contact constraints
 		int add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobian, std::vector<value_t>& RHS, const std::vector<value_t>& X, const std::vector<value_t>& fluxes, const std::vector<value_t>& fluxes_biot,
 																								const std::vector<value_t>& Xn, const std::vector<value_t>& fluxes_n, const std::vector<value_t>& fluxes_biot_n,
 																									std::vector<value_t>& Xref, std::vector<value_t>& fluxes_ref, std::vector<value_t>& fluxes_biot_ref,
 																										const std::vector<value_t>& Xn_ref, const std::vector<value_t>& fluxes_ref_n, const std::vector<value_t>& fluxes_biot_ref_n);
+		// semi-explicit scheme
 		int add_to_jacobian_linear(value_t dt, csr_matrix_base* jacobian, std::vector<value_t>& RHS, const std::vector<value_t>& X, const std::vector<value_t>& fluxes, const std::vector<value_t>& fluxes_biot,
 																								const std::vector<value_t>& Xn, const std::vector<value_t>& fluxes_n, const std::vector<value_t>& fluxes_biot_n,
 																									std::vector<value_t>& Xref, std::vector<value_t>& fluxes_ref, std::vector<value_t>& fluxes_biot_ref,
 																										const std::vector<value_t>& Xn_ref, const std::vector<value_t>& fluxes_ref_n, const std::vector<value_t>& fluxes_biot_ref_n);
+		// return-mapping with local iterations for gap vector
 		int add_to_jacobian_local_iters(value_t dt, csr_matrix_base* jacobian, std::vector<value_t>& RHS, std::vector<value_t>& X, std::vector<value_t>& fluxes, std::vector<value_t>& fluxes_biot,
 																											const std::vector<value_t>& Xn, const std::vector<value_t>& fluxes_n, const std::vector<value_t>& fluxes_biot_n,
 																												std::vector<value_t>& Xref, std::vector<value_t>& fluxes_ref, std::vector<value_t>& fluxes_biot_ref,

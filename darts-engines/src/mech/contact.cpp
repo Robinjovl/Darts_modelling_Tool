@@ -36,6 +36,7 @@ contact::contact()
 	timer = nullptr;
 	output_counter = 0;
 	normal_condition = ZERO_GAP_CHANGE;
+	implicit_scheme_multiplier = 1.0;
 }
 contact::~contact()
 {
@@ -53,7 +54,11 @@ int contact::init_friction(pm_discretizer* _discr, conn_mesh* _mesh)
 
 	assert(mu0.size() == cell_ids.size());
 	assert(mu.size() == cell_ids.size());
-	
+
+	min_cell_id = *std::min_element(cell_ids.begin(), cell_ids.end());
+	const index_t max_cell_id = *std::max_element(cell_ids.begin(), cell_ids.end());
+	assert(max_cell_id - min_cell_id + 1 == cell_ids.size());
+
 	if (friction_model == RSF || friction_model == RSF_STAB)
 	{
 		index_t cell_id;
@@ -183,6 +188,7 @@ int contact::init_fault()
 	}
 	phi.resize(cell_ids.size());
 	fault_stress.resize(ND * cell_ids.size());
+	jacobian_explicit_scheme.resize(ND * cell_ids.size());
 
 	return 0;
 }
@@ -423,6 +429,8 @@ int contact::add_to_jacobian_return_mapping(value_t dt, csr_matrix_base* jacobia
 	std::string fname = "sol_poromechanics/friction_output_" + std::to_string(file_id++) + ".txt";
 	pFile = fopen(fname.c_str(), "w");*/
 	
+	fill_n(jacobian_explicit_scheme.begin(), jacobian_explicit_scheme.size(), 0.0);
+
 	for (index_t i = 0; i < cell_ids.size(); i++)
 	{
 		cell_id = cell_ids[i];
@@ -986,9 +994,9 @@ int contact::add_to_jacobian_slip(index_t cell_id, value_t dt, vector<value_t>& 
 				fill_n(Jac + N_VARS_SQ * st_id + (U_VAR + permut[d]) * N_VARS, N_VARS, 0.0);
 				for (v = 0; v < ND; v++)
 				{
-					Jac[st_id * N_VARS_SQ + (U_VAR + permut[d]) * N_VARS + U_VAR + v] += F.values[d * F.N + ind[conn_st_id] * ND + v];
+					Jac[st_id * N_VARS_SQ + (U_VAR + permut[d]) * N_VARS + U_VAR + v] += implicit_scheme_multiplier * F.values[d * F.N + ind[conn_st_id] * ND + v];
 				}
-				Jac[st_id * N_VARS_SQ + (U_VAR + permut[d]) * N_VARS + ND] += Fpres.values[d * Fpres.N + ind[conn_st_id]];
+				Jac[st_id * N_VARS_SQ + (U_VAR + permut[d]) * N_VARS + ND] += implicit_scheme_multiplier * Fpres.values[d * Fpres.N + ind[conn_st_id]];
 			}
 			conn_st_id++;
 		}
@@ -1003,7 +1011,7 @@ int contact::add_to_jacobian_slip(index_t cell_id, value_t dt, vector<value_t>& 
 }
 int contact::add_to_jacobian_stuck(index_t cell_id, value_t dt, vector<value_t>& RHS)
 {
-	index_t conn_st_id = 0, st_id;
+	index_t conn_st_id = 0, st_id, id = cell_id - min_cell_id;
 	uint8_t d;
 	const index_t csr_idx_start = rows[cell_id];
 	const index_t csr_idx_end = rows[cell_id + 1];
@@ -1020,7 +1028,8 @@ int contact::add_to_jacobian_stuck(index_t cell_id, value_t dt, vector<value_t>&
 	diag_idx = N_VARS_SQ * diag_ind[cell_id];
 	for (d = 0; d < ND; d++)
 	{
-		Jac[diag_idx + (U_VAR + d) * N_VARS + (U_VAR + d)] = 1.0;
+		Jac[diag_idx + (U_VAR + d) * N_VARS + (U_VAR + d)] = implicit_scheme_multiplier * 1.0;
+		jacobian_explicit_scheme[id * ND + d] = 1.0;
 		RHS[N_VARS * cell_id + U_VAR + d] = dg.values[d];
 	}
 	return 0;

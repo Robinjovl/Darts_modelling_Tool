@@ -163,7 +163,7 @@ build-windows-3.10-ODLS:
     only:
       refs:
         - main
-    extends: .build-windows-ODLS
+    extends: .build-windows
     variables:
         PY_VER: '3.10'
         PYTHONPATH: 'D:\Python310'        
@@ -174,7 +174,7 @@ build-windows-3.9-ODLS:
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    extends: .build-windows-ODLS
+    extends: .build-windows
     variables:
         PY_VER: '3.9'
         PYTHONPATH: 'D:\Python39'        
@@ -184,7 +184,7 @@ build-windows-3.8-ODLS:
     only:
       refs:
         - main
-    extends: .build-windows-ODLS
+    extends: .build-windows
     variables:
         PY_VER: '3.8'
         PYTHONPATH: 'D:\Python38'
@@ -194,7 +194,7 @@ build-windows-3.7-ODLS:
     only:
       refs:
         - main
-    extends: .build-windows-ODLS
+    extends: .build-windows
     variables:
         PY_VER: '3.7'
         PYTHONPATH: 'D:\Python374'
@@ -204,7 +204,7 @@ build-windows-3.6-ODLS:
     only:
       refs:
         - main
-    extends: .build-windows-ODLS
+    extends: .build-windows
     variables:
         PY_VER: '3.6'
         PYTHONPATH: 'D:\Python365'
@@ -244,32 +244,6 @@ build-windows-3.6-ODLS:
       
 ###################################################################################
 
-.build-windows-ODLS:
-    stage: build
-    # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
-    tags: 
-        - windows-shell
-    script:
-        # Load MS Build Tools environment to the powershell
-        - D:\BuildTools\build_vars.ps1
-        # Add python folder to PATH
-        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
-        - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
-        # make sure wheel package could be installed
-        - pip install wheel
-        # copy VS redist libraries 
-        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
-        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
-        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-        # compile and make the wheel
-        - .\build_darts_ODLS.bat
-    artifacts:
-      paths:
-        - '.\dist\*.whl'
-      expire_in: 1 months
-
-###################################################################################
-
 .build-windows:
     stage: build
     # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
@@ -287,16 +261,13 @@ build-windows-3.6-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-        - cd darts-engines
-        - .\update_private_artifacts.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS
-        - cd ..
+        - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-        - .\build_darts_iter.bat
+        - .\build_darts.bat $env:ODLS
     artifacts:
       paths:
         - '.\dist\*.whl'
       expire_in: 1 months
-
 
 ###################################################################################
 
