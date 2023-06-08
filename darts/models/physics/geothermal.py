@@ -1,6 +1,6 @@
+from darts.models.physics.physics_base import PhysicsBase
 from darts.models.physics.geothermal_operators import *
 from darts.models.physics.iapws.iapws_property import *
-from darts.models.physics.physics_base import PhysicsBase
 from darts.tools.keyword_file_tools import *
 
 
