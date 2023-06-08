@@ -138,6 +138,13 @@ class PropertyContainer:
 
         return ph
 
+    def evaluate_mass_source(self, pressure, temperature, zc):
+        mass_source = np.zeros(self.nc)
+        for j, reaction in self.kinetic_rate_ev.items():
+            # mass_source += reaction.evaluate(pressure, temperature, self.x, zc[-1])
+            mass_source += reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
+        return mass_source
+
     def evaluate(self, state):
         """
         Class methods which evaluates the state operators for the element based physics
@@ -155,9 +162,9 @@ class PropertyContainer:
         for j in self.ph:
             M = np.sum(self.Mw * self.x[j][:])
 
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j][:])  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j][:], self.dens[j])  # output in [cp]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
         self.compute_saturation(self.ph)
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat)
@@ -165,10 +172,7 @@ class PropertyContainer:
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
 
-        mass_source = np.zeros(self.nc)
-        for j, reaction in self.kinetic_rate_ev.items():
-            # mass_source += reaction.evaluate(pressure, temperature, self.x, zc[-1])
-            mass_source += reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
+        mass_source = self.evaluate_mass_source(pressure, temperature, zc)
 
         return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
 
@@ -183,8 +187,8 @@ class PropertyContainer:
         pressure, temperature, zc = self.get_state(state)
 
         for j in self.ph:
-            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j][:])  # kJ/kmol
-            self.kappa[j] = self.conductivity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j][:], self.dens[j])
+            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # kJ/kmol
+            self.kappa[j] = self.conductivity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])
 
         # Heat source and Reaction enthalpy
         energy_source = 0.
