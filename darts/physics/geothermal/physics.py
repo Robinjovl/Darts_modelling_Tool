@@ -31,8 +31,8 @@ class Geothermal(PhysicsBase):
                 - itor_mode: 'adaptive' (default) or 'static' OBL parametrization
                 - itor_precision: 'd' (default) - double precision or 's' - single precision for interpolation
         """
-        super().__init__(cache)
-        self.timer = timer.node["simulation"]
+        super().__init__(timer, cache)
+
         self.n_points = n_points
         self.min_p = min_p
         self.max_p = max_p
