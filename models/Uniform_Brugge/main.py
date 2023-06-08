@@ -36,7 +36,7 @@ if __name__ == '__main__':
     plt.show()
 
     Xn = np.array(n.physics.engine.X, copy=False)
-    nc = n.property_container.nc
+    nc = n.physics.nc
     nb = n.reservoir.nb
     # Allocate and store the properties in an array:
     property_array = np.empty((nb, 2))

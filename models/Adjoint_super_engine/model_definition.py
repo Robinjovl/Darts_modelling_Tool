@@ -3,9 +3,13 @@ from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 import numpy as np
-from darts.models.physics_sup.properties_basic import ConstFunc, Density, PhaseRelPerm, ConstantK
-from darts.models.physics_sup.property_container import PropertyContainer
-from darts.models.physics_sup.physics_comp_sup import Compositional
+
+from darts.physics.super.physics import Compositional
+from darts.physics.super.property_container import PropertyContainer
+
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.flash import ConstantK
+from darts.physics.properties.density import DensityBasic
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.tools.keyword_file_tools import get_table_keyword
@@ -26,8 +30,6 @@ class Model(DartsModel, OptModuleSettings):
 
         # initialize global data to record the well location in vtk output file
         self.global_data = {'well location': 0}  # will be updated later in "run"
-
-
 
         """Reservoir construction"""
         self.nx = 20
@@ -70,34 +72,33 @@ class Model(DartsModel, OptModuleSettings):
                 self.reservoir.add_perforation(self.reservoir.wells[-1], i=prod[0], j=prod[1], k=n + 1, well_radius=0.1,
                                                well_index=WI, multi_segment=False, verbose=True)
 
-
-        self.zero = 1e-8
         """Physical properties"""
         # Create property containers:
-        components_name = ['CO2', 'C1', 'H2O']
-        self.thermal = 0
+        self.zero = 1e-8
+        components = ['CO2', 'C1', 'H2O']
+        phases = ['gas', 'oil']
         Mw = [44.01, 16.04, 18.015]
-        self.property_container = PropertyContainer(phases_name=['gas', 'oil'],
-                                                     components_name=components_name,
-                                                     Mw=Mw, min_z=self.zero / 10)
-        self.components = self.property_container.components_name
-        self.phases = self.property_container.phases_name
-
-        """ properties correlations """
-        self.property_container.flash_ev = ConstantK(self.components, [4, 2, 1e-1], self.zero)
-        self.property_container.density_ev = dict([('gas', Density(compr=1e-3, dens0=200)),
-                                                   ('oil', Density(compr=1e-5, dens0=600))])
-        self.property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                     ('oil', ConstFunc(0.5))])
-        self.property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                                    ('oil', PhaseRelPerm("oil"))])
-
-        """ Activate physics """
-        self.physics = Compositional(self.property_container, self.components, self.phases, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
+        nc = len(components)
 
         self.inj_stream = [1.0 - 2 * self.zero, self.zero]
         self.ini_stream = [0.1, 0.2]
+
+        """ properties correlations """
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw,
+                                               min_z=self.zero / 10)
+        property_container.flash_ev = ConstantK(nc, [4, 2, 1e-1], self.zero)
+        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
+                                              ('oil', DensityBasic(compr=1e-5, dens0=600))])
+        property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
+                                                ('oil', ConstFunc(0.5))])
+        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                               ('oil', PhaseRelPerm("oil"))])
+
+        """ Activate physics """
+        self.physics = Compositional(components, phases, self.timer,
+                                     n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
+        self.physics.add_property_region(property_container)
+        self.physics.init_physics()
 
         # Some newton parameters for non-linear solution:
         self.params.first_ts = 0.001
@@ -128,11 +129,6 @@ class Model(DartsModel, OptModuleSettings):
             else:
                 w.control = self.physics.new_bhp_prod(50)
 
-    def properties(self, state):
-        (sat, x, rho, rho_m, mu, kr, ph) = self.property_container.evaluate(state)
-        return sat[0]
-
-
     def set_op_list(self):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
@@ -159,7 +155,6 @@ class Model(DartsModel, OptModuleSettings):
             n_res = self.reservoir.mesh.n_res_blocks
             self.op_num[n_res:] = 1
             self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
-
 
     def run(self, export_to_vtk=False, file_name='data'):
         import random

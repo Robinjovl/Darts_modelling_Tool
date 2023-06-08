@@ -4,7 +4,7 @@ import pandas as pd
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.models.physics_sup.operator_evaluator_sup import DefaultPropertyEvaluator as props
+from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator as props
 from matplotlib import cm
 
 def plot_sol(n):
@@ -70,7 +70,7 @@ if __name__ == '__main__':
 
     if 1:
         Xn = np.array(n.physics.engine.X, copy=False)
-        nc = n.property_container.nc + n.thermal
+        nc = n.physics.nc + n.physics.thermal
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):

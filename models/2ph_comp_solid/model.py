@@ -2,10 +2,15 @@ from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector
 import numpy as np
-from darts.models.physics_sup.properties_basic import ConstantK, ConstFunc, Density, PhaseRelPerm, KineticBasic
-from darts.models.physics_sup.property_container import PropertyContainer
+from darts.models.physics_sup.properties_basic import KineticBasic
 
-from darts.models.physics_sup.physics_comp_sup import Compositional
+from darts.physics.super.physics import Compositional
+from darts.physics.super.property_container import PropertyContainer
+
+from darts.physics.properties.flash import ConstantK
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.density import DensityBasic
+from darts.physics.properties.kinetics import KineticsBasic
 
 
 # Model class creation here!
@@ -18,10 +23,27 @@ class Model(DartsModel):
         self.timer.node["initialization"].start()
 
         self.zero = 1e-12
+
+        components = ['CO2', 'Ions', 'H2O', 'CaCO3']
+        phases = ['gas', 'wat']
+        nc = len(components)
+        thermal = 0
+        ne = nc + thermal
+        Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086, ]
+
         init_ions = 0.5
         solid_init = 0.7
         equi_prod = (init_ions / 2) ** 2
         solid_inject = self.zero
+
+        zc_fl_init = [self.zero / (1 - solid_init), init_ions]
+        zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
+        self.ini_stream = [x * (1 - solid_init) for x in zc_fl_init]
+
+        zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
+        self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+
         trans_exp = 3
         perm = 100 #/ (1 - solid_init) ** trans_exp
         """Reservoir"""
@@ -43,40 +65,25 @@ class Model(DartsModel):
 
         """Physical properties"""
         # Create property containers:
-        components_name = ['CO2', 'Ions', 'H2O', 'CaCO3']
-        self.thermal = 0
-        Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086, ]
-        self.property_container = model_properties(phases_name=['gas', 'wat'],
-                                                   components_name=components_name, diff_coef=1e-9, rock_comp=1e-7,
-                                                   Mw=Mw, min_z=self.zero / 10, solid_dens=[2000])
-        self.components = self.property_container.components_name
-        self.phases = self.property_container.phases_name
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
+                                             diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
 
         """ properties correlations """
-        self.property_container.flash_ev = ConstantK(self.components[:-1], [10, 1e-12, 1e-1], self.zero)
-        self.property_container.density_ev = dict([('gas', Density(compr=1e-4, dens0=100)),
-                                                   ('wat', Density(compr=1e-6, dens0=1000))])
-        self.property_container.viscosity_ev = dict([('gas', ConstFunc(0.1)),
-                                                     ('wat', ConstFunc(1))])
-        self.property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                                    ('wat', PhaseRelPerm("wat"))])
+        property_container.flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
+        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
+                                              ('wat', DensityBasic(compr=1e-6, dens0=1000))])
+        property_container.viscosity_ev = dict([('gas', ConstFunc(0.1)),
+                                                ('wat', ConstFunc(1))])
+        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                               ('wat', PhaseRelPerm("wat"))])
 
-
-        ne = self.property_container.nc + self.thermal
-        self.property_container.kinetic_rate_ev.append(KineticBasic(equi_prod, 1e-0, ne))
+        property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
         """ Activate physics """
-        self.physics = Compositional(self.property_container, self.components, self.phases,
-                                     self.timer, n_points=101, min_p=1, max_p=1000,
+        self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
                                      min_z=self.zero/10, max_z=1-self.zero/10)
-
-        zc_fl_init = [self.zero / (1 - solid_init), init_ions]
-        zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
-        self.ini_stream = [x * (1 - solid_init) for x in zc_fl_init]
-
-        zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        self.physics.add_property_region(property_container)
+        self.physics.init_physics()
 
         # Some newton parameters for non-linear solution:
         self.params.first_ts = 0.001
@@ -111,16 +118,10 @@ class Model(DartsModel):
             else:
                 w.control = self.physics.new_bhp_prod(50)
 
-    def properties(self, state):
-
-        (sat, x, rho, rho_m, mu, kr, ph) = self.property_container.evaluate(state)
-
-        return sat[0]
-
     def print_and_plot(self, filename):
         import matplotlib.pyplot as plt
 
-        nc = self.property_container.nc
+        nc = self.physics.nc
         Sg = np.zeros(self.reservoir.nb)
         Ss = np.zeros(self.reservoir.nb)
         X = np.zeros((self.reservoir.nb, nc - 1, 2))
@@ -250,7 +251,7 @@ class Model(DartsModel):
         plt.show()
 
 
-class model_properties(PropertyContainer):
+class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
                  diff_coef=0., rock_comp=1e-6, solid_dens=[]):
         # Call base class constructor
@@ -285,3 +286,10 @@ class model_properties(PropertyContainer):
         self.nu[1] = (1 - V)
 
         return ph
+
+    def evaluate_mass_source(self, pressure, temperature, zc):
+        mass_source = np.zeros(self.nc)
+        for j, reaction in self.kinetic_rate_ev.items():
+            mass_source += reaction.evaluate(pressure, temperature, self.x, zc[-1])
+            # mass_source += reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
+        return mass_source

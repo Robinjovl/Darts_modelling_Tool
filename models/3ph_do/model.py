@@ -1,10 +1,13 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.physics_sup.physics_comp_sup import Compositional
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 import numpy as np
-from darts.models.physics_sup.properties_basic import ConstFunc, Density, DensityBrineCo2, PhaseRelPerm
-from darts.models.physics_sup.property_container import PropertyContainer
+
+from darts.physics.super.physics import Compositional
+from darts.physics.super.property_container import PropertyContainer
+
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
 
 # Model class creation here!
@@ -41,35 +44,34 @@ class Model(DartsModel):
         # for i in range(int(self.reservoir.nz / 2)):
         #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
 
-        self.zero = 1e-8
-        self.thermal = 0
         """Physical properties"""
         # Create property containers:
-        components_name = ['g', 'o', 'w']
+        self.zero = 1e-8
+        components = ['g', 'o', 'w']
+        phases = ['gas', 'oil', 'wat']
         Mw = [1, 1, 1]
-        self.property_container = model_properties(phases_name=['gas', 'oil', 'wat'],
-                                                   components_name=components_name, Mw=Mw,
-                                                   min_z=self.zero / 10)
-        self.components = self.property_container.components_name
-        self.phases = self.property_container.phases_name
-
-        """ properties correlations """
-        self.property_container.density_ev = dict([('gas', Density(compr=1e-3, dens0=200)),
-                                                   ('oil', Density(compr=1e-5, dens0=600)),
-                                                   ('wat', DensityBrineCo2(components_name, compr=1e-5, dens0=1000, x_mult=0))])
-        self.property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                     ('oil', ConstFunc(0.5)),
-                                                     ('wat', ConstFunc(0.5))])
-        self.property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                                    ('oil', PhaseRelPerm("oil")),
-                                                    ('wat', PhaseRelPerm("wat"))])
-
-        """ Activate physics """
-        self.physics = Compositional(self.property_container, self.components, self.phases, self.timer,
-                                     n_points=100, min_p=1, max_p=200, min_z=self.zero / 10, max_z=1 - self.zero / 10)
-
         self.inj_stream = [1 - 2 * self.zero, self.zero]
         self.ini_stream = [0.05, 0.2 - self.zero]
+
+        """ properties correlations """
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
+                                             min_z=self.zero / 10)
+
+        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
+                                              ('oil', DensityBasic(compr=1e-5, dens0=600)),
+                                              ('wat', DensityBrineCO2(components, compr=1e-5, dens0=1000, co2_mult=0))])
+        property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
+                                                ('oil', ConstFunc(0.5)),
+                                                ('wat', ConstFunc(0.5))])
+        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                               ('oil', PhaseRelPerm("oil")),
+                                               ('wat', PhaseRelPerm("wat"))])
+
+        """ Activate physics """
+        self.physics = Compositional(components, phases, self.timer,
+                                     n_points=100, min_p=1, max_p=200, min_z=self.zero / 10, max_z=1 - self.zero / 10)
+        self.physics.add_property_region(property_container)
+        self.physics.init_physics()
 
         # Some newton parameters for non-linear solution:
         self.params.first_ts = 0.01
@@ -104,14 +106,8 @@ class Model(DartsModel):
             else:
                 w.control = self.physics.new_bhp_prod(60)
 
-    def properties(self, state):
 
-        (sat, x, rho, rho_m, mu, kr, ph) = self.property_container.evaluate(state)
-
-        return sat[0]
-
-
-class model_properties(PropertyContainer):
+class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
                  diff_coef=0, rock_comp=1e-6, solid_dens=[]):
         # Call base class constructor

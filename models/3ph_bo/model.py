@@ -1,10 +1,12 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.physics_sup.physics_comp_sup import Compositional
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 import numpy as np
-from darts.models.physics_sup.properties_black_oil import *
-from darts.models.physics_sup.property_container import PropertyContainer
+
+from darts.physics.super.physics import Compositional
+from darts.physics.super.property_container import PropertyContainer
+
+from darts.physics.properties.black_oil import *
 
 
 # Model class creation here!
@@ -36,43 +38,39 @@ class Model(DartsModel):
         self.reservoir.add_well("P1")
         self.reservoir.add_perforation(self.reservoir.wells[-1], 10, 10, 3, multi_segment=False)
 
-        self.zero = 1e-12
-        self.thermal = 0
         """Physical properties"""
         # Create property containers:
-        self.pvt = 'physics.in'
-        self.property_container = model_properties(phases_name=['gas', 'oil', 'wat'],
-                                                   components_name=['g', 'o', 'w'],
-                                                   pvt='physics.in', min_z=self.zero / 10)
-
-        self.components = self.property_container.components_name
-        self.phases = self.property_container.phases_name
-
-        """ properties correlations """
-        self.property_container.flash_ev = flash_black_oil(self.pvt)
-        self.property_container.density_ev = dict([('gas', DensityGas(self.pvt)),
-                                                   ('oil', DensityOil(self.pvt)),
-                                                   ('wat', DensityWat(self.pvt))])
-        self.property_container.viscosity_ev = dict([('gas', ViscGas(self.pvt)),
-                                                     ('oil', ViscOil(self.pvt)),
-                                                     ('wat', ViscWat(self.pvt))])
-        self.property_container.rel_perm_ev = dict([('gas', GasRelPerm(self.pvt)),
-                                                    ('oil', OilRelPerm(self.pvt)),
-                                                    ('wat', WatRelPerm(self.pvt))])
-        self.property_container.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(self.pvt)),
-                                                              ('pcgo', CapillaryPressurePcgo(self.pvt))])
-
-        self.property_container.rock_compress_ev = RockCompactionEvaluator(self.pvt)
-
-        """ Activate physics """
-        self.physics = Compositional(self.property_container, self.components, self.phases, self.timer,
-                                     n_points=5000, min_p=1, max_p=450, min_z=self.zero/10, max_z=1-self.zero/10)
-
-        # self.physics = BlackOil(self.timer, n_points=100, min_p=0, max_p=450, min_z=1e-13,
-        #                         property_container=self.property_container, grav=1)
+        self.zero = 1e-12
+        components = ['g', 'o', 'w']
+        phases = ['gas', 'oil', 'wat']
 
         self.inj_stream = [1 - 2 * self.zero, self.zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
+
+        """ properties correlations """
+        pvt = 'physics.in'
+        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, min_z=self.zero/10)
+
+        property_container.flash_ev = flash_black_oil(pvt)
+        property_container.density_ev = dict([('gas', DensityGas(pvt)),
+                                              ('oil', DensityOil(pvt)),
+                                              ('wat', DensityWat(pvt))])
+        property_container.viscosity_ev = dict([('gas', ViscGas(pvt)),
+                                                ('oil', ViscOil(pvt)),
+                                                ('wat', ViscWat(pvt))])
+        property_container.rel_perm_ev = dict([('gas', GasRelPerm(pvt)),
+                                               ('oil', OilRelPerm(pvt)),
+                                               ('wat', WatRelPerm(pvt))])
+        property_container.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(pvt)),
+                                                         ('pcgo', CapillaryPressurePcgo(pvt))])
+
+        property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
+
+        """ Activate physics """
+        self.physics = Compositional(components, phases, self.timer,
+                                     n_points=5000, min_p=1, max_p=450, min_z=self.zero/10, max_z=1-self.zero/10)
+        self.physics.add_property_region(property_container)
+        self.physics.init_physics()
 
         # Some newton parameters for non-linear solution:
         self.params.first_ts = 1e-6
@@ -108,14 +106,8 @@ class Model(DartsModel):
                 # w.control = self.physics.new_rate_oil_prod(3000)
                 w.control = self.physics.new_bhp_prod(70)
 
-    def properties(self, state):
 
-        (sat, x, rho, rho_m, mu, kr, ph) = self.property_container.evaluate(state)
-
-        return sat[0]
-
-
-class model_properties(PropertyContainer):
+class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, pvt, min_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
@@ -126,8 +118,6 @@ class model_properties(PropertyContainer):
         self.surf_oil_dens = self.surf_dens[0]
         self.surf_wat_dens = self.surf_dens[1]
         self.surf_gas_dens = self.surf_dens[2]
-
-        self.x = np.zeros((self.nph, self.nc))
 
     def evaluate(self, state):
         """
@@ -187,9 +177,9 @@ class model_properties(PropertyContainer):
 
         self.pc = np.array([-pcgo, 0, pcow])
 
-        kin_rates = np.zeros(self.nc)
+        mass_source = np.zeros(self.nc)
 
-        return self.sat, self.x, self.dens, self.dens_m, self.mu, kin_rates, self.kr, self.pc, ph
+        return ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
 
     def evaluate_at_cond(self, pressure, zc):
 
@@ -208,6 +198,4 @@ class model_properties(PropertyContainer):
         self.nu = zc
         self.compute_saturation(ph)
 
-
         return self.sat, self.dens_m
-

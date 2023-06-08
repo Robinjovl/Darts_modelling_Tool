@@ -1,10 +1,11 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.physics.geothermal import Geothermal
 from darts.models.darts_model import DartsModel, sim_params
 from darts.models.physics.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector
+
+from darts.physics.geothermal.physics import Geothermal
 
 
 class Model(DartsModel):
@@ -65,7 +66,7 @@ class Model(DartsModel):
         rcond.fill(500)
 
         # create pre-defined physics for geothermal
-        self.physics = Geothermal(self.timer, n_points, 1, 351, 1000, 50000, cache=False)
+        self.physics = Geothermal(self.timer, n_points, min_p=1, max_p=351, min_e=1000, max_e=50000, cache=False)
 
         self.params.first_ts = 1e-5
         self.params.mult_ts = 8
