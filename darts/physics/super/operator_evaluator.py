@@ -130,8 +130,7 @@ class ReservoirThermalOperators(ReservoirOperators):
         pressure = state[0]
         temperature = vec_state_as_np[-1]
 
-        # (enthalpy, rock_energy) = self.property.evaluate_thermal(state)
-        rock_energy = self.property.rock_energy_ev.evaluate(temperature)
+        rock_energy = self.property.rock_energy_ev.evaluate(temperature=temperature)
         enthalpy, cond, energy_source = self.property.evaluate_thermal(state)
 
         nc = self.property.nc
