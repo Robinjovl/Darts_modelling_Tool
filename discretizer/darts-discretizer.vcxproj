@@ -114,7 +114,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../darts-engines/src;../darts-engines/src/interpolation;../darts-engines/lib/darts_linear_solvers/include;../darts-engines/lib/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -144,7 +144,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../darts-engines/src;../darts-engines/src/interpolation;../darts-engines/lib/darts_linear_solvers/include;../darts-engines/lib/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -175,7 +175,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../darts-engines/src;../darts-engines/src/interpolation;../darts-engines/lib/darts_linear_solvers/include;../darts-engines/lib/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -208,7 +208,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../darts-engines/src;../darts-engines/src/interpolation;../darts-engines/lib/darts_linear_solvers/include;../darts-engines/lib/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
