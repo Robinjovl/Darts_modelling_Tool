@@ -11,7 +11,7 @@ from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
-from darts.models.physics_sup.properties_basic import KineticBasic
+from darts.physics.properties.kinetics import KineticBasic
 
 from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators, DefaultPropertyEvaluator
 
@@ -415,14 +415,14 @@ class Model(DartsModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0.0, rock_comp=1e-6, solid_dens=None):
+                 diff_coef=0.0, rock_comp=1e-6, solid_dens=None, temperature=1.):
         # Call base class constructor
         # Cm = 0
         # super().__init__(phases_name, components_name, Mw, Cm, min_z, diff_coef, rock_comp, solid_dens)
         if solid_dens is None:
             solid_dens = []
         super().__init__(phases_name, components_name, Mw, min_z=min_z, diff_coef=diff_coef,
-                         rock_comp=rock_comp, solid_dens=solid_dens)
+                         rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):
 

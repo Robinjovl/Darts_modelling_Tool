@@ -2,7 +2,6 @@ from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector
 import numpy as np
-from darts.models.physics_sup.properties_basic import KineticBasic
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -10,7 +9,7 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.properties.kinetics import KineticsBasic
+from darts.physics.properties.kinetics import KineticBasic
 
 
 # Model class creation here!
@@ -27,10 +26,12 @@ class Model(DartsModel):
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
         phases = ['gas', 'wat']
         nc = len(components)
+        nc_fl = nc-1
         thermal = 0
         ne = nc + thermal
         Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086, ]
 
+        stoich = [0, -1, 0, 1]
         init_ions = 0.5
         solid_init = 0.7
         equi_prod = (init_ions / 2) ** 2
@@ -65,7 +66,7 @@ class Model(DartsModel):
 
         """Physical properties"""
         # Create property containers:
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
                                              diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
 
         """ properties correlations """
@@ -253,10 +254,10 @@ class Model(DartsModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0., rock_comp=1e-6, solid_dens=[]):
+                 diff_coef=0., rock_comp=1e-6, solid_dens=[], temperature=None):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, min_z=min_z, diff_coef=diff_coef,
-                         rock_comp=rock_comp, solid_dens=solid_dens)
+                         rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):
 

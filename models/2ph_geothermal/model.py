@@ -98,7 +98,7 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z)
+        super().__init__(phases_name, components_name, Mw, min_z, temperature=None)
         self.x = np.ones((self.nph, self.nc))
 
     def evaluate(self, state):

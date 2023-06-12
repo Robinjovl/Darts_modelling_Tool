@@ -53,7 +53,7 @@ class Model(DartsModel):
         thermal = 0
         Mw = [44.01, 16.04, 18.015]
         property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                               Mw=Mw, min_z=self.zero / 10)
+                                               Mw=Mw, min_z=self.zero / 10, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components), [4, 2, 1e-1], self.zero)

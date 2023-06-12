@@ -10,11 +10,10 @@ from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator
 from darts.physics.properties.basic import PhaseRelPerm, CapillaryPressure, RockEnergyEvaluator, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
-from darts.physics.properties.enthalpy import EnthalpyIdeal
 
 from dartsflash.flash import NF2
 from dartsflash.libflash import PR, Ziabakhsh2012, FlashParams
-from dartsflash.components import ComponentProperties
+from dartsflash.components import ComponentProperties, EnthalpyIdeal
 from dartsflash.eos_properties import EoSDensity, EoSEnthalpy
 
 
@@ -173,7 +172,7 @@ class Model(DartsModel):
         for j in range(n_vars):
             property_array[:, j] = self.physics.engine.X[j:self.reservoir.nb * n_vars:n_vars]
 
-        values = value_vector(np.zeros(n_props))
+        values = value_vector(np.zeros(self.physics.n_ops))
 
         for i in range(self.reservoir.nb):
             state = []

@@ -113,7 +113,7 @@ class ModelProperties(PropertyContainer):
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
         self.pvt = pvt
-        super().__init__(phases_name, components_name, Mw, min_z)
+        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
         self.surf_dens = get_table_keyword(self.pvt, 'DENSITY')[0]
         self.surf_oil_dens = self.surf_dens[0]
         self.surf_wat_dens = self.surf_dens[1]

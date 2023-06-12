@@ -114,7 +114,7 @@ class Model(DartsModel):
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z)
+        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc):
 
