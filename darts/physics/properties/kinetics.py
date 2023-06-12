@@ -16,26 +16,46 @@ class Kinetics:
         return 0.
 
 
-class KineticsBasic(Kinetics):
+class KineticBasic:
+    def __init__(self, equi_prod, kin_rate_cte, ne, combined_ions=True):
+        self.equi_prod = equi_prod
+        self.kin_rate_cte = kin_rate_cte
+        self.kinetic_rate = np.zeros(ne)
+        self.combined_ions = combined_ions
+
+    def evaluate(self, pressure, temperature, x, nu_sol):
+        if self.combined_ions:
+            ion_prod = (x[1][1] / 2) ** 2
+            self.kinetic_rate[1] = - self.kin_rate_cte * (1 - ion_prod / self.equi_prod) * nu_sol
+            self.kinetic_rate[-1] = - 0.5 * self.kinetic_rate[1]
+        else:
+            ion_prod = x[1][1] * x[1][2]
+            self.kinetic_rate[1] = - self.kin_rate_cte * (1 - ion_prod / self.equi_prod) * nu_sol
+            self.kinetic_rate[2] = - self.kin_rate_cte * (1 - ion_prod / self.equi_prod) * nu_sol
+            self.kinetic_rate[-1] = - self.kinetic_rate[1]
+
+        return self.kinetic_rate
+
+
+class LawOfMassAction(Kinetics):
     """
     Law of Mass Action for kinetic reaction
     For reaction aA + bB <-> cC: rate = c * (1 - Q/K) with Q = [C]^c / [A]^a [B]^b
     """
-    def __init__(self, stoich: list, prod: list, equi_prod: float, kin_rate_cte: float, combined_ions=True):
+    def __init__(self, stoich: list, nc_fl: int, fl_idx: int, equi_prod: float, kin_rate_cte: float):
         super().__init__(stoich)
 
-        self.prod = prod
+        self.nc_fl = nc_fl
+        self.fl_idx = fl_idx
         self.equi_prod = equi_prod
         self.kin_rate_cte = kin_rate_cte
-        self.combined_ions = combined_ions
-        self.ne = len(stoich)
 
     def evaluate(self, pressure, temperature, x, sat_sol):
         # For reaction aA + bB <-> cC
         # Calculate activity product Q = [C]^c / [A]^a [B]^b
         prod = 1.
-        for i in range(self.ne):
-            prod *= x[i] ** self.stoich[i]
+        for i in range(self.nc_fl):
+            prod = prod * x[self.fl_idx, i] ** self.stoich[i] if self.stoich[i] != 0 else prod
 
         # Calculate rate = c * As * (1-Q/K)
         rate = self.kin_rate_cte * sat_sol * (1. - prod / self.equi_prod)
