@@ -2,6 +2,7 @@ from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
 import numpy as np
+from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -11,8 +12,8 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.models.physics_sup.properties_basic import KineticBasic
-#
-# from darts.models.physics_sup.operator_evaluator_sup import *
+
+from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators, DefaultPropertyEvaluator
 
 import matplotlib.pyplot as plt
 
@@ -41,7 +42,7 @@ def create_map(lx, ly, nx, ny):
 
 # Model class creation here!
 class Model(DartsModel):
-    def __init__(self, grid_1D=True, res=1):
+    def __init__(self, grid_1D=True, res=1, custom_physics=False):
         # Call base class constructor
         super().__init__()
         self.grid_1D = grid_1D
@@ -176,15 +177,19 @@ class Model(DartsModel):
         kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne, self.combined_ions)
 
         delta_volume = self.dx * self.dy * 10
-        from math import ceil
-        num_well_blocks = int(ceil(self.ny / 2))
+        num_well_blocks = int(self.ny / 2)
         mass_sources = [None,
                         MassSource(0, 1000, delta_volume, num_well_blocks),
                         MassSource(2, 200, delta_volume, num_well_blocks)]
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+        if custom_physics:  # custom_physics inherits operators and physics for regions with source term
+            self.physics = CustomPhysics(components, phases, self.timer,
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+        else:  # default physics adds mass source term to kinetic operator in regions with source term
+            self.physics = Compositional(components, phases, self.timer,
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
                                                  min_z=self.zero / 10, diff_coef=1e-9 * 60 * 60 * 24,
@@ -194,9 +199,9 @@ class Model(DartsModel):
             property_container.density_ev = density_ev
             property_container.viscosity_ev = viscosity_ev
             property_container.rel_perm_ev = rel_perm_ev
-            property_container.kinetic_rate_ev = kinetic_rate_ev
+            property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
 
-            if mass_sources[i] is not None:
+            if custom_physics is False and mass_sources[i] is not None:
                 property_container.kinetic_rate_ev[1] = mass_sources[i]
 
             self.physics.add_property_region(property_container, i)
@@ -501,88 +506,78 @@ class MassSource:
         self.rate = rate
 
     def evaluate(self, dens_m_pure):
-        # print(self.rate, self.num_well_blocks, self.delta_volume, dens_m_pure)
         return self.rate / self.num_well_blocks / self.delta_volume * dens_m_pure
 
 
-# class CustomPhysics(Compositional):
-#     def __init__(self, property_container, components, phases,
-#                  timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1, thermal=0,
-#                  platform='cpu', itor_type='multilinear', itor_mode='adaptive', itor_precision='d', cache=False,
-#                  volume=0, num_wells=0):
-#
-#         self.delta_volume = volume
-#         self.num_well_blocks = num_wells
-#
-#         super().__init__(property_container, components, phases,
-#                          timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal,
-#                          platform, itor_type, itor_mode, itor_precision, cache)
-#
-#     def set_operators(self, property_container, thermal, output_props=None):  # default definition of operators
-#
-#         # operators = self.operators_storage()
-#
-#         self.reservoir_operators[0] = ReservoirOperators(property_container[0])
-#         self.wellbore_operators = ReservoirOperators(property_container[0])
-#
-#         self.reservoir_operators[1] = ReservoirWithSourceOperators(property_container[0], comp_inj_id=0,
-#                                                                         delta_volume=self.delta_volume,
-#                                                                         num_well_blocks=self.num_well_blocks)
-#
-#         self.reservoir_operators[2] = ReservoirWithSourceOperators(property_container[0], comp_inj_id=1,
-#                                                                         delta_volume=self.delta_volume,
-#                                                                         num_well_blocks=self.num_well_blocks)
-#
-#
-#
-#         self.rate_operators = RateOperators(property_container[0])
-#
-#         if output_props is None:
-#             self.property_operators = DefaultPropertyEvaluator(self.vars, property_container[0])
-#         else:
-#             self.property_operators = output_props
-#
-#         return
-#
-#
-# class ReservoirWithSourceOperators(ReservoirOperators):
-#     def __init__(self, property_container, comp_inj_id, thermal=0,
-#                  delta_volume=1000, num_well_blocks=12):
-#         super().__init__(property_container, thermal=thermal)  # Initialize base-class
-#         # Store your input parameters in self here, and initialize other parameters here in self
-#         self.min_z = property_container.min_z
-#         self.property = property_container
-#         self.thermal = thermal
-#         self.comp_inj_id = comp_inj_id
-#         self.delta_volume = delta_volume
-#         self.num_well_blocks = num_well_blocks
-#
-#     def evaluate(self, state, values):
-#         """
-#         Class methods which evaluates the state operators for the element based physics
-#         :param state: state variables [pres, comp_0, ..., comp_N-1]
-#         :param values: values of the operators (used for storing the operator values)
-#         :return: updated value for operators, stored in values
-#         """
-#
-#         super().evaluate(state, values)
-#         # Composition vector and pressure from state:
-#         vec_state_as_np = np.asarray(state)
-#         pressure = vec_state_as_np[0]
-#
-#         nc = self.property.nc
-#         nph = self.property.nph
-#         ne = nc + self.thermal
-#
-#         """ Delta operator for reaction """
-#         shift = nph * ne + nph + ne + ne * nph
-#
-#         # mass flux injection (if comp 0 then pure CO2 in gas vorm if 2 then pure H2O in liquid)
-#         if self.comp_inj_id == 0:
-#             values[shift + 0] -= 1000 / self.num_well_blocks / self.delta_volume \
-#                                * self.property.density_ev['gas'].evaluate(pressure, 0) / 44.01
-#         elif self.comp_inj_id == 1:
-#             values[shift + 2] -= 200 / self.num_well_blocks / self.delta_volume \
-#                                * self.property.density_ev['wat'].evaluate(pressure, 0) / 18.015
-#
-#         return 0
+class CustomPhysics(Compositional):
+    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1, thermal=0,
+                 cache=False, volume=0, num_wells=0):
+
+        self.delta_volume = volume
+        self.num_well_blocks = num_wells
+
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
+
+    def set_operators(self, regions, output_props=None):  # default definition of operators
+        self.reservoir_operators[0] = ReservoirOperators(self.property_containers[0])
+        self.wellbore_operators = ReservoirOperators(self.property_containers[0])
+
+        self.reservoir_operators[1] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=0,
+                                                                        delta_volume=self.delta_volume,
+                                                                        num_well_blocks=self.num_well_blocks)
+
+        self.reservoir_operators[2] = ReservoirWithSourceOperators(self.property_containers[0], comp_inj_id=1,
+                                                                        delta_volume=self.delta_volume,
+                                                                        num_well_blocks=self.num_well_blocks)
+
+        self.rate_operators = RateOperators(self.property_containers[0])
+
+        if output_props is None:
+            self.property_operators = DefaultPropertyEvaluator(self.vars, self.property_containers[0])
+        else:
+            self.property_operators = output_props
+
+        return
+
+
+class ReservoirWithSourceOperators(ReservoirOperators):
+    def __init__(self, property_container, comp_inj_id, thermal=0,
+                 delta_volume=1000, num_well_blocks=12):
+        super().__init__(property_container, thermal=thermal)  # Initialize base-class
+        # Store your input parameters in self here, and initialize other parameters here in self
+        self.min_z = property_container.min_z
+        self.property = property_container
+        self.thermal = thermal
+        self.comp_inj_id = comp_inj_id
+        self.delta_volume = delta_volume
+        self.num_well_blocks = num_well_blocks
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+
+        super().evaluate(state, values)
+        # Composition vector and pressure from state:
+        vec_state_as_np = np.asarray(state)
+        pressure = vec_state_as_np[0]
+
+        nc = self.property.nc
+        nph = self.property.nph
+        ne = nc + self.thermal
+
+        """ Delta operator for reaction """
+        shift = nph * ne + nph + ne + ne * nph
+
+        # mass flux injection (if comp 0 then pure CO2 in gas vorm if 2 then pure H2O in liquid)
+        if self.comp_inj_id == 0:
+            values[shift + 0] -= 1000 / self.num_well_blocks / self.delta_volume \
+                               * self.property.density_ev['gas'].evaluate(pressure, 0) / 44.01
+        elif self.comp_inj_id == 1:
+            values[shift + 2] -= 200 / self.num_well_blocks / self.delta_volume \
+                               * self.property.density_ev['wat'].evaluate(pressure, 0) / 18.015
+
+        return 0
