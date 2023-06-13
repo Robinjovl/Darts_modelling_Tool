@@ -161,11 +161,11 @@ class ReservoirThermalOperators(ReservoirOperators):
         """ Additional energy operators """
         shift += ne
         # E1-> rock internal energy
-        values[shift] = rock_energy / self.compr  # kJ/m3
+        values[shift] = rock_energy / self.compr  # (T-T_0), multiplied by rock hcap inside engine
         # E2-> rock temperature
         values[shift + 1] = temperature
         # E3-> rock conduction
-        values[shift + 2] = 1 / self.compr  # kJ/m3
+        values[shift + 2] = 1 / self.compr  # multiplied by rock cond inside engine
 
         #print(state, values)
         # self.print_operators(state, values)

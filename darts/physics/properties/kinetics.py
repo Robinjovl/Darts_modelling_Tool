@@ -140,6 +140,6 @@ class HydrateKinetics(Kinetics):
 
             H_diss = -en * mH  # kJ/kg * kg/kmol -> kJ/kmol
 
-            return self.rate * H_diss  # rate * enth/mol
+            return self.rate * H_diss  # rate [kmol/day] * [kJ/kmol] = [kJ/day]
         else:
             return 0.
