@@ -87,9 +87,8 @@ class RockCompactionEvaluator:
 
 
 class RockEnergyEvaluator:
-    def __init__(self, c_vr=3710., T_ref=273.15):
-        self.c_vr = c_vr  # 1400 J/kg.K * 2650 kg/m3 -> kJ/m3
+    def __init__(self, T_ref=273.15):
         self.T_ref = T_ref
 
     def evaluate(self, temperature):
-        return self.c_vr * (temperature - self.T_ref)  # kJ/m3
+        return temperature - self.T_ref  # T-T_0, multiplied by rock hcap inside engine
