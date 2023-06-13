@@ -65,7 +65,7 @@ class LawOfMassAction(Kinetics):
 
 class HydrateKinetics(Kinetics):
     def __init__(self, components: list, Mw, flash: SolidFlash, hydrate_eos, fluid_eos: list, stoich: list = None,
-                 perm=300., poro=0.2, k=3.11e12, enthalpy: bool = False):
+                 perm=300., poro=0.2, k=None, F_a=1., enthalpy: bool = False):
         super().__init__(stoich)
 
         self.flash = flash
@@ -83,7 +83,8 @@ class HydrateKinetics(Kinetics):
             self.nH = None
         self.Mw = Mw
 
-        self.K = k  # reaction constant [kmol/(m^2 bar day)]
+        self.K = k if k is not None else 3.6e6*86400  # reaction constant [kmol/(m^2 bar day)]
+        self.F_a = F_a
         self.perm = perm * 1E-15  # mD to m2
         self.poro = poro
 
@@ -109,9 +110,8 @@ class HydrateKinetics(Kinetics):
 
         # Reaction rate following Yin (2018)
         # surface area
-        F_A = 1
-        r_p = np.sqrt(45 * self.perm * (1 - self.poro) ** 2 / (self.poro ** 3))
-        A_s = 0.879 * F_A * (1 - self.poro) / r_p * sat ** (2 / 3)  # hydrate surface area [m2]
+        r_p = np.sqrt(45. * self.perm * (1 - self.poro) ** 2 / self.poro ** 3)
+        A_s = 0.879 * self.F_a * (1 - self.poro) / r_p * sat ** (2 / 3)  # hydrate surface area [m2]
 
         # Thermodynamic parameters
         dE = -81E3  # activation energy [J/mol]
