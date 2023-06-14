@@ -107,8 +107,10 @@ class Model(DartsModel):
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
         flash_params.eos_used = ["AQ", "PR"]
-        flash_params.add_initial_guess(components, comp_data)
-        flash_params.flash_initial_guess = [3]
+
+        from dartsflash.libflash import Henry
+        henry = Henry(components, comp_data, 1)
+        flash_params.add_initial_guess(henry)
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
