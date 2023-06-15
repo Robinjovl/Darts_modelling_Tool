@@ -44,16 +44,6 @@ build-linux-3.7:
         PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
         ODLS: '0'
         
-build-linux-3.6:
-    only:
-      refs:
-        - main
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.6'
-        PY_SUF: 'cp36-cp36m'
-        ODLS: '0'
-        
 ###################################################################################
 
 build-linux-3.10-ODLS:
@@ -94,16 +84,6 @@ build-linux-3.7-ODLS:
     variables:
         PY_VER: '3.7'        # for python image selection in .build-linux
         PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
-        ODLS: '1'         # build with open-darts linear solvers
-        
-build-linux-3.6-ODLS:
-    only:
-      refs:
-        - main
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.6'
-        PY_SUF: 'cp36-cp36m'
         ODLS: '1'         # build with open-darts linear solvers
         
 ###################################################################################
@@ -147,16 +127,6 @@ build-windows-3.7:
         PYTHONPATH: 'D:\Python374'
         ODLS: '0'
         
-build-windows-3.6:
-    only:
-      refs:
-        - main
-    extends: .build-windows
-    variables:
-        PY_VER: '3.6'
-        PYTHONPATH: 'D:\Python365'
-        ODLS: '0'
-        
 ###################################################################################
         
 build-windows-3.10-ODLS:
@@ -198,16 +168,6 @@ build-windows-3.7-ODLS:
     variables:
         PY_VER: '3.7'
         PYTHONPATH: 'D:\Python374'
-        ODLS: '1'         # build with open-darts linear solvers
-        
-build-windows-3.6-ODLS:
-    only:
-      refs:
-        - main
-    extends: .build-windows
-    variables:
-        PY_VER: '3.6'
-        PYTHONPATH: 'D:\Python365'
         ODLS: '1'         # build with open-darts linear solvers
         
 ###################################################################################
@@ -318,18 +278,6 @@ test-linux-3.7-ODLS:
         ODLS: '1'        # test with open-darts linear solvers
     dependencies:
         - build-linux-3.7-ODLS
-        
-test-linux-3.6-ODLS:
-    only:
-      refs:
-        - main
-    extends: .test-linux
-    variables:
-        PY_VER: '3.6'
-        PY_SUF: 'cp36-cp36m'
-        ODLS: '1'        # test with open-darts linear solvers
-    dependencies:
-        - build-linux-3.6-ODLS
 
 ###################################################################################
 
@@ -379,18 +327,6 @@ test-linux-3.7:
         ODLS: '0'
     dependencies:
         - build-linux-3.7
-        
-test-linux-3.6:
-    only:
-      refs:
-        - main
-    extends: .test-linux
-    variables:
-        PY_VER: '3.6'
-        PY_SUF: 'cp36-cp36m'
-        ODLS: '0'
-    dependencies:
-        - build-linux-3.6
 
 ###################################################################################
         
@@ -440,18 +376,6 @@ test-windows-3.7:
         ODLS: '0'
     dependencies:
         - build-windows-3.7
-        
-test-windows-3.6:
-    only:
-      refs:
-        - main
-    extends: .test-windows
-    variables:
-        PY_VER: '3.6'
-        PYTHONPATH: 'D:\Python365'
-        ODLS: '0'
-    dependencies:
-        - build-windows-3.6
 
 ###################################################################################
         
@@ -502,18 +426,6 @@ test-windows-3.7-ODLS:
         ODLS: '1'
     dependencies:
         - build-windows-3.7-ODLS
-        
-test-windows-3.6-ODLS:
-    only:
-      refs:
-        - main
-    extends: .test-windows
-    variables:
-        PY_VER: '3.6'
-        PYTHONPATH: 'D:\Python365'
-        ODLS: '1'
-    dependencies:
-        - build-windows-3.6-ODLS
        
 ###################################################################################
 
@@ -627,14 +539,11 @@ deploy-testpypi:
         - ls ./dist/*
         - twine upload -u $TESTPYPIUSER -p $TESTPYPIPWD --repository $PYPI dist/*
     dependencies:
-        - build-linux-3.6-ODLS
         - build-linux-3.7-ODLS
         - build-linux-3.8-ODLS
         - build-linux-3.9-ODLS
         - build-linux-3.10-ODLS
-        - build-windows-3.6-ODLS
         - build-windows-3.7-ODLS
         - build-windows-3.8-ODLS
         - build-windows-3.9-ODLS
         - build-windows-3.10-ODLS
-
