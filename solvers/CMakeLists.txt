@@ -142,7 +142,7 @@ target_link_options(opendarts_compiler_flags
 
 
 # Include thirdparty libraries -------------------------------------------------
-add_subdirectory(thirdparty)
+include(../thirdparty/thirdparty.cmake)
 # ------------------------------------------------------------------------------
 
 

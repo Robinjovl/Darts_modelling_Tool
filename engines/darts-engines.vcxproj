@@ -115,7 +115,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugMT|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetName>engines</TargetName>
     <TargetExt>.pyd</TargetExt>
     <CustomBuildAfterTargets />
@@ -137,7 +137,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseMT|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>darts\</OutDir>
+    <OutDir>..\darts\</OutDir>
     <TargetExt>.pyd</TargetExt>
     <TargetName>engines</TargetName>
     <CustomBuildAfterTargets />
@@ -149,7 +149,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\lib\2PhaseFlash\include;.\src\tools;.\src\properties;.\src\operators;.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\lib\2PhaseFlash\include;.\src\tools;.\src\properties;.\src\operators;.\src;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen;..\thirdparty\pybind11</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <FloatingPointModel>Strict</FloatingPointModel>
       <FloatingPointExceptions>true</FloatingPointExceptions>
@@ -192,7 +192,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;_DEBUG;_CONSOLE;_LIB;OPENDARTS_LINEAR_SOLVERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\lib\2PhaseFlash\include;.\src\tools;.\src\properties;.\src\operators;.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\lib\2PhaseFlash\include;.\src\tools;.\src\properties;.\src\operators;.\src;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen;..\thirdparty\pybind11</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <FloatingPointModel>Strict</FloatingPointModel>
       <FloatingPointExceptions>true</FloatingPointExceptions>
@@ -235,7 +235,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen;..\thirdparty\pybind11</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <FloatingPointModel>Strict</FloatingPointModel>
       <FloatingPointExceptions>true</FloatingPointExceptions>
@@ -280,7 +280,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen;..\thirdparty\pybind11</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FloatingPointExceptions>true</FloatingPointExceptions>
       <DebugInformationFormat>None</DebugInformationFormat>
@@ -331,7 +331,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;NDEBUG;_CONSOLE;_LIB;OPENDARTS_LINEAR_SOLVERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\src;.\src\interpolation;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;..\thirdparty\pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FloatingPointExceptions>true</FloatingPointExceptions>
       <DebugInformationFormat>None</DebugInformationFormat>
@@ -382,7 +382,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>PYBIND11_ENABLED;NOMINMAX;WIN32;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;.\lib\pybind11;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\src;.\lib\darts_linear_solvers\include;$(PYTHONPATH)\include;.\src\interpolation;../thirdparty/eigen;..\thirdparty\pybind11</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FloatingPointExceptions>true</FloatingPointExceptions>
       <DebugInformationFormat>None</DebugInformationFormat>

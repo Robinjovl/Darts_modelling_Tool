@@ -1,0 +1,3 @@
+src/discretizer_build_info.cpp
+src/*.o
+src/**/*.o

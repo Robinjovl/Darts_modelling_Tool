@@ -48,25 +48,25 @@ if [[ "$clean_mode" == true ]]; then
     # Cleaning thirdparty libs 
     echo 'Time for some cleaning!'
     echo -e '   Cleaning thirdparty libs\n'
-    cd ../thirdparty/SuperLU_5.2.1
+    cd ../../thirdparty/SuperLU_5.2.1
     make clean 
-    cd ../../helper_scripts
+    cd ../../solvers/helper_scripts
     
-    # Clearning opendart-linear-solvers
-    echo '\n   Cleaning opendarts-linear-solvers'
+    # Cleaning solvers
+    echo '\n   Cleaning solvers'
     rm -r ../build_make
 else
   # Build 
   
   # Startup information ----------------------------------------------------------
   echo -e "\n========================================================================"
-  echo "| Building opendarts-linear-solvers: START"
+  echo "| Building opendarts-solvers: START"
   echo -e "========================================================================\n"
   # ------------------------------------------------------------------------------
   
   # Build thirparty libraries ----------------------------------------------------
   echo -e "\n- Building thirdparty libs: START\n"
-  cd ../thirdparty/
+  cd ../../thirdparty/
   
   # -- Build SuperLU -------------------------------------------------------------
   echo -e "\n--- Building SuperLU: START\n"
@@ -87,22 +87,22 @@ else
   echo -e "\n--- Building SuperLU: DONE!\n"
   # ------------------------------------------------------------------------------
 
-  cd ../helper_scripts
+  cd ../solvers/helper_scripts
   echo -e "\n- Building thirdparty libs: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Build opendarts-linear_solvers -----------------------------------------------
-  echo -e "\n- Building opendarts-linear-solvers: START\n"
+  echo -e "\n- Building opendarts-solvers: START\n"
   # Setup build folder 
   cd ..
   mkdir -p build_make
   cd build_make
 
   # Setup install folder 
-  mkdir -p ../../darts-engines/lib/opendarts_linear_solvers
+  mkdir -p ../../engines/lib/solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/opendarts_linear_solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make
@@ -114,12 +114,12 @@ else
   make install
   
   cd ../helper_scripts
-  echo -e "\n- Building opendarts-linear-solvers: DONE!\n"
+  echo -e "\n- Building opendarts-solvers: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Close up information ---------------------------------------------------------
   echo -e "\n========================================================================"
-  echo -e "| Building opendarts-linear-solvers: DONE!"
+  echo -e "| Building opendarts-solvers: DONE!"
   echo -e "========================================================================\n"
   # ------------------------------------------------------------------------------
 fi

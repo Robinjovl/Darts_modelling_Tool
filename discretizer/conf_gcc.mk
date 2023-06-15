@@ -17,11 +17,11 @@ USE_OPENDARTS_LINEAR_SOLVERS = true
 endif
 
 ifeq ($(USE_OPENDARTS_LINEAR_SOLVERS), true)
-$(info Building darts-engines with opendarts-linear-solvers)
+$(info Building darts-engines with solvers)
 CXXFLAGS += -D OPENDARTS_LINEAR_SOLVERS
 CXXFLAGS_DEBUG += -D OPENDARTS_LINEAR_SOLVERS
-LINEAR_SOLVERS_DIR = ../darts-engines/lib/opendarts_linear_solvers
+LINEAR_SOLVERS_DIR = ../engines/lib/solvers
 else
-$(info Building darts-engines with iterative linear-solvers)
-LINEAR_SOLVERS_DIR = ../darts-engines/lib/darts_linear_solvers
+$(info Building darts-engines with bos solvers)
+LINEAR_SOLVERS_DIR = ../engines/lib/darts_linear_solvers
 endif

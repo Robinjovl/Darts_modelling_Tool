@@ -2,24 +2,23 @@ rem update submodules
 git submodule update --recursive --remote --init || goto :error
 echo "build_darts arg:" "%1"
 if "%1"=="0" (
-  cd darts-engines
-  call update_private_artifacts.bat %SMBNAME% %SMBLOGIN% %SMBPASS% || goto :error
+  cd engines
+  call .\update_private_artifacts.bat %SMBNAME% %SMBLOGIN% %SMBPASS%
   cd ..
   rem 2 Compile engines with iterative linear solver
   set configengine=ReleaseMT
   set config=Release
 ) else (
   rem 1 build opendarts linear solvers step
-  cd opendarts_linear_solvers
   rem 1a build superLU
   cd thirdparty\SuperLU_5.2.1
   msbuild superlu.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
 
   rem 1b build opendarts linear solvers
-  cd ..\..
+  cd ..\..\solvers
   mkdir build
   cd build
-  cmake -DCMAKE_INSTALL_PREFIX=..\..\darts-engines\lib\darts_linear_solvers -DENABLE_TESTING=TRUE ..
+  cmake -DCMAKE_INSTALL_PREFIX=..\..\engines\lib\darts_linear_solvers -DENABLE_TESTING=TRUE ..
   msbuild opendarts_linear_solvers.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
   cd ..\..
@@ -29,12 +28,12 @@ if "%1"=="0" (
 )
 
 rem 2 Compile engines with open-darts linear solver
-cd darts-engines
+cd engines
 msbuild darts-engines.vcxproj /p:Configuration=%configengine% /p:Platform=x64 -maxCpuCount:8  || goto :error
 cd ..
 
 rem 3 Compile discretizer
-cd darts-discretizer
+cd discretizer
 msbuild darts-discretizer.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8  || goto :error
 cd ..
 
@@ -44,7 +43,7 @@ rem copy VS redist libraries
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
 rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-python darts-package/darts/print_build_info.py
+python darts/print_build_info.py
 python setup.py build bdist_wheel --plat-name=win-amd64 || goto :error
 
 rem || goto :error checks exit code of command 

@@ -7,7 +7,7 @@ set -e
 # ------------------------------------------------------------------------------
 
 ################################################################################
-# Help info                                                                 #
+# Help info                                                                    #
 ################################################################################
 Help_Info()
 {
@@ -48,25 +48,25 @@ if [[ "$clean_mode" == true ]]; then
     # Cleaning thirdparty libs 
     echo 'Time for some cleaning!'
     echo '\n   Cleaning thirdparty libs\n'
-    cd ../thirdparty/SuperLU_5.2.1
+    cd ../../thirdparty/SuperLU_5.2.1
     make clean 
-    cd ../../helper_scripts
+    cd ../../solvers/helper_scripts
     
-    # Clearning opendart-linear-solvers
-    echo '\n   Cleaning opendarts-linear-solvers'
+    # Clearning solvers
+    echo '\n   Cleaning opendarts-solvers'
     rm -r ../build_make
 else
   # Build 
   
   # Startup information ----------------------------------------------------------
   echo "\n========================================================================"
-  echo "| Building opendarts-linear-solvers: START"
+  echo "| Building opendarts-solvers: START"
   echo "========================================================================\n"
   # ------------------------------------------------------------------------------
   
   # Build thirparty libraries ----------------------------------------------------
   echo "\n- Building thirdparty libs: START\n"
-  cd ../thirdparty/
+  cd ../../thirdparty/
   
   # -- Build SuperLU -------------------------------------------------------------
   echo "\n--- Building SuperLU: START\n"
@@ -87,22 +87,22 @@ else
   echo "\n--- Building SuperLU: DONE!\n"
   # ------------------------------------------------------------------------------
 
-  cd ../helper_scripts
+  cd ../solvers/helper_scripts
   echo "\n- Building thirdparty libs: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Build opendarts-linear_solvers -----------------------------------------------
-  echo "\n- Building opendarts-linear-solvers: START\n"
+  echo "\n- Building opendarts-solvers: START\n"
   # Setup build folder 
   cd ..
   mkdir -p build_make
   cd build_make
 
   # Setup install folder 
-  mkdir -p ../../darts-engines/lib/opendarts_linear_solvers
+  mkdir -p ../../engines/lib/solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../darts-engines/lib/opendarts_linear_solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make
@@ -114,12 +114,12 @@ else
   make install
   
   cd ../helper_scripts
-  echo "\n- Building opendarts-linear-solvers: DONE!\n"
+  echo "\n- Building opendarts-solvers: DONE!\n"
   # ------------------------------------------------------------------------------
   
   # Close up information ---------------------------------------------------------
   echo "\n========================================================================"
-  echo "| Building opendarts-linear-solvers: DONE!"
+  echo "| Building opendarts-solvers: DONE!"
   echo "========================================================================\n"
   # ------------------------------------------------------------------------------
 fi
