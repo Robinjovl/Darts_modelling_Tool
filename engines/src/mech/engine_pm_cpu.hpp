@@ -99,7 +99,7 @@ public:
 
   int assemble_jacobian_array(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int assemble_jacobian_array_time_dependent_discr(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
-  int assemble_residual(value_t _dt, std::vector<value_t> &X, csr_matrix_base* jacobian, std::vector<value_t> &RHS);
+  int solve_explicit_scheme(value_t _dt);
   void update_uu_jacobian();
 
   int solve_linear_equation();
@@ -138,7 +138,7 @@ public:
 
 
 public:
-  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, SCALE_ROWS;
+  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS;
   pm::ContactSolver contact_solver;
 };
 #endif /* CPU_SIMULATOR_PM_HPP */

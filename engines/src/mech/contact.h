@@ -96,7 +96,7 @@ namespace pm
 		std::vector<index_t> cell_ids;
 		std::vector<ContactState> states, states_n;
 		std::vector<Matrix> S, Sinv, S_fault;
-		index_t min_cell_id;
+		index_t min_cell_id, max_cell_id;
 
 		//// friction properties
 		// friction model
@@ -132,7 +132,7 @@ namespace pm
 		// multiplier to switch to fully-explicit scheme
 		value_t implicit_scheme_multiplier;
 		// diagonal values of jacobian in the case of fully-explicit scheme
-		std::vector<value_t> jacobian_explicit_scheme;
+		std::vector<Matrix33> jacobian_explicit_scheme;
 
 		contact();
 		~contact();
@@ -155,6 +155,9 @@ namespace pm
 																											const std::vector<value_t>& Xn, const std::vector<value_t>& fluxes_n, const std::vector<value_t>& fluxes_biot_n,
 																												std::vector<value_t>& Xref, std::vector<value_t>& fluxes_ref, std::vector<value_t>& fluxes_biot_ref,
 																													const std::vector<value_t>& Xn_ref, const std::vector<value_t>& fluxes_ref_n, const std::vector<value_t>& fluxes_biot_ref_n);
+		int solve_explicit_scheme(std::vector<value_t>& RHS, std::vector<value_t>& dX);
+
+		
 		void set_state(const ContactState& state);
 		
 		int apply_direction_chop(const std::vector<value_t>& X, const std::vector<value_t>& Xn, std::vector<value_t>& dX);

@@ -38,13 +38,13 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def(py::init<>()) \
 		.def("init", (int (engine_pm_cpu::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_pm_cpu::init, "Initialize simulator by mesh and params", py::keep_alive<1, 5>()) \
 		.def("calc_newton_dev", &engine_pm_cpu::calc_newton_dev) \
-		.def("assemble_residual", &engine_pm_cpu::assemble_residual) \
 		.def("apply_newton_update", &engine_pm_cpu::apply_newton_update) \
 		.def("post_newtonloop", &engine_pm_cpu::post_newtonloop) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \
 		.def_readwrite("print_linear_system", &engine_pm_cpu::PRINT_LINEAR_SYSTEM) \
 		.def_readwrite("time_dependent_discretization", &engine_pm_cpu::TIME_DEPENDENT_DISCRETIZATION) \
+		.def_readwrite("explicit_scheme", &engine_pm_cpu::EXPLICIT_SCHEME) \
 		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \
 		.def_readwrite("geomechanics_mode", &engine_pm_cpu::geomechanics_mode) \
 		.def_readwrite("newton_update_coefficient", &engine_pm_cpu::newton_update_coefficient) \

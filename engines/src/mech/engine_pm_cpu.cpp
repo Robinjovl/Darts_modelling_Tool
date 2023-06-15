@@ -50,6 +50,7 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	geomechanics_mode.resize(mesh_->n_blocks, 0);
 	dt1 = 0.0;
 	momentum_inertia = 0.0;
+	EXPLICIT_SCHEME = false;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 	return 0;
@@ -1116,7 +1117,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	return 0;
 };
 
-int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
+int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 {
 	dt = _dt;
 	// We need extended connection list for that with all connections for each block
@@ -1126,10 +1127,10 @@ int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_m
 	index_t n_res_blocks = mesh->n_res_blocks;
 	index_t n_bounds = mesh->n_bounds;
 	index_t n_conns = mesh->n_conns;
-	index_t* diag_ind = jacobian->get_diag_ind();
-	index_t* rows = jacobian->get_rows_ptr();
-	index_t* cols = jacobian->get_cols_ind();
-	index_t* row_thread_starts = jacobian->get_row_thread_starts();
+	index_t* diag_ind = Jacobian->get_diag_ind();
+	index_t* rows = Jacobian->get_rows_ptr();
+	index_t* cols = Jacobian->get_cols_ind();
+	index_t* row_thread_starts = Jacobian->get_row_thread_starts();
 
 	const index_t* block_m = mesh->block_m.data();
 	const index_t* block_p = mesh->block_p.data();
@@ -1374,6 +1375,13 @@ int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_m
 		// calc CFL for reservoir cells, not connected with wells
 		if (i < n_res_blocks)
 		{
+			// volumetric forces and source/sink 
+			for (d = 0; d < ND_; d++)
+			{
+				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
+			}
+			RHS[i * N_VARS + P_VAR] += V[i] * dt * f[i * N_VARS + P_VAR];
+
 			if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
 			{
 				CFL_max_local = 0.0;
@@ -1386,13 +1394,17 @@ int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_m
 				if (fabs(X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) > EQUALITY_TOLERANCE)
 					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
 			}
+		}
 
-			// volumetric forces and source/sink 
-			for (d = 0; d < ND_; d++)
-			{
-				RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + d];
-			}
-			RHS[i * N_VARS + P_VAR] += V[i] * dt * f[i * N_VARS + P_VAR];
+		// solve the equation
+		if (i < n_matrix)
+		{
+			for (d = 0; d < N_VARS; d++)
+				dX[i * N_VARS + d] = RHS[i * N_VARS + d] / jacobian_explicit_scheme[i * N_VARS + d];
+		}
+		else if (i < n_res_blocks)
+		{
+			dX[i * N_VARS + P_VAR] = RHS[i * N_VARS + P_VAR] / jacobian_explicit_scheme[i * N_VARS + P_VAR];
 		}
 	}
 
@@ -1414,11 +1426,13 @@ int engine_pm_cpu::assemble_residual(value_t _dt, std::vector<value_t>& X, csr_m
 			contact.set_state(pm::TRUE_STUCK);
 
 		if (contact_solver == pm::FLUX_FROM_PREVIOUS_ITERATION)
-			contact.add_to_jacobian_linear(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+			contact.add_to_jacobian_linear(dt, Jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
 		else if (contact_solver == pm::RETURN_MAPPING)
-			contact.add_to_jacobian_return_mapping(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+			contact.add_to_jacobian_return_mapping(dt, Jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
 		else if (contact_solver == pm::LOCAL_ITERATIONS)
-			contact.add_to_jacobian_local_iters(dt, jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+			contact.add_to_jacobian_local_iters(dt, Jacobian, RHS, X, fluxes, fluxes_biot, Xn, fluxes_n, fluxes_biot_n, Xref, fluxes_ref, fluxes_biot_ref, Xn_ref, fluxes_ref_n, fluxes_biot_ref_n);
+
+		contact.solve_explicit_scheme(RHS, dX);
 	}
 	for (ms_well* w : wells)
 	{
@@ -1639,6 +1653,8 @@ int engine_pm_cpu::run_single_newton_iteration(value_t deltat)
 	// assemble jacobian
 	if (TIME_DEPENDENT_DISCRETIZATION)
 		assemble_jacobian_array_time_dependent_discr(deltat, X, Jacobian, RHS);
+	else if (EXPLICIT_SCHEME)
+		solve_explicit_scheme(deltat);
 	else
 		assemble_jacobian_array(deltat, X, Jacobian, RHS);
 
@@ -1786,9 +1802,9 @@ int engine_pm_cpu::solve_linear_equation()
 
 	if (PRINT_LINEAR_SYSTEM) // changed this to write jacobian to file!
 	{
-                #ifndef OPENDARTS_LINEAR_SOLVERS
-	        static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
-                #endif  // OPENDARTS_LINEAR_SOLVERS
+            #ifndef OPENDARTS_LINEAR_SOLVERS
+	    static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+            #endif  // OPENDARTS_LINEAR_SOLVERS
 		//Jacobian->write_matrix_to_file(("jac_dar_" + std::to_string(output_counter) + ".csr").c_str());
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", X);
