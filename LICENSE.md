@@ -34,3 +34,5 @@ The code for Corner Point Grid preprocessing used in darts-discretizer.
 The source code is located [darts-discretizer](/open-darts/open-darts/-/tree/development/darts_discretizer/darts-discretizer/src/opm).
 It is not used in darts-models yet. [License GPLv3](http://www.gnu.org/licenses/gpl.html)
 
+## Data 
+The data used as input for the models is distributed under CC0 Creative Commons Public Domain Dedication license.
