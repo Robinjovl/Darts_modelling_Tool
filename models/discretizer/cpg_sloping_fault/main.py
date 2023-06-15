@@ -41,7 +41,7 @@ def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
 
     m.init()
     if export_vtk:
-        m.export_pro_vtk(vtk_filename)
+        m.export_vtk(vtk_filename)
     m.params.max_ts = dt
     m.save_cubes(os.path.join(model_dir, 'p_0')) # debug
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
     dt = 30
     n_time_steps = 12*3
 
-    export_vtk = False # slow for big models
+    export_vtk = True # slow for big models
 
     #dt = 10
     #n_time_steps = 1
