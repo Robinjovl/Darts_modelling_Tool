@@ -4,7 +4,7 @@ from math import pi
 import numpy as np
 from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_vector, index_vector
 from darts.mesh.struct_discretizer import StructDiscretizer
-from darts.tools.pyevtk import hl
+from pyevtk import hl
 from scipy.interpolate import griddata
 
 
