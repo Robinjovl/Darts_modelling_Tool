@@ -19,11 +19,12 @@ keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal en
 requires-python = ">=3.6"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
 dependencies = ['matplotlib', 'numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws']
-license = {file = "LICENSE"}
+
+license = {file = "LICENSE.md"}
+
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: C++",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
+    "Programming Language :: C++"
 ]
 
 [project.urls]
