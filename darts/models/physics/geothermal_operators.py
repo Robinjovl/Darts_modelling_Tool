@@ -227,19 +227,23 @@ class acc_flux_gravity_evaluator_python(operator_set_evaluator_iface):
         self.rock_energy = property_data.rock_energy
 
     def evaluate(self, state, values):
-        water_enth = self.water_enthalpy.evaluate(state)
-        steam_enth = self.steam_enthalpy.evaluate(state)
-        water_den = self.water_density.evaluate(state)
-        steam_den = self.steam_density.evaluate(state)
-        water_sat = self.water_saturation.evaluate(state)
-        steam_sat = self.steam_saturation.evaluate(state)
-        temp = self.temperature.evaluate(state)
-        water_rp = self.water_relperm.evaluate(state)
-        steam_rp = self.steam_relperm.evaluate(state)
-        water_vis = self.water_viscosity.evaluate(state)
-        steam_vis = self.steam_viscosity.evaluate(state)
-        pore_volume_factor = self.rock_compaction.evaluate(state)
-        rock_int_energy = self.rock_energy.evaluate(state)
+        try:
+            water_enth = self.water_enthalpy.evaluate(state)
+            steam_enth = self.steam_enthalpy.evaluate(state)
+            water_den = self.water_density.evaluate(state)
+            steam_den = self.steam_density.evaluate(state)
+            water_sat = self.water_saturation.evaluate(state)
+            steam_sat = self.steam_saturation.evaluate(state)
+            temp = self.temperature.evaluate(state)
+            water_rp = self.water_relperm.evaluate(state)
+            steam_rp = self.steam_relperm.evaluate(state)
+            water_vis = self.water_viscosity.evaluate(state)
+            steam_vis = self.steam_viscosity.evaluate(state)
+            pore_volume_factor = self.rock_compaction.evaluate(state)
+            rock_int_energy = self.rock_energy.evaluate(state)
+        except:
+            print('state:', state)
+            raise Exception('Incoming out of bound')
         pressure = state[0]
 
         # mass accumulation
