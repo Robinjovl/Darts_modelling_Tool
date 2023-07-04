@@ -9,7 +9,7 @@ from darts.engines import value_vector
 
 from darts.models.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import save_few_keywords
-
+from darts.tools.xarray_tools import xarray_writer
 
 # inherit from darts-models/2ph_do model to use its physics; self.reservoir will be replaced in this file
 # add path to import
@@ -41,6 +41,7 @@ class Model(DO_Model):
         elif discr_type == 'python':
             self.init_struct_rsv()
         #self.timer.node["initialization"].stop()
+        self.xwriter = None
     def init_struct_rsv(self):
         self.dims_cpp = index_vector_discr()
         load_single_int_keyword(self.dims_cpp, self.gridfile, "SPECGRID", 3)
@@ -145,27 +146,52 @@ class Model(DO_Model):
                 w.control = self.physics.new_bhp_prod(100)
 
     #TODO: combine this function with save_few_keywords
-    def save_cubes(self, fname, arr_list = [], arr_names = []):
+    def save_cubes(self, fname, time_steps, arrays = {}, write_xarray=False, write_grdecl=False):
         '''
-        arr - list of numpy arrays to save, size=nactive
-        arr_names - list of array names (keyword)
+
+        write_xarray - if False append current values to xarray. if True - write file
+        arrays - dictionary, key = array name, values are for active cells, 1d
         '''
         Xn = np.array(self.physics.engine.X, copy=False)
         P = Xn[0:self.reservoir.mesh.n_res_blocks * 2:2]
-        try:
-            actnum = np.array(self.reservoir.actnum, copy=False)  # CPG Reservoir doesn't have 'global_data' object
-            suffix = 'cpg'
-        except:
-            actnum = self.reservoir.global_data['actnum']  # Struct Reservoir
-            suffix = 'struct'
-        fname_suf = fname + '_' + suffix + '.grdecl'
 
-        arr_list += [P]
-        arr_names += ['PRESSURE']
+        # specify which arrays to save
+        arrays['pressure'] = P
 
-        save_array(actnum, fname_suf, 'ACTNUM', actnum, 'w')
-        for i in range(len(arr_list)):
-            save_array(arr_list[i], fname_suf, arr_names[i], actnum, 'a')
+        # save grdecl (txt)
+        if write_grdecl:
+            try:
+                actnum = np.array(self.reservoir.actnum, copy=False)  # CPG Reservoir doesn't have 'global_data' object
+                suffix = 'cpg'
+            except:
+                actnum = self.reservoir.global_data['actnum']  # Struct Reservoir
+                suffix = 'struct'
+            fname_suf = fname + '_' + suffix + '.grdecl'
+            save_array(actnum, fname_suf, 'ACTNUM', actnum, 'w')
+            for arr_name in arrays.keys():
+                save_array(arrays[arr_name], fname_suf, arr_name, actnum, 'a')
+
+        # initialize xwriter - do this only for the first call
+        if self.xwriter is None:
+            centers_cpp = self.reservoir.discr_mesh.get_centers()
+            centers = np.array(centers_cpp, copy=False)  # YXZ order, n_cactive_cells
+            X = centers[1::3][:self.reservoir.nx],
+            Y = centers[0::3][:self.reservoir.nx * self.reservoir.ny:self.reservoir.nx],
+            Z = centers[2::3][::self.reservoir.nx * self.reservoir.ny]
+            self.xwriter = xarray_writer()
+            self.xwriter.init_dims_coords(self.reservoir.nx, self.reservoir.ny, self.reservoir.nz,
+                                          time_steps, X, Y, Z)
+
+        # reshape arrays to 3D
+        arrays_3d = {}
+        for name in arrays.keys():
+            if arrays[name] is not None:
+                arrays_3d[name] = arrays[name].reshape(self.reservoir.nz,
+                                                       self.reservoir.ny,
+                                                       self.reservoir.nx)
+        # add current values to xarray
+        self.xwriter.write(fname, self.physics.engine.time_data_report,
+                           arrays=arrays_3d, arrays_2d=[], write_x=write_xarray)
 
     def read_and_add_perforations(self, sch_fname, well_index=-1, verbose=False):
         '''

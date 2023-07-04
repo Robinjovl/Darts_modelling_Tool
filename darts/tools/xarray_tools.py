@@ -109,7 +109,9 @@ class xarray_writer():
                                               coords={'Y': self.Y, 'Z': self.Z[:-1]})
             if self.verbose:
                 print('array', name, 'time,years', int(t/365.), 'range:', np.array(self.data_2d[name][t]).min(), '-', np.array(self.data_2d[name][t]).max())
+                
     def write(self, filename, time_data, arrays, arrays_2d, write_x=False):
+        
         self.create_xarray(arrays, arrays_2d)
 
         if write_x:

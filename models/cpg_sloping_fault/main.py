@@ -42,7 +42,16 @@ def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
     if export_vtk:
         m.export_vtk(vtk_filename)
     m.params.max_ts = dt
-    m.save_cubes(os.path.join(model_dir, 'res_init'))
+
+    # fill time_steps (for xarray_writer)
+    ts = []
+    t = dt
+    for ti in range(n_time_steps):
+        ts.append(t)
+        t += dt
+    ts = np.array(ts)
+
+    #m.save_cubes(os.path.join(model_dir, 'res_init'), ts)
 
     t = 0
     #print_range(m, t)
@@ -56,10 +65,10 @@ def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
         if export_vtk:
             m.export_vtk(vtk_filename)
 
-        #m.save_cubes(os.path.join(model_dir, 'res_' + str(ti+1)))
+        m.save_cubes(os.path.join(model_dir, 'res_' + str(ti+1)), ts)
         m.physics.engine.report()
 
-    m.save_cubes(os.path.join(model_dir, 'res_last'))
+    m.save_cubes(os.path.join(model_dir, 'res_last'), ts, write_xarray=True, write_grdecl=True)
     m.print_timers()
     m.print_stat()
 
