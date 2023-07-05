@@ -173,11 +173,18 @@ class Model(DO_Model):
 
         # initialize xwriter - do this only for the first call
         if self.xwriter is None:
-            centers_cpp = self.reservoir.discr_mesh.get_centers()
-            centers = np.array(centers_cpp, copy=False)  # YXZ order, n_cactive_cells
-            X = centers[1::3][:self.reservoir.nx],
-            Y = centers[0::3][:self.reservoir.nx * self.reservoir.ny:self.reservoir.nx],
-            Z = centers[2::3][::self.reservoir.nx * self.reservoir.ny]
+            # get cell centers
+            try:  #cpg discretizer
+                centers_cpp = self.reservoir.discr_mesh.get_centers()
+                centers = np.array(centers_cpp, copy=False)  # YXZ order, n_cactive_cells
+                X = centers[1::3][:self.reservoir.nx]
+                Y = centers[0::3][:self.reservoir.nx * self.reservoir.ny:self.reservoir.nx]
+                Z = centers[2::3][::self.reservoir.nx * self.reservoir.ny]
+            except:  # struct discretizer
+                X = self.reservoir.discretizer.cell_data['center'][:,0,0][:,0]
+                Y = self.reservoir.discretizer.cell_data['center'][0,:,0][:,1]
+                Z = self.reservoir.discretizer.cell_data['center'][0,0,:][:,2]
+
             self.xwriter = xarray_writer()
             self.xwriter.init_dims_coords(self.reservoir.nx, self.reservoir.ny, self.reservoir.nz,
                                           time_steps, X, Y, Z)
