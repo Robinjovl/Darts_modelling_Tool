@@ -15,12 +15,18 @@ then
 fi
 
 NT="-j 8" # number of threads used to compile
-if [ $# -gt 1 ] # use the second cmd argument if it is passed
+if [ $# -gt 1 ] # use second cmd argument if it is passed
 then
     NT="-j $2"
 fi
 
-echo "ODLS=$ODLS NT=$NT"
+conf="mt" # "mt" for multithread(openMP), "gpu" - for openMP+CUDA
+if [ $# -gt 2 ] # use third cmd argument if it is passed
+then
+    conf="$3"
+fi
+
+echo "ODLS=$ODLS NT=$NT conf=$conf"
 
 which python3-config
 export PYTHON_IFLAGS=`python3-config --includes`
@@ -42,7 +48,7 @@ cd engines
 make clean
 if [ $ODLS == "0" ] #no cmd arguments
 then
-	make mt $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make $conf $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
 	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true #open-darts currently works only without openMP
 fi

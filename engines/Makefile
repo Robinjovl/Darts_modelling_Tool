@@ -13,7 +13,7 @@ DFLAGS_GPU	= $(DFLAGS) -DWITH_GPU
 LFLAGS_BASE	+= -L$(LINEAR_SOLVERS_DIR)/lib $(PYTHON_LFLAGS) 
 LFLAGS_MT  	= $(LFLAGS_BASE) -ldarts_linear_solvers_mt
 # using origin enable library search in the same folder as binary 
-LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lcusolver -lamgxsh -L../darts-linear-solvers/lib/AMGX/build -Xlinker "-rpath=\$$ORIGIN" 
+LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lcusolver -lamgxsh -lgomp -L../darts-linear-solvers/lib/AMGX/build -Xlinker "-rpath=\$$ORIGIN" 
 #LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lgomp
 LFLAGS      = $(LFLAGS_BASE) -ldarts_linear_solvers
 

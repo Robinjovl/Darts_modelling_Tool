@@ -51,6 +51,7 @@ class Model(DartsModel):
                                      n_points=400, min_p=0, max_p=1000, min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
+        #self.physics.init_physics(platform='gpu')
 
         self.params.first_ts = 0.01
         self.params.mult_ts = 2
