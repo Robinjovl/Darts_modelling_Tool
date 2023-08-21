@@ -466,11 +466,16 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		// initialization of linear solver
 		if (!linear_solver_ad)
 		{
-			if (0)
+			if (1)
 			{
 				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
-				linear_solver_ad = new linsolv_bos_gmres<1>;
-				linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+				//linear_solver_ad = new linsolv_bos_gmres<1>;
+				//linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+
+				linear_solver_ad = new linsolv_bos_gmres<N_VARS>;
+				linsolv_iface* cpr = new linsolv_bos_cpr<N_VARS>;
+				cpr->set_prec(new linsolv_bos_amg<1>);
+				linear_solver_ad->set_prec(cpr);
 
 			}
 			else
@@ -484,7 +489,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			well_head_idx_collection.push_back(w->well_head_idx);
 		}
 
-		dg_dx_T = new csr_matrix<1>;
+		dg_dx_T = new csr_matrix<N_VARS>;// <1>;
 		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
 
 		dg_dx_n = new csr_matrix<1>;
@@ -496,7 +501,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		dg_dT_general = new csr_matrix<1>;
 		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
 
-		(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, mesh->n_links * n_vars * n_vars);
+		//(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, mesh->n_links * n_vars * n_vars);
 		(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, mesh->n_links * n_vars * n_vars);
 		(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, mesh->block_m.size() * n_vars);
 		init_adjoint_structure_mpfa(dg_dT_general);
@@ -1428,7 +1433,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
     // because the function "build_transpose" is only applicable for the csr matrix with the block size of 1
     // this is also required by the linear solver "linsolv_superlu<1>", as the preconditioner is not applicable to adjoint so far
     // so this might be improved in the future
-	csr_matrix<1> Temp, T1, T2;
+
+	(static_cast<csr_matrix<N_VARS>*>(dg_dx_T));// ->build_transpose(Jacobian);
+
+	/*csr_matrix<1> Temp, T1, T2;
 	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
 	T1.build_transpose(&Temp);
 
@@ -1482,7 +1490,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 	{
 		ad_values_n[i] = T2_values[i];
 		ad_cols_n[i] = T2_cols[i];
-	}
+	}*/
 
 
 
