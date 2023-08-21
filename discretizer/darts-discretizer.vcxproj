@@ -236,6 +236,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
   <ItemGroup>
     <ClCompile Include="src\discretizer.cpp" />
     <ClCompile Include="src\discretizer_build_info.cpp" />
+    <ClCompile Include="src\mech_discretizer.cpp" />
     <ClCompile Include="src\mesh\elem.cpp" />
     <ClCompile Include="src\mesh\mesh.cpp" />
     <ClCompile Include="src\mesh\mshio\element_utils.cpp" />
@@ -255,6 +256,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClCompile Include="src\pybind11\py_elem.cpp" />
     <ClCompile Include="src\pybind11\py_linalg.cpp" />
     <ClCompile Include="src\pybind11\py_main.cpp" />
+    <ClCompile Include="src\pybind11\py_mech_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_mesh.cpp" />
     <ClCompile Include="src\utils.cpp" />
   </ItemGroup>
@@ -263,6 +265,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClInclude Include="src\discretizer_build_info.h" />
     <ClInclude Include="src\linalg\matrix.h" />
     <ClInclude Include="src\linalg\vector3.h" />
+    <ClInclude Include="src\mech_discretizer.h" />
     <ClInclude Include="src\mesh\elem.h" />
     <ClInclude Include="src\mesh\mesh.h" />
     <ClInclude Include="src\mesh\mshio\element_utils.h" />
@@ -286,6 +289,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClInclude Include="src\pybind11\py_elem.h" />
     <ClInclude Include="src\pybind11\py_global.h" />
     <ClInclude Include="src\pybind11\py_linalg.h" />
+    <ClInclude Include="src\pybind11\py_mech_discretizer.h" />
     <ClInclude Include="src\pybind11\py_mesh.h" />
     <ClInclude Include="src\utils.h" />
   </ItemGroup>

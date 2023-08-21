@@ -85,6 +85,12 @@
     <ClCompile Include="src\discretizer_build_info.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\mech_discretizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pybind11\py_mech_discretizer.cpp">
+      <Filter>Source Files\pybind</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\pybind11\py_discretizer.h">
@@ -173,6 +179,12 @@
     </ClInclude>
     <ClInclude Include="src\discretizer_build_info.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mech_discretizer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pybind11\py_mech_discretizer.h">
+      <Filter>Source Files\pybind</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
