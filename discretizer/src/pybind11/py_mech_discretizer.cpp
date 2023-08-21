@@ -1,0 +1,94 @@
+#include "py_mech_discretizer.h"
+
+namespace py = pybind11;
+using mesh::Matrix;
+using dis::Discretizer;
+using dis::MechDiscretizer;
+using dis::MechDiscretizerMode;
+using dis::MechBoundaryCondition;
+using dis::Stiffness;
+
+PYBIND11_MAKE_OPAQUE(std::vector<Stiffness>);
+
+template <MechDiscretizerMode MODE>
+struct mech_discretizer_exposer
+{
+  static const std::string class_name;
+
+  static void expose(py::module& m)
+  {
+	py::class_<MechDiscretizer<MODE>, Discretizer>(m, class_name.c_str(), py::module_local())
+	  .def(py::init<>())
+	  .def_readwrite("stfs", &MechDiscretizer<MODE>::stfs)
+	  .def_readwrite("biots", &MechDiscretizer<MODE>::biots)
+	  .def_readwrite("thermal_expansions", &MechDiscretizer<MODE>::th_exps)
+	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
+	  ;
+  }
+};
+
+template<> const std::string 
+mech_discretizer_exposer<MechDiscretizerMode::POROELASTIC>::class_name = "poro_mech_discretizer";
+
+template<> const std::string
+mech_discretizer_exposer<MechDiscretizerMode::THERMOPOROELASTIC>::class_name = "thermoporo_mech_discretizer";
+
+
+void pybind_mech_discretizer(py::module& m)
+{
+  mech_discretizer_exposer<MechDiscretizerMode::POROELASTIC> dis_poro;
+  dis_poro.expose(m);
+
+  mech_discretizer_exposer<MechDiscretizerMode::THERMOPOROELASTIC> dis_thermoporo;
+  dis_thermoporo.expose(m);
+
+  py::class_<Stiffness, Matrix>(m, "Stiffness") \
+	.def(py::init<>())
+	.def(py::init<value_t, value_t>())
+	.def(py::init<std::valarray<value_t> &>())
+	.def_readwrite("values", &Stiffness::values)
+	.def(py::pickle(
+	  [](const Stiffness& p) { // __getstate__
+		py::tuple t(p.values.size());
+		for (int i = 0; i < p.values.size(); i++)
+		  t[i] = p.values[i];
+
+		return t;
+	  },
+	  [](py::tuple t) { // __setstate__
+		Stiffness p;
+
+		for (int i = 0; i < t.size(); i++)
+		  p.values[i] = t[i].cast<value_t>();
+
+		return p;
+	  }));
+  py::bind_vector<std::vector<Stiffness>>(m, "stf_vector")
+	.def(py::pickle(
+	  [](const std::vector<Stiffness>& p) { // __getstate__
+		py::tuple t(p.size());
+		for (int i = 0; i < p.size(); i++)
+		  t[i] = p[i];
+
+		return t;
+	  },
+	  [](py::tuple t) { // __setstate__
+		std::vector<Stiffness> p(t.size());
+
+		for (int i = 0; i < p.size(); i++)
+		  p[i] = t[i].cast<Stiffness>();
+
+		return p;
+	  }));
+
+  // expose the rest
+  py::class_<MechBoundaryCondition>(m, "MechBoundaryCondition", py::module_local())
+	.def(py::init<>())
+	.def_readwrite("a_n", &MechBoundaryCondition::a_n)
+	.def_readwrite("b_n", &MechBoundaryCondition::b_n)
+	.def_readwrite("r_n", &MechBoundaryCondition::r_n)
+	.def_readwrite("a_t", &MechBoundaryCondition::a_t)
+	.def_readwrite("b_t", &MechBoundaryCondition::b_t)
+	.def_readwrite("r_t", &MechBoundaryCondition::r_t)
+	;
+};

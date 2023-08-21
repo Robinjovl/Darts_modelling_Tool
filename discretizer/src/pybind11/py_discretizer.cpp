@@ -14,16 +14,87 @@ void pybind_discretizer(py::module &m)
 	py::class_<Matrix>(m, "matrix", py::module_local()) \
 		.def(py::init<>())
 		.def(py::init<std::valarray<value_t> &, index_t, index_t>())
-		.def_readwrite("values", &Matrix::values);
-	py::bind_vector<std::vector<Matrix>>(m, "vector_matrix", py::module_local());
+		.def_readwrite("values", &Matrix::values)
+		.def(py::pickle(
+		  [](const Matrix& p) { // __getstate__
+			const size_t size = p.M * p.N;
+			py::tuple t(size + 2);
+			for (int i = 0; i < size; i++)
+			  t[i] = p.values[i];
 
-	py::class_<Matrix33, Matrix>(m, "matrix33", py::module_local()) \
-		.def(py::init<>())
-		.def(py::init<value_t>())
-		.def(py::init<value_t, value_t, value_t>())
-		.def(py::init<std::valarray<value_t> &>())
-		.def_readwrite("values", &Matrix33::values);
-	py::bind_vector<std::vector<Matrix33>>(m, "vector_matrix33", py::module_local());
+			t[size] = p.M;
+			t[size + 1] = p.N;
+
+			return t;
+		  },
+		  [](py::tuple t) { // __setstate__
+			index_t M = t[t.size() - 2].cast<index_t>();
+			index_t N = t[t.size() - 1].cast<index_t>();
+
+			Matrix p(M, N);
+
+			for (int i = 0; i < t.size() - 2; i++)
+			  p.values[i] = t[i].cast<value_t>();
+
+			return p;
+		  }));
+	py::bind_vector<std::vector<Matrix>>(m, "vector_matrix")
+	  .def(py::pickle(
+		[](const std::vector<Matrix>& p) { // __getstate__
+		  py::tuple t(p.size());
+		  for (int i = 0; i < p.size(); i++)
+			t[i] = p[i];
+
+		  return t;
+		},
+		[](py::tuple t) { // __setstate__
+		  std::vector<Matrix> p(t.size());
+
+		  for (int i = 0; i < p.size(); i++)
+			p[i] = t[i].cast<Matrix>();
+
+		  return p;
+		}));
+
+	py::class_<Matrix33, Matrix>(m, "matrix33") \
+	  .def(py::init<>())
+	  .def(py::init<value_t>())
+	  .def(py::init<value_t, value_t, value_t>())
+	  .def(py::init<std::valarray<value_t> &>())
+	  .def_readwrite("values", &Matrix33::values)
+	  .def(py::pickle(
+		[](const Matrix33& p) { // __getstate__
+		  py::tuple t(p.values.size());
+		  for (int i = 0; i < p.values.size(); i++)
+			t[i] = p.values[i];
+
+		  return t;
+		},
+		[](py::tuple t) { // __setstate__
+		  Matrix33 p;
+
+		  for (int i = 0; i < t.size(); i++)
+			p.values[i] = t[i].cast<value_t>();
+
+		  return p;
+		}));
+	py::bind_vector<std::vector<Matrix33>>(m, "vector_matrix33")
+	  .def(py::pickle(
+		[](const std::vector<Matrix33>& p) { // __getstate__
+		  py::tuple t(p.size());
+		  for (int i = 0; i < p.size(); i++)
+			t[i] = p[i];
+
+		  return t;
+		},
+		[](py::tuple t) { // __setstate__
+		  std::vector<Matrix33> p(t.size());
+
+		  for (int i = 0; i < p.size(); i++)
+			p[i] = t[i].cast<Matrix33>();
+
+		  return p;
+		}));
 
 	py::class_<Discretizer>(m, "Discretizer", py::module_local())
 		.def(py::init<>())
