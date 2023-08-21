@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <algorithm>
 #include <numeric>
 #include <unordered_set>
 
@@ -382,6 +383,31 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 
 	conns = new_conns;
 	conn_nodes = new_conn_nodes;
+
+	// save conn ids for each type
+	conn_type_map[MAT_MAT].reserve(conns.size());
+	conn_type_map[MAT_FRAC].reserve(conns.size());
+	conn_type_map[MAT_BOUND].reserve(conns.size());
+	conn_type_map[FRAC_FRAC].reserve(conns.size());
+	conn_type_map[FRAC_BOUND].reserve(conns.size());
+
+	for (const auto& conn : conns)
+	  conn_type_map[conn.type].push_back(conn.conn_id);
+
+	// erase absent
+	for (auto it = conn_type_map.begin(); it != conn_type_map.end();)
+	{
+	  if (it->second.size())
+		it++;
+	  else
+		it = conn_type_map.erase(it);
+	}
+
+	// sort boundary connections
+	std::sort(conn_type_map[MAT_BOUND].begin(), conn_type_map[MAT_BOUND].end(), [&](const index_t& id1, const index_t& id2)
+	  {
+		return conns[id1].elem_id2 < conns[id2].elem_id2;
+	  });
 
 	t2 = steady_clock::now();
 	cout << conns.size() << " connections:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
@@ -1028,6 +1054,12 @@ void Mesh::cpg_connections(
 	std::vector<double_t> x, y, z; // only for the current face direction (face_tag)
 	x.reserve(100); y.reserve(100); z.reserve(100);
 
+	conn_type_map[MAT_MAT].reserve(number_of_faces);
+	conn_type_map[MAT_FRAC].reserve(number_of_faces);
+	conn_type_map[MAT_BOUND].reserve(number_of_faces);
+	conn_type_map[FRAC_FRAC].reserve(number_of_faces);
+	conn_type_map[FRAC_BOUND].reserve(number_of_faces);
+
 	for (index_t c = 0; c < num_of_cells; ++c) {
 
 		//cout << "Cell " << c << "\n";
@@ -1137,11 +1169,21 @@ void Mesh::cpg_connections(
 
 			// Find connection type
 			conn.type = face_is_boundary ? MAT_BOUND : MAT_MAT;
+			conn_type_map[conn.type].push_back(counter - 1);
 
 			conns.push_back(conn);
 		}//faces loop
 
 	}//cells loop
+
+	// erase absent
+	for (auto it = conn_type_map.begin(); it != conn_type_map.end();)
+	{
+	  if (it->second.size())
+		it++;
+	  else
+		it = conn_type_map.erase(it);
+	}
 
 	cout << conns.size() << " connections:\n";
 }

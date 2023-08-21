@@ -37,6 +37,7 @@ void pybind_mesh(py::module &m)
 		.def_readwrite("init_apertures", &Mesh::init_apertures)
 		.def_readwrite("tags", &Mesh::element_tags)
 		.def_readwrite("conns", &Mesh::conns)
+		.def_readwrite("conn_type_map", &Mesh::conn_type_map)
 
 		.def_readwrite("adj_matrix", &Mesh::adj_matrix)
 		.def_readwrite("adj_matrix_cols", &Mesh::adj_matrix_cols)

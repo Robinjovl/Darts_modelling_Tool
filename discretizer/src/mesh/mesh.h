@@ -83,6 +83,9 @@ namespace mesh
 		// elem ids for each elem type
 		std::unordered_map<ElemType, std::vector<index_t>> elem_type_map;
 		
+		// conn ids for each conn type
+		std::unordered_map<ConnType, std::vector<index_t>> conn_type_map;
+
 		/* Fluxes */
 		// array of fluxes through elements
 		std::vector<value_t> flux_elems;
