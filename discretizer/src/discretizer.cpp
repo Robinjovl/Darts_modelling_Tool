@@ -1783,7 +1783,6 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, Approximati
 	// boundary conditions: a*p + b*f = r 
 	const auto& a = bc.a_p[conn.elem_id2 - mesh->n_cells];
 	const auto& b = bc.b_p[conn.elem_id2 - mesh->n_cells];
-	const auto& r = bc.r_p[conn.elem_id2 - mesh->n_cells];
 
 	// co-normal decomposition
 	lam1 = (n.transpose() * DARCY_CONSTANT * perms[conn.elem_id1] * n).values[0];
@@ -1840,8 +1839,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, Approximati
 	  // boundary conditions: a*p + b*f = r 
 	  const auto& a = bc.a_th[conn.elem_id2 - mesh->n_cells];
 	  const auto& b = bc.b_th[conn.elem_id2 - mesh->n_cells];
-	  const auto& r = bc.r_th[conn.elem_id2 - mesh->n_cells];
-
+	  
 	  // co-normal decomposition
 	  lam1 = (n.transpose() * heat_conductions[conn.elem_id1] * n).values[0];
 	  gam1 = heat_conductions[conn.elem_id1] * n - lam1 * n;

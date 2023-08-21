@@ -21,8 +21,8 @@ namespace dis
 	class BoundaryCondition
 	{
 	public:
-		std::vector<value_t> a_p, b_p, r_p;
-		std::vector<value_t> a_th, b_th, r_th;
+		std::vector<value_t> a_p, b_p;
+		std::vector<value_t> a_th, b_th;
 		BoundaryCondition() {};
 		~BoundaryCondition() {};
 	};

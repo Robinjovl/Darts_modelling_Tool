@@ -9,9 +9,8 @@ namespace dis
 	class MechBoundaryCondition
 	{
 	public:
-	  std::vector<value_t> a_n, b_n, r_n;
+	  std::vector<value_t> a_n, b_n;
 	  std::vector<value_t> a_t, b_t;
-	  std::vector<Vector3> r_t;
 	  MechBoundaryCondition() {};
 	  ~MechBoundaryCondition() {};
 	};

@@ -86,9 +86,7 @@ void pybind_mech_discretizer(py::module& m)
 	.def(py::init<>())
 	.def_readwrite("a_n", &MechBoundaryCondition::a_n)
 	.def_readwrite("b_n", &MechBoundaryCondition::b_n)
-	.def_readwrite("r_n", &MechBoundaryCondition::r_n)
 	.def_readwrite("a_t", &MechBoundaryCondition::a_t)
 	.def_readwrite("b_t", &MechBoundaryCondition::b_t)
-	.def_readwrite("r_t", &MechBoundaryCondition::r_t)
 	;
 };
