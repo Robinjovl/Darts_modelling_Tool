@@ -213,6 +213,10 @@ class DartsModel:
                                                          self.e.stat.n_linear_total, self.e.stat.n_linear_wasted))
 
     def apply_rhs_flux(self):
+        '''
+        if self.rhs_flux is defined and it is not None, add its values to rhs
+        :return:
+        '''
         if not hasattr(self, 'rhs_flux') or self.rhs_flux is None:
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
