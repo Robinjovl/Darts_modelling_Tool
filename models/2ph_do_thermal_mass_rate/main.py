@@ -52,9 +52,8 @@ if __name__ == '__main__':
     n.init()
 
     if 1:
-        n.params.max_ts = 1e-3
-        n.run_python(days=1e-3)
-        n.set_rhs_flux(inflow_var_idx=2, inflow=100000)
+
+        n.set_rhs_flux(inflow_var_idx=2, inflow=10)
         n.run_python(days=30)
         n.print_timers()
         n.print_stat()

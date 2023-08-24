@@ -31,18 +31,20 @@ class Model(CICDModel):
         #return
         '''
         :param inflow_var_idx: variable index
-        :param inflow: [1..nc] - kmole, [nc+1] - kJ (if thermal)
+        :param inflow: [1..nc] - kmole/day, [nc+1] - kJ/day (if thermal)
         :return:
         '''
+        nv = self.physics.n_vars
+        nb = self.reservoir.mesh.n_res_blocks
         # create an array and initialize with zeros
-        self.rhs_flux = np.array(self.physics.engine.RHS, copy=True)
-        self.rhs_flux[:] = 0
+        self.rhs_flux = np.zeros(nb * nv)
         # set values
         inflow_cells = np.array([0])
-        if self.rhs_flux.size > 0:
-            self.rhs_flux[inflow_cells * inflow_var_idx] = inflow
-        else:
-            self.rhs_flux = None
+        # extract pointer to values corresponding to var_idx        self.rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
+        # set values for the cells defined in inflow_cells
+        self.rhs_flux_var[inflow_cells] = inflow
+
+
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
