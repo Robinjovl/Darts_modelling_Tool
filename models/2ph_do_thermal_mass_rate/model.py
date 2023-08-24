@@ -39,8 +39,9 @@ class Model(CICDModel):
         # create an array and initialize with zeros
         self.rhs_flux = np.zeros(nb * nv)
         # set values
-        inflow_cells = np.array([0])
-        # extract pointer to values corresponding to var_idx        self.rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
+        inflow_cells = np.array([500])
+        # extract pointer to values corresponding to var_idx
+        self.rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
         # set values for the cells defined in inflow_cells
         self.rhs_flux_var[inflow_cells] = inflow
 
