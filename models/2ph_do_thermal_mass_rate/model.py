@@ -28,13 +28,16 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_rhs_flux(self, inflow_var_idx, inflow):
+        #return
         '''
         :param inflow_var_idx: variable index
-        :param inflow: kJ or kmole
+        :param inflow: [1..nc] - kmole, [nc+1] - kJ (if thermal)
         :return:
         '''
+        # create an array and initialize with zeros
         self.rhs_flux = np.array(self.physics.engine.RHS, copy=True)
         self.rhs_flux[:] = 0
+        # set values
         inflow_cells = np.array([0])
         if self.rhs_flux.size > 0:
             self.rhs_flux[inflow_cells * inflow_var_idx] = inflow

@@ -217,6 +217,8 @@ class DartsModel:
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
         rhs += self.rhs_flux
+        # DEBUG
+        print('rhs_max=', rhs.max())
 
     def run_timestep_python(self, dt, t):
         max_newt = self.params.max_i_newton
@@ -227,13 +229,6 @@ class DartsModel:
         for i in range(max_newt+1):
             self.e.run_single_newton_iteration(dt)
             self.apply_rhs_flux()
-            rhs = np.array(self.physics.engine.RHS, copy=False)
-            nb = self.reservoir.mesh.n_res_blocks
-            nv = self.physics.n_vars
-            v = 0
-            idx = 0
-            rhs[idx*nv] += 100
-
             self.e.newton_residual_last_dt = self.e.calc_newton_residual()
 
             max_residual[i] = self.e.newton_residual_last_dt

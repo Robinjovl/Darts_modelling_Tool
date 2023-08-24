@@ -52,8 +52,9 @@ if __name__ == '__main__':
     n.init()
 
     if 1:
+        n.params.max_ts = 1e-3
         n.run_python(days=1e-3)
-        n.set_rhs_flux(inflow_var_idx=0, inflow=100)
+        n.set_rhs_flux(inflow_var_idx=2, inflow=100000)
         n.run_python(days=30)
         n.print_timers()
         n.print_stat()
@@ -75,7 +76,8 @@ if __name__ == '__main__':
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(310 + (i + 1))
-            plt.plot(Xn[i:n.reservoir.nb*nc:nc])
+            plt.plot(Xn[i:n.reservoir.nb*nc:nc], label=str(i))
+            plt.legend()
         plt.show()
     else:
         #plot_sol(n)
