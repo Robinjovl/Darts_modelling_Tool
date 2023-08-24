@@ -27,7 +27,7 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-    def set_rhs_flux(self, inflow_var_idx, inflow):
+    def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
         #return
         '''
         :param inflow_var_idx: variable index
@@ -36,10 +36,7 @@ class Model(CICDModel):
         '''
         nv = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
-        # create an array and initialize with zeros
         self.rhs_flux = np.zeros(nb * nv)
-        # set values
-        inflow_cells = np.array([500])
         # extract pointer to values corresponding to var_idx
         self.rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
         # set values for the cells defined in inflow_cells

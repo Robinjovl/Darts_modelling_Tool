@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     if 1:
 
-        n.set_rhs_flux(inflow_var_idx=2, inflow=10)
+        n.set_rhs_flux(inflow_cells = np.array([500]), inflow_var_idx=2, inflow=10)
         n.run_python(days=30)
         n.print_timers()
         n.print_stat()
