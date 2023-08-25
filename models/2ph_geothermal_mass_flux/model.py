@@ -113,7 +113,7 @@ class Model(CICDModel):
         which will be added to rhs in darts_model.run_python function
         :param inflow_cells: cell indices where to apply inflow or outflow
         :param inflow_var_idx: variable index [0..nvars-1]
-        :param outflow: inflow_var_idx<nc => kg/day, else kJ/day (thermal var)
+        :param outflow: inflow_var_idx<nc => kMol/day, else kJ/day (thermal var)
         if outflow < 0 then it is actually inflow
         '''
         nv = self.physics.n_vars

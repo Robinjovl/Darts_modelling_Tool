@@ -46,7 +46,7 @@ def plot_sol(n):
 
 def run_darts(mode):
     well_rate = 1  # m3/day
-    outflow = 1000  # kg/day
+    outflow = 1000  # kMol/day
     redirect_darts_output('run_' + mode + '.log')
     n = Model(mode=mode, well_rate=well_rate, outflow=outflow)
     n.init()
