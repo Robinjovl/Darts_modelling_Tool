@@ -12,13 +12,14 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
 class Model(CICDModel):
-    def __init__(self, mode):
+    def __init__(self, mode, rate):
         # call base class constructor
         super().__init__()
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
         self.mode = mode
+        self.rate = rate
         self.set_reservoir()
         self.set_physics()
         self.set_wells()
@@ -30,8 +31,8 @@ class Model(CICDModel):
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=3, permy=3,
-                                         permz=3, poro=0.2, depth=100)
+        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=5, permy=5,
+                                         permz=5, poro=0.2, depth=100)
 
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
@@ -96,10 +97,10 @@ class Model(CICDModel):
             if 'I' in w.name:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
                 #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(200, self.inj, 0)
+                w.control = self.physics.new_rate_inj(self.rate, self.inj, 0)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_rate_prod(1, iph=0)
+                w.control = self.physics.new_rate_prod(self.rate, iph=0)
 
     def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
         if self.mode == 'wells':
