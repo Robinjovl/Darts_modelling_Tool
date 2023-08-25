@@ -212,19 +212,19 @@ class DartsModel:
                                                          self.e.stat.n_newton_total, self.e.stat.n_newton_wasted,
                                                          self.e.stat.n_linear_total, self.e.stat.n_linear_wasted))
 
-    def apply_rhs_flux(self, dt):
+    def apply_rhs_flux(self, dt: float):
         '''
         if self.rhs_flux is defined and it is not None, add its values to rhs
-        :return:
+        :param dt: timestep [days]
         '''
         if not hasattr(self, 'rhs_flux') or self.rhs_flux is None:
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        rhs += self.rhs_flux / dt
+        rhs += self.rhs_flux * dt
         # DEBUG
-        print('rhs_flux.max=', self.rhs_flux.max())
-        print('rhs_max=', rhs.max())
-        pass
+        print('rhs_flux min=', self.rhs_flux.min(), 'max=', self.rhs_flux.max())
+        print('rhs min=', rhs.min(), 'max=', rhs.max())
+
 
     def run_timestep_python(self, dt, t):
         max_newt = self.params.max_i_newton
