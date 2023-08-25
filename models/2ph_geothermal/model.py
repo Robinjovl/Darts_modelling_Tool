@@ -48,7 +48,7 @@ class Model(CICDModel):
         #self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
 
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(self.reservoir.wells[-1], n.reservoir.nx//2, 1, 1, multi_segment=False)
+        self.reservoir.add_perforation(self.reservoir.wells[-1], self.reservoir.nx//2, 1, 1, multi_segment=False)
         return
 
     def set_physics(self):
@@ -91,14 +91,15 @@ class Model(CICDModel):
     def set_boundary_conditions(self):
         if self.mode != 'wells':
             return
+
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
                 #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(2000, self.inj, 0)
+                w.control = self.physics.new_rate_inj(200, self.inj, 0)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_rate_prod(2000, iph=0)
+                w.control = self.physics.new_rate_prod(1, iph=0)
 
     def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
         if self.mode == 'wells':
