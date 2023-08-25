@@ -30,7 +30,8 @@ build-linux-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $UPLOAD_PKL == "1"
+        - if: $TEST_ALL == "1"   
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -84,6 +85,7 @@ build-linux-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .build-linux-dockcross
     variables:
@@ -138,6 +140,7 @@ build-windows-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .build-windows
     variables:
@@ -193,6 +196,7 @@ build-windows-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .build-windows
     variables:
@@ -310,6 +314,7 @@ test-linux-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .test-linux
     variables:
@@ -374,6 +379,7 @@ test-linux-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .test-linux
     variables:
@@ -438,6 +444,7 @@ test-windows-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .test-windows
     variables:
@@ -502,6 +509,7 @@ test-windows-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $UPLOAD_PKL == "1"
         - if: $TEST_ALL == "1"
     extends: .test-windows
     variables:
