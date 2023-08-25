@@ -30,7 +30,7 @@ class Model(CICDModel):
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=10, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
+        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
                                          permz=300, poro=0.2, depth=100)
 
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
