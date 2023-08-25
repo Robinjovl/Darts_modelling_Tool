@@ -12,14 +12,13 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
 class Model(CICDModel):
-    def __init__(self, mode, rate):
+    def __init__(self):
         # call base class constructor
         super().__init__()
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
-        self.mode = mode
-        self.rate = rate
+
         self.set_reservoir()
         self.set_physics()
         self.set_wells()
@@ -31,8 +30,8 @@ class Model(CICDModel):
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=5, permy=5,
-                                         permz=5, poro=0.2, depth=100)
+        self.reservoir = StructReservoir(self.timer, nx=500, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
+                                         permz=300, poro=0.2, depth=100)
 
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
@@ -42,14 +41,12 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        if self.mode != 'wells':
-            return
         # well model or boundary conditions
-        #self.reservoir.add_well("I1")
-        #self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
 
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(self.reservoir.wells[-1], self.reservoir.nx//2, 1, 1, multi_segment=False)
+        self.reservoir.add_perforation(self.reservoir.wells[-1], 500, 1, 1, multi_segment=False)
         return
 
     def set_physics(self):
@@ -90,34 +87,14 @@ class Model(CICDModel):
                                                     uniform_composition=[1], uniform_temp=350)
 
     def set_boundary_conditions(self):
-        if self.mode != 'wells':
-            return
-
         for i, w in enumerate(self.reservoir.wells):
-            if 'I' in w.name:
+            if i == 0:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
                 #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(self.rate, self.inj, 0)
+                w.control = self.physics.new_rate_inj(5, self.inj, 0)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_rate_prod(self.rate, iph=0)
-
-    def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
-        if self.mode == 'wells':
-            return
-        '''
-        :param inflow_var_idx: variable index
-        :param inflow: [1..nc] - kmole/day, [nc+1] - kJ/day (if thermal)
-        :return:
-        '''
-        nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
-        self.rhs_flux = np.zeros(nb * nv)
-        # extract pointer to values corresponding to var_idx
-        rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
-        # set values for the cells defined in inflow_cells
-        rhs_flux_var[inflow_cells] = inflow
-
+                w.control = self.physics.new_bhp_prod(180)
 
 
 class ModelProperties(PropertyContainer):
@@ -175,4 +152,3 @@ class ModelProperties(PropertyContainer):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
-

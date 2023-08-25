@@ -44,60 +44,42 @@ def plot_sol(n):
 
     plt.show()
 
-def run_darts(mode, plot_flag=False):
-    rate = 1
-    redirect_darts_output('run_' + mode + '.log')
-    n = Model(mode=mode, rate=rate)
+if __name__ == '__main__':
+
+    redirect_darts_output('run.log')
+    n = Model()
     n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
 
-    if mode != 'plot':
-        n.set_rhs_flux(inflow_cells=np.array([n.reservoir.nx // 2]), inflow_var_idx=0, inflow=1000)
-        for i in range(1):
-            n.run_python(days=2)
+    if 1:
+        n.run_python()
+        # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
+        # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
-
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
         n.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
         time_data.to_excel(writer, 'Sheet1')
-        writer.close()
+        writer.save()
+    else:
+        n.load_restart_data()
+        time_data = pd.read_pickle("darts_time_data.pkl")
 
+
+    if 1:
         Xn = np.array(n.physics.engine.X, copy=False)
-        np.save(mode + '.npy', Xn)
-
-        if plot_flag:
-            nc = n.physics.nc + n.physics.thermal
-            plt.figure(num=1, figsize=(12, 8), dpi=100)
-            for i in range(nc if nc < 3 else 3):
-                plt.subplot(330 + (i + 1))
-                plt.autoscale(False)
-                plt.ylim(50, 400)
-                plt.xlim(0, n.reservoir.nx - 1)
-                plt.plot(Xn[i:n.reservoir.nb * nc:nc], label='var' + str(i))
-                plt.legend()
-            plt.show()
-
-    if mode == 'plot':
-        Xn_rhs = np.load('rhs.npy')
-        Xn_wells = np.load('wells.npy')
         nc = n.physics.nc + n.physics.thermal
-        plt.autoscale(False)
-        plt.ylim(0, 400)
-        plt.xlim(0, n.reservoir.nx - 1)
-        plt.plot(Xn_rhs[0:n.reservoir.nb*nc:nc], label='rhs')
-        plt.plot(Xn_wells[0:n.reservoir.nb * nc:nc], label='wells')
-        plt.legend()
+
+        plt.figure(num=1, figsize=(12, 8), dpi=100)
+        for i in range(nc if nc < 3 else 3):
+            plt.subplot(330 + (i + 1))
+            plt.plot(Xn[i:n.reservoir.nb*nc:nc])
         plt.show()
-
-if __name__ == '__main__':
-    mode_list = ['wells', 'rhs', 'plot']
-    #mode_list = ['rhs']
-
-    for mode in mode_list:
-        run_darts(mode, plot_flag=False)
+    else:
+        #plot_sol(n)
+        n.print_and_plot('sim_data')
 
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]

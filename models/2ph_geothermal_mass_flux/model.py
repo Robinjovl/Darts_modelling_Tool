@@ -12,13 +12,14 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
 class Model(CICDModel):
-    def __init__(self):
+    def __init__(self, mode, rate):
         # call base class constructor
         super().__init__()
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
-
+        self.mode = mode
+        self.rate = rate
         self.set_reservoir()
         self.set_physics()
         self.set_wells()
@@ -27,28 +28,11 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-    def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
-        #return
-        '''
-        :param inflow_var_idx: variable index
-        :param inflow: [1..nc] - kmole/day, [nc+1] - kJ/day (if thermal)
-        :return:
-        '''
-        nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_res_blocks
-        self.rhs_flux = np.zeros(nb * nv)
-        # extract pointer to values corresponding to var_idx
-        self.rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
-        # set values for the cells defined in inflow_cells
-        self.rhs_flux_var[inflow_cells] = inflow
-
-
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1,
-                                         permx=300, permy=300, permz=300, poro=0.2, depth=100)
+        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=5, permy=5,
+                                         permz=5, poro=0.2, depth=100)
 
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
@@ -58,38 +42,37 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        return
+        if self.mode != 'wells':
+            return
         # well model or boundary conditions
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
+        #self.reservoir.add_well("I1")
+        #self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
 
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(self.reservoir.wells[-1], self.nx, 1, 1, multi_segment=False)
+        self.reservoir.add_perforation(self.reservoir.wells[-1], self.reservoir.nx//2, 1, 1, multi_segment=False)
         return
 
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
-        components = ['w', 'o']
-        phases = ['wat', 'oil']
+        components = ['w']
+        phases = ['wat', 'gas']
 
-        self.inj = value_vector([1 - zero, 300])
-        self.ini = value_vector([zero])
+        self.inj = value_vector([300])
 
         property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                              ('oil', DensityBasic(compr=5e-3, dens0=50))])
+                                              ('gas', DensityBasic(compr=5e-3, dens0=50))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
-                                                ('oil', ConstFunc(0.03))])
-        property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("gas", 0.1, 0.1)),
-                                               ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
+                                                ('gas', ConstFunc(0.03))])
+        property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("oil", 0.1, 0.1)),
+                                               ('gas', PhaseRelPerm("gas", 0.1, 0.1))])
         property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
-                                               ('oil', EnthalpyBasic(hcap=0.035))])
+                                               ('gas', EnthalpyBasic(hcap=0.035))])
         property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
-                                                   ('oil', ConstFunc(1.))])
-
+                                                   ('gas', ConstFunc(1.))])
         property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         # create physics
@@ -104,18 +87,37 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=200,
-                                                      uniform_composition=self.ini, uniform_temp=350)
+                                                    uniform_composition=[1], uniform_temp=350)
 
     def set_boundary_conditions(self):
-        return
+        if self.mode != 'wells':
+            return
+
         for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
+            if 'I' in w.name:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
                 #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(5, self.inj, 0)
+                w.control = self.physics.new_rate_inj(self.rate, self.inj, 0)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_bhp_prod(180)
+                w.control = self.physics.new_rate_prod(self.rate, iph=0)
+
+    def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
+        if self.mode == 'wells':
+            return
+        '''
+        :param inflow_var_idx: variable index
+        :param inflow: [1..nc] - kmole/day, [nc+1] - kJ/day (if thermal)
+        :return:
+        '''
+        nv = self.physics.n_vars
+        nb = self.reservoir.mesh.n_res_blocks
+        self.rhs_flux = np.zeros(nb * nv)
+        # extract pointer to values corresponding to var_idx
+        rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
+        # set values for the cells defined in inflow_cells
+        rhs_flux_var[inflow_cells] = inflow
+
 
 
 class ModelProperties(PropertyContainer):
@@ -124,6 +126,7 @@ class ModelProperties(PropertyContainer):
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
         super().__init__(phases_name, components_name, Mw, min_z, temperature=None)
+        self.x = np.ones((self.nph, self.nc))
 
     def evaluate(self, state):
         """
@@ -136,30 +139,25 @@ class ModelProperties(PropertyContainer):
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        self.ph = [0, 1]
+        self.ph = [0]
 
         for j in self.ph:
+            M = 0
             # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
+            for i in range(self.nc):
+                M += self.Mw[i] * self.x[j][i]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, 0)  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
-        self.nu = zc
+        self.nu[0] = 1
         self.compute_saturation(self.ph)
 
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
-        mass_source = np.zeros(self.nc)
+        mass_source = np.zeros(1)
 
         return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
 
@@ -167,13 +165,14 @@ class ModelProperties(PropertyContainer):
 
         self.sat[:] = 0
 
-        ph = [0, 1]
+        ph = [0]
         for j in ph:
             self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
 
         self.dens_m = [1025, 0.77]  # to match DO based on PVT
 
-        self.nu = zc
+        self.nu[0] = 1
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
+
