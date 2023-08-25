@@ -47,12 +47,18 @@ def plot_sol(n):
 if __name__ == '__main__':
 
     redirect_darts_output('run.log')
-    n = Model()
+
+    #mode = 'wells'
+    mode = 'rhs'
+
+    n = Model(mode=mode)
     n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
 
     if 1:
-        n.run_python()
+        n.set_rhs_flux(inflow_cells=np.array([n.reservoir.nx//2]), inflow_var_idx=0, inflow=1000)
+        for i in range(1):
+            n.run_python(days=1)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
@@ -62,7 +68,7 @@ if __name__ == '__main__':
         n.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
         time_data.to_excel(writer, 'Sheet1')
-        writer.save()
+        writer.close()
     else:
         n.load_restart_data()
         time_data = pd.read_pickle("darts_time_data.pkl")
@@ -75,7 +81,11 @@ if __name__ == '__main__':
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:n.reservoir.nb*nc:nc])
+            plt.autoscale(False)
+            plt.ylim(50, 400)
+            plt.xlim(0, n.reservoir.nx-1)
+            plt.plot(Xn[i:n.reservoir.nb*nc:nc], label='var'+str(i))
+            plt.legend()
         plt.show()
     else:
         #plot_sol(n)
