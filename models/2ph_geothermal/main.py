@@ -56,7 +56,7 @@ if __name__ == '__main__':
     n.init()
 
     if 1:
-        n.set_rhs_flux(inflow_cells=np.array([n.reservoir.nx//2]), inflow_var_idx=0, inflow=1000)
+        n.set_rhs_flux(inflow_cells=np.array([n.reservoir.nx//2]), inflow_var_idx=0, inflow=-1000)
         for i in range(1):
             n.run_python(days=1)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
