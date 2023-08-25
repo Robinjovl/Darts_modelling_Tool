@@ -12,19 +12,23 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
 class Model(CICDModel):
-    def __init__(self, mode, rate):
+    def __init__(self, mode='rhs', well_rate=1, outflow=1000):
         # call base class constructor
         super().__init__()
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
         self.mode = mode
-        self.rate = rate
+        self.well_rate = well_rate
         self.set_reservoir()
         self.set_physics()
         self.set_wells()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
+
+        if self.mode == 'rhs':
+            # add outflux to the middle cell
+            self.set_rhs_flux(inflow_cells=np.array([self.reservoir.nx // 2]), inflow_var_idx=0, outflow=outflow)
 
         self.timer.node["initialization"].stop()
 
@@ -97,18 +101,20 @@ class Model(CICDModel):
             if 'I' in w.name:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
                 #w.control = self.physics.new_bhp_inj(210, self.inj)
-                w.control = self.physics.new_rate_inj(self.rate, self.inj, 0)
+                w.control = self.physics.new_rate_inj(self.well_rate, self.inj, 0)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_rate_prod(self.rate, iph=0)
+                w.control = self.physics.new_rate_prod(self.well_rate, iph=0)
 
-    def set_rhs_flux(self, inflow_cells, inflow_var_idx, inflow):
-        if self.mode == 'wells':
-            return
+    def set_rhs_flux(self, inflow_cells: np.array, inflow_var_idx: int, outflow: float):
         '''
-        :param inflow_var_idx: variable index
-        :param inflow: [1..nc] - kmole/day, [nc+1] - kJ/day (if thermal)
-        :return:
+        function to specify the inflow or outflow to the cells
+        it sets up self.rhs_flux vector on nvar * ncells size
+        which will be added to rhs in darts_model.run_python function
+        :param inflow_cells: cell indices where to apply inflow or outflow
+        :param inflow_var_idx: variable index [0..nvars-1]
+        :param outflow: inflow_var_idx<nc => kg/day, else kJ/day (thermal var)
+        if outflow < 0 then it is actually inflow
         '''
         nv = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
@@ -116,7 +122,7 @@ class Model(CICDModel):
         # extract pointer to values corresponding to var_idx
         rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
         # set values for the cells defined in inflow_cells
-        rhs_flux_var[inflow_cells] = inflow
+        rhs_flux_var[inflow_cells] = outflow
 
 
 

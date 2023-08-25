@@ -221,9 +221,6 @@ class DartsModel:
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
         rhs += self.rhs_flux * dt
-        # DEBUG
-        print('rhs_flux min=', self.rhs_flux.min(), 'max=', self.rhs_flux.max())
-        print('rhs min=', rhs.min(), 'max=', rhs.max())
 
 
     def run_timestep_python(self, dt, t):
