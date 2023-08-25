@@ -4,14 +4,13 @@ set lgn=%2
 set pwd=%3
 set commit=%4
 set odls=%5
-set py=%6
 
 if /I %UPLOAD_PKL% NEQ 1 exit
 
-set fname=%commit%_%odls%_%py%.zip
+set fname=%commit%_ODLS%odls%.zip
 echo %fname%
 
-pklname="pkl_win"
+pklname="perf_win"
 if "%odls"=="0" (
     pklname=$pklname"_iter"
 )

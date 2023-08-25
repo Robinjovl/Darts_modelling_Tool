@@ -573,7 +573,7 @@ test-windows-3.7-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./upload_pkl.sh $SMBNAME $SMBLOGIN $SMBPASS "$CI_COMMIT_SHORT_SHA" $ODLS $PY_VER
+        - ./upload_pkl.sh $SMBNAME $SMBLOGIN $SMBPASS "$CI_COMMIT_SHORT_SHA" $ODLS
         - cd ..
         - echo "test finished"
     artifacts:
@@ -607,7 +607,7 @@ test-windows-3.7-ODLS:
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS $PY_VER
+        - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS
         - cd ..
     artifacts:
       paths:

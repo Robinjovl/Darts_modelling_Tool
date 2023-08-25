@@ -1,16 +1,15 @@
 # create an archive with .pkl files and upload them to $1/opendarts-private-artifacts/pkl
 commit=$4
 odls=$5
-py=$6
 
 if [ "$UPLOAD_PKL" != 1 ]; then
 	exit
 fi
 
-fname="$commit"_ODLS"$odls"_PY"$py.tar.gz"
+fname=$(commit)"_ODLS"$(odls)".tar.gz"
 echo $fname
 
-pklname="pkl_lin"
+pklname="perf_lin"
 if [ $odls == "0" ]
 then
     pklname=$pklname"_iter"
