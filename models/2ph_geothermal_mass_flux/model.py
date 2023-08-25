@@ -124,7 +124,10 @@ class Model(CICDModel):
         # set values for the cells defined in inflow_cells
         rhs_flux_var[inflow_cells] = outflow
 
-
+    # overload base darts run function, because run does not apply_rhs_flux.
+    # in CI/CD only run() is called
+    def run(self):
+        self.run_python(self.runtime)
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):

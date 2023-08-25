@@ -45,14 +45,12 @@ def plot_sol(n):
     plt.show()
 
 def run_darts(mode):
-    well_rate = 1  # m3/day
-    outflow = 1000  # kMol/day
     redirect_darts_output('run_' + mode + '.log')
-    n = Model(mode=mode, well_rate=well_rate, outflow=outflow)
+    n = Model(mode=mode)
     n.init()
 
     if mode != 'plot':
-        n.run_python(days=2)
+        n.run()
         n.print_timers()
         n.print_stat()
 
