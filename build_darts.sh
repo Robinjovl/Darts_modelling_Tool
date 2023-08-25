@@ -1,7 +1,8 @@
 # Exit when any command fails
 set -e
 
-ODLS="0" # default linear solvers
+ODLS="0" # default linear solvers are iterative
+config=""  # if config=="debug" build debug
 
 # update submodules
 echo -e "\n- Update submodules: START\n"
@@ -14,13 +15,45 @@ then
     ODLS=$1
 fi
 
+# default configuration
+if [ $ODLS == "0" ]
+then
+    config_engines="mt"
+elif [ $ODLS == "1" ]
+then
+    config_engines="" #open-darts (with ODLS=1) currently works only without openMP
+else
+    echo "Error: Unknown ODLS=$ODLS in the first argument!"
+    exit 1
+fi
+
+config_discretizer="release"
+config_solvers="Release"
+
+if [ $# -gt 1 ] # use the first cmd argument if it is passed
+then
+    config=$2
+    if [ $config == "debug" ]
+    then
+        config_engines="mt_debug"
+        config_discretizer="debug"
+        config_solvers="Debug"
+    elif [ $config == "release" ]
+    then
+        : # do nothing
+    else
+        echo "Error: Unknown configuration=$config in the second argument!"
+        exit 1
+    fi
+fi
+
 NT="-j 8" # number of threads used to compile
-if [ $# -gt 1 ] # use the second cmd argument if it is passed
+if [ $# -gt 2 ] # use the second cmd argument if it is passed
 then
     NT="-j $2"
 fi
 
-echo "ODLS=$ODLS NT=$NT"
+echo "ODLS=$ODLS config=$config NT=$NT"
 
 which python3-config
 export PYTHON_IFLAGS=`python3-config --includes`
@@ -33,18 +66,18 @@ then # deprecated linear solvers
 	cd ..
 else  #open-darts solvers
 	cd solvers/helper_scripts
-	./build_linux.sh
+	./build_linux.sh $(config_solvers)
 	cd ../..
 fi
 
 # compile engines
 cd engines
 make clean
-if [ $ODLS == "0" ] #no cmd arguments
+if [ $ODLS == "0" ]
 then
-	make mt $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make $(config_engines) $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
-	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true #open-darts currently works only without openMP
+	make $(config_engines) $NT USE_OPENDARTS_LINEAR_SOLVERS=true 
 fi
 
 if [ $? == 0 ]
@@ -62,9 +95,9 @@ cd discretizer
 make clean
 if [ $ODLS == "0" ] #no cmd arguments
 then
-	make $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make $(config_discretizer) $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
-	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true
+	make $(config_discretizer) $NT USE_OPENDARTS_LINEAR_SOLVERS=true
 fi
 
 if [ $? == 0 ]

@@ -20,6 +20,12 @@ Help_Info()
   # ------------------------------------------------------------------------------
 }
 
+config="Release"  # default configuration
+if [ $# -gt 0 ] # use the first cmd argument if it is passed
+then
+    config=$1
+fi
+
 ################################################################################
 ################################################################################
 # Main program                                                                 #
@@ -102,7 +108,7 @@ else
   mkdir -p ../../engines/lib/solvers
 
   # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  cmake -D CMAKE_BUILD_TYPE=$config -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
 
   # Build 
   make

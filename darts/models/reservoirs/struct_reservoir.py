@@ -193,7 +193,6 @@ class StructReservoir:
             if len(well.perforations) == 0:
                 well.well_head_depth = self.depth[res_block_local]
                 well.well_body_depth = well.well_head_depth
-                well_indexD *= self.rcond[res_block_local] # assume perforation condution = rock conduction
                 if self.discretizer.is_cpg:
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
                     # TODO: need segment_depth_increment and segment_length logic
@@ -213,8 +212,8 @@ class StructReservoir:
                     return
             well.perforations = well.perforations + [(well_block, res_block_local, well_index, well_indexD)]
             if verbose:
-                print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f' % (
-                    well.name, res_block_local, i, j, k, well_index))
+                print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f WID=%f' % (
+                    well.name, res_block_local, i, j, k, well_index, well_indexD))
         else:
             if verbose:
                 print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
