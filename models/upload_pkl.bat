@@ -15,7 +15,8 @@ if "%odls"=="0" (
     pklname=$pklname"_iter"
 )
 
-"C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%.pkl  .\*\ref\%pklname%.pkl"
+"C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%.pkl"
+rem .\*\ref\%pklname%.pkl
 
 rem net use \\%srv%\darts-private-artifacts %pwd% /user:WORKGROUP\%lgn%
 

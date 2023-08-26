@@ -15,7 +15,7 @@ then
     pklname=$pklname"_iter"
 fi
 
-tar -czf $fname ./*/"$pklname".pkl ./*/ref/"$pklname".pkl
+tar -czf $fname ./*/"$pklname".pkl #./*/ref/"$pklname".pkl
 
 #smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=pkl
 

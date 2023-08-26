@@ -570,8 +570,7 @@ test-windows-3.7-ODLS:
     script:
         # run simulation fot test models set
         - cd models
-        # delete pkls from previous pipeline run
-        - rm -f pkl_lin.tar.gz 
+        - rm -f pkl_lin.tar.gz # delete pkls from previous pipeline run
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
@@ -608,8 +607,7 @@ test-windows-3.7-ODLS:
     script:
         # run simulation fot test models set
         - cd models
-        # delete pkls from previous pipeline run
-        - del pkl_win.zip
+        - if exist pkl_win.zip del pkl_win.zip
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - .\upload_pkl.bat $env:SMBNAME $env:SMBLOGIN $env:SMBPASS $env:CI_COMMIT_SHORT_SHA $env:ODLS
