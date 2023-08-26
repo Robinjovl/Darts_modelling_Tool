@@ -6,7 +6,7 @@ if [ "$UPLOAD_PKL" != 1 ]; then
 	exit
 fi
 
-fname=$(commit)"_ODLS"$(odls)".tar.gz"
+fname="pkl_lin.tar.gz"
 echo $fname
 
 pklname="perf_lin"
@@ -17,6 +17,6 @@ fi
 
 tar -czf $fname ./*/"$pklname".pkl ./*/ref/"$pklname".pkl
 
-smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=pkl
+#smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=pkl
 
-rm $fname
+#rm $fname
