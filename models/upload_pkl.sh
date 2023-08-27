@@ -1,6 +1,6 @@
-# create an archive with .pkl files and upload them to $1/opendarts-private-artifacts/pkl
-commit=$4
-odls=$5
+# create an archive with .pkl files 
+commit=$1
+odls=$2
 
 if [ "$UPLOAD_PKL" != 1 ]; then
 	exit
@@ -17,7 +17,3 @@ fi
 
 rm -f $fname # delete pkls from previous pipeline run
 tar -czf $fname ./*/"$pklname".pkl #./*/ref/"$pklname".pkl
-
-#smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=pkl
-
-#rm $fname
