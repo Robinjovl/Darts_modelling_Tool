@@ -10,9 +10,9 @@ if /I %UPLOAD_PKL% NEQ 1 exit
 set fname=pkl_win.zip
 echo %fname%
 
-pklname="perf_win"
+set pklname="perf_win"
 if "%odls"=="0" (
-    pklname=$pklname"_iter"
+    set pklname=%pklname%"_iter"
 )
 
 rem # delete pkls from previous pipeline run
