@@ -2,8 +2,6 @@ rem %4 -- $CI_COMMIT_REF_NAME
 set commit=%1
 set odls=%2
 
-if /I %UPLOAD_PKL% NEQ 1 exit
-
 set fname=pkl_win.zip
 echo %fname%
 
@@ -14,6 +12,8 @@ if "%odls%"=="0" (
 
 rem # delete pkls from previous pipeline run
 if exist %fname% del %fname%
+
+if /I %UPLOAD_PKL% NEQ 1 exit
 
 "C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%.pkl"
 
