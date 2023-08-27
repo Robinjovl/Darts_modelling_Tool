@@ -15,6 +15,7 @@ then
     pklname=$pklname"_iter"
 fi
 
+rm -f $fname # delete pkls from previous pipeline run
 tar -czf $fname ./*/"$pklname".pkl #./*/ref/"$pklname".pkl
 
 #smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=pkl

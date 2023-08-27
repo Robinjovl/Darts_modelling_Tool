@@ -15,6 +15,9 @@ if "%odls"=="0" (
     pklname=$pklname"_iter"
 )
 
+rem # delete pkls from previous pipeline run
+if exist %fname% del %fname%
+
 "C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%.pkl"
 rem .\*\ref\%pklname%.pkl
 
