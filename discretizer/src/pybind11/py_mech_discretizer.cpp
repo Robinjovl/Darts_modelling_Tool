@@ -1,7 +1,8 @@
 #include "py_mech_discretizer.h"
 
 namespace py = pybind11;
-using mesh::Matrix;
+using dis::Matrix;
+using dis::Matrix33;
 using dis::Discretizer;
 using dis::MechDiscretizer;
 using dis::MechDiscretizerMode;
@@ -9,6 +10,8 @@ using dis::MechBoundaryCondition;
 using dis::Stiffness;
 
 PYBIND11_MAKE_OPAQUE(std::vector<Stiffness>);
+PYBIND11_MAKE_OPAQUE(std::vector<Matrix>);
+PYBIND11_MAKE_OPAQUE(std::vector<Matrix33>);
 
 template <MechDiscretizerMode MODE>
 struct mech_discretizer_exposer
@@ -22,6 +25,7 @@ struct mech_discretizer_exposer
 	  .def_readwrite("stfs", &MechDiscretizer<MODE>::stfs)
 	  .def_readwrite("biots", &MechDiscretizer<MODE>::biots)
 	  .def_readwrite("thermal_expansions", &MechDiscretizer<MODE>::th_exps)
+	  .def_readwrite("neumann_boundaries_grad_reconstruction", &MechDiscretizer<MODE>::NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION)
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
 	  ;
   }

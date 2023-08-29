@@ -59,11 +59,36 @@ namespace dis
 	class MechDiscretizer : public Discretizer
 	{
 	protected:
+	  struct InnerMatrices
+	  {
+		Matrix T1, T2, G1, G2, Q1, Q2, Th1, Th2, R1, R2, y1, y2, S1, S2;
+		value_t r1, r2, beta_stab1, beta_stab2, k_stab1, k_stab2, c_stab1, c_stab2;
+	  };
+	  
 	  std::unordered_map<index_t, Matrix> pre_grad_A_u, pre_grad_R_u, pre_grad_rhs_u;
+	  std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs;
 	  std::vector<MechApproximation> pre_merged_mom_flux, mom_fluxes;
+	  Matrix W;
+	  std::vector<std::map<index_t, InnerMatrices>> inner;
 
-	  static const index_t M;
-	  static const index_t N;
+	  static const uint8_t M;
+	  static const uint8_t N;
+
+	  std::vector<index_t>::const_iterator it_find;
+	  std::pair<bool, size_t> res1, res2;
+	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
+	  {
+		// Find given element in vector
+		it_find = std::find(vec.begin(), vec.end(), element);
+		if (it_find != vec.end())
+		{
+		  return { true, std::distance(vec.begin(), it_find) };
+		}
+		else
+		{
+		  return { false, -1 };
+		}
+	  };
 
 	  //void calc_matrix_matrix(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal = false);
 	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
@@ -139,9 +164,9 @@ namespace dis
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
 
-	  void reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& bc);
+	  void reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& bc_mech);
 
-	  MechBoundaryCondition bc;
+	  MechBoundaryCondition bc_mech;
     };
 }
 

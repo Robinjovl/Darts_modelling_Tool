@@ -14,7 +14,7 @@ namespace dis
 	using mesh::ND;
 
 	const value_t DARCY_CONSTANT = 0.0085267146719160104986876640419948;
-	const uint8_t MAX_STENCIL = 12;
+	const uint8_t MAX_STENCIL = 30;
 	const uint8_t MAX_FLUXES_NUM = 8;
 
 	/* Boundary condition */
@@ -192,7 +192,7 @@ namespace dis
 		// method which computes the flux between two elements
 		Matrix mergeMatrices(Matrix &m1, Matrix &m2, std::vector<index_t> &cont1, std::vector<index_t> &cont2, std::vector<index_t>& comb_cont);
 		index_t nbContributors(std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t>& comb_cont);
-		BoundaryCondition bc;
+		BoundaryCondition bc_flow;
 
 		static const Matrix I3;
 		static const Matrix I4;
