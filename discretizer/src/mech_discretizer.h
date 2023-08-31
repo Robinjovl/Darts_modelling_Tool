@@ -42,17 +42,15 @@ namespace dis
 		rhs = Matrix(M, 1);
 		a_biot = Matrix(M, N);
 		rhs_biot = Matrix(M, 1);
-		a_thermal = Matrix(M, N);
-		rhs_thermal = Matrix(M, 1);
-		stencil.resize(N);
+		stencil.reserve(N);
 	  };
-	  Matrix a, rhs, a_biot, rhs_biot, a_thermal, rhs_thermal;
+	  Matrix a, rhs, a_biot, rhs_biot;
 	  std::vector<index_t> stencil;
 	};
 
 	enum MechDiscretizerMode { POROELASTIC, THERMOPOROELASTIC };
 
-	const std::unordered_map<MechDiscretizerMode, std::pair<uint8_t, uint8_t>> BLOCK_DIM = { { POROELASTIC, {ND, ND + 1} }, { THERMOPOROELASTIC, {ND, ND + 2} } };
+	const std::unordered_map<MechDiscretizerMode, uint8_t> N_UNKNOWNS = { { POROELASTIC, ND + 1 }, { THERMOPOROELASTIC, ND + 2 } };
 
 	/* Discretiser */
 	template <MechDiscretizerMode MODE>
@@ -67,12 +65,11 @@ namespace dis
 	  
 	  std::unordered_map<index_t, Matrix> pre_grad_A_u, pre_grad_R_u, pre_grad_rhs_u;
 	  std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs;
-	  std::vector<MechApproximation> pre_merged_mom_flux, mom_fluxes;
+	  std::vector<MechApproximation> mech_fluxes;
 	  Matrix W;
 	  std::vector<std::map<index_t, InnerMatrices>> inner;
 
-	  static const uint8_t M;
-	  static const uint8_t N;
+	  static const uint8_t n_unknowns;
 
 	  std::vector<index_t>::const_iterator it_find;
 	  std::pair<bool, size_t> res1, res2;
@@ -90,53 +87,36 @@ namespace dis
 		}
 	  };
 
-	  //void calc_matrix_matrix(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal = false);
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id);
+
+	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id);
+
 	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
 	  //void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
-	  /*
-	  inline void write_trans(const Approximation& flux)
+
+	  inline void write_trans_mech(const MechApproximation& flux)
 	  {
-		  value_t buf, buf_homo;
-		  // free term (gravity)
-		  flux_rhs.push_back(flux.rhs.values[0]);
-		  // stencil & transmissibilities
-		  for (uint8_t st_id = 0; st_id < flux.stencil.size(); st_id++)
-		  {
-			  buf = flux.a.values[st_id];
-			  buf_homo = flux.a_homo.values[st_id];
-			  if (fabs(buf) > EQUALITY_TOLERANCE)
-			  {
-				  flux_vals.push_back(buf);
-				  flux_vals_homo.push_back(buf_homo);
-				  flux_stencil.push_back(flux.stencil[st_id]);
-			  }
-		  }
-		  // offset
-		  flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
-	  };
-	  inline void write_trans_thermal(const Approximation& flux)
-	  {
-		value_t buf, buf_homo, buf_t;
-		// free term (gravity)
-		flux_rhs.push_back(flux.rhs.values[0]);
+		const uint8_t BLOCK_SIZE = 4;
 		// stencil & transmissibilities
 		for (uint8_t st_id = 0; st_id < flux.stencil.size(); st_id++)
 		{
-		  buf = flux.a.values[st_id];
-		  buf_homo = flux.a_homo.values[st_id];
-		  buf_t = flux.a_thermal.values[st_id];
-		  if (fabs(buf) + fabs(buf_t) > EQUALITY_TOLERANCE)
+		  auto block = flux.a(BLOCK_SIZE * st_id, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)flux.a.N, 1 });
+		  auto block_biot = flux.a_biot(BLOCK_SIZE * st_id, { BLOCK_SIZE, BLOCK_SIZE }, { (size_t)flux.a_biot.N, 1 });
+		  block[abs(block) < EQUALITY_TOLERANCE] = 0.0;
+		  block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;
+		  if (abs(block).max() > EQUALITY_TOLERANCE || abs(block_biot).max() > EQUALITY_TOLERANCE)
 		  {
-			flux_vals.push_back(buf);
-			flux_vals_homo.push_back(buf_homo);
-			flux_vals_thermal.push_back(buf_t);
-			flux_stencil.push_back(flux.stencil[st_id]);
+			mech_stencil.push_back(flux.stencil[st_id]);
+			mech_tran.insert(std::end(mech_tran), std::begin(block), std::end(block));
+			mech_tran_biot.insert(std::end(mech_tran_biot), std::begin(block_biot), std::end(block_biot));
 		  }
 		}
 		// offset
-		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
+		mech_offset.push_back(static_cast<index_t>(mech_stencil.size()));
+		// free terms
+		mech_rhs.insert(std::end(mech_rhs), std::begin(flux.rhs.values), std::end(flux.rhs.values));
+		mech_rhs_biot.insert(std::end(mech_rhs_biot), std::begin(flux.rhs_biot.values), std::end(flux.rhs_biot.values));
 	  };
-	  */
 	public:
 	  void init() override;
 
@@ -161,10 +141,16 @@ namespace dis
 	  // pressure gradient free-term (gravity)
 	  std::vector<value_t> u_grad_rhs;
 
+	  // approximations 
+	  std::vector<index_t> mech_cell_m, mech_cell_p, mech_stencil, mech_offset;
+	  std::vector<index_t> mech_tran, mech_rhs, mech_tran_biot, mech_rhs_biot;
+
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
 
 	  void reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& bc_mech);
+
+	  void calc_mpfa_mpsa_transmissibilities();
 
 	  MechBoundaryCondition bc_mech;
     };

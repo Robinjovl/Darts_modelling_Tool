@@ -7,11 +7,10 @@ using std::cout;
 using std::endl;
 using std::chrono::steady_clock;
 using std::chrono::duration_cast;
+using std::fill_n;
 
 template <MechDiscretizerMode MODE>
-const uint8_t MechDiscretizer<MODE>::M = BLOCK_DIM.at(MODE).first;
-template <MechDiscretizerMode MODE>
-const uint8_t MechDiscretizer<MODE>::N = BLOCK_DIM.at(MODE).second;
+const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
 
 template <MechDiscretizerMode MODE>
 MechDiscretizer<MODE>::MechDiscretizer() : W(9, 6)
@@ -53,12 +52,12 @@ void MechDiscretizer<MODE>::init()
 		inner[i][face_id] = InnerMatrices();
 		auto& cur = inner[i][face_id];
 
-		cur.Q1 = Matrix(M, M);			cur.Q2 = Matrix(M, M);
-		cur.Th1 = Matrix(M, ND * M);  	cur.Th2 = Matrix(M, ND * M);
-		cur.R1 = Matrix(M, 1);			cur.R2 = Matrix(M, 1);
-		cur.y1 = Matrix(ND, 1);			cur.y2 = Matrix(ND, 1);
-		cur.T1 = Matrix(M, M);			cur.T2 = Matrix(M, M);
-		cur.G1 = Matrix(M, ND * M);		cur.G2 = Matrix(M, ND * M);
+		cur.Q1 = Matrix(ND, ND);		  cur.Q2 = Matrix(ND, ND);
+		cur.Th1 = Matrix(ND, ND * ND);	  cur.Th2 = Matrix(ND, ND * ND);
+		cur.R1 = Matrix(ND, 1);			  cur.R2 = Matrix(ND, 1);
+		cur.y1 = Matrix(ND, 1);			  cur.y2 = Matrix(ND, 1);
+		cur.T1 = Matrix(ND, ND);		  cur.T2 = Matrix(ND, ND);
+		cur.G1 = Matrix(ND, ND * ND);	  cur.G2 = Matrix(ND, ND * ND);
 	  }
 	}
   }
@@ -66,32 +65,16 @@ void MechDiscretizer<MODE>::init()
   for (index_t i = mesh::MIN_CONNS_PER_ELEM; i < mesh::MAX_CONNS_PER_ELEM; i++)
   {
 	pre_grad_A_u[i] = Matrix(ND * i, ND * ND);
-	pre_grad_R_u[i] = Matrix(ND * i, N * MAX_STENCIL);
+	pre_grad_R_u[i] = Matrix(ND * i, n_unknowns * MAX_STENCIL);
 	pre_grad_rhs_u[i] = Matrix(ND * i, 1);
 
 	for (index_t st_size = 1; st_size < MAX_STENCIL; st_size++)
 	{
-	  pre_cur_rhs[i][st_size] = Matrix(ND * i, N * st_size);
+	  pre_cur_rhs[i][st_size] = Matrix(ND * i, n_unknowns * st_size);
 	}
   }
 
-  /*const uint8_t BLOCK_SIZE = 1;
-  fluxes.resize(MAX_FLUXES_NUM);
-  pre_merged_flux.resize(MAX_FLUXES_NUM);
-  for (uint8_t k = 0; k < MAX_FLUXES_NUM; k++)
-  {
-	// Darcy's, elastic fluxes and Biot's fluxes 
-	auto& flux = fluxes[k];
-	flux.a = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-	flux.a_homo = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-	flux.a_thermal = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-	flux.rhs = Matrix(BLOCK_SIZE, 1);
-	flux.stencil.reserve(MAX_STENCIL);
-	// Premerged fluxes
-	pre_merged_flux[k].a = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-	pre_merged_flux[k].rhs = Matrix(BLOCK_SIZE, 1);
-	pre_merged_flux[k].stencil.reserve(MAX_STENCIL);
-  }*/
+  mech_fluxes.resize(MAX_FLUXES_NUM, MechApproximation(4, n_unknowns * MAX_STENCIL));
 }
 
 template <MechDiscretizerMode MODE>
@@ -223,22 +206,22 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		}
 		
 		// main matrix
-		A(M * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = ((Q2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (Th1 - Th2)) * make_block_diagonal(P, ND) +
+		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = ((Q2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (Th1 - Th2)) * make_block_diagonal(P, ND) +
 					(r2 * Q1 + r1 * Q2) * make_block_diagonal(n.transpose(), ND)).values;
 		
 		// RHS
 		res1 = findInVector(st, cell_id1);
 		if (res1.first) { id1 = res1.second; }
 		else { id1 = st.size(); st.push_back(cell_id1); }
-		rhs_mult(M * face_id * rhs_mult.N + N * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -Q2.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -Q2.values;
 
 		res2 = findInVector(st, cell_id2);
 		if (res2.first) { id2 = res2.second; }
 		else { id2 = st.size(); st.push_back(cell_id2); }
-		rhs_mult(M * face_id * rhs_mult.N + N * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += Q2.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += Q2.values;
 		
 		// left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
-		rhs_mult(M * face_id * rhs_mult.N + N * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B1n.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B1n.values;
 
 		diff1 = conn.c - c1;
 		for (index_t j = grad_offset[cell_id1]; j < grad_offset[cell_id1 + 1]; j++)
@@ -250,16 +233,16 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		  buf1 = diff1.x * p_grad_vals[ND * j] +
 				  diff1.y * p_grad_vals[ND * j + 1] +
 					diff1.z * p_grad_vals[ND * j + 2];
-		  rhs_mult(M * face_id * rhs_mult.N + N * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf1 * B1n.values;
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf1 * B1n.values;
 		}
 
 		buf1 = diff1.x * p_grad_rhs[ND * cell_id1] +
 				diff1.y * p_grad_rhs[ND * cell_id1 + 1] +
 				  diff1.z * p_grad_rhs[ND * cell_id1 + 2];
-		rest(M * face_id, { ND }, { 1 }) -= r2 * buf1 * B1n.values;
+		rest(ND * face_id, { ND }, { 1 }) -= r2 * buf1 * B1n.values;
 
 		// right Biot term: B_2 * n * (p_2 + (x_c - x_2)^T * \nabla p_2)
-		rhs_mult(M * face_id * rhs_mult.N + N * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B2n.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B2n.values;
 
 		diff2 = conn.c - c2;
 		for (index_t j = grad_offset[cell_id2]; j < grad_offset[cell_id2 + 1]; j++)
@@ -271,13 +254,13 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		  buf2 = diff2.x * p_grad_vals[ND * j] +
 				  diff2.y * p_grad_vals[ND * j + 1] +
 					diff2.z * p_grad_vals[ND * j + 2];
-		  rhs_mult(M * face_id * rhs_mult.N + N * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf2 * B2n.values;
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf2 * B2n.values;
 		}
 
 		buf2 = diff2.x * p_grad_rhs[ND * cell_id2] +
 				diff2.y * p_grad_rhs[ND * cell_id2 + 1] +
 				  diff2.z * p_grad_rhs[ND * cell_id2 + 2];
-		rest(M * face_id, { ND }, { 1 }) += r2 * buf2 * B2n.values;
+		rest(ND * face_id, { ND }, { 1 }) += r2 * buf2 * B2n.values;
 
 		face_id++;
 	  }
@@ -343,7 +326,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		mult_p = (bt * I3 + gamma_nnt_mult) * B1n;
 
 		// filling matrix
-		A(M * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (at * make_block_diagonal((conn_c - c1_mat).transpose(), ND) +
+		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (at * make_block_diagonal((conn_c - c1_mat).transpose(), ND) +
 			bt * nblock_t * C1 + gamma_nnt_mult * (G1 + T1 / r1 * make_block_diagonal((y1 - conn_c).transpose(), ND))).values;
 
 		// filling right-hand side
@@ -351,15 +334,15 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		if (res1.first) { id1 = res1.second; }
 		else { id1 = st.size(); st.push_back(cell_id1); }
 
-		rhs_mult(M * face_id * rhs_mult.N + N * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += (gamma_nnt_mult * T1 / r1 - at * I3).values;
-		rhs_mult(M * face_id * rhs_mult.N + N * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (Ap * bp * lam1 / r1 * mult_p).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += (gamma_nnt_mult * T1 / r1 - at * I3).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (Ap * bp * lam1 / r1 * mult_p).values;
 
 		res2 = findInVector(st, cell_id2);
 		if (res2.first) { id2 = res2.second; }
 		else { id2 = st.size(); st.push_back(cell_id2); }
 
-		rhs_mult(M * face_id * rhs_mult.N + N * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt + (I3 - gamma_nnt * L) * P).values;
-		rhs_mult(M * face_id * rhs_mult.N + N * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt + (I3 - gamma_nnt * L) * P).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
 
 		// pressure gradient
 		tmp.values = ((- Ap * bp) * (lam1 / r1 * (y1 - conn_c) + gam1).transpose() * P).values;
@@ -372,14 +355,14 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		  buf1 = tmp.values[0] * p_grad_vals[ND * j] +
 				  tmp.values[1] * p_grad_vals[ND * j + 1] +
 					tmp.values[2] * p_grad_vals[ND * j + 2];
-		  rhs_mult(M * face_id * rhs_mult.N + N * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (buf1 * mult_p).values;
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (buf1 * mult_p).values;
 		}
 		buf1 = tmp.values[0] * p_grad_rhs[ND * cell_id1] +
 				tmp.values[1] * p_grad_rhs[ND * cell_id1 + 1] +
 				  tmp.values[2] * p_grad_rhs[ND * cell_id1 + 2];
-		rest(M * face_id, { ND }, { 1 }) += (buf1 * mult_p).values;
+		rest(ND * face_id, { ND }, { 1 }) += (buf1 * mult_p).values;
 
-		rest(M * face_id, { ND }, { 1 }) = (mult_p * Ap * bp * (grav_vec * K1n).values[0]).values;
+		rest(ND * face_id, { ND }, { 1 }) = (mult_p * Ap * bp * (grav_vec * K1n).values[0]).values;
 
 		face_id++;
 	  }
@@ -433,6 +416,197 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 
   t2 = steady_clock::now();
   cout << "Reconstruction of displacements gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
+}
+
+template <MechDiscretizerMode MODE>
+void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
+{
+  // clear previous approximations
+  mech_cell_m.clear();			mech_cell_p.clear();
+  mech_stencil.clear();			mech_offset.clear();
+  mech_tran.clear();			mech_rhs.clear();
+  mech_tran_biot.clear();		mech_rhs_biot.clear();
+
+  // reserve memory
+  mech_cell_m.reserve(mesh->adj_matrix.size());
+  mech_cell_p.reserve(mesh->adj_matrix.size());
+  mech_stencil.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  mech_offset.reserve(mesh->adj_matrix.size() + 1);
+
+  // 4 means number of approximations: momentum + fluid flow
+  const size_t APPR_SIZE = 4 * n_unknowns * MAX_STENCIL; 
+  mech_tran.reserve(mesh->adj_matrix.size() * APPR_SIZE);
+  mech_tran_biot.reserve(mesh->adj_matrix.size() * APPR_SIZE);
+  mech_rhs.reserve(mesh->adj_matrix.size() * n_unknowns);
+  mech_rhs_biot.reserve(mesh->adj_matrix.size());
+
+  index_t cell_id1, cell_id2;
+  value_t sign;
+  steady_clock::time_point t1, t2;
+  t1 = steady_clock::now();
+
+  mech_offset.push_back(0);
+  for (index_t i = 0; i < mesh->region_ranges.at(mesh::MATRIX).second; i++)
+  {
+	cell_id1 = i;
+
+	// loop through connections of particular element
+	for (index_t j = mesh->adj_matrix_offset[i], conn_id = 0; j < mesh->adj_matrix_offset[i + 1]; j++, conn_id++)
+	{
+	  const auto& conn = mesh->conns[mesh->adj_matrix[j]];
+	  cell_id2 = mesh->adj_matrix_cols[j];
+	  sign = (conn.elem_id1 == cell_id1) ? 1.0 : -1.0;
+
+	  if (conn.type == mesh::MAT_MAT)
+	  {
+		auto& flux = mech_fluxes[0];
+		calc_matrix_matrix_mech(conn, flux, conn_id);
+
+		flux.a.values *= sign * conn.area;
+		flux.a_biot.values *= sign * conn.area;
+		flux.rhs.values *= sign * conn.area;
+		flux.rhs_biot.values *= sign * conn.area;
+
+		mech_cell_m.push_back(cell_id1);
+		mech_cell_p.push_back(cell_id2);
+		write_trans_mech(flux);
+	  }
+	  else if (conn.type == mesh::MAT_BOUND)
+	  {
+		auto& flux = mech_fluxes[0];
+		calc_matrix_boundary_mech(conn, flux, conn_id);
+
+		flux.a.values *= sign * conn.area;
+		flux.a_biot.values *= sign * conn.area;
+		flux.rhs.values *= sign * conn.area;
+		flux.rhs_biot.values *= sign * conn.area;
+
+		mech_cell_m.push_back(cell_id1);
+		mech_cell_p.push_back(cell_id2);
+		write_trans_mech(flux);
+	  }
+	}
+  }
+
+  t2 = steady_clock::now();
+  cout << "Find MPFA-MPSA trans: \t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
+}
+
+template <MechDiscretizerMode MODE>
+void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id)
+{
+  Matrix n(ND, 1), det(ND, ND), coef1(ND, ND), coef2(ND, ND), bcoef1(ND, 1), bcoef2(ND, 1), Q(ND, ND), grad_coef(ND, ND * ND);
+  Vector3 diff1, diff2;
+  size_t id1, id2;
+  value_t buf1, buf2;
+  index_t cur_cell_id;
+  std::pair<bool, size_t> res1, res2;
+
+  const auto& x1 = mesh->centroids[conn.elem_id1];
+  const auto& x2 = mesh->centroids[conn.elem_id2];
+  bool res;
+
+  // normal vector
+  copy_n(std::begin(conn.n.values), ND, std::begin(n.values));
+  if (dot(conn.c - x1, conn.n) < 0.0) n.values *= -1.0;
+
+  // allocate arrays for merging gradients
+  const uint8_t n_st1 = grad_offset[conn.elem_id1 + 1] - grad_offset[conn.elem_id1];
+  const uint8_t n_st2 = grad_offset[conn.elem_id2 + 1] - grad_offset[conn.elem_id2];
+  MechApproximation g1(ND * ND, n_unknowns * n_st1), g2(ND * ND, n_unknowns * n_st2);
+
+  // merging gradients
+  const index_t grad_coef_size = ND * ND * n_unknowns;
+  std::copy_n(u_grad_stencil.begin() + u_grad_offset[conn.elem_id1], n_st1, g1.stencil.begin());
+  std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id1], grad_coef_size * n_st1, std::begin(g1.a.values));
+  std::copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id1, ND * ND, std::begin(g1.rhs.values));
+
+  std::copy_n(u_grad_stencil.begin() + grad_offset[conn.elem_id2], n_st2, g2.stencil.begin());
+  std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id2], grad_coef_size * n_st2, std::begin(g2.a.values));
+  std::copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id2, ND * ND, std::begin(g2.rhs.values));
+
+  flux.stencil.clear();
+  Matrix nabla_u = mergeMatrices(g1.a, g2.a, g1.stencil, g2.stencil, flux.stencil);
+
+  const auto& cur = inner[conn.elem_id1][conn_id];
+  det = cur.r1 * cur.Q2 + cur.r2 * cur.Q1;
+  res = det.inv();
+  if (!res)
+  {
+	cout << "Inversion failed!\n";	exit(-1);
+  }
+  Q = cur.Q1 * det * cur.Q2;
+  coef1 = cur.r1 * cur.Q2 * det;
+  coef2 = cur.r2 * cur.Q1 * det;
+  grad_coef = coef1 * cur.Th1 + coef2 * cur.Th2 + Q * make_block_diagonal((cur.y1 - cur.y2).transpose(), ND);
+
+  fill_n(std::begin(flux.a.values), flux.a.values.size(), 0.0);
+  fill_n(std::begin(flux.a_biot.values), flux.a_biot.values.size(), 0.0);
+  
+  flux.a(0, { ND, (size_t)nabla_u.N }, { (size_t)flux.a.N, 1 }) = (grad_coef * nabla_u).values;
+  flux.rhs = grad_coef * (g1.rhs + g2.rhs) / 2.0;
+
+  res1 = findInVector(flux.stencil, conn.elem_id1);
+  if (res1.first) { id1 = res1.second; }
+  else { printf("Gradient within %d cell does not depend on its value!\n", conn.elem_id1);	exit(-1); }
+  flux.a(n_unknowns * id1, { (size_t)flux.a.M, (size_t)n_unknowns }, { (size_t)flux.a.N, 1 }) -= Q.values;
+  //flux.a_biot(n_unknowns * id1, { (size_t)flux.a_biot.M, n_unknowns }, { (size_t)flux.a_biot.N, 1 }) += (A1_tilde - biot_flow_buf * (cur.Q2 + cur.r2 * cur.A1)).values;
+
+  // left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
+  bcoef1.values = (coef1 * biots[conn.elem_id1] * n).values;
+  flux.a(n_unknowns * id1 + ND, { (size_t)flux.a.M, 1 }, { (size_t)flux.a.N, 1 }) += bcoef1.values;
+
+  diff1 = conn.c - x1;
+  for (index_t j = grad_offset[conn.elem_id1]; j < grad_offset[conn.elem_id1 + 1]; j++)
+  {
+	cur_cell_id = grad_stencil[j];
+	res1 = findInVector(flux.stencil, cur_cell_id);
+	if (res1.first) { id1 = res1.second; }
+	else { id1 = flux.stencil.size(); flux.stencil.push_back(cur_cell_id); }
+	buf1 = diff1.x * p_grad_vals[ND * j] +
+			diff1.y * p_grad_vals[ND * j + 1] +
+			  diff1.z * p_grad_vals[ND * j + 2];
+	flux.a(n_unknowns * id1 + ND, { ND, 1 }, { (size_t)flux.a.N, 1 }) += buf1 * bcoef1.values;
+  }
+
+  buf1 = diff1.x * p_grad_rhs[ND * conn.elem_id1] +
+		  diff1.y * p_grad_rhs[ND * conn.elem_id1 + 1] +
+			diff1.z * p_grad_rhs[ND * conn.elem_id1 + 2];
+  flux.rhs(0, { ND }, { 1 }) += buf1 * bcoef1.values;
+
+  res2 = findInVector(flux.stencil, conn.elem_id2);
+  if (res2.first) { id2 = res2.second; }
+  else { printf("Gradient within %d cell does not depend on its value!\n", conn.elem_id2);	exit(-1); }
+  flux.a(n_unknowns * id2, { (size_t)flux.a.M, (size_t)n_unknowns }, { (size_t)flux.a.N, 1 }) += Q.values;
+  //flux.a_biot(n_unknowns * id1, { (size_t)flux.a_biot.M, n_unknowns }, { (size_t)flux.a_biot.N, 1 }) += (A1_tilde - biot_flow_buf * (cur.Q2 + cur.r2 * cur.A1)).values;
+
+  // right Biot term: B_2 * n * (p_2 + (x_c - x_2)^T * \nabla p_2)
+  bcoef2.values = (coef2 * biots[conn.elem_id2] * n).values;
+  flux.a(n_unknowns * id2 + ND, { (size_t)flux.a.M, 1 }, { (size_t)flux.a.N, 1 }) += bcoef2.values;
+
+  diff2 = conn.c - x2;
+  for (index_t j = grad_offset[conn.elem_id2]; j < grad_offset[conn.elem_id2 + 1]; j++)
+  {
+	cur_cell_id = grad_stencil[j];
+	res2 = findInVector(flux.stencil, cur_cell_id);
+	if (res2.first) { id2 = res2.second; }
+	else { id2 = flux.stencil.size(); flux.stencil.push_back(cur_cell_id); }
+	buf2 = diff2.x * p_grad_vals[ND * j] +
+			diff2.y * p_grad_vals[ND * j + 1] +
+			  diff2.z * p_grad_vals[ND * j + 2];
+	flux.a(n_unknowns * id2 + ND, { ND, 1 }, { (size_t)flux.a.N, 1 }) += buf2 * bcoef2.values;
+  }
+
+  buf2 = diff2.x * p_grad_rhs[ND * conn.elem_id2] +
+		  diff2.y * p_grad_rhs[ND * conn.elem_id2 + 1] +
+			diff2.z * p_grad_rhs[ND * conn.elem_id2 + 2];
+  flux.rhs(0, { ND }, { 1 }) += buf2 * bcoef2.values;
+}
+
+template <MechDiscretizerMode MODE>
+void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id)
+{
+
 }
 
 template class MechDiscretizer<POROELASTIC>;

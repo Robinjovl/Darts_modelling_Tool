@@ -27,6 +27,7 @@ struct mech_discretizer_exposer
 	  .def_readwrite("thermal_expansions", &MechDiscretizer<MODE>::th_exps)
 	  .def_readwrite("neumann_boundaries_grad_reconstruction", &MechDiscretizer<MODE>::NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION)
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
+	  .def("calc_mpfa_mpsa_transmissibilities", &MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities)
 	  ;
   }
 };
