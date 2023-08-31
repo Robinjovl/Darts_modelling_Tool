@@ -1468,7 +1468,7 @@ void Discretizer::reconstruct_pressure_gradients_per_face(const BoundaryConditio
 	cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
 
-void Discretizer::calc_mpfa_transmissibilities(BoundaryCondition& _bc, const bool with_thermal) 
+void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) 
 {
 	steady_clock::time_point t1, t2;
 	t1 = steady_clock::now();

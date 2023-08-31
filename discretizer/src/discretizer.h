@@ -178,7 +178,7 @@ namespace dis
 		void reconstruct_pressure_gradients_per_cell(const BoundaryCondition& bc);
 		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& bc);
 		void reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc);
-		void calc_mpfa_transmissibilities(BoundaryCondition& _bc, const bool with_thermal = false);
+		void calc_mpfa_transmissibilities(const bool with_thermal = false);
 
 		void calcPermeabilitySimple(const double permx = 1, const double permy = 1, const double permz = 1);
 		void set_permeability(std::vector<value_t> &permx, std::vector<value_t> &permy, std::vector<value_t> &permz);
