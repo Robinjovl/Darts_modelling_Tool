@@ -1478,13 +1478,13 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 	cell_m.clear();	cell_p.clear();
 	cell_m.reserve(mesh->adj_matrix.size());
 	cell_p.reserve(mesh->adj_matrix.size());
-	flux_vals.reserve(mesh->adj_matrix.size() * dis::MAX_STENCIL);
-	flux_vals_homo.reserve(mesh->adj_matrix.size() * dis::MAX_STENCIL);
-	flux_rhs.reserve(mesh->adj_matrix.size() * dis::MAX_STENCIL);
-	flux_stencil.reserve(mesh->adj_matrix.size() * dis::MAX_STENCIL);
+	flux_vals.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+	flux_vals_homo.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+	flux_rhs.reserve(mesh->adj_matrix.size());
+	flux_stencil.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
 	flux_offset.reserve(mesh->adj_matrix.size() + 1);
 	if (with_thermal)
-	  flux_vals_thermal.reserve(mesh->adj_matrix.size() * dis::MAX_STENCIL);
+	  flux_vals_thermal.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
 
 	flux_offset.push_back(0);
 	// loop through matrix elements
@@ -1896,48 +1896,69 @@ Matrix dis::Discretizer::mergeMatrices(Matrix& m1, Matrix& m2, std::vector<index
 	// first we have to iterate to find out the size of the matrix
 	// there is no append operator in the matrix class :'(-		merge_matrix.values	{ size=36 }	std::valarray<double>
 
-	index_t nb_cont = nbContributors(cont1, cont2, comb_cont);
-	Matrix merge_matrix(3, nb_cont);
+	const index_t nb_cont = nbContributors(cont1, cont2, comb_cont);
+	const index_t nb = m1.M / ND;
+	Matrix merge_matrix(nb * ND, nb * nb_cont);
 
 	int i = 0, j = 0, k = 0;
 
 	while (i != cont1.size() && j != cont2.size()) {
 		if (cont1[i] == cont2[j]) {
-			for (int it = 0; it < 3; ++it) {
+			for (int it = 0; it < m1.M; ++it) 
+			{
+			  for (int jt = 0; jt < nb; ++jt)
+			  {
 				// m[k][it] = m1[i][it] + m2[j][it];
-				 merge_matrix(it,k) = m1(it,i) / 2 + m2(it,j) / 2;
+				merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2 + m2(it, j * nb + jt) / 2;
 				//merge_matrix(k, it) = m1(i, it) / 2 + m2(j, it) / 2;
+			  }
 			}
 			i++; j++; k++;
 		}
 		else if (cont1[i] < cont2[j]) {
-			for (int it = 0; it < 3; ++it) {
-			    merge_matrix(it,k) = m1(it,i) / 2;
+			for (int it = 0; it < m1.M; ++it) 
+			{
+			  for (int jt = 0; jt < nb; ++jt)
+			  {
+				merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2;
 				//merge_matrix(k, it) = m1(i, it) / 2;
+			  }
 			}
 			i++; k++;
 		}
 		else {
-			for (int it = 0; it < 3; ++it) {
-				merge_matrix(it, k) = m2(it, j) / 2;
+			for (int it = 0; it < m1.M; ++it)
+			{
+			  for (int jt = 0; jt < nb; ++jt)
+			  {
+				merge_matrix(it, k * nb + jt) = m2(it, j * nb + jt) / 2;
 				//merge_matrix(k, it) = m2(j, it) / 2;
+			  }
 			}
 			k++; j++;
 		}
 	}
 
 	while (i < cont1.size()) {
-		for (int it = 0; it < 3; ++it) {
-			merge_matrix(it, k) = m1(it, i) / 2;
+		for (int it = 0; it < m1.M; ++it) 
+		{
+		  for (int jt = 0; jt < nb; ++jt)
+		  {
+			merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2;
 			//merge_matrix(k, it) = m1(i, it) / 2;
+		  }
 		}
 		k++; i++;
 	}
 
 	while (j < cont2.size()) {
-		for (int it = 0; it < 3; ++it) {
-			 merge_matrix(it, k) = m2(it, j) / 2;
+		for (int it = 0; it < m1.M; ++it) 
+		{
+		  for (int jt = 0; jt < nb; ++jt)
+		  {
+			merge_matrix(it, k * nb + jt) = m2(it, j * nb + jt) / 2;
 			//merge_matrix(k, it) = m2(j, it) / 2;
+		  }
 		}
 		k++; j++;
 	}
