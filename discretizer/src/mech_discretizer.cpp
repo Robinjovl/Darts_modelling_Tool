@@ -8,6 +8,7 @@ using std::endl;
 using std::chrono::steady_clock;
 using std::chrono::duration_cast;
 using std::fill_n;
+using std::copy_n;
 
 template <MechDiscretizerMode MODE>
 const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
@@ -517,13 +518,13 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
 
   // merging gradients
   const index_t grad_coef_size = ND * ND * n_unknowns;
-  std::copy_n(u_grad_stencil.begin() + u_grad_offset[conn.elem_id1], n_st1, g1.stencil.begin());
-  std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id1], grad_coef_size * n_st1, std::begin(g1.a.values));
-  std::copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id1, ND * ND, std::begin(g1.rhs.values));
+  copy_n(u_grad_stencil.begin() + u_grad_offset[conn.elem_id1], n_st1, g1.stencil.begin());
+  copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id1], grad_coef_size * n_st1, std::begin(g1.a.values));
+  copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id1, ND * ND, std::begin(g1.rhs.values));
 
-  std::copy_n(u_grad_stencil.begin() + grad_offset[conn.elem_id2], n_st2, g2.stencil.begin());
-  std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id2], grad_coef_size * n_st2, std::begin(g2.a.values));
-  std::copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id2, ND * ND, std::begin(g2.rhs.values));
+  copy_n(u_grad_stencil.begin() + grad_offset[conn.elem_id2], n_st2, g2.stencil.begin());
+  copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[conn.elem_id2], grad_coef_size * n_st2, std::begin(g2.a.values));
+  copy_n(u_grad_rhs.data() + ND * ND * conn.elem_id2, ND * ND, std::begin(g2.rhs.values));
 
   flux.stencil.clear();
   Matrix nabla_u = mergeMatrices(g1.a, g2.a, g1.stencil, g2.stencil, flux.stencil);
