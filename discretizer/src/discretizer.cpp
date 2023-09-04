@@ -1891,7 +1891,7 @@ index_t dis::Discretizer::nbContributors(std::vector<index_t>& cont1, std::vecto
 	return contr;
 }
 
-Matrix dis::Discretizer::mergeMatrices(Matrix& m1, Matrix& m2, std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t>& comb_cont)
+Matrix Discretizer::mergeMatrices(Matrix& m1, Matrix& m2, std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t>& comb_cont)
 {
 	// first we have to iterate to find out the size of the matrix
 	// there is no append operator in the matrix class :'(-		merge_matrix.values	{ size=36 }	std::valarray<double>

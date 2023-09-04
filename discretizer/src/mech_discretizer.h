@@ -117,6 +117,32 @@ namespace dis
 		mech_rhs.insert(std::end(mech_rhs), std::begin(flux.rhs.values), std::end(flux.rhs.values));
 		mech_rhs_biot.insert(std::end(mech_rhs_biot), std::begin(flux.rhs_biot.values), std::end(flux.rhs_biot.values));
 	  };
+
+	  void keep_same_stencil_gradients();
+
+	  inline MechApproximation get_displacement_gradient(index_t elem_id)
+	  {
+		const index_t n_st = u_grad_offset[elem_id + 1] - u_grad_offset[elem_id];
+		const index_t grad_coef_size = ND * ND * n_unknowns;
+		MechApproximation g(ND * ND, n_unknowns * n_st);
+		std::copy_n(u_grad_stencil.begin() + u_grad_offset[elem_id], n_st, g.stencil.begin());
+		std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[elem_id], grad_coef_size * n_st, begin(g.a.values));
+		std::copy_n(u_grad_rhs.data() + ND * ND * elem_id, ND * ND, begin(g.rhs.values));
+
+		return g;
+	  }
+	  inline MechApproximation get_pressure_gradient(index_t elem_id)
+	  {
+		const index_t n_st = grad_offset[elem_id + 1] - grad_offset[elem_id];
+		const index_t grad_coef_size = ND;
+		MechApproximation g(ND, n_st);
+		std::copy_n(grad_stencil.begin() + grad_offset[elem_id], n_st, g.stencil.begin());
+		std::copy_n(p_grad_vals.data() + grad_coef_size * grad_offset[elem_id], grad_coef_size * n_st, begin(g.a.values));
+		std::copy_n(p_grad_rhs.data() + ND * ND * elem_id, ND * ND, begin(g.rhs.values));
+
+		return g;
+	  }
+
 	public:
 	  void init() override;
 
