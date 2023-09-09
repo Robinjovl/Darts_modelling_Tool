@@ -1,5 +1,5 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, value_vector
 import numpy as np
 
@@ -13,7 +13,7 @@ from darts.physics.properties.kinetics import KineticBasic
 
 
 # Model class creation here!
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -21,6 +21,39 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_physics()
+        self.set_wells()
+
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self):
+        trans_exp = 3
+        perm = 100  # / (1 - solid_init) ** trans_exp
+        """Reservoir"""
+        nx = 1000
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1, permx=perm, permy=perm,
+                                         permz=perm / 10, poro=1, depth=1000)
+        return
+
+    def set_wells(self):
+        """well location"""
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
+
+        self.reservoir.add_well("P1")
+        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=1, multi_segment=False)
+
+        # self.reservoir.add_well("P1")
+        # for i in range(int(self.reservoir.nz / 2)):
+        #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
+
+        return
+
+    def set_physics(self):
         self.zero = 1e-12
 
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
@@ -45,32 +78,13 @@ class Model(DartsModel):
         zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
         self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
 
-        trans_exp = 3
-        perm = 100 #/ (1 - solid_init) ** trans_exp
-        """Reservoir"""
-        nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1, permx=perm, permy=perm,
-                                         permz=perm/10, poro=1, depth=1000)
-
-
-        """well location"""
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=nx, j=1, k=1, multi_segment=False)
-
-        # self.reservoir.add_well("P1")
-        # for i in range(int(self.reservoir.nz / 2)):
-        #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
-
         """Physical properties"""
         # Create property containers:
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
                                              diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
+        property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                                               ('wat', DensityBasic(compr=1e-6, dens0=1000))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.1)),
@@ -82,25 +96,11 @@ class Model(DartsModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero/10, max_z=1-self.zero/10)
+                                     min_z=self.zero / 10, max_z=1 - self.zero / 10)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.001
-        self.params.max_ts = 1
-        self.params.mult_ts = 2
-
-        self.params.tolerance_newton = 1e-5
-        self.params.tolerance_linear = 1e-6
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.newton_params[0] = 0.2
-
-        self.runtime = 1000
-
-        self.timer.node["initialization"].stop()
+        return
 
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):

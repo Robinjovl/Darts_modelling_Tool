@@ -159,6 +159,7 @@ class CPG_Reservoir:
         self.nx = self.discr_mesh.nx = self.dims[0]
         self.ny = self.discr_mesh.ny = self.dims[1]
         self.nz = self.discr_mesh.nz = self.dims[2]
+        self.nb = self.mesh.n_res_blocks
         self.discr_mesh.n_cells = ugrid.number_of_cells
         # cells + boundary_faces, approximate
         self.discr_mesh.num_of_elements = self.discr_mesh.n_cells + \

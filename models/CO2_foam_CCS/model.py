@@ -1,5 +1,5 @@
 from reservoir import UnstructReservoir
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.physics.super.physics import Compositional
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
@@ -11,7 +11,7 @@ from operator_evaluator import AccFluxGravityEvaluator, AccFluxGravityWellEvalua
 from darts.engines import *
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -19,6 +19,17 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_wells()
+        self.set_physics()
+
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_newton=1e-3, tol_linear=1e-4,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.params.newton_params[0] = 0.25
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self):
         """Reservoir"""
         self.const_perm = 100
         self.poro = 0.15
@@ -26,13 +37,20 @@ class Model(DartsModel):
         self.reservoir = UnstructReservoir(permx=self.const_perm, permy=self.const_perm, permz=self.const_perm, frac_aper=0,
                                            mesh_file=mesh_file, poro=self.poro)
 
-        self.zero = 1e-8
+        return
+
+    def set_wells(self):
+        return
+
+    def set_physics(self):
+        zero = 1e-8
+
         """Physical properties"""
         # Create property containers:
         components = ['CO2', 'H2O']
         Mw = np.array([44.01, 18.015])
         phases = ['gas', 'wat']
-        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=self.zero, Mw=Mw)
+        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=zero, Mw=Mw)
 
         """ properties correlations """
         # foam parameter, fmmob, fmdry, epdry, fmmob = 0 no foam generation
@@ -54,25 +72,10 @@ class Model(DartsModel):
 
         """ Activate physics """
         self.physics = CustomPhysics(components, phases, self.timer,
-                                     n_points=200, min_p=1., max_p=1000., min_z=self.zero/10, max_z=1.-self.zero/10, cache=False)
+                                     n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10, cache=False)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
-
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 1e-4
-        self.params.mult_ts = 1.5
-        self.params.max_ts = 1
-
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-4
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        self.params.newton_params[0] = 0.25
-
-        self.runtime = 10
-
-        self.timer.node["initialization"].stop()
+        return
 
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):

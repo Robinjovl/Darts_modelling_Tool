@@ -74,10 +74,10 @@ class MaoDuan2009(Viscosity):
     c = [1.40090092e-2, 4.86126399e-2, 5.26696663e-2]
     d = [-1.22757462e-1, 2.15995021e-2, -3.65253919e-4, 1.97270835e-6]
 
-    def __init__(self, components: list):
+    def __init__(self, components: list, ions: list = None):
         super().__init__(components)
-
-        self.CO2_idx = components.index("CO2") if "CO2" in components else None
+        self.ions = ions
+        self.ni = len(ions) if ions is not None else 0
 
     def evaluate(self, pressure, temperature, x, rho):
         # Viscosity of pure water
@@ -98,8 +98,9 @@ class Islam2012(MaoDuan2009):
     """
     Correlation for brine + NaCl + CO2 viscosity: Islam & Carlson (2012) - Viscosity Models and Effects of Dissolved CO2
     """
-    def __init__(self, components: list):
-        super().__init__(components)
+    def __init__(self, components: list, ions: list = None):
+        super().__init__(components, ions)
+        self.CO2_idx = components.index("CO2") if "CO2" in components else None
 
     def evaluate(self, pressure, temperature, x, rho):
         mu_brine = super().evaluate(pressure, temperature, x, rho)

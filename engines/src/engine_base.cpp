@@ -178,7 +178,7 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 	//index_t* cols = new index_t[n_conns + n_blocks];
 	//index_t* row_thread_starts = 0;
 
-	std::vector <index_t> rows(n_blocks + 1, 0); // plus 1 in case of out of range in the next loop
+	std::vector <index_t> rows(n_blocks + 1, 0); // plus 1 because CSR requires row pointer start from 0 to n_blocks
 	//index_t* diag_ind = new index_t[n_blocks];
 	std::vector <index_t> diag_ind(n_blocks, -1);
 	std::vector <index_t> cols(n_conns + n_blocks, 0);
@@ -291,7 +291,7 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 	}
 
 
-	if (init_adjoint->is_square) // dg_dx, dg_dx_n
+	if (init_adjoint->is_square) // dg_dx_n
 	{
 		index_t* ad_rows = init_adjoint->get_rows_ptr();
 		index_t* ad_diag_ind = init_adjoint->get_diag_ind();
@@ -464,6 +464,8 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	std::vector<value_t> temp_2(n_control_vars, 0);
 	std::vector<value_t> temp_3(n_control_vars, 0);
 
+	std::vector<value_t>* X_state;
+
     // idx_sim_ts is the index of the simulation timestep. It corresponds to time_data
     // idx_obs_ts is the index of the observation timestep. It corresponds to time_data_report
     // the conflict between idx_sim_ts and idx_obs_ts is solved by Dirac function
@@ -629,9 +631,18 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 
 	// evaluate all operators and their derivatives
+	if (is_mp)
+	{
+		Xop_mp = Xop_t[idx_sim_ts];
+		X_state = &Xop_mp;
+	}
+	else
+	{
+		X_state = &X;
+	}
 	for (index_t r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
-		index_t result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+		index_t result = acc_flux_op_set_list[r]->evaluate_with_derivatives(*X_state, block_idxs[r], op_vals_arr, op_ders_arr);
 		if (result < 0)
 			return 0;
 	}
@@ -667,7 +678,6 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 	lambda_n = lambda_temp;
 
-
 	(static_cast<csr_matrix<1>*>(dg_dT_general))->matrix_vector_product_t(&lambda_temp[0], &temp_1[0]);
 	index_t well_numeration = 0;
 	for (index_t wh : well_head_tran_idx_collection)
@@ -701,9 +711,18 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 
 		// evaluate all operators and their derivatives
+		if (is_mp)
+		{
+			Xop_mp = Xop_t[idx_sim_ts];
+			X_state = &Xop_mp;
+		}
+		else
+		{
+			X_state = &X;
+		}
 		for (index_t r = 0; r < acc_flux_op_set_list.size(); r++)
 		{
-			index_t result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+			index_t result = acc_flux_op_set_list[r]->evaluate_with_derivatives(*X_state, block_idxs[r], op_vals_arr, op_ders_arr);
 			if (result < 0)
 				return 0;
 		}
@@ -2609,6 +2628,8 @@ int engine_base::run_single_newton_iteration(value_t deltat)
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
 
+	//Jacobian->write_matrix_to_file("jac_tpfa.txt");
+
 #ifdef WITH_GPU
 	if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)
 	{
@@ -2751,6 +2772,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 			X_t.push_back(X);
 			dt_t.push_back(dt);
 			t_t.push_back(t);
+			if (is_mp)
+			{
+				Xop_t.push_back(Xop_mp);
+			}
 			//Jacobian->write_matrix_to_file("jac_forward_simulation.csr");
 			//write_vector_to_file("rhs_forward_simulation.rhs", RHS);
 

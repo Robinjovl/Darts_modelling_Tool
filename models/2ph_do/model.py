@@ -1,6 +1,6 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
-from darts.engines import value_vector
+from darts.models.cicd_model import CICDModel
+from darts.engines import value_vector, sim_params
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -10,7 +10,7 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # call base class constructor
         super().__init__()
@@ -18,6 +18,15 @@ class Model(DartsModel):
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_physics()
+        self.set_wells()
+
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=5, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
         self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
@@ -25,19 +34,27 @@ class Model(DartsModel):
 
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
+        return
 
+    def set_wells(self):
         # well model or boundary conditions
         self.reservoir.add_well("I1")
         self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
 
         self.reservoir.add_well("P1")
         self.reservoir.add_perforation(self.reservoir.wells[-1], 100, 1, 1, multi_segment=False)
+        return
 
+    def set_physics(self):
         """Physical properties"""
-        self.zero = 1e-13
+        zero = 1e-13
         components = ['w', 'o']
         phases = ['wat', 'oil']
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=self.zero/10)
+
+        self.inj = value_vector([zero])
+        self.ini = value_vector([1 - zero])
+
+        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -48,23 +65,11 @@ class Model(DartsModel):
 
         # create physics
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=400, min_p=0, max_p=1000, min_z=self.zero, max_z=1 - self.zero)
+                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
 
-        self.params.first_ts = 0.01
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-6
-        # self.params.newton_type = 2
-        # self.params.newton_params = value_vector([0.2])
-
-        self.runtime = 300
-        self.inj = value_vector([self.zero])
-        self.ini = value_vector([1 - self.zero])
-
-        self.timer.node["initialization"].stop()
+        return
 
     def set_initial_conditions(self):
         self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=400,

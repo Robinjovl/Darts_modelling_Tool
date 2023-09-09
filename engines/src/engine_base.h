@@ -288,6 +288,8 @@ public:
 	bool optimize_component_rate = false;
 	bool optimize_phase_rate = false;
 
+	bool is_mp = false;  // MPFA or MPSA
+
 	bool objfun_prod_phase_rate = false;
 	bool objfun_inj_phase_rate = false;
 	bool objfun_BHP = false;
@@ -308,7 +310,8 @@ public:
 	std::vector<int> col_dT_du;
 	index_t n_control_vars;
 
-	std::vector<std::vector<value_t>> X_t, X_t_report;
+	std::vector<value_t> Xop_mp;
+	std::vector<std::vector<value_t>> X_t, X_t_report, Xop_t;
 	std::vector<value_t> dt_t, t_t, dt_t_report, t_t_report;
 	std::vector<int> well_head_idx_collection;
 	std::vector<int> well_head_tran_idx_collection;
@@ -436,6 +439,7 @@ public:
 		X_t.clear();
 		dt_t.clear();
 		t_t.clear();
+		Xop_t.clear();
 
 		X_t_report.clear();
 		dt_t_report.clear();
@@ -464,6 +468,13 @@ public:
 	std::vector<std::vector<value_t>> time_data_customized;
 	std::vector<value_t> X_next;  // the X at the next time step
 	index_t idx_ts = 0;
+
+
+	std::vector<value_t> flux_multiplier;
+	value_t test_value = 1.1;
+	index_t test_index = 1;
+	std::vector<value_t> test_value_vec;
+	std::vector<index_t> test_index_vec;
 
 
 };
@@ -799,8 +810,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// prepare dg_dx_n_temp
 		init_adjoint_structure(dg_dx_n_temp);
 
-
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
+		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
+		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
+		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);  
 		col_dT_du = Temp_1;
 
 

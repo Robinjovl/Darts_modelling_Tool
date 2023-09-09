@@ -109,10 +109,21 @@ public:
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
-  int adjoint_gradient_assembly(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
   int run_single_newton_iteration(value_t deltat);
   //double calc_newton_residual();
+
+
+  // adjoint method--------------------------------------------------------------------------------------
+
+  // initialize dg_dT_general, which is similar to the jacobian initialization
+  int init_adjoint_structure_mpfa(csr_matrix_base* init_adjoint);
+
+  // assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
+  int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
+
+
 public:
 };
 

@@ -34,7 +34,7 @@ typedef double interp_value_t;
 static const double LOWER_LIMIT = 1.0e-12;
 static const double UPPER_LIMIT = 1.0 - LOWER_LIMIT;
 static std::ofstream log_stream;
-#define MAX_NC 6
+#define MAX_NC 8
 
 #define GET_RAND_I(START, END) \
   START + rand() / (RAND_MAX / (END - START + 1) + 1)

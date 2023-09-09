@@ -2,13 +2,11 @@ from darts.engines import conn_mesh, ms_well, ms_well_vector, index_vector, valu
 import numpy as np
 from math import inf, pi
 from darts.mesh.unstruct_discretizer import UnstructDiscretizer
-from itertools import compress
-import meshio
+from darts.models.reservoirs.unstruct_reservoir import UnstructReservoir
 import sys
-from calculate_WI import calc_equivalent_WI
 
 # Definitions for the unstructured reservoir class:
-class UnstructReservoir:
+class UnstructReservoirBrugge(UnstructReservoir):
     def __init__(self, permx, permy, permz, frac_aper, mesh_file, poro, thickness, calc_equiv_WI=True):
         """
         Class constructor for UnstructReservoir class
@@ -104,21 +102,7 @@ class UnstructReservoir:
         self.wells.append(well)
         return well
 
-    def add_perforation(self, well, res_block, well_index, well_indexD=0):
-        """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
-        :param well_index: well index (productivity index)
-        :return:
-        """
-        # well_block = 0
-        # well.perforations = well.perforations + [(well_block, res_block, well_index)]
 
-        well_block = len(well.perforations)
-        # add completion
-        well.perforations = well.perforations + [(well_block, res_block, well_index, well_indexD)]
-        return 0
 
     def init_wells(self):
         """
@@ -133,7 +117,7 @@ class UnstructReservoir:
             for j, centroid in enumerate(self.cac):
                 distance.append(np.linalg.norm(wc - centroid))
             min_dis = np.min(distance)
-            self.index_cell.append(distance.index(min_dis) + 1)
+            self.index_cell.append(distance.index(min_dis))
 
         try:
             assert (len(set(self.index_cell)) == len(well_coord))
@@ -143,11 +127,7 @@ class UnstructReservoir:
 
         self.well_index_list = []
         if self.calc_equiv_WI:
-            well_coord_list = well_coord
-            for wc in well_coord_list:
-                WI = calc_equivalent_WI(mesh_file=self.file_path, well_coord=wc, centroid_info=self.cac,
-                                        kx_list=self.permx, ky_list=self.permy, dz=self.thickness, skin=0)
-                self.well_index_list.append(WI)
+            self.well_index_list = [-1] * len(well_coord)
         else:
             self.well_index_list = [296.65303668, 69.71905642, 27.14929434, 27.58575654, 53.01869826,
                                     135.80457602, 345.34715322, 80.69146768, 74.07293499, 243.34286931,
@@ -166,12 +146,14 @@ class UnstructReservoir:
             if i < n_injector:
                 self.add_well("I" + str(i + 1))
                 self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]),
-                                     well_index=self.well_index_list[i])
+                                     well_index=self.well_index_list[i], well_indexD=0,
+                                     multi_segment=True, verbose=True)
                 self.inj_wells.append(self.wells[i])
             else:
                 self.add_well("P" + str(i + 1 - n_injector))
                 self.add_perforation(well=self.wells[-1], res_block=int(self.index_cell[i]),
-                                     well_index=self.well_index_list[i])
+                                     well_index=self.well_index_list[i], well_indexD=0,
+                                     multi_segment=True, verbose=True)
                 self.prod_wells.append(self.wells[i])
 
         # Add wells to the DARTS mesh object and sort connection (DARTS related):
@@ -179,6 +161,5 @@ class UnstructReservoir:
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
         return 0
-
 
 

@@ -11,7 +11,7 @@ from .transcalc import TransCalculations
 import copy
 import os
 import pickle
-
+from typing import List
 
 """"
     Unstructured discretization class.
@@ -3503,3 +3503,49 @@ class UnstructDiscretizer:
             print('------------------------------------------------\n')
 
         return cell_m, cell_p, stencil, offset, trans
+
+    def calc_equivalent_well_index(self, res_block: int, well_radius: float =0.1524, skin: float =0.) -> List[float]:
+        '''
+        works only for wedge 2.5D extruded cells
+        approximate calculation: triangle -> square with the same area -> Peaceman formula
+        :param res_block: cell block index
+        :param well_radius: well radius, m.
+        :param skin: skin
+        :return: well_index, well_index_thermal
+        '''
+        kx = self.perm_x_cell[res_block]
+        ky = self.perm_y_cell[res_block]
+        points = self.mesh_data.points
+        cells = self.mesh_data.cells
+        # check the mesh contains only wedges (quads are boundary faces, so they are allowed too)
+        for k in self.mesh_data.cell_data_dict['gmsh:geometrical'].keys():
+            if k != 'wedge' and k != 'quad':
+                raise('Error: only wedge cells are supported in calc_equivalent_well_index')
+        # find index i with wedges data
+        wedge_i = 0
+        while True:
+            if cells[wedge_i].type == 'wedge':
+                break
+            wedge_i += 1
+        node_cell = cells[wedge_i].data[res_block]
+        coord_top_triangle = points[node_cell[0:3]]
+        coord_bot_triangle = points[node_cell[3:6]]
+        # in counter-clockwise direction
+        x1 = coord_top_triangle[0][0]
+        y1 = coord_top_triangle[0][1]
+        x2 = coord_top_triangle[2][0]
+        y2 = coord_top_triangle[2][1]
+        x3 = coord_top_triangle[1][0]
+        y3 = coord_top_triangle[1][1]
+
+        area_top_triangle = abs((x1 * y2 + x2 * y3 + x3 * y1 - x1 * y3 - x2 * y1 - x3 * y2) / 2.)
+        dx = dy = np.sqrt(area_top_triangle)
+        dz = np.fabs(coord_bot_triangle[:,2].sum() - coord_top_triangle[:,2].sum()) / 3. # average
+
+        peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
+                       ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
+        well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
+        well_index *= 0.0085267146719160104986876640419948  # multiplied by Darcy constant
+        conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2) / 2.
+        well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
+        return well_index, well_indexD 

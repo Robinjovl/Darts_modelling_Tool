@@ -11,7 +11,7 @@ if __name__ == '__main__':
     n.init()
 
     if 1:
-        n.run_python()
+        n.run_python(2000)
         n.print_timers()
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)

@@ -1,5 +1,5 @@
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
@@ -11,7 +11,7 @@ from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
 
 # Model class creation here!
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -19,6 +19,16 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_physics()
+        self.set_wells()
+
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=20, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self):
         """Reservoir"""
         self.reservoir = StructReservoir(self.timer, nx=1000, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
                                          permz=10, poro=0.3, depth=1000)
@@ -32,7 +42,9 @@ class Model(DartsModel):
         # self.layer_1 = np.linspace(self.depth_start, self.depth_end, self.reservoir.nx)       # inclined
         # for i in range(self.reservoir.nz):
         #     self.reservoir.depth[i*self.reservoir.nx: (i+1)*self.reservoir.nx] = self.layer_1 + i*self.reservoir.global_data['dz']
+        return
 
+    def set_wells(self):
         """well location"""
         self.reservoir.add_well("I1")
         self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
@@ -43,7 +55,9 @@ class Model(DartsModel):
         # self.reservoir.add_well("P1")
         # for i in range(int(self.reservoir.nz / 2)):
         #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
+        return
 
+    def set_physics(self):
         """Physical properties"""
         # Create property containers:
         self.zero = 1e-8
@@ -73,21 +87,7 @@ class Model(DartsModel):
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.01
-        self.params.max_ts = 20
-        self.params.mult_ts = 2
-
-        self.params.tolerance_newton = 1e-2
-        self.params.tolerance_linear = 1e-3
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.newton_params[0] = 0.2
-
-        self.runtime = 1000
-
-        self.timer.node["initialization"].stop()
+        return
 
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):

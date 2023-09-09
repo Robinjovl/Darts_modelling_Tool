@@ -1,8 +1,8 @@
 import numpy as np
-from darts.engines import operator_set_evaluator_iface
+from darts.engines import operator_set_evaluator_iface, value_vector
+from darts.physics.super.property_container import PropertyContainer
 
 
-# Define our own operator evaluator class
 class ReservoirOperators(operator_set_evaluator_iface):
     def __init__(self, property_container, thermal=0):
         super().__init__()  # Initialize base-class
@@ -298,27 +298,47 @@ class RateOperators(operator_set_evaluator_iface):
         return 0
 
 
-class DefaultPropertyEvaluator(operator_set_evaluator_iface):
-    def __init__(self, variables, property_container):
+class PropertyOperators(operator_set_evaluator_iface):
+    """
+    This class contains a set of operators for evaluation of properties.
+    An interpolator is created in the :class:`Physics` object to rapidly obtain properties after simulation.
+
+    :ivar prop_idxs: Dictionary of indices for each property as they are returned in property_container.evaluate()
+    :type prop_idxs: dict
+    """
+    prop_idxs = {"sat": 1, "x": 2, "rho": 3, "rho_m": 4, "mu": 5, "kr": 6, "pc": 7, "mass_source": 8}
+
+    def __init__(self, props: list, property_container: PropertyContainer):
+        """
+        This is the constructor for PropertyOperator.
+        The properties to be obtained from the PropertyContainer are passed as a list of tuples.
+
+        :param props: List of tuples with ('name', 'key', index), where key must match self.prop_dict and index is for phase, (component)
+        :type props: list[tuple]
+        :param property_container: PropertyContainer object to evaluate properties at given state
+        """
         super().__init__()  # Initialize base-class
 
-        self.property = property_container
+        self.property_container = property_container
 
-        self.vars = variables
-        self.n_vars = len(self.vars)
-        self.props = ['sat_' + str(j) for j in range(self.property.nph)]
-        self.n_props = len(self.props)
+        self.props = props
+        self.n_props = len(props)
+        self.props_name = [prop[0] for prop in props]
 
-    def evaluate(self, state, values):
+    def evaluate(self, state: value_vector, values: value_vector):
         """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        ph, sat, x, rho, rho_m, mu, kr, pc, mass_source = self.property.evaluate(state)
+        This function evaluates the properties at given `state` (P,z) or (P,T,z) from the :class:`PropertyContainer` object.
+        The user-specified properties are stored in the `values` object.
 
-        for i in range(self.property.nph):
-            values[i] = sat[i]
+        :param state: Vector of state variables [pres, comp_0, ..., comp_N-1, (temp)]
+        :type state: darts.engines.value_vector
+        :param values: Vector for storage of operator values
+        :type values: darts.engines.value_vector
+        """
+        prop_output = self.property_container.evaluate(state)
+
+        for i, prop in enumerate(self.props):
+            prop_idx = self.prop_idxs[prop[1]]
+            values[i] = prop_output[prop_idx][prop[2]]
 
         return 0

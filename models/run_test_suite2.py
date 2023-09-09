@@ -7,7 +7,8 @@ from darts.engines import sim_params
 
 model_dir = r'.'
 
-accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal', '2ph_geothermal',
+accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+                 '2ph_geothermal', '2ph_geothermal_mass_flux',
                  '3ph_comp_w', '3ph_do', '3ph_bo',
                  'Uniform_Brugge',
                  'Chem_benchmark_new',
@@ -94,7 +95,7 @@ if __name__ == '__main__':
         overwrite = '1'
 
     failed = for_each_model(model_dir, check_performance, accepted_dirs)
-
+    
     # discretizer tests
     n_tot = n_failed = 0
     n_tot, n_failed = run_tests(model_dir, test_dirs=['cpg_sloping_fault'], test_args=[[['40'],['43']]],
@@ -123,7 +124,7 @@ if __name__ == '__main__':
     n_total = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)
 
     print("Passed", n_passed, "of", n_total, "models. ")
-
+    
     if len(sys.argv) == 1:
         input("Press Enter to continue...") # pause the screen
     else:

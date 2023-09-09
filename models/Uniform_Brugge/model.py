@@ -1,4 +1,4 @@
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
@@ -7,13 +7,13 @@ from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.black_oil import *
 
-from reservoir_Brugge import UnstructReservoir
+from reservoir_Brugge import UnstructReservoirBrugge
 from mesh_creator import mesh_creator
 import os
 
 
 # Model class creation here!
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -21,6 +21,16 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_wells()
+        self.set_physics()
+
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=2000, tol_newton=1e-3, tol_linear=1e-3,
+                            it_newton=10, it_linear=50)
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self):
         """Reservoir"""
         # GMSH file where mesh will be saved
         mesh_file = 'Brugge_model.msh'
@@ -51,12 +61,17 @@ class Model(DartsModel):
         # the class and constructs the object. In the process, the mesh is loaded, mesh information is calculated and
         # the discretization is executed. Besides that, also the boundary conditions of the simulations are
         # defined in this class --> in this case constant pressure/rate at the left (x==x_min) and right (x==x_max) side
-        self.reservoir = UnstructReservoir(permx=permx, permy=permy, permz=permz, frac_aper=frac_aper,
+        self.reservoir = UnstructReservoirBrugge(permx=permx, permy=permy, permz=permz, frac_aper=frac_aper,
                                            mesh_file=mesh_file, poro=poro, thickness=thickness, calc_equiv_WI=True)
+        return
 
+    def set_wells(self):
+        return
+
+    def set_physics(self):
         """Physical properties"""
         # Create property containers:
-        self.zero = 1e-12
+        zero = 1e-12
         phases = ['gas', 'oil', 'wat']
         components = ['g', 'o', 'w']
 
@@ -65,7 +80,7 @@ class Model(DartsModel):
         self.ini_stream = [0.001225901537, 0.7711341309]
 
         pvt = 'Brugge_struct/physics.in'
-        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, min_z=self.zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, min_z=zero/10)
 
         """ properties correlations """
         property_container.flash_ev = flash_black_oil(pvt)
@@ -85,23 +100,11 @@ class Model(DartsModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=500, min_p=1, max_p=200, min_z=self.zero / 10, max_z=1 - self.zero / 10)
+                                     n_points=500, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
         self.physics.add_property_region(property_container)
         self.physics.init_physics()
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 2
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-3
-
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-
-        self.runtime = 2000
-
-        self.timer.node["initialization"].stop()
+        return
 
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):

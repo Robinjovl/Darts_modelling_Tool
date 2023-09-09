@@ -4,7 +4,7 @@ import pandas as pd
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator as props
+from darts.physics.super.operator_evaluator import PropertyOperators as props
 
 
 def plot_sol(n):

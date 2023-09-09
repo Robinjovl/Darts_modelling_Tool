@@ -1,35 +1,47 @@
 rem update submodules
 git submodule update --recursive --remote --init || goto :error
-echo "build_darts arg:" "%1"
+echo "build_darts arg:" "%1" "%2"
+rem config - for discretizer and solvers
+set config=Release
 if "%1"=="0" (
   cd engines
   call .\update_private_artifacts.bat %SMBNAME% %SMBLOGIN% %SMBPASS%
   cd ..
   rem 2 Compile engines with iterative linear solver
-  set configengine=ReleaseMT
-  set config=Release
+  if "%2"=="debug" (
+    set config_engines=DebugMT
+    set config=Debug   
+  ) else (
+    set config_engines=ReleaseMT
+    set config=Release
+  )
 ) else (
   rem 1 build opendarts linear solvers step
   rem 1a build superLU
   cd thirdparty\SuperLU_5.2.1
-  msbuild superlu.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
+  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 || goto :error
 
   rem 1b build opendarts linear solvers
   cd ..\..\solvers
   mkdir build
   cd build
   cmake -DCMAKE_INSTALL_PREFIX=..\..\engines\lib\darts_linear_solvers -DENABLE_TESTING=TRUE ..
-  msbuild opendarts_linear_solvers.sln /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 || goto :error
+  msbuild opendarts_linear_solvers.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 || goto :error
   cd ..\..
-  
-  set configengine=Release_ODLS
-  set config=Release_ODLS
+  if "%2"=="debug" (
+    set config_engines=Debug_ODLS
+    set config=Debug_ODLS
+  )
+  else (
+    set config_engines=Release_ODLS
+    set config=Release_ODLS
+  )
 )
 
 rem 2 Compile engines with open-darts linear solver
 cd engines
-msbuild darts-engines.vcxproj /p:Configuration=%configengine% /p:Platform=x64 -maxCpuCount:8  || goto :error
+msbuild darts-engines.vcxproj /p:Configuration=%config_engines% /p:Platform=x64 -maxCpuCount:8  || goto :error
 cd ..
 
 rem 3 Compile discretizer

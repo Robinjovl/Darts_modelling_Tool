@@ -136,6 +136,10 @@ class OptModuleSettings:
         self.binary_array = []
         self.save_error = False
         self.label = ''
+        
+        # MPFA
+        self.n_fm = 0
+        
 
 #-----------------------------------------------------------------------------------------------------------------------
 #---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
@@ -191,6 +195,8 @@ class OptModuleSettings:
         # self.modifier.set_x(self, x)
 
         self.physics.engine.opt_history_matching = True
+        if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+            self.physics.engine.is_mp = True
 
         # 2. Reset
         self.set_initial_conditions()
@@ -536,28 +542,31 @@ class OptModuleSettings:
 
         self.physics.engine.scale_function_value = self.scale_function_value
 
-        # sorting the perforation index for adjoint gradient
-        # `self.col_idx` will be passed into C++ `col_dT_du`
-        self.col_idx_original = []
-        self.col_idx_original = list(range(self.x_idx[-1]))
-        self.col_idx = self.col_idx_original
-
-        self.perforation_idx = []
-        for i, w in enumerate(self.reservoir.wells):
-            for p, per in enumerate(w.perforations):
-                self.perforation_idx.append(per[1])
-
-        self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
-        for i in range(np.size(self.perforation_idx)):
-            for j in range(np.size(self.perforation_idx)):
-                if self.perforation_idx[j] < self.perforation_idx[i]:
-                    self.sort_perforation_idx[i] += 1
-
-        temp_idx = self.sort_perforation_idx.astype(int)
-        n_T_res = np.size(self.col_idx) - np.size(temp_idx)
-        col_idx_well = self.col_idx[np.size(self.col_idx) - np.size(temp_idx):]
-        for i, j in enumerate(temp_idx):
-            self.col_idx[n_T_res + i] = col_idx_well[j]
+        if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+            self.col_idx = list(range(self.n_fm))
+        else:
+            # sorting the perforation index for adjoint gradient
+            # `self.col_idx` will be passed into C++ `col_dT_du`
+            self.col_idx_original = []
+            self.col_idx_original = list(range(self.x_idx[-1]))
+            self.col_idx = self.col_idx_original
+    
+            self.perforation_idx = []
+            for i, w in enumerate(self.reservoir.wells):
+                for p, per in enumerate(w.perforations):
+                    self.perforation_idx.append(per[1])
+    
+            self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
+            for i in range(np.size(self.perforation_idx)):
+                for j in range(np.size(self.perforation_idx)):
+                    if self.perforation_idx[j] < self.perforation_idx[i]:
+                        self.sort_perforation_idx[i] += 1
+    
+            temp_idx = self.sort_perforation_idx.astype(int)
+            n_T_res = np.size(self.col_idx) - np.size(temp_idx)
+            col_idx_well = self.col_idx[np.size(self.col_idx) - np.size(temp_idx):]
+            for i, j in enumerate(temp_idx):
+                self.col_idx[n_T_res + i] = col_idx_well[j]
 
     def set_objfun(self, objfun):
         '''
@@ -1301,7 +1310,7 @@ class OptModuleSettings:
         # add temperature data in objective function---------------------------------------------
         if self.objfun_temperature:
             # cc=np.array(self.physics.engine.time_data_customized)
-            temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.nb]
+            temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
             # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             TotStep = np.size(t_sim)
@@ -1339,7 +1348,7 @@ class OptModuleSettings:
         if self.objfun_customized_op:
             if len(self.binary_array) == 0:
                 # cc=np.array(self.physics.engine.time_data_customized)
-                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.nb]
+                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1375,7 +1384,7 @@ class OptModuleSettings:
             else:
                 # hinge loss function---------------------------------
                 # cc=np.array(self.physics.engine.time_data_customized)
-                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.nb]
+                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1449,7 +1458,7 @@ class OptModuleSettings:
 
         if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
             # # cc=np.array(self.physics.engine.time_data_customized)
-            # temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.nb]
+            # temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
             # 
             # # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             # TotStep = np.size(t_sim)
@@ -1569,7 +1578,7 @@ class OptModuleSettings:
             self.fval_temp = self.fval_temp + R
 
 
-        print('fval: %s' % self.fval_temp)
+        print(' fval: %s' % self.fval_temp)
         return self.fval_temp
 
 
@@ -1624,6 +1633,91 @@ class OptModuleSettings:
             self.physics.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
 
             temp_grad = np.array(self.physics.engine.derivatives, copy=False)  # get the adjoint gradinet from C++
+
+            grad_linear = self.modifier.set_grad(temp_grad, self.x_idx)  # set the gradient to modifiers
+        except IndexError:
+            print("Adjoint fails! Discard this iteration step!")
+            grad_linear = self.grad_old
+
+        self.grad_old = grad_linear
+
+        self.ad_grad_time += time.time()
+        self.n_grad_calc += 1
+        print(', %f s/lin_adj' % (self.ad_grad_time / self.n_grad_calc), end='', flush=True)
+
+        # ---calculate the gradient of nonlinear parameters using finite difference method-----------------------------
+        self.nonlinear_grad_time -= time.time()
+        x_old = x
+        fval_old = self.fval_temp
+        grad_nonlinear = []
+        if np.size(self.modifier.mod_x_idx) > 3:
+            for i in range(self.modifier.mod_x_idx[2], self.modifier.mod_x_idx[-1]):
+                x_eps = x_old.copy()  # copy the array, otherwise it passes the address, and this array will be changed
+                x_eps[i] += self.eps
+
+                fval = self.fval_nonlinear_FDM(x_eps)
+                grad_nonlinear.append((fval - fval_old) / self.eps)
+
+        self.nonlinear_grad_time += time.time()
+        print(', %f s/nlin_num' % (self.nonlinear_grad_time / self.n_grad_calc), end='', flush=True)
+
+        GRAD = np.concatenate((grad_linear, np.array(grad_nonlinear)))
+
+        # gradient for regularization term----------------------------------------
+        if self.regularization:
+            R_vector = np.zeros(np.size(self.x_ref))
+            for idx in range(np.size(self.x_ref)):
+                if self.read_Cm_inv_vector:
+                    R_vector[idx] = 2 * np.sum(self.x_diff * np.load(self.Cv_path + "/%s_Cv.npy" % idx)) * self.modifier.modifiers[0].norms
+                else:
+                    R_vector[idx] = 2 * np.sum(self.x_diff * self.C_m_inv[idx, :]) * self.modifier.modifiers[0].norms
+            GRAD[0:np.size(self.x_ref)] = GRAD[0:np.size(self.x_ref)] + self.alpha * R_vector
+
+        if self.regularization_diagonal:
+            R_vector = self.alpha * 2 * self.x_diff * self.Cm_inv_diagonal * self.modifier.modifiers[0].norms
+            # R_vector = self.alpha * 2 * self.x_diff * self.Cm_inv_diagonal
+            GRAD[0:np.size(self.x_diff)] = GRAD[0:np.size(self.x_diff)] + R_vector
+
+        self.grad_previous = GRAD
+
+        # save the best optimized result and some history matching logs
+        self.fval_list.append(self.fval_temp)
+        if self.fval_temp < self.objfunval:
+            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            with open(filename, "wb") as fp:
+                # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
+                pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.objfun_all, self.fval_temp, self.fval_list], fp, pickle.HIGHEST_PROTOCOL)
+            self.objfunval = self.fval_temp
+
+
+        # for heuristic rate control--------------------------
+        # self.previous_forward_result = pd.DataFrame.from_dict(self.physics.engine.time_data)
+
+        if self.heuristic_rate_control:
+            self.make_single_forward_simulation(x)  # convert rate control to BHP control
+
+        return GRAD
+    
+    def grad_adjoint_method_mpfa_all(self, x: np.array) -> np.array:
+        '''
+        The preparation of the adjoint gradient for transmissibility and well index
+        :param x: control variables
+        :return: the adjoint gradient for transmissibility and well index
+        '''
+        # --------------------------gradients for transmissibility and well index--------------------------------------
+        self.ad_grad_time -= time.time()
+
+        grad_linear = np.zeros(self.n_fm)
+
+        self.physics.engine.n_control_vars = np.size(x)
+        self.physics.engine.col_dT_du = index_vector(self.col_idx)
+
+        grad_linear = np.zeros(np.size(x))
+
+        try:
+            self.physics.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
+
+            temp_grad = np.array(self.physics.engine.derivatives, copy=True)  # get the adjoint gradinet from C++
 
             grad_linear = self.modifier.set_grad(temp_grad, self.x_idx)  # set the gradient to modifiers
         except IndexError:
@@ -3039,6 +3133,10 @@ class model_modifier_aggregator:
                 right_idx = x_idx[i+1]
                 temp_grad = m.set_grad(grad_original[left_idx: right_idx])
                 grad = np.append(grad, temp_grad)
+            if type(m) == flux_multiplier_modifier:
+                temp_grad = m.set_grad(grad_original)
+                grad = np.append(grad, temp_grad)
+                
 
         return grad
 
@@ -3049,17 +3147,26 @@ class model_modifier_aggregator:
         :param x: updated control variables
         '''
         self.x = x
-        # prepare x_linear by du_dT
-        if type(self.modifiers[0]) == transmissibility_modifier and type(self.modifiers[1]) == well_index_modifier:
-            # x_temp = x[:self.mod_x_idx[2]]
-            # x_linear = np.dot(x_temp, model.du_dT)
-            x_linear = x[:self.mod_x_idx[2]]
+        if type(self.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
+            x_linear = x[:self.mod_x_idx[1]]
 
-        for i, m in enumerate(self.modifiers):
-            if type(m) == transmissibility_modifier or type(m) == well_index_modifier:  # linear modifiers
-                m.set_x(model, x_linear[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
-            else:  # nonlinear modifiers
-                m.set_x(model, x[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
+            for i, m in enumerate(self.modifiers):
+                if type(self.modifiers[0]) == flux_multiplier_modifier:  # linear modifiers
+                    m.set_x(model, x_linear[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
+                else:  # nonlinear modifiers
+                    m.set_x(model, x[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
+        else:
+            # prepare x_linear by du_dT
+            if type(self.modifiers[0]) == transmissibility_modifier and type(self.modifiers[1]) == well_index_modifier:
+                # x_temp = x[:self.mod_x_idx[2]]
+                # x_linear = np.dot(x_temp, model.du_dT)
+                x_linear = x[:self.mod_x_idx[2]]
+
+            for i, m in enumerate(self.modifiers):
+                if type(m) == transmissibility_modifier or type(m) == well_index_modifier:  # linear modifiers
+                    m.set_x(model, x_linear[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
+                else:  # nonlinear modifiers
+                    m.set_x(model, x[self.mod_x_idx[i]: self.mod_x_idx[i + 1]])
 
 
 
@@ -3133,7 +3240,66 @@ class transmissibility_modifier:
         '''
         return grad_original * self.norms
 
+class flux_multiplier_modifier:
+    '''
+    The class of flux multiplier modifier
+    This class includes the functions of modifier initialization, getting the initial guess, setting the updated modifers, etc.
+    '''
+    def __init__(self):
+        self.norms = 1
 
+    def get_x0(self, model) -> np.array:
+        '''
+        The function of getting the initial guess of flux multiplier modifier
+        :param model: DARTS reservoir model
+        :return: initial guess of flux multiplier modifier
+        '''
+        n_fm = model.get_n_flux_multiplier()
+
+        # n_well_index = 0
+        # for well in model.reservoir.wells:
+        #     n_well_index += len(well.perforations)
+        # n_fm_res = n_fm - n_well_index
+        # self.fm = np.ones(n_fm_res)
+
+        self.fm = np.ones(n_fm)
+
+        return self.fm / self.norms
+
+    def get_bounds(self, model, mult=10) -> List[tuple]:
+        '''
+        The function of getting the bound of flux multiplier modifier
+        :param model: DARTS reservoir model
+        :return: bound of flux multiplier modifer
+        '''
+        bound = list()
+        for i in range(0, len(self.fm)):
+            bound += [(0.00002, self.fm[i] * mult / self.norms)]
+
+        self.bound = bound
+        return bound
+
+    def set_x(self, model, x: np.array):
+        '''
+        The function of setting the updated flux multiplier
+        :param model: DARTS reservoir model
+        :param x: updated flux multiplier
+        '''
+        fm = x * self.norms
+
+        # always keep the fm between well head and well body equals to 1
+        fm_full = np.ones(np.size(fm) + len(model.reservoir.wells))
+        fm_full[0:np.size(fm)] = fm
+
+        model.physics.engine.flux_multiplier = value_vector(fm_full)
+
+    def set_grad(self, grad_original: np.array) -> np.array:
+        '''
+        The function of setting the gradients of flux multiplier
+        :param grad_original: original gradient array
+        :return: gradients of flux multiplier
+        '''
+        return grad_original * self.norms
 
 class transmissibility_fracture_modifier:
     '''

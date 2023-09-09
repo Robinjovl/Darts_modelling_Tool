@@ -10,7 +10,7 @@ m = Model()
 
 m.init()
 m.export_pro_vtk()
-m.run()
+m.run(3650)
 m.print_timers()
 m.print_stat()
 m.export_pro_vtk()

@@ -99,7 +99,8 @@ class UnstructReservoir:
         self.wells.append(well)
         return 0
 
-    def add_perforation(self, well, res_block, well_index, well_indexD):
+    def add_perforation(self, well, res_block, well_index=-1, well_indexD=-1, well_radius=0.1524, skin=0.,
+                        multi_segment=True, verbose=False):
         """
         Class method which ads perforation to each (existing!) well
 
@@ -108,6 +109,25 @@ class UnstructReservoir:
         :param well_index: well index (productivity index)
         :return:
         """
-        well_block = 0
+        
+        # calculate well index and get local index of reservoir block
+        wi, wid = self.unstr_discr.calc_equivalent_well_index(res_block, well_radius=well_radius, skin=skin)
+
+        if well_index == -1: 
+            well_index = wi
+
+        if well_indexD == -1:
+            well_indexD = wid
+        
+        # set well segment index (well block) equal to index of perforation layer
+        if multi_segment:
+            well_block = len(well.perforations)
+        else:
+            well_block = 0
+            
         well.perforations = well.perforations + [(well_block, res_block, well_index, well_indexD)]
+        
+        if verbose:
+            print('Added perforation for well %s to block %d with WI=%f' % (well.name, res_block, well_index))
+            
         return 0

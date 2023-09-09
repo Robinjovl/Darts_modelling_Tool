@@ -1,6 +1,6 @@
 from darts.engines import *
 from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
@@ -15,7 +15,7 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.tools.keyword_file_tools import get_table_keyword
 
 
-class Model(DartsModel, OptModuleSettings):
+class Model(CICDModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, customize_new_operator=False, Peaceman_WI=False):
         # call base class constructor
         super().__init__()
@@ -133,8 +133,8 @@ class Model(DartsModel, OptModuleSettings):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
             customized_component_itor = self.physics.create_interpolator(customized_component_etor, self.physics.n_vars, 1,
-                                                                    self.physics.n_axes_points, self.physics.n_axes_min,
-                                                                    self.physics.n_axes_max,
+                                                                    self.physics.n_axes_points, self.physics.axes_min,
+                                                                    self.physics.axes_max,
                                                                     platform='cpu', algorithm='multilinear',
                                                                     mode='adaptive', precision='d')
             self.physics.create_itor_timers(customized_component_itor, "customized component interpolation")

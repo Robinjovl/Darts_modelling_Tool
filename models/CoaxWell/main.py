@@ -10,7 +10,7 @@ m = Model(resolution=10)
 
 m.init()
 m.export_pro_vtk()
-m.run(30*10)
+m.run(365)
 m.print_timers()
 m.print_stat()
 m.export_pro_vtk()
