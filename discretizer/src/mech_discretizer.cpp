@@ -65,7 +65,7 @@ void MechDiscretizer<MODE>::init()
 	}
   }
 
-  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i < mesh::MAX_CONNS_PER_ELEM; i++)
+  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i < 10; i++) // mesh::MAX_CONNS_PER_ELEM is too big
   {
 	pre_grad_A_u[i] = Matrix(ND * i, ND * ND);
 	pre_grad_R_u[i] = Matrix(ND * i, n_unknowns * MAX_STENCIL);
