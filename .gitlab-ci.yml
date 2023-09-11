@@ -558,7 +558,7 @@ test-windows-3.7-ODLS:
         - apt-get update -qq && apt-get install -y -qq libxinerama1     # for gmsh
         - export PYTHONUNBUFFERED=1
         # complex command to create fake wheel and figure out the proper name for current python and platform
-        - export WHEEL_NAME=`python -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.3', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"`
+        - export WHEEL_NAME=`python -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"`
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - ls ./dist/*
@@ -596,7 +596,7 @@ test-windows-3.7-ODLS:
         - $env:PYTHONUNBUFFERED = 1
         - $env:PYTHONLEGACYWINDOWSSTDIO = 1
         # complex command to create fake wheel and figure out the proper name for current python and platform
-        - $env:WHEEL_NAME=python.exe -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.3', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"
+        - $env:WHEEL_NAME=python.exe -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"
         # upgrade pip package first
         - python -m pip install --upgrade pip
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
