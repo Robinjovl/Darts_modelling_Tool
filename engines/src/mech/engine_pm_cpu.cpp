@@ -13,6 +13,17 @@
 
 const value_t engine_pm_cpu::BAR_DAY2_TO_PA_S2 = 86400.0 * 86400.0 * 1.E+5;
 
+engine_pm_cpu::engine_pm_cpu()
+{
+  engine_name = "Single phase " + std::to_string(NC_) + "-component isothermal poromechanics CPU engine";
+}
+
+engine_pm_cpu::~engine_pm_cpu()
+{
+  for (auto& ls : linear_solvers)
+	delete ls;
+}
+
 int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 						std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
 						sim_params *params_, timer_node *timer_)
@@ -30,365 +41,280 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	dt1 = 0.0;
 	momentum_inertia = 0.0;
 	EXPLICIT_SCHEME = false;
+	active_linear_solver_id = 0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 	return 0;
 }
 
-int engine_pm_cpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
-							 std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
-							 sim_params *params_, timer_node *timer_)
+int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_,
+  std::vector<operator_set_gradient_evaluator_iface*>& acc_flux_op_set_list_,
+  sim_params* params_, timer_node* timer_)
 {
-	time_t rawtime;
-	struct tm *timeinfo;
-	char buffer[1024];
+  time_t rawtime;
+  struct tm* timeinfo;
+  char buffer[1024];
 
-	mesh = mesh_;
-	wells = well_list_;
-	acc_flux_op_set_list = acc_flux_op_set_list_;
-	params = params_;
-	timer = timer_;
+  mesh = mesh_;
+  wells = well_list_;
+  acc_flux_op_set_list = acc_flux_op_set_list_;
+  params = params_;
+  timer = timer_;
 
-	// Instantiate Jacobian
-	if (!Jacobian)
-	{
-		Jacobian = new csr_matrix<N_VARS>;
-		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-	}
+  // Instantiate Jacobian
+  if (!Jacobian)
+  {
+	Jacobian = new csr_matrix<N_VARS>;
+	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+  }
 
-	// figure out if this is GPU engine from its name.
-	int is_gpu_engine = engine_name.find(" GPU ") != std::string::npos;
+  // figure out if this is GPU engine from its name.
+  int is_gpu_engine = engine_name.find(" GPU ") != std::string::npos;
 
-	// allocate Jacobian
-	// if (!is_gpu_engine)
-	{
-		// for CPU engines we need full init
-		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
-	}
-	// else
-	// {
-	//   // for GPU engines we need only structure - rows_ptr and cols_ind
-	//   // they are filled on CPU and later copied to GPU
-	//   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
-	// }
+  // allocate Jacobian
+  // if (!is_gpu_engine)
+  {
+	// for CPU engines we need full init
+	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+  }
+  // else
+  // {
+  //   // for GPU engines we need only structure - rows_ptr and cols_ind
+  //   // they are filled on CPU and later copied to GPU
+  //   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
+  // }
 #ifdef WITH_GPU
-	if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
-	{
-		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
-	}
+  if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
+  {
+	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
+  }
 #endif
 
-	// create linear solver
-	if (!linear_solver)
+  // create linear solvers
+  for (const auto& param : ls_params)
+  {
+	switch (param.linear_type)
 	{
-		switch (params->linear_type)
-		{
-		case sim_params::CPU_GMRES_CPR_AMG:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
-			cpr->set_prec(new linsolv_bos_amg<1>);
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#ifndef __linux__
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
-			cpr->set_prec(new linsolv_amg1r5<1>);
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif
-#endif
-		case sim_params::CPU_GMRES_ILU0:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
-			break;
-		}
+	  case sim_params::CPU_GMRES_CPR_AMG:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
+		linsolv_iface* cpr = new linsolv_bos_cpr<N_VARS>;
+		cpr->set_prec(new linsolv_bos_amg<1>);
+		linear_solvers.back()->set_prec(cpr);
+		break;
+	  }
+	  case sim_params::CPU_GMRES_ILU0:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
+		linear_solvers.back()->set_prec(new linsolv_bos_bilu0<N_VARS>);
+		break;
+	  }
 #ifdef WITH_HYPRE
-		case sim_params::CPU_GMRES_FS_CPR:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR, NC_);
-			static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>, new linsolv_hypre_amg<1>); 
-			//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);
-			static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix + mesh->n_fracs, 0, mesh->n_blocks - mesh->n_res_blocks);
-			//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec_type(FS_UPG);
-			linear_solver->set_prec(fs_cpr);
-			break;
-		}
+	  case sim_params::CPU_GMRES_FS_CPR:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
+		linsolv_iface* fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR, NC_);
+		static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>, new linsolv_hypre_amg<1>);
+		//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);
+		static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix + mesh->n_fracs, 0, mesh->n_blocks - mesh->n_res_blocks);
+		//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec_type(FS_UPG);
+		linear_solvers.back()->set_prec(fs_cpr);
+		break;
+	  }
 #endif
 #ifdef WITH_SAMG
-		case sim_params::CPU_SAMG:
-		{
-			linear_solver = new linsolv_samg<N_VARS>;
-			static_cast<linsolv_samg<N_VARS>*>(linear_solver)->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);
-			break;
-		}
+	  case sim_params::CPU_SAMG:
+	  {
+		linear_solvers.push_back(new linsolv_samg<N_VARS>);
+		static_cast<linsolv_samg<N_VARS>*>(linear_solvers.back())->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);
+		break;
+	  }
 #endif
-		case sim_params::CPU_SUPERLU:
-		{
-			linear_solver = new linsolv_superlu<N_VARS>;
-			break;
-		}
+	  case sim_params::CPU_SUPERLU:
+	  {
+		linear_solvers.push_back(new linsolv_superlu<N_VARS>);
+		break;
+	  }
 
 #ifdef WITH_GPU
-		case sim_params::GPU_GMRES_CPR_AMG:
+	  case sim_params::GPU_GMRES_CPR_AMG:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
+		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+		cpr->set_prec(new linsolv_bos_amg<1>);
+		linear_solvers.back()->set_prec(cpr);
+		break;
+	  }
+	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
+		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+
+		int n_json = 0;
+
+		if (params->linear_params.size() > 0)
 		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-			cpr->set_prec(new linsolv_bos_amg<1>);
-			linear_solver->set_prec(cpr);
-			break;
+		  n_json = params->linear_params[0];
 		}
-#ifdef WITH_AIPS
-		case sim_params::GPU_GMRES_CPR_AIPS:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
-
-			int n_terms = 10;
-			bool print_radius = false;
-			int aips_type = 2; // thomas_structure
-			bool print_structure = false;
-			if (params->linear_params.size() > 0)
-			{
-				n_terms = params->linear_params[0];
-				if (params->linear_params.size() > 1)
-				{
-					print_radius = params->linear_params[1];
-					if (params->linear_params.size() > 2)
-					{
-						aips_type = params->linear_params[2];
-						if (params->linear_params.size() > 3)
-						{
-							print_structure = params->linear_params[3];
-						}
-					}
-				}
-			}
-			cpr->set_prec(new linsolv_aips<1>(n_terms, print_radius, aips_type, print_structure));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif //WITH_AIPS
-		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
-
-			int n_json = 0;
-
-			if (params->linear_params.size() > 0)
-			{
-				n_json = params->linear_params[0];
-			}
-			cpr->set_prec(new linsolv_amgx<1>(n_json));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#ifdef WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_CPR_NF:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-			int nx, ny, nz;
-			int n_colors = 4;
-			int coloring_scheme = 3;
-			bool is_ordering_reversed = true;
-			bool is_factorization_twisted = true;
-			if (params->linear_params.size() < 3)
-			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
-			}
-
-			nx = params->linear_params[0];
-			ny = params->linear_params[1];
-			nz = params->linear_params[2];
-			if (params->linear_params.size() > 3)
-			{
-				n_colors = params->linear_params[3];
-				if (params->linear_params.size() > 4)
-				{
-					coloring_scheme = params->linear_params[4];
-					if (params->linear_params.size() > 5)
-					{
-						is_ordering_reversed = params->linear_params[5];
-						if (params->linear_params.size() > 6)
-						{
-							is_factorization_twisted = params->linear_params[6];
-						}
-					}
-				}
-			}
-
-			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif //WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_ILU0:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-
-			break;
-		}
+		cpr->set_prec(new linsolv_amgx<1>(n_json));
+		linear_solvers.back()->set_prec(cpr);
+		break;
+	  }
+	  case sim_params::GPU_GMRES_ILU0:
+	  {
+		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
+		break;
+	  }
 #endif
-		}
 	}
+  }
 
-	n_vars = get_n_vars();
-	n_ops = get_n_ops();
-	nc = get_n_comps();
-	z_var = get_z_var();
+  n_vars = get_n_vars();
+  n_ops = get_n_ops();
+  nc = get_n_comps();
+  z_var = get_z_var();
 
-	X_init.resize(n_vars * mesh->n_blocks);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
-	old_z.resize(nc);
-	new_z.resize(nc);
-	FIPS.resize(nc);
-	fluxes.resize(n_vars * mesh->n_conns);
-	fluxes_n.resize(n_vars * mesh->n_conns);
-	fluxes_biot.resize(n_vars * mesh->n_conns);
-	fluxes_biot_n.resize(n_vars * mesh->n_conns);
-	fluxes_ref.resize(n_vars * mesh->n_conns, 0.0);
-	fluxes_biot_ref.resize(n_vars * mesh->n_conns, 0.0);
-	fluxes_ref_n.resize(n_vars * mesh->n_conns, 0.0);
-	fluxes_biot_ref_n.resize(n_vars * mesh->n_conns, 0.0);
-	eps_vol.resize(mesh->n_matrix);
-	max_row_values.resize(n_vars * mesh->n_blocks);
-	jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
+  X_init.resize(n_vars * mesh->n_blocks);
+  PV.resize(mesh->n_blocks);
+  RV.resize(mesh->n_blocks);
+  old_z.resize(nc);
+  new_z.resize(nc);
+  FIPS.resize(nc);
+  fluxes.resize(n_vars * mesh->n_conns);
+  fluxes_n.resize(n_vars * mesh->n_conns);
+  fluxes_biot.resize(n_vars * mesh->n_conns);
+  fluxes_biot_n.resize(n_vars * mesh->n_conns);
+  fluxes_ref.resize(n_vars * mesh->n_conns, 0.0);
+  fluxes_biot_ref.resize(n_vars * mesh->n_conns, 0.0);
+  fluxes_ref_n.resize(n_vars * mesh->n_conns, 0.0);
+  fluxes_biot_ref_n.resize(n_vars * mesh->n_conns, 0.0);
+  eps_vol.resize(mesh->n_matrix);
+  max_row_values.resize(n_vars * mesh->n_blocks);
+  jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
 
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+  for (index_t i = 0; i < mesh->n_blocks; i++)
+  {
+	for (uint8_t d = 0; d < ND_; d++)
 	{
-		for (uint8_t d = 0; d < ND_; d++)
-		{
-			X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND_ * i + d];
-		}
-		X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND_ * i + d];
 	}
+	X_init[n_vars * i + P_VAR] = mesh->pressure[i];
 
-	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
-	op_ders_arr.resize(n_ops * nc * (mesh->n_blocks + mesh->n_bounds));
+	PV[i] = mesh->volume[i] * mesh->poro[i];
+	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+  }
 
-	t = 0;
+  op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
+  op_ders_arr.resize(n_ops * nc * (mesh->n_blocks + mesh->n_bounds));
 
-	time(&rawtime);
-	timeinfo = localtime(&rawtime);
+  t = 0;
 
-	stat = sim_stat();
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
 
-	print_header();
+  stat = sim_stat();
 
-	//acc_flux_op_set->init_timer_node(&timer->node["jacobian assembly"].node["interpolation"]);
+  print_header();
 
-	// initialize jacobian structure
-	init_jacobian_structure_pm(Jacobian);
+  //acc_flux_op_set->init_timer_node(&timer->node["jacobian assembly"].node["interpolation"]);
+
+  // initialize jacobian structure
+  init_jacobian_structure_pm(Jacobian);
 
 #ifdef WITH_GPU
-	if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)
+  for (const auto& param : ls_params)
+  {
+	if (param.linear_type >= sim_params::GPU_GMRES_CPR_AMG)
 	{
-		timer->node["jacobian assembly"].node["send_to_device"].start();
-		Jacobian->copy_struct_to_device();
-		timer->node["jacobian assembly"].node["send_to_device"].stop();
+	  timer->node["jacobian assembly"].node["send_to_device"].start();
+	  Jacobian->copy_struct_to_device();
+	  timer->node["jacobian assembly"].node["send_to_device"].stop();
 	}
+  }
 #endif
 
-	linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+  for (index_t i = 0; i < ls_params.size(); i++)
+  {
+	const auto& param = ls_params[i];
+	auto& ls = linear_solvers[i];
+	ls->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
 	// initialize linear solver
-	linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+	ls->init(Jacobian, param.max_i_linear, param.tolerance_linear);
+  }
 
-	RHS.resize(n_vars * mesh->n_blocks);
-	dX.resize(n_vars * mesh->n_blocks);
+  RHS.resize(n_vars * mesh->n_blocks);
+  dX.resize(n_vars * mesh->n_blocks);
 
-	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
-	std::cout << buffer << std::flush;
+  sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
+  std::cout << buffer << std::flush;
 
-	// let wells initialize their state
-	for (ms_well *w : wells)
+  // let wells initialize their state
+  for (ms_well *w : wells)
+  {
+	w->initialize_control(X_init);
+  }
+
+  Xn_ref = Xref = Xn = Xn1 = X = X_init;
+  for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
+	Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
+
+  dt = params->first_ts;
+  prev_usual_dt = dt;
+
+  // initialize arrays for every operator set
+  block_idxs.resize(acc_flux_op_set_list.size());
+  op_axis_min.resize(acc_flux_op_set_list.size());
+  op_axis_max.resize(acc_flux_op_set_list.size());
+  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+  {
+	block_idxs[r].clear();
+	op_axis_min[r].resize(nc);
+	op_axis_max[r].resize(nc);
+	for (int j = 0; j < nc; j++)
 	{
-		w->initialize_control(X_init);
+	  op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
+	  op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
 	}
+  }
 
-	Xn_ref = Xref = Xn = Xn1 = X = X_init;
-	for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
-		Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
+  // create a block list for every operator set
+  index_t idx = 0;
+  for (auto op_region : mesh->op_num)
+  {
+    block_idxs[op_region].emplace_back(idx++);
+  }
+  for (index_t i = 0; i < mesh->n_bounds; i++)
+  {
+	block_idxs[mesh->op_num[0]].emplace_back(idx++);
+  }
 
-	dt = params->first_ts;
-	prev_usual_dt = dt;
+  extract_Xop();
+  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+  op_vals_arr_n = op_vals_arr;
 
-	// initialize arrays for every operator set
-	block_idxs.resize(acc_flux_op_set_list.size());
-	op_axis_min.resize(acc_flux_op_set_list.size());
-	op_axis_max.resize(acc_flux_op_set_list.size());
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-	{
-		block_idxs[r].clear();
-		op_axis_min[r].resize(nc);
-		op_axis_max[r].resize(nc);
-		for (int j = 0; j < nc; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
-	}
+  time_data.clear();
+  time_data_report.clear();
 
-	// create a block list for every operator set
-	index_t idx = 0;
-	for (auto op_region : mesh->op_num)
-	{
-		block_idxs[op_region].emplace_back(idx++);
-	}
-	for (index_t i = 0; i < mesh->n_bounds; i++)
-	{
-		block_idxs[mesh->op_num[0]].emplace_back(idx++);
-	}
+  /*if (params->log_transform == 0)
+  {
+	  min_zc = acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac;
+	  max_zc = 1 - min_zc * params->obl_min_fac;
+	  //max_zc = acc_flux_op_set_list[0]->get_maxzc();
+  }
+  else if (params->log_transform == 1)
+  {
+	  min_zc = exp(acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac); //log based composition
+	  max_zc = exp(acc_flux_op_set_list[0]->get_maxzc() * params->obl_min_fac); //log based composition
+  }*/
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-	op_vals_arr_n = op_vals_arr;
-
-	time_data.clear();
-	time_data_report.clear();
-
-	/*if (params->log_transform == 0)
-	{
-		min_zc = acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
-		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
-		min_zc = exp(acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac); //log based composition
-		max_zc = exp(acc_flux_op_set_list[0]->get_maxzc() * params->obl_min_fac); //log based composition
-	}*/
-
-	return 0;
+  return 0;
 }
 
 int engine_pm_cpu::init_jacobian_structure_pm(csr_matrix_base *jacobian)
@@ -1703,6 +1629,8 @@ int engine_pm_cpu::solve_linear_equation()
 	int r_code;
 	char buffer[1024];
 	linear_solver_error_last_dt = 0;
+
+	linear_solver = linear_solvers[active_linear_solver_id];
 
 	/*if (1) //changed this to write jacobian to file!
 	{

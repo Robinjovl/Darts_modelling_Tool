@@ -58,6 +58,8 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("RHS", &engine_pm_cpu::RHS) \
 		.def_readwrite("jacobian_explicit_scheme", &engine_pm_cpu::jacobian_explicit_scheme) \
 		.def_readwrite("contact_solver", &engine_pm_cpu::contact_solver) \
+		.def_readwrite("ls_params", &engine_pm_cpu::ls_params) \
+		.def_readwrite("active_linear_solver_id", &engine_pm_cpu::active_linear_solver_id) \
 		.def_property_readonly_static("P_VAR", [](py::object) {return engine_pm_cpu::P_VAR; }) \
 		.def_property_readonly_static("Z_VAR", [](py::object) {return engine_pm_cpu::Z_VAR; }) \
 		.def_property_readonly_static("U_VAR", [](py::object) {return engine_pm_cpu::U_VAR; }) \

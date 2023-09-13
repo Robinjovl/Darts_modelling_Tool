@@ -83,7 +83,7 @@ public:
     GPU_AMGX,
     GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
-	GPU_CUSOLVER
+    GPU_CUSOLVER
   };
 
   enum nonlinear_norm_t
@@ -154,6 +154,25 @@ public:
 
   // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
   // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
+};
+
+class linear_solver_params
+{
+public:
+  sim_params::linear_solver_t linear_type;          // Linear solver type
+  index_t max_i_linear;                 // maximum number of linear iterations
+  value_t tolerance_linear;             // tolerance for linear solver
+
+  linear_solver_params()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    linear_type = sim_params::CPU_SUPERLU;
+#else
+    linear_type = sim_params::CPU_GMRES_CPR_AMG;
+#endif
+    max_i_linear = 50;
+    tolerance_linear = 1e-5;
+  };
 };
 
 /// Main simulation statistics with active and wasted counts

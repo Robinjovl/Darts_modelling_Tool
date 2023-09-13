@@ -308,7 +308,7 @@ namespace linalg
 		}
 		return true;
 	}
-	template <typename T>
+	/*template <typename T>
 	bool Matrix<T>::svd(Matrix<T>& vc, std::valarray<T>& w)
 	{
 		Eigen::MatrixXd eigen_matrix = Eigen::MatrixXd(this->M, this->N);
@@ -352,8 +352,273 @@ namespace linalg
 			}
 		}
 		return true;
-	}
+	}*/
+	
+	template <typename T>
+	bool Matrix<T>::svd(Matrix<T>& vc, std::valarray<T>& w)
+	{
+		//printf("OLD SVD!\n");
+		size_t flag, i, its, j, jj, k, l, nm;
+		T c, f, h, s, x, y, z, tmp;
+		size_t m = this->M;
+		size_t n = this->N;
 
+		//if (vc.M != n || vc.N != n)
+		//	vc = Matrix<T>(n, n);
+		//if (w.size() != n)
+		//	w.resize(n);
+
+		T* a = &values[0];
+		T* v = &vc.values[0];
+		std::valarray<T> rv1(n);
+
+		T g(0), scale(0), anorm(0);
+		for (i = 0; i < n; i++)
+		{
+			l = i + 1;
+			rv1[i] = scale * g;
+			g = s = scale = T(0);
+			if (i < m)
+			{
+				for (k = i; k < m; k++)
+					scale += abs(a[k * n + i]);
+
+				if (scale > epsilon(scale))
+				{
+					for (k = i; k < m; k++)
+					{
+						tmp = a[k * n + i] /= scale;
+						s += tmp * tmp;
+					}
+					f = a[i * n + i];
+					g = -sign(sqrt(s), f);
+					h = f * g - s;
+					a[i * n + i] = f - g;
+
+					for (j = l; j < n; j++)
+					{
+						for (s = T(0), k = i; k < m; k++)
+							s += a[k * n + i] * a[k * n + j];
+						f = s / h;
+						for (k = i; k < m; k++)
+							a[k * n + j] += f * a[k * n + i];
+					}
+					for (k = i; k < m; k++)
+						a[k * n + i] *= scale;
+				}
+			}
+			w[i] = scale * g;
+			g = s = scale = T(0);
+			if (i < m && i != n - 1)
+			{
+				for (k = l; k < n; k++)
+					scale += abs(a[i * n + k]);
+
+				if (scale > epsilon(scale))
+				{
+					for (k = l; k < n; k++)
+					{
+						tmp = a[i * n + k] /= scale;
+						s += tmp * tmp;
+					}
+					f = a[i * n + l];
+					g = -sign(sqrt(s), f);
+					h = f * g - s;
+					a[i * n + l] = f - g;
+
+					for (k = l; k < n; k++)
+						rv1[k] = a[i * n + k] / h;
+
+					for (j = l; j < m; j++)
+					{
+						for (s = T(0), k = l; k < n; k++)
+							s += a[j * n + k] * a[i * n + k];
+						for (k = l; k < n; k++)
+							a[j * n + k] += s * rv1[k];
+					}
+					for (k = l; k < n; k++)
+						a[i * n + k] *= scale;
+				}
+			}
+			anorm = std::max(anorm, abs(w[i]) + abs(rv1[i]));
+		}
+
+		for (i = n - 1; ; i--)
+		{
+			if (i < n - 1)
+			{
+				if (abs(g) > epsilon(g))
+				{
+					for (j = l; j < n; j++)
+						v[j * n + i] = (a[i * n + j] / a[i * n + l]) / g;
+					for (j = l; j < n; j++)
+					{
+						for (s = T(0), k = l; k < n; k++)
+							s += a[i * n + k] * v[k * n + j];
+
+						for (k = l; k < n; k++)
+							v[k * n + j] += s * v[k * n + i];
+					}
+				}
+				for (j = l; j < n; j++)
+					v[i * n + j] = v[j * n + i] = T(0);
+			}
+			v[i * n + i] = T(1);
+			g = rv1[i];
+			l = i;
+			if (i == 0)
+				break;
+		}
+
+		for (i = std::min(m, n) - 1; ; i--)
+		{
+			l = i + 1;
+			g = w[i];
+			for (j = l; j < n; j++)
+				a[i * n + j] = T(0);
+			if (abs(g) > epsilon(g))
+			{
+				g = T(1) / g;
+				for (j = l; j < n; j++)
+				{
+					for (s = T(0), k = l; k < m; k++)
+						s += a[k * n + i] * a[k * n + j];
+
+					f = (s / a[i * n + i]) * g;
+
+					for (k = i; k < m; k++)
+						a[k * n + j] += f * a[k * n + i];
+				}
+				for (j = i; j < m; j++)
+					a[j * n + i] *= g;
+
+			}
+			else
+			{
+				for (j = i; j < m; j++)
+					a[j * n + i] = T(0);
+			}
+			++a[i * n + i];
+			if (i == 0)
+				break;
+		}
+
+		for (k = n - 1; ; k--)
+		{
+			for (its = 1; its <= 30; its++)
+			{
+				flag = 1;
+				for (l = k; ; l--)
+				{
+					nm = l - 1;
+					if (abs(rv1[l]) < epsilon(rv1[l]))
+					{
+						flag = 0;
+						break;
+					}
+					if (abs(w[nm]) < epsilon(w[nm]))
+						break;
+					if (l == 0)
+						break;
+				}
+				if (flag)
+				{
+					c = T(0);
+					s = T(1);
+					for (i = l; i <= k; i++)
+					{
+						f = s * rv1[i];
+						rv1[i] = c * rv1[i];
+						if (abs(f) < epsilon(f))
+							break;
+						g = w[i];
+						h = hypot(f, g);
+						w[i] = h;
+						h = T(1) / h;
+						c = g * h;
+						s = -f * h;
+						for (j = 0; j < m; j++)
+						{
+							y = a[j * n + nm];
+							z = a[j * n + i];
+							a[j * n + nm] = y * c + z * s;
+							a[j * n + i] = z * c - y * s;
+						}
+					}
+				}
+				z = w[k];
+				if (l == k)
+				{
+					if (z < T(0))
+					{
+						w[k] = -z;
+						for (j = 0; j < n; j++)
+							v[j * n + k] = -v[j * n + k];
+					}
+					break;
+				}
+
+				if (its == 30)
+					return false;
+
+				x = w[l];
+				nm = k - 1;
+				y = w[nm];
+				g = rv1[nm];
+				h = rv1[k];
+				f = ((y - z) * (y + z) + (g - h) * (g + h)) / (T(2) * h * y);
+				g = hypot(f, T(1));
+				f = ((x - z) * (x + z) + h * ((y / (f + sign(g, f))) - h)) / x;
+				c = s = T(1);
+				for (j = l; j <= nm; j++)
+				{
+					i = j + 1;
+					g = rv1[i];
+					y = w[i];
+					h = s * g;
+					g = c * g;
+					z = hypot(f, h);
+					rv1[j] = z;
+					c = f / z;
+					s = h / z;
+					f = x * c + g * s;
+					g = g * c - x * s;
+					h = y * s;
+					y *= c;
+					for (jj = 0; jj < n; jj++)
+					{
+						x = v[jj * n + j];
+						z = v[jj * n + i];
+						v[jj * n + j] = x * c + z * s;
+						v[jj * n + i] = z * c - x * s;
+					}
+					z = hypot(f, h);
+					w[j] = z;
+					if (abs(z) > epsilon(z))
+					{
+						z = 1.0 / z;
+						c = f * z;
+						s = h * z;
+					}
+					f = c * g + s * y;
+					x = c * y - s * g;
+					for (jj = 0; jj < m; jj++)
+					{
+						y = a[jj * n + j];
+						z = a[jj * n + i];
+						a[jj * n + j] = y * c + z * s;
+						a[jj * n + i] = z * c - y * s;
+					}
+				}
+				rv1[l] = 0.0;
+				rv1[k] = f;
+				w[k] = x;
+			}
+			if (k == 0)
+				break;
+		}
+		return true;
+	}
 }
 
 #endif /* MATRIX_HPP */

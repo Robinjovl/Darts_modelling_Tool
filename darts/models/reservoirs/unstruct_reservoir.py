@@ -99,20 +99,19 @@ class UnstructReservoir:
         self.wells.append(well)
         return 0
 
-    def add_perforation(self, well, res_block, offset=0, well_index=-1, well_indexD=-1, well_radius=0.1524, skin=0.,
+    def add_perforation(self, well, res_block, well_index=-1, well_indexD=-1, well_radius=0.1524, skin=0.,
                         multi_segment=True, verbose=False):
         """
         Class method which ads perforation to each (existing!) well
 
         :param well: data object which contains data of the particular well
         :param res_block: reservoir block in which the well has a perforation
-        :param offset: number of fracture cells in the grid. Because there is no permeability for them and array length is less.
         :param well_index: well index (productivity index)
         :return:
         """
         
         # calculate well index and get local index of reservoir block
-        wi, wid = self.unstr_discr.calc_equivalent_well_index(res_block - offset, well_radius=well_radius, skin=skin)
+        wi, wid = self.unstr_discr.calc_equivalent_well_index(res_block, well_radius=well_radius, skin=skin)
 
         if well_index == -1: 
             well_index = wi

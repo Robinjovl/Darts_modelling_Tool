@@ -94,6 +94,13 @@ void pybind_globals(py::module &m)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel);
   
+  py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
+    .def(py::init<>())
+    .def_readwrite("max_i_linear", &linear_solver_params::max_i_linear)
+    .def_readwrite("tolerance_linear", &linear_solver_params::tolerance_linear)
+    .def_readwrite("linear_type", &linear_solver_params::linear_type);
+  py::bind_vector<std::vector<linear_solver_params>>(m, "vector_linear_solver_params", py::module_local());
+
   py::enum_<sim_params::newton_solver_t>(sim_params, "newton_solver_t", "Available types of newton solvers")
     .value("newton_std", sim_params::newton_solver_t::NEWTON_STD)
     .value("newton_global_chop", sim_params::newton_solver_t::NEWTON_GLOBAL_CHOP)

@@ -3513,8 +3513,8 @@ class UnstructDiscretizer:
         :param skin: skin
         :return: well_index, well_index_thermal
         '''
-        kx = self.perm_x_cell[res_block]
-        ky = self.perm_y_cell[res_block]
+        kx = self.perm_x_cell[res_block - self.fracture_cell_count] # perm array contains only cells data
+        ky = self.perm_y_cell[res_block - self.fracture_cell_count] # perm array contains only cells data
         points = self.mesh_data.points
         cells = self.mesh_data.cells
         # check the mesh contains only wedges (quads are boundary faces, so they are allowed too)
