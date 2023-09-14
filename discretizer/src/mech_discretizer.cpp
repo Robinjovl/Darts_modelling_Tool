@@ -15,6 +15,7 @@ using std::copy_n;
 template <MechDiscretizerMode MODE>
 const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
 
+// this matrix W helps to translate elasticity operator to simpler form
 template <MechDiscretizerMode MODE>
 MechDiscretizer<MODE>::MechDiscretizer() : W(9, 6)
 {
@@ -81,7 +82,7 @@ void MechDiscretizer<MODE>::init()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& _bc_mech)
+void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_thm_new)
 {
   // Variables
   std::vector<index_t> st;		st.reserve(MAX_STENCIL);
@@ -102,7 +103,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
   u_grad_vals.reserve(ND * ND * mesh->num_of_elements * MAX_STENCIL);
   u_grad_rhs.reserve(ND * ND * mesh->num_of_elements);
 
-  bc_mech = _bc_mech;
+	bc_thm = bc_thm_new;
 
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
@@ -118,10 +119,10 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 	  if (conn.type == mesh::MAT_BOUND)
 	  {
 		// Coefficients that define boundary condition
-		const auto& an = bc_mech.a_n[conn.elem_id2 - mesh->n_cells];
-		const auto& bn = bc_mech.b_n[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_mech.a_t[conn.elem_id2 - mesh->n_cells];
-		const auto& bt = bc_mech.b_t[conn.elem_id2 - mesh->n_cells];
+		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
+		const auto& at = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 
 		if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
 	  }
@@ -271,12 +272,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 	  }
 	  else if (conn.type == mesh::MAT_BOUND)
 	  {
-		const auto& an = bc_mech.a_n[conn.elem_id2 - mesh->n_cells];
-		const auto& bn = bc_mech.b_n[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_mech.a_t[conn.elem_id2 - mesh->n_cells];
-		const auto& bt = bc_mech.b_t[conn.elem_id2 - mesh->n_cells];
-		const auto& ap = bc_flow.a_p[conn.elem_id2 - mesh->n_cells];
-		const auto& bp = bc_flow.b_p[conn.elem_id2 - mesh->n_cells];
+		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
+		const auto& at = bc_thm.mech_tangen.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		const auto& ap = bc_thm.flow.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
 
 		
 		// Skip if pure neumann
@@ -386,9 +387,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 	  for (const auto& val : to_invert.values)
 		assert(val == val && std::isfinite(val));
 
-	  Matrix tempGrad = to_invert * A.transpose() * cur_rhs;
+		// 9 x 5*stencil matrix for the each cell
+	  Matrix varGrad = to_invert * A.transpose() * cur_rhs;
+		// 5 x 1
 	  Matrix rhsGrad = to_invert * A.transpose() * rest;
 
+		// sorted array needed for the fast merge of two arrays
 	  std::vector<std::pair<index_t, index_t>> sort_vec(st.size());
 	  for (index_t row = 0; row < st.size(); row++)
 	  {
@@ -403,12 +407,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		u_grad_stencil.push_back(st.first);
 
 	  // push sorted coefficients & rhs
-	  for (int row = 0; row < tempGrad.M; row++)
+	  for (int row = 0; row < varGrad.M; row++) //TODO: check index - row, sortcol 
 	  {
 		u_grad_rhs.push_back(rhsGrad(row, 0));
 		for (int col = 0; col < st.size(); col++)
 		{
-		  u_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
+		  u_grad_vals.push_back(varGrad(row, n_unknowns * sort_vec[col].second));
 		}
 	  }
 	}
@@ -559,6 +563,8 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 	{
 	  const auto& conn = mesh->conns[mesh->adj_matrix[j]];
 	  cell_id2 = mesh->adj_matrix_cols[j];
+		// the connection stores only one-side normal, so need to use a sign
+		// the normal for the elem_id1 points outside the cell
 	  sign = (conn.elem_id1 == cell_id1) ? 1.0 : -1.0;
 
 	  if (conn.type == mesh::MAT_MAT)
