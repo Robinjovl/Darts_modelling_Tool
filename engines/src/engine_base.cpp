@@ -517,7 +517,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
                 rate = time_data.at(well_ + " : " + opt_phase + " rate (m3/day)");
 
                 //std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));
-                std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));  // adding minus sign here to make sure the production rate is positive
+                std::transform(rate.begin(), rate.end(), rate.begin(), [](double val) { return -1 * val; });  // adding minus sign here to make sure the production rate is positive
                 q_p.push_back(rate);
             }
 

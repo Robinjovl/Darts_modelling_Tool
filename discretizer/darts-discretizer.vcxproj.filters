@@ -186,5 +186,8 @@
     <ClInclude Include="src\pybind11\py_mech_discretizer.h">
       <Filter>Source Files\pybind</Filter>
     </ClInclude>
+    <ClInclude Include="src\approximation.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
