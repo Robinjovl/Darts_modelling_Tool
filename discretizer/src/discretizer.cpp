@@ -55,17 +55,10 @@ void Discretizer::init()
 	pre_merged_flux.resize(MAX_FLUXES_NUM);
 	for (uint8_t k = 0; k < MAX_FLUXES_NUM; k++)
 	{
-		// Darcy's, elastic fluxes and Biot's fluxes 
-		auto& flux = fluxes[k];
-		flux.a = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-		flux.a_homo = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-		flux.a_thermal = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-		flux.rhs = Matrix(BLOCK_SIZE, 1);
-		flux.stencil.reserve(MAX_STENCIL);
+		// Darcy's, Fick's and Fourier's fluxes 
+		fluxes[k] = FlowHeatApproximation(MAX_STENCIL);
 		// Premerged fluxes
-		pre_merged_flux[k].a = Matrix(BLOCK_SIZE, MAX_STENCIL * BLOCK_SIZE);
-		pre_merged_flux[k].rhs = Matrix(BLOCK_SIZE, 1);
-		pre_merged_flux[k].stencil.reserve(MAX_STENCIL);
+		pre_merged_flux[k] = FlowHeatApproximation(MAX_STENCIL);
 	}
 }
 
@@ -299,10 +292,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 	USE_CONNECTION_BASED_GRADIENTS = false;
 
 	// allocate memory for arrays
-	grad_stencil.reserve(mesh->num_of_elements * MAX_STENCIL);
-	grad_offset.reserve(mesh->num_of_elements + 1);
-	p_grad_vals.reserve(ND * mesh->num_of_elements * MAX_STENCIL);
-	p_grad_rhs.reserve(ND * mesh->num_of_elements);
+	p_grads.resize(mesh->n_cells, LinearApproximation<P>(ND, MAX_STENCIL));
 
 	steady_clock::time_point t1, t2;
 	t1 = steady_clock::now();
@@ -447,32 +437,10 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 				for (const auto& val : to_invert.values)
 					assert(val == val && std::isfinite(val));
 
-				Matrix tempGrad = to_invert * A.transpose() * R;
-				Matrix rhsGrad = to_invert * A.transpose() * rhs;
-
-
-				std::vector<std::pair<index_t, index_t>> sort_vec(tempGrad.N);
-				for (index_t row = 0; row < tempGrad.N; row++) 
-				{
-					sort_vec[row] = std::make_pair(temp_stencil[row], row);
-				}
-				std::sort(sort_vec.begin(), sort_vec.end(), [](auto &left, auto &right) { return left.first < right.first; });
-
-				grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
-
-				// push sorted stencil
-				for (const auto& st : sort_vec)
-					grad_stencil.push_back(st.first);
-
-                // push sorted coefficients & rhs
-                for (int row = 0; row < tempGrad.M; row++) 
-				{
-					p_grad_rhs.push_back(rhsGrad(row, 0));
-                    for (int col = 0; col < tempGrad.N; col++) 
-					{
-                        p_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
-                    }
-                }
+				auto& cur_grad = p_grads[i];
+				cur_grad.a = to_invert * A.transpose() * R;
+				cur_grad.rhs = to_invert * A.transpose() * rhs;
+				cur_grad.stencil = temp_stencil;
 			}
 			catch (const std::exception&)
 			{
@@ -644,28 +612,11 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					A.transposeInplace();
 				}
 
-				std::vector<std::pair<index_t, index_t>> sort_vec(tempGrad.N);
-				for (index_t row = 0; row < tempGrad.N; row++)
-				{
-					sort_vec[row] = std::make_pair(temp_stencil[row], row);
-				}
-				std::sort(sort_vec.begin(), sort_vec.end(), [](auto& left, auto& right) { return left.first < right.first; });
-
-				grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
-
-				// push sorted stencil
-				for (const auto& st : sort_vec)
-					grad_stencil.push_back(st.first);
-
-				// push sorted coefficients & rhs
-				for (int row = 0; row < tempGrad.M; row++)
-				{
-					p_grad_rhs.push_back(rhsGrad(row, 0));
-					for (int col = 0; col < tempGrad.N; col++)
-					{
-						p_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
-					}
-				}
+				auto& cur_grad = p_grads[i];
+				cur_grad.a = tempGrad;
+				cur_grad.rhs = rhsGrad;
+				cur_grad.stencil = temp_stencil;
+				cur_grad.sort();
 			}
 			catch (const std::exception&)
 			{
@@ -698,8 +649,6 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 		}
 	}
 
-	grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
-
 	t2 = steady_clock::now();
 	cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
@@ -709,11 +658,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
   USE_CONNECTION_BASED_GRADIENTS = false;
 
   // allocate memory for arrays
-  grad_stencil.reserve(mesh->num_of_elements * MAX_STENCIL);
-  grad_offset.reserve(mesh->num_of_elements + 1);
-  p_grad_vals.reserve(ND * mesh->num_of_elements * MAX_STENCIL);
-  p_grad_rhs.reserve(ND * mesh->num_of_elements);
-  t_grad_vals.reserve(ND * mesh->num_of_elements * MAX_STENCIL);
+  p_grads.resize(mesh->n_cells, LinearApproximation<P>(ND, MAX_STENCIL));
+  t_grads.resize(mesh->n_cells, LinearApproximation<T>(ND, MAX_STENCIL));
 
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
@@ -919,31 +865,11 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		for (const auto& val : to_invert.values)
 		  assert(val == val && std::isfinite(val));
 
-		Matrix tempGrad = to_invert * A_p.transpose() * R_p;
-		Matrix rhsGrad = to_invert * A_p.transpose() * rhs_p;
-
-		sort_vec.resize(tempGrad.N);
-		for (index_t row = 0; row < tempGrad.N; row++)
-		{
-		  sort_vec[row] = std::make_pair(temp_stencil[row], row);
-		}
-		std::sort(sort_vec.begin(), sort_vec.end(), [](auto& left, auto& right) { return left.first < right.first; });
-
-		grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
-
-		// push sorted stencil
-		for (const auto& st : sort_vec)
-		  grad_stencil.push_back(st.first);
-
-		// push sorted coefficients & rhs
-		for (int row = 0; row < tempGrad.M; row++)
-		{
-		  p_grad_rhs.push_back(rhsGrad(row, 0));
-		  for (int col = 0; col < tempGrad.N; col++)
-		  {
-			p_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
-		  }
-		}
+		auto& cur_grad = p_grads[i];
+		cur_grad.a = to_invert * A_p.transpose() * R_p;
+		cur_grad.rhs = to_invert * A_p.transpose() * rhs_p;
+		cur_grad.stencil = temp_stencil;
+		cur_grad.sort();
 	  }
 	  catch (const std::exception&)
 	  {
@@ -961,14 +887,10 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 
 		Matrix tempGrad = to_invert * A_th.transpose() * R_th;
 
-		// push sorted coefficients & rhs
-		for (int row = 0; row < tempGrad.M; row++)
-		{
-		  for (int col = 0; col < tempGrad.N; col++)
-		  {
-			t_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
-		  }
-		}
+		auto& cur_grad = t_grads[i];
+		cur_grad.a = to_invert * A_th.transpose() * R_th;
+		cur_grad.stencil = temp_stencil;
+		cur_grad.sort();
 	  }
 	  catch (const std::exception&)
 	  {
@@ -1140,28 +1062,11 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  A_p.transposeInplace();
 		}
 
-		std::vector<std::pair<index_t, index_t>> sort_vec(tempGrad.N);
-		for (index_t row = 0; row < tempGrad.N; row++)
-		{
-		  sort_vec[row] = std::make_pair(temp_stencil[row], row);
-		}
-		std::sort(sort_vec.begin(), sort_vec.end(), [](auto& left, auto& right) { return left.first < right.first; });
-
-		grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
-
-		// push sorted stencil
-		for (const auto& st : sort_vec)
-		  grad_stencil.push_back(st.first);
-
-		// push sorted coefficients & rhs
-		for (int row = 0; row < tempGrad.M; row++)
-		{
-		  p_grad_rhs.push_back(rhsGrad(row, 0));
-		  for (int col = 0; col < tempGrad.N; col++)
-		  {
-			p_grad_vals.push_back(tempGrad(row, sort_vec[col].second));
-		  }
-		}
+		auto& cur_grad = p_grads[i];
+		cur_grad.a = tempGrad;
+		cur_grad.rhs = rhsGrad;
+		cur_grad.stencil = temp_stencil;
+		cur_grad.sort();
 	  }
 	  catch (const std::exception&)
 	  {
@@ -1193,8 +1098,6 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 #endif /* DEBUG_TRANS */
 	}
   }
-
-  grad_offset.push_back(static_cast<index_t>(grad_stencil.size()));
 
   t2 = steady_clock::now();
   cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
@@ -1269,7 +1172,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 	return { cur_conn_id, triplets[0].first[1], triplets[0].first[2]};
 }
 
-void Discretizer::reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc)
+/*void Discretizer::reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc)
 {
 	USE_CONNECTION_BASED_GRADIENTS = true;
 
@@ -1458,7 +1361,7 @@ void Discretizer::reconstruct_pressure_gradients_per_face(const BoundaryConditio
 					assert(lambda2 < EQUALITY_TOLERANCE * tmp);
 				}
 			}
-	#endif /* DEBUG_TRANS */
+	#endif /* DEBUG_TRANS 
 		}
 	}
 
@@ -1466,7 +1369,7 @@ void Discretizer::reconstruct_pressure_gradients_per_face(const BoundaryConditio
 
 	t2 = steady_clock::now();
 	cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
-}
+}*/
 
 void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) 
 {
@@ -1505,10 +1408,10 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
 				calc_matrix_matrix(conn, flux, j, adj_nebr_id, with_thermal);
 				
-				flux.a.values *= sign * conn.area;
-				flux.a_homo.values *= sign * conn.area;
-				flux.a_thermal.values *= sign * conn.area;
-				flux.rhs.values *= sign * conn.area;
+				flux.darcy.a.values *= sign * conn.area;
+				flux.fick.a.values *= sign * conn.area;
+				flux.fourier.a.values *= sign * conn.area;
+				flux.darcy.rhs.values *= sign * conn.area;
 
 				cell_m.push_back(cell_id1);
 				cell_p.push_back(cell_id2);
@@ -1539,10 +1442,10 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				auto& flux = fluxes[0];
 				calc_matrix_boundary(conn, flux, j, with_thermal);
 
-				flux.a.values *= conn.area;
-				flux.a_thermal.values *= conn.area;
-				flux.a_homo.values *= conn.area;
-				flux.rhs.values *= conn.area;
+				flux.darcy.a.values *= conn.area;
+				flux.fourier.a.values *= conn.area;
+				flux.fick.a.values *= conn.area;
+				flux.darcy.rhs.values *= conn.area;
 
 				cell_m.push_back(cell_id1);
 				cell_p.push_back(cell_id2);
@@ -1558,8 +1461,8 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
 				calc_matrix_matrix(conn, flux, j, adj_nebr_id);
 
-				flux.a.values *= sign * conn.area;
-				flux.rhs.values *= sign * conn.area;
+				flux.darcy.a.values *= sign * conn.area;
+				flux.darcy.rhs.values *= sign * conn.area;
 
 				cell_m.push_back(cell_id1);
 				cell_p.push_back(cell_id2);
@@ -1585,8 +1488,8 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
 				calc_matrix_matrix(conn, flux, j, adj_nebr_id);
 
-				flux.a.values *= sign * conn.area;
-				flux.rhs.values *= sign * conn.area;
+				flux.darcy.a.values *= sign * conn.area;
+				flux.darcy.rhs.values *= sign * conn.area;
 
 				cell_m.push_back(cell_id1);
 				cell_p.push_back(cell_id2);
@@ -1614,8 +1517,8 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
 				calc_fault_fault(conn, flux);
 
-				flux.a.values *= sign * conn.area;
-				flux.rhs.values *= sign * conn.area;
+				flux.darcy.a.values *= sign * conn.area;
+				flux.darcy.rhs.values *= sign * conn.area;
 
 				cell_m.push_back(cell_id1);
 				cell_p.push_back(cell_id2);
@@ -1629,7 +1532,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 	cout << "Find MPFA trans: \t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
 
-void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal)
+void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal)
 {
 	uint8_t id1, id2;
 	value_t lam1, lam2, d1, d2, Fh, T1, T2, T;
@@ -1669,43 +1572,33 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, Approximation
 	}
 
 	// allocate arrays for merging gradients
-	const uint8_t n_st1 = grad_offset[grad_id1 + 1] - grad_offset[grad_id1];
-	const uint8_t n_st2 = grad_offset[grad_id2 + 1] - grad_offset[grad_id2];
-	Approximation g1(ND, n_st1), g2(ND, n_st2);
+	const auto& g1 = p_grads[grad_id1];
+	const auto& g2 = p_grads[grad_id2];
 
-	// merging gradients
-	std::copy_n(grad_stencil.begin() + grad_offset[grad_id1], n_st1, g1.stencil.begin());
-	std::copy_n(p_grad_vals.data() + ND * grad_offset[grad_id1], ND * n_st1, std::begin(g1.a.values));
-	std::copy_n(p_grad_rhs.data() + ND * grad_id1, ND, std::begin(g1.rhs.values));
-
-	std::copy_n(grad_stencil.begin() + grad_offset[grad_id2], n_st2, g2.stencil.begin());
-	std::copy_n(p_grad_vals.data() + ND * grad_offset[grad_id2], ND * n_st2, std::begin(g2.a.values));
-	std::copy_n(p_grad_rhs.data() + ND * grad_id2, ND, std::begin(g2.rhs.values));
-
-	flux.stencil.clear();
-	Matrix nabla_p = mergeMatrices(g1.a, g2.a, g1.stencil, g2.stencil, flux.stencil);
+	flux.darcy.stencil.clear();
+	flux.darcy = g1 / 2.0 + g2 / 2.0;
 	
 	// flux approximation
 	grad_coef = -(lam1 * lam2 * (y1 - y2).transpose() + lam1 * d2 * gam2.transpose() + lam2 * d1 * gam1.transpose()) / (lam1 * d2 + lam2 * d1);
-	flux.a = grad_coef * nabla_p;
-	flux.rhs = grad_coef * (g1.rhs + g2.rhs) / 2.0;
-	flux.rhs += DARCY_CONSTANT * grav_vec * (lam2 * d1 * perms[conn.elem_id1] + lam1 * d2 * perms[conn.elem_id2]) * n / (lam1 * d2 + lam2 * d1);
-	const auto it1 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id1);
-	const auto it2 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id2);
-	assert(it1 != flux.stencil.end() && it2 != flux.stencil.end());
+	flux.darcy.a = grad_coef * flux.darcy.a;
+	flux.darcy.rhs = grad_coef * flux.darcy.rhs;
+	flux.darcy.rhs += DARCY_CONSTANT * grav_vec * (lam2 * d1 * perms[conn.elem_id1] + lam1 * d2 * perms[conn.elem_id2]) * n / (lam1 * d2 + lam2 * d1);
+	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
+	const auto it2 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id2);
+	assert(it1 != flux.darcy.stencil.end() && it2 != flux.darcy.stencil.end());
 	Fh = -lam1 * lam2 / (lam1 * d2 + lam2 * d1);
-	id1 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it1));
-	id2 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it2));
-	flux.a(0, id1) -= Fh;
-	flux.a(0, id2) += Fh;
+	id1 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it1));
+	id2 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it2));
+	flux.darcy.a(0, id1) -= Fh;
+	flux.darcy.a(0, id2) += Fh;
 
 	vec1 = conn.c - x1; T1 = dot(vec1, n) / dot(vec1, vec1);
 	vec2 = conn.c - x2;	T2 = -dot(vec2, n) / dot(vec2, vec2);
 	assert(T1 >= 0.0 && T2 >= 0.0);
 	T = (T1 + T2) > EQUALITY_TOLERANCE ? T1 * T2 / (T1 + T2) : 0.0;
-	flux.a_homo.values = 0.0;
-	flux.a_homo(0, id1) = T;
-	flux.a_homo(0, id2) = -T;
+	flux.fick.a.values = 0.0;
+	flux.fick.a(0, id1) = T;
+	flux.fick.a(0, id2) = -T;
 
 	if (with_thermal)
 	{
@@ -1717,19 +1610,19 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, Approximation
 	  gam1 = K1n - lam1 * n;
 	  gam2 = K2n - lam2 * n;
 	  // temperature gradients
-	  std::copy_n(t_grad_vals.data() + ND * grad_offset[grad_id1], ND * n_st1, std::begin(g1.a.values));
-	  std::copy_n(t_grad_vals.data() + ND * grad_offset[grad_id2], ND * n_st2, std::begin(g2.a.values));
-	  nabla_p = mergeMatrices(g1.a, g2.a, g1.stencil, g2.stencil, th_stencil);
+	  const auto& g1 = t_grads[grad_id1];
+	  const auto& g2 = t_grads[grad_id2];
+	  flux.fourier = g1 / 2.0 + g2 / 2.0;
 	  // flux approximation
 	  grad_coef = -(lam1 * lam2 * (y1 - y2).transpose() + lam1 * d2 * gam2.transpose() + lam2 * d1 * gam1.transpose()) / (lam1 * d2 + lam2 * d1);
-	  flux.a_thermal = grad_coef * nabla_p;
+	  flux.fourier.a = grad_coef * flux.fourier.a;
 	  Fh = -lam1 * lam2 / (lam1 * d2 + lam2 * d1);
-	  flux.a_thermal(0, id1) -= Fh;
-	  flux.a_thermal(0, id2) += Fh;
+	  flux.fourier.a(0, id1) -= Fh;
+	  flux.fourier.a(0, id2) += Fh;
 	}
 }
 
-void Discretizer::calc_fault_fault(const mesh::Connection& conn, Approximation& flux)
+void Discretizer::calc_fault_fault(const mesh::Connection& conn, FlowHeatApproximation& flux)
 {
 	uint8_t id1, id2;
 	value_t lam1, lam2, d1, d2, Fh;
@@ -1749,27 +1642,27 @@ void Discretizer::calc_fault_fault(const mesh::Connection& conn, Approximation& 
 	d1 = fabs(dot(conn.c - x1, n));
 	d2 = fabs(dot(x2 - conn.c, n));
 
-	flux.stencil.clear();
-	flux.stencil.push_back(std::min(conn.elem_id1, conn.elem_id2));
-	flux.stencil.push_back(std::max(conn.elem_id1, conn.elem_id2));
+	flux.darcy.stencil.clear();
+	flux.darcy.stencil.push_back(std::min(conn.elem_id1, conn.elem_id2));
+	flux.darcy.stencil.push_back(std::max(conn.elem_id1, conn.elem_id2));
 
 	// flux approximation
 	//grad_coef = -(lam1 * lam2 * (y1 - y2).transpose() + lam1 * d2 * gam2.transpose() + lam2 * d1 * gam1.transpose()) / (lam1 * d2 + lam2 * d1);
 	//flux.a = grad_coef * nabla_p;
 	//flux.rhs = grad_coef * (g1.rhs + g2.rhs) / 2.0;
 	//flux.rhs += DARCY_CONSTANT * grav_vec * (lam2 * d1 * perms[conn.elem_id1] + lam1 * d2 * perms[conn.elem_id2]) * n / (lam1 * d2 + lam2 * d1);
-	const auto it1 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id1);
-	const auto it2 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id2);
-	assert(it1 != flux.stencil.end() && it2 != flux.stencil.end());
+	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
+	const auto it2 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id2);
+	assert(it1 != flux.darcy.stencil.end() && it2 != flux.darcy.stencil.end());
 	
 	Fh = -lam1 * lam2 / (lam1 * d2 + lam2 * d1);
-	id1 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it1));
-	id2 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it2));
-	flux.a(0, id1) -= Fh;
-	flux.a(0, id2) += Fh;
+	id1 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it1));
+	id2 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it2));
+	flux.darcy.a(0, id1) -= Fh;
+	flux.darcy.a(0, id2) += Fh;
 }
 
-void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal)
+void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const bool with_thermal)
 {
 	uint8_t id1, id2;
 	value_t lam1, d1, T1, T;
@@ -1805,38 +1698,30 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, Approximati
 		grad_id1 = conn.elem_id1;
 	}
 
-	// allocate arrays for merging gradients
-	const uint8_t n_st1 = grad_offset[grad_id1 + 1] - grad_offset[grad_id1];
-	Approximation g1(ND, n_st1);
-
-	// gradient
-	flux.stencil.resize(n_st1);
-	std::copy_n(grad_stencil.begin() + grad_offset[grad_id1], n_st1, flux.stencil.begin());
-	std::copy_n(p_grad_vals.data() + ND * grad_offset[grad_id1], ND * n_st1, std::begin(g1.a.values));
-	std::copy_n(p_grad_rhs.data() + ND * grad_id1, ND, std::begin(g1.rhs.values));
+	const auto& g1 = p_grads[conn.elem_id1];
 
 	// flux approximation
 	value_t mult = 1.0 / (a + b * lam1 / mu / d1);
 	grad_coef = -mult / mu * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
-	flux.a = grad_coef * g1.a;
-	flux.rhs = grad_coef * g1.rhs;
-	flux.rhs += mult / mu * a * grav_vec * DARCY_CONSTANT * perms[conn.elem_id1] * n;
+	flux.darcy.a = grad_coef * g1.a;
+	flux.darcy.rhs = grad_coef * g1.rhs;
+	flux.darcy.rhs += mult / mu * a * grav_vec * DARCY_CONSTANT * perms[conn.elem_id1] * n;
 
-	const auto it1 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id1);
-	const auto it2 = std::find(flux.stencil.begin(), flux.stencil.end(), conn.elem_id2);
-	assert(it1 != flux.stencil.end() && it2 != flux.stencil.end());
-	id1 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it1));
-	id2 = static_cast<uint8_t>(std::distance(flux.stencil.begin(), it2));
-	flux.a(0, id1) += lam1 / d1 / mu * mult * a;
-	flux.a(0, id2) += -lam1 / d1 / mu * mult;
+	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
+	const auto it2 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id2);
+	assert(it1 != flux.darcy.stencil.end() && it2 != flux.darcy.stencil.end());
+	id1 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it1));
+	id2 = static_cast<uint8_t>(std::distance(flux.darcy.stencil.begin(), it2));
+	flux.darcy.a(0, id1) += lam1 / d1 / mu * mult * a;
+	flux.darcy.a(0, id2) += -lam1 / d1 / mu * mult;
 
 	vec1 = conn.c - x1; 
 	T1 = dot(vec1, n) / dot(vec1, vec1);
 	T = T1 / (a + b * T1);
 	assert(T >= 0.0);
-	flux.a_homo.values = 0.0;
-	flux.a_homo(0, id1) = T;
-	flux.a_homo(0, id2) = -T;
+	flux.fick.a.values = 0.0;
+	flux.fick.a(0, id1) = T;
+	flux.fick.a(0, id2) = -T;
 
 	if (with_thermal)
 	{
@@ -1848,122 +1733,13 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, Approximati
 	  lam1 = (n.transpose() * heat_conductions[conn.elem_id1] * n).values[0];
 	  gam1 = heat_conductions[conn.elem_id1] * n - lam1 * n;
 
-	  // temperature gradient
-	  std::copy_n(t_grad_vals.data() + ND * grad_offset[grad_id1], ND * n_st1, std::begin(g1.a.values));
+	  const auto& g1 = t_grads[conn.elem_id1]; 
 
 	  // flux approximation
 	  mult = 1.0 / (a + b * lam1 / mu / d1);
 	  grad_coef = -mult / mu * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
-	  flux.a_thermal = grad_coef * g1.a;
+	  flux.fourier.a = grad_coef * g1.a;
 	}
-}
-
-index_t dis::Discretizer::nbContributors(std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t> &comb_cont)
-{
-	int i = 0, j = 0, contr = 0;
-	while (i != cont1.size() && j != cont2.size()) {
-		if (cont1[i] == cont2[j]) {
-			comb_cont.push_back(cont1[i]);
-			contr++; i++; j++;
-		}
-		else if (cont1[i] < cont2[j]) {
-			comb_cont.push_back(cont1[i]);
-			contr++; i++;
-		}
-		else {
-			comb_cont.push_back(cont2[j]);
-			contr++; j++;
-		}
-	}
-
-	while (i < cont1.size()) {
-		contr++;
-		comb_cont.push_back(cont1[i]);
-		i++;
-	}
-
-	while (j < cont2.size()) {
-		comb_cont.push_back(cont2[j]);
-		contr++; j++;
-	}
-
-	// keep the combined list of contributors in cont1
-	return contr;
-}
-
-Matrix Discretizer::mergeMatrices(Matrix& m1, Matrix& m2, std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t>& comb_cont)
-{
-	// first we have to iterate to find out the size of the matrix
-	// there is no append operator in the matrix class :'(-		merge_matrix.values	{ size=36 }	std::valarray<double>
-
-	const index_t nb_cont = nbContributors(cont1, cont2, comb_cont);
-	const index_t nb = m1.M / ND;
-	Matrix merge_matrix(nb * ND, nb * nb_cont);
-
-	int i = 0, j = 0, k = 0;
-
-	while (i != cont1.size() && j != cont2.size()) {
-		if (cont1[i] == cont2[j]) {
-			for (int it = 0; it < m1.M; ++it) 
-			{
-			  for (int jt = 0; jt < nb; ++jt)
-			  {
-				// m[k][it] = m1[i][it] + m2[j][it];
-				merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2 + m2(it, j * nb + jt) / 2;
-				//merge_matrix(k, it) = m1(i, it) / 2 + m2(j, it) / 2;
-			  }
-			}
-			i++; j++; k++;
-		}
-		else if (cont1[i] < cont2[j]) {
-			for (int it = 0; it < m1.M; ++it) 
-			{
-			  for (int jt = 0; jt < nb; ++jt)
-			  {
-				merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2;
-				//merge_matrix(k, it) = m1(i, it) / 2;
-			  }
-			}
-			i++; k++;
-		}
-		else {
-			for (int it = 0; it < m1.M; ++it)
-			{
-			  for (int jt = 0; jt < nb; ++jt)
-			  {
-				merge_matrix(it, k * nb + jt) = m2(it, j * nb + jt) / 2;
-				//merge_matrix(k, it) = m2(j, it) / 2;
-			  }
-			}
-			k++; j++;
-		}
-	}
-
-	while (i < cont1.size()) {
-		for (int it = 0; it < m1.M; ++it) 
-		{
-		  for (int jt = 0; jt < nb; ++jt)
-		  {
-			merge_matrix(it, k * nb + jt) = m1(it, i * nb + jt) / 2;
-			//merge_matrix(k, it) = m1(i, it) / 2;
-		  }
-		}
-		k++; i++;
-	}
-
-	while (j < cont2.size()) {
-		for (int it = 0; it < m1.M; ++it) 
-		{
-		  for (int jt = 0; jt < nb; ++jt)
-		  {
-			merge_matrix(it, k * nb + jt) = m2(it, j * nb + jt) / 2;
-			//merge_matrix(k, it) = m2(j, it) / 2;
-		  }
-		}
-		k++; j++;
-	}
-
-	return merge_matrix;
 }
 
 // fill the permeability tensor as diagonal with permx, permy, permz on diagonal
