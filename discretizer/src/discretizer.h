@@ -1,7 +1,6 @@
 #ifndef DISCRETIZER_H_
 #define DISCRETIZER_H_
 
-#include "mesh/mesh.h"
 #include "approximation.h"
 
 namespace dis
@@ -50,13 +49,13 @@ namespace dis
 	  FlowHeatApproximation() {};
 	  FlowHeatApproximation(index_t stencil_size)
 	  {
-		darcy = LinearApproximation<P>(1, stencil_size);
-		fick = LinearApproximation<P>(1, stencil_size);
-		fourier = LinearApproximation<T>(1, stencil_size);
+		darcy = LinearApproximation<Pvar>(1, stencil_size);
+		fick = LinearApproximation<Pvar>(1, stencil_size);
+		fourier = LinearApproximation<Tvar>(1, stencil_size);
 	  };
 
-	  LinearApproximation<P> darcy, fick;
-	  LinearApproximation<T> fourier;
+	  LinearApproximation<Pvar> darcy, fick;
+	  LinearApproximation<Tvar> fourier;
 
 	  bool is_same_stencil = true;
 	};
@@ -141,8 +140,8 @@ namespace dis
 		std::vector<index_t> cell_p;
 
 		/* MPFA */
-		std::vector<LinearApproximation<P>> p_grads;
-		std::vector<LinearApproximation<T>> t_grads;
+		std::vector<LinearApproximation<Pvar>> p_grads;
+		std::vector<LinearApproximation<Tvar>> t_grads;
 
 		//std::vector<double> pressuregrad;
 		/* Fluxes */

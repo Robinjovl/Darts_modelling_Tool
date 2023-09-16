@@ -292,7 +292,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 	USE_CONNECTION_BASED_GRADIENTS = false;
 
 	// allocate memory for arrays
-	p_grads.resize(mesh->n_cells, LinearApproximation<P>(ND, MAX_STENCIL));
+	p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
 
 	steady_clock::time_point t1, t2;
 	t1 = steady_clock::now();
@@ -441,6 +441,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 				cur_grad.a = to_invert * A.transpose() * R;
 				cur_grad.rhs = to_invert * A.transpose() * rhs;
 				cur_grad.stencil = temp_stencil;
+				cur_grad.sort();
 			}
 			catch (const std::exception&)
 			{
@@ -658,8 +659,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
   USE_CONNECTION_BASED_GRADIENTS = false;
 
   // allocate memory for arrays
-  p_grads.resize(mesh->n_cells, LinearApproximation<P>(ND, MAX_STENCIL));
-  t_grads.resize(mesh->n_cells, LinearApproximation<T>(ND, MAX_STENCIL));
+  p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
+  t_grads.resize(mesh->n_cells, LinearApproximation<Tvar>(ND, MAX_STENCIL));
 
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
@@ -1575,7 +1576,6 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	const auto& g1 = p_grads[grad_id1];
 	const auto& g2 = p_grads[grad_id2];
 
-	flux.darcy.stencil.clear();
 	flux.darcy = g1 / 2.0 + g2 / 2.0;
 	
 	// flux approximation
@@ -1706,6 +1706,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	flux.darcy.a = grad_coef * g1.a;
 	flux.darcy.rhs = grad_coef * g1.rhs;
 	flux.darcy.rhs += mult / mu * a * grav_vec * DARCY_CONSTANT * perms[conn.elem_id1] * n;
+	flux.darcy.stencil = g1.stencil;
 
 	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
 	const auto it2 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id2);
@@ -1739,6 +1740,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	  mult = 1.0 / (a + b * lam1 / mu / d1);
 	  grad_coef = -mult / mu * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
 	  flux.fourier.a = grad_coef * g1.a;
+	  flux.fourier.stencil = g1.stencil;
 	}
 }
 

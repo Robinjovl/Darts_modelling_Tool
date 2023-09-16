@@ -2,7 +2,6 @@
 #define APPROXIMATION_H_
 
 #include <type_traits>
-#include <tuple>
 #include <array>
 #include "mesh/mesh.h"
 
@@ -13,22 +12,18 @@ namespace dis
   using mesh::Matrix;
 
   // variable's names we perform approxiamtion over: 
-  // 'U' - vector of displacements, 
-  // 'P' - pressure 
-  // 'T' - temperature
-  enum VarName { U, P, T };
+  // 'Uvar' - vector of displacements, 
+  // 'Pvar' - pressure 
+  // 'Tvar' - temperature
+  enum VarName { Uvar, Pvar, Tvar };
   
   // class template that represents a linear approximation
   // template parameters are variables used in approximation
   template <VarName... VarNames>
   class LinearApproximation
   {
-    //static_assert(((VarName == VarName::U ||
-    //                VarName == VarName::P ||
-    //                VarName == VarName::T) && ...), "Invalid variable name!");
   public:
-    static inline const std::array<VarName, sizeof...(VarNames)> var_names = 
-      { VarNames... };
+    static inline const std::array<VarName, sizeof...(VarNames)> var_names = { VarNames... };
     static inline const index_t n_block = sizeof...(VarNames);
 
     LinearApproximation() {};
@@ -149,7 +144,7 @@ namespace dis
   }
 
   // merge stencils
-  void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t> st)
+  static void merge_stencils(const std::vector<index_t>& st1, const std::vector<index_t>& st2, std::vector<index_t>& st)
   {
     index_t i = 0, j = 0;
 

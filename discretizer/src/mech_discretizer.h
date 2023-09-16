@@ -32,25 +32,33 @@ namespace dis
 	  Stiffness(std::valarray<value_t> _c) : Base(_c, 6, 6) {}
 	};
 
-	/* Here is what we call linear approximation */
-	struct MechApproximation 
-	{
-	  MechApproximation() {};
-	  MechApproximation(uint8_t M, uint8_t N)
-	  {
-		a = Matrix(M, N);
-		rhs = Matrix(M, 1);
-		a_biot = Matrix(M, N);
-		rhs_biot = Matrix(M, 1);
-		stencil.reserve(N);
-	  };
-	  Matrix a, rhs, a_biot, rhs_biot;
-	  std::vector<index_t> stencil;
-	};
-
 	enum MechDiscretizerMode { POROELASTIC, THERMOPOROELASTIC };
 
 	const std::unordered_map<MechDiscretizerMode, uint8_t> N_UNKNOWNS = { { POROELASTIC, ND + 1 }, { THERMOPOROELASTIC, ND + 2 } };
+
+	template <MechDiscretizerMode MODE>
+	using ApproximationType = typename std::conditional<MODE == THERMOPOROELASTIC,
+	  LinearApproximation<Uvar, Pvar, Tvar>,
+	  LinearApproximation<Uvar, Pvar>>::type;
+
+	template <MechDiscretizerMode MODE>
+	struct MechApproximation
+	{
+	public:
+	  MechApproximation() {};
+	  MechApproximation(index_t stencil_size)
+	  {
+		hooke = ApproximationType<MODE>(ND, stencil_size);
+		biot_traction = LinearApproximation<Pvar>(ND, stencil_size);
+		biot_vol_strain = ApproximationType<MODE>(1, stencil_size);
+	  };
+
+	  ApproximationType<MODE> hooke;
+	  LinearApproximation<Pvar> biot_traction;
+	  ApproximationType<MODE> biot_vol_strain;
+
+	  bool is_same_stencil = true;
+	};
 
 	/* Discretiser */
 	template <MechDiscretizerMode MODE>
@@ -65,7 +73,7 @@ namespace dis
 	  
 	  std::unordered_map<index_t, Matrix> pre_grad_A_u, pre_grad_R_u, pre_grad_rhs_u;
 	  std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs;
-	  std::vector<MechApproximation> mech_fluxes;
+	  std::vector<MechApproximation<MODE>> mech_fluxes;
 	  Matrix W;
 	  std::vector<std::map<index_t, InnerMatrices>> inner;
 
@@ -87,16 +95,16 @@ namespace dis
 		}
 	  };
 
-	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id);
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
-	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation& flux, index_t conn_id);
+	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
 	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
 	  //void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
 
-	  inline void write_trans_mech(const MechApproximation& flux)
+	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
-		const uint8_t BLOCK_SIZE = 4;
+		/*const uint8_t BLOCK_SIZE = 4;
 		// stencil & transmissibilities
 		for (uint8_t st_id = 0; st_id < flux.stencil.size(); st_id++)
 		{
@@ -115,33 +123,10 @@ namespace dis
 		mech_offset.push_back(static_cast<index_t>(mech_stencil.size()));
 		// free terms
 		mech_rhs.insert(std::end(mech_rhs), std::begin(flux.rhs.values), std::end(flux.rhs.values));
-		mech_rhs_biot.insert(std::end(mech_rhs_biot), std::begin(flux.rhs_biot.values), std::end(flux.rhs_biot.values));
+		mech_rhs_biot.insert(std::end(mech_rhs_biot), std::begin(flux.rhs_biot.values), std::end(flux.rhs_biot.values));*/
 	  };
 
 	  void keep_same_stencil_gradients();
-
-	  inline MechApproximation get_displacement_gradient(index_t elem_id)
-	  {
-		const index_t n_st = u_grad_offset[elem_id + 1] - u_grad_offset[elem_id];
-		const index_t grad_coef_size = ND * ND * n_unknowns;
-		MechApproximation g(ND * ND, n_unknowns * n_st);
-		std::copy_n(u_grad_stencil.begin() + u_grad_offset[elem_id], n_st, g.stencil.begin());
-		std::copy_n(u_grad_vals.data() + grad_coef_size * u_grad_offset[elem_id], grad_coef_size * n_st, begin(g.a.values));
-		std::copy_n(u_grad_rhs.data() + ND * ND * elem_id, ND * ND, begin(g.rhs.values));
-
-		return g;
-	  }
-	  inline MechApproximation get_pressure_gradient(index_t elem_id)
-	  {
-		const index_t n_st = grad_offset[elem_id + 1] - grad_offset[elem_id];
-		const index_t grad_coef_size = ND;
-		MechApproximation g(ND, n_st);
-		std::copy_n(grad_stencil.begin() + grad_offset[elem_id], n_st, g.stencil.begin());
-		std::copy_n(p_grad_vals.data() + grad_coef_size * grad_offset[elem_id], grad_coef_size * n_st, begin(g.a.values));
-		std::copy_n(p_grad_rhs.data() + ND * ND * elem_id, ND * ND, begin(g.rhs.values));
-
-		return g;
-	  }
 
 	public:
 	  void init() override;
@@ -159,13 +144,7 @@ namespace dis
 	  /* MPFA */
 
 	  // gradient offsets
-	  std::vector<index_t> u_grad_offset;
-	  // gradient stencil
-	  std::vector<index_t> u_grad_stencil;
-	  // pressure gradient transmissibilities
-	  std::vector<value_t> u_grad_vals;
-	  // pressure gradient free-term (gravity)
-	  std::vector<value_t> u_grad_rhs;
+	  std::vector<ApproximationType<MODE>> u_grads;
 
 	  // approximations 
 	  std::vector<index_t> mech_cell_m, mech_cell_p, mech_stencil, mech_offset;
