@@ -46,7 +46,15 @@ namespace dis
     };
     ~LinearApproximation() {};
 
+    // gradinents stored in 1-dimensional arrays with the stride=9
+    // 9 values for the each cell
+    // (u_x)'x   (u_x)'y   (u_x)'z
+    // (u_y)'x   (u_y)'y   (u_y)'z
+    // (u_z)'x   (u_z)'y   (u_z)'z
     Matrix a, rhs;
+
+    // stores the indices of neighbour elements (including itself) used for gradient approximation
+    // the length is offset[n_cells]
     std::vector<index_t> stencil;
 
     // sort stencil and swapping columns in 'a' accordingly
