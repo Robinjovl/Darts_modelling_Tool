@@ -161,7 +161,7 @@ class DartsModel:
 
         self.physics.engine.run(runtime)
 
-    def run_python(self, days: float, restart_dt: float = 0, timestep_python: bool = False):
+    def run_python(self, days: float = 0, restart_dt: float = 0, timestep_python: bool = False):
         mult_dt = self.params.mult_ts
         max_dt = self.params.max_ts
         self.e = self.physics.engine
@@ -178,7 +178,10 @@ class DartsModel:
             dt = self.params.max_ts
 
         # evaluate end time
-        runtime = t + days
+        if days:
+            runtime = t + days
+        else:
+            runtime = t + self.runtime
         ts = 0
 
         while t < runtime:

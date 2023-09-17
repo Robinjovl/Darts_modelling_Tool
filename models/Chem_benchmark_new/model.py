@@ -261,8 +261,8 @@ class Model(CICDModel):
         if self.grid_1D:
             self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
         else:
-            self.slice_liq_inj = np.arange(0, np.int(self.nx * self.ny / 2) - 1, self.nx, dtype=int)
-            self.slice_gas_inj = np.arange(np.int(self.nx * self.ny / 2), self.nx * self.ny - 1, self.nx, dtype=int)
+            self.slice_liq_inj = np.arange(0, self.nx * self.ny // 2 - 1, self.nx, dtype=int)
+            self.slice_gas_inj = np.arange(self.nx * self.ny // 2, self.nx * self.ny - 1, self.nx, dtype=int)
 
             self.op_num[self.slice_gas_inj] = 2
             self.op_num[self.slice_liq_inj] = 3

@@ -53,4 +53,4 @@ if m.physics.thermal:
     axs[3].set_title('Temperature')
     plt.colorbar(temp, ax=axs[3])
     # plt.xscale('log')
-plt.show()
+plt.savefig('out.png')

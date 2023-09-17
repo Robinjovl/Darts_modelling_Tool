@@ -19,7 +19,7 @@ if __name__ == '__main__':
         n.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
         time_data.to_excel(writer, 'Sheet1')
-        writer.save()
+        writer.close()
     else:
         n.load_restart_data()
         time_data = pd.read_pickle("darts_time_data.pkl")
@@ -28,12 +28,12 @@ if __name__ == '__main__':
     from darts.tools.plot_darts import *
     writer = pd.ExcelWriter('time_data.xlsx')
     time_data.to_excel(writer, 'Sheet1')
-    writer.save()
+    writer.close()
     plot_phase_rate_darts('P1', time_data1, 'oil')
     plot_phase_rate_darts('P5', time_data1, 'oil')
 
 
-    plt.show()
+    plt.savefig('out.png')
 
     Xn = np.array(n.physics.engine.X, copy=False)
     nc = n.physics.nc

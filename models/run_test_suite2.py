@@ -3,6 +3,7 @@ from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
 import sys, os, shutil
+import subprocess
 from darts.engines import sim_params
 
 model_dir = r'.'
@@ -94,35 +95,58 @@ if __name__ == '__main__':
     if os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
 
-    failed = for_each_model(model_dir, check_performance, accepted_dirs)
-    
+    n_failed = n_total = 0
+
+    # run tests accepted_dirs/model.py with comparison of pkl files
+    n_failed = for_each_model(model_dir, check_performance, accepted_dirs)
+    n_total = len(accepted_dirs)
+
+    # check main.py files runs, without comparison of pkl files
+    n_failed_mainpy = n_total_mainpy = 0
+    for mdir in accepted_dirs:
+        print('running main.py for model', mdir)
+        n_total_mainpy += 1
+        os.chdir(mdir)
+        import subprocess
+        mrun = subprocess.run(["python", "main.py"], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
+        rcode = mrun.returncode
+        n_failed_mainpy += rcode
+        if not rcode:
+            print('OK')
+        else:
+            print('FAIL')
+        os.chdir('..')
+    n_failed += n_failed_mainpy
+    n_total += n_total_mainpy
+
     # discretizer tests
-    n_tot = n_failed = 0
-    n_tot, n_failed = run_tests(model_dir, test_dirs=['cpg_sloping_fault'], test_args=[[['40'],['43']]],
-                                overwrite=overwrite)
-    failed += n_failed
+    n_total_discr = n_failed_discr = 0
+    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=['cpg_sloping_fault'], test_args=[[['40'],['43']]], overwrite=overwrite)
+    n_failed += n_failed_discr
+    n_total += n_total_discr
 
     # poromechanic tests
-    n_tot = n_failed = 0
-    # n_tot, n_failed = run_tests(model_dir, test_dirs, test_args, overwrite)
-    # failed += n_failed
+    n_total_mech = n_failed_mech = 0
+    # n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs, test_args, overwrite)
+    n_failed += n_failed_mech
+    n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
+    n_failed_adj = n_total_adj = 0
     import time
     starting_time = time.time()
-    failed_ad = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
+    n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
+    n_total_adj = len(accepted_dirs_adjoint)
     ending_time = time.time()
-    if not failed_ad:
+    if not n_failed_adj:
         print('OK, \t%.2f s' % (ending_time - starting_time))
     else:
         print('FAIL, \t%.2f s' % (ending_time - starting_time))
-
-    failed += failed_ad
+    n_failed += n_failed_adj
+    n_total += n_total_adj
     # test for adjoint ------------------end---------------------------------
 
-    n_passed = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint) - failed
-    n_total = len(accepted_dirs) + n_tot + len(accepted_dirs_adjoint)
-
+    n_passed = n_total - n_failed
     print("Passed", n_passed, "of", n_total, "models. ")
     
     if len(sys.argv) == 1:
@@ -131,6 +155,6 @@ if __name__ == '__main__':
         if os.getenv('UPLOAD_PKL') == '1':  # do not interrupt ci/cd for uploading generated pkls
             print('exit 0 because of UPLOAD_PKL==1')
             exit(0)
-        print('exit:', failed)
+        print('exit:', n_failed)
         # exit with code equal to number of failed models
-        exit(failed)
+        exit(n_failed)

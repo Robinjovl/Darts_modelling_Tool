@@ -113,7 +113,7 @@ cd ..
 # build darts.whl
 
 # generating build info of darts-package
-python darts/print_build_info.py
+python3 darts/print_build_info.py
 
 python3 setup.py clean
 python3 setup.py build bdist_wheel

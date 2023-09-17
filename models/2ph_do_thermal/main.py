@@ -62,7 +62,7 @@ if __name__ == '__main__':
         n.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
         time_data.to_excel(writer, 'Sheet1')
-        writer.save()
+        writer.close()
     else:
         n.load_restart_data()
         time_data = pd.read_pickle("darts_time_data.pkl")
@@ -76,7 +76,7 @@ if __name__ == '__main__':
         for i in range(nc if nc < 3 else 3):
             plt.subplot(310 + (i + 1))
             plt.plot(Xn[i:n.reservoir.nb*nc:nc])
-        plt.show()
+            plt.savefig(str(i) + '.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

@@ -73,7 +73,7 @@ def run_darts(mode):
         plt.plot(Xn_rhs[0:n.reservoir.nb*nc:nc], label='rhs')
         plt.plot(Xn_wells[0:n.reservoir.nb * nc:nc], label='wells')
         plt.legend()
-        plt.show()
+        plt.savefig('out.png')
 
 if __name__ == '__main__':
     # run with prod. well, and save solution vector at the last timestep to wells.npy
