@@ -17,7 +17,7 @@ import scipy
 from scipy.special import erfc as erfc
 
 import darts.discretizer as dis
-from darts.discretizer import Mesh, Elem, poro_mech_discretizer, BoundaryCondition, MechBoundaryCondition, elem_loc, elem_type, conn_type
+from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
 from darts.discretizer import matrix33, vector_matrix33, vector_vector3, matrix, value_vector, index_vector, Stiffness
 
 # Definitions for the unstructured reservoir class:
@@ -348,6 +348,7 @@ class UnstructReservoir:
         self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
 
         self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
+
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
 
@@ -361,7 +362,7 @@ class UnstructReservoir:
         boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
         ap = np.zeros(boundary_range[1] - boundary_range[0])
         bp = np.zeros(boundary_range[1] - boundary_range[0])
-        self.cpp_mech = MechBoundaryCondition()
+
         an = np.zeros(boundary_range[1] - boundary_range[0])
         bn = np.zeros(boundary_range[1] - boundary_range[0])
         at = np.zeros(boundary_range[1] - boundary_range[0])
@@ -380,14 +381,20 @@ class UnstructReservoir:
             bt[ids] = bc['mech']['bt']
             self.bc_rhs[self.n_vars * ids] = bc['flow']['r']
 
+        self.cpp_bc = THMBoundaryCondition()
+        self.cpp_bc.flow.a = value_vector(ap)
+        self.cpp_bc.flow.b = value_vector(bp)
+        #self.cpp_bc.thermal.a = value_vector() #TODO: to be implemented
+        #self.cpp_bc.thermal.b = value_vector()
+        self.cpp_bc.mech_normal.a = value_vector(an)
+        self.cpp_bc.mech_normal.b = value_vector(bn)
+        self.cpp_bc.mech_tangen.a = value_vector(at)
+        self.cpp_bc.mech_tangen.b = value_vector(bt)
+        # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
+        # which doesn't know the new THMBoundaryCondition class yet
         self.cpp_flow = BoundaryCondition()
         self.cpp_flow.a_p = value_vector(ap)
         self.cpp_flow.b_p = value_vector(bp)
-        self.cpp_mech = MechBoundaryCondition()
-        self.cpp_mech.a_n = value_vector(an)
-        self.cpp_mech.b_n = value_vector(bn)
-        self.cpp_mech.a_t = value_vector(at)
-        self.cpp_mech.b_t = value_vector(bt)
 
         # Discretization
         self.timer.node["discretization"] = timer_node()

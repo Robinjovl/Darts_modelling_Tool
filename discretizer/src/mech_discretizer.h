@@ -5,15 +5,32 @@
 
 namespace dis
 {
-	/* Boundary condition */
-	class MechBoundaryCondition
+	// Boundary condition 
+	class GenericBoundaryCondition
 	{
 	public:
-	  std::vector<value_t> a_n, b_n;
-	  std::vector<value_t> a_t, b_t;
-	  MechBoundaryCondition() {};
-	  ~MechBoundaryCondition() {};
+		// length = number of boundary elements
+		// Dirichle type
+	  std::vector<value_t> a; 
+		// Neumann type
+		std::vector<value_t> b; 
+		GenericBoundaryCondition() {};
+	  ~GenericBoundaryCondition() {};
 	};
+
+	/* Boundary condition for Thermo-Hydro-Mechanical coupled problem */
+	class THMBoundaryCondition
+	{
+
+	public:
+		GenericBoundaryCondition flow;
+		GenericBoundaryCondition thermal;
+		GenericBoundaryCondition mech_normal;
+		GenericBoundaryCondition mech_tangen;
+		THMBoundaryCondition() {};
+		~THMBoundaryCondition() {};
+	};
+
 	/* 6x6 stiffness matrix */
 	class Stiffness : public Matrix
 	{
@@ -22,12 +39,13 @@ namespace dis
 	  typedef Matrix Base;
 
 	  Stiffness() : Base(6, 6) {};
-	  Stiffness(value_t la, value_t mu) : Base(6, 6)
+		// Stiffness matrix from Lame coefficients 
+	  Stiffness(value_t lambda, value_t mu) : Base(6, 6)
 	  {
-		(*this)(0, 0) = (*this)(1, 1) = (*this)(2, 2) = la + 2 * mu;
+		(*this)(0, 0) = (*this)(1, 1) = (*this)(2, 2) = lambda + 2 * mu;
 		(*this)(3, 3) = (*this)(4, 4) = (*this)(5, 5) = mu;
-		(*this)(0, 1) = (*this)(0, 2) = (*this)(1, 2) = la;
-		(*this)(1, 0) = (*this)(2, 0) = (*this)(2, 1) = la;
+		(*this)(0, 1) = (*this)(0, 2) = (*this)(1, 2) = lambda;
+		(*this)(1, 0) = (*this)(2, 0) = (*this)(2, 1) = lambda;
 	  };
 	  Stiffness(std::valarray<value_t> _c) : Base(_c, 6, 6) {}
 	};
@@ -134,17 +152,27 @@ namespace dis
 	  MechDiscretizer();
 	  ~MechDiscretizer();
 
-	  /* 3x3 matrices of Biot coefficients */
+	  // 3x3 matrices of Biot coefficients for the each cell
 	  std::vector<Matrix33> biots;
-	  /* 6x6 stiffness matrices */
+	  // 6x6 stiffness matrices for the each cell
 	  std::vector<Stiffness> stfs;
-	  /* 3x3 matrices of thermal expansion coefficients */
+	  // 3x3 matrices of thermal expansion coefficients for the each cell
 	  std::vector<Matrix33> th_exps;
 
 	  /* MPFA */
+		// gradinents stored in 1-dimensional arrays with the stride=9
+		// 9 values for the each cell
+		// (u_x)'x   (u_x)'y   (u_x)'z
+		// (u_y)'x   (u_y)'y   (u_y)'z
+		// (u_z)'x   (u_z)'y   (u_z)'z
 
-	  // gradient offsets
+
+	  // pressure/heat gradient transmissibilities, flattened vector with 9*n_unknowns for the each cell 
 	  std::vector<ApproximationType<MODE>> u_grads;
+
+		// grad = sum(i=1..stencil) A_i * (u, p, temperature)_i + b
+		// A - 9x5, b - 5x1 for THM. 
+		// 5: u_x, u_y, u_z, p, temperature
 
 	  // approximations 
 	  std::vector<index_t> mech_cell_m, mech_cell_p, mech_stencil, mech_offset;
@@ -153,11 +181,11 @@ namespace dis
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
 
-	  void reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& bc_mech);
+	  void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
 
 	  void calc_mpfa_mpsa_transmissibilities();
 
-	  MechBoundaryCondition bc_mech;
+	  THMBoundaryCondition bc_thm;
     };
 }
 

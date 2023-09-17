@@ -15,6 +15,7 @@ using std::copy_n;
 template <MechDiscretizerMode MODE>
 const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
 
+// this matrix W helps to translate elasticity operator to simpler form
 template <MechDiscretizerMode MODE>
 MechDiscretizer<MODE>::MechDiscretizer() : W(9, 6)
 {
@@ -81,7 +82,7 @@ void MechDiscretizer<MODE>::init()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const MechBoundaryCondition& _bc_mech)
+void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_thm_new)
 {
   // Variables
   std::vector<index_t> st;		st.reserve(MAX_STENCIL);
@@ -99,7 +100,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
   // allocate memory for arrays
   u_grads.resize(mesh->n_cells, ApproximationType<MODE>(ND * ND, MAX_STENCIL));
 
-  bc_mech = _bc_mech;
+	bc_thm = bc_thm_new;
 
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
@@ -115,10 +116,10 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 	  if (conn.type == mesh::MAT_BOUND)
 	  {
 		// Coefficients that define boundary condition
-		const auto& an = bc_mech.a_n[conn.elem_id2 - mesh->n_cells];
-		const auto& bn = bc_mech.b_n[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_mech.a_t[conn.elem_id2 - mesh->n_cells];
-		const auto& bt = bc_mech.b_t[conn.elem_id2 - mesh->n_cells];
+		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
+		const auto& at = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 
 		if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
 	  }
@@ -268,12 +269,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 	  }
 	  else if (conn.type == mesh::MAT_BOUND)
 	  {
-		const auto& an = bc_mech.a_n[conn.elem_id2 - mesh->n_cells];
-		const auto& bn = bc_mech.b_n[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_mech.a_t[conn.elem_id2 - mesh->n_cells];
-		const auto& bt = bc_mech.b_t[conn.elem_id2 - mesh->n_cells];
-		const auto& ap = bc_flow.a_p[conn.elem_id2 - mesh->n_cells];
-		const auto& bp = bc_flow.b_p[conn.elem_id2 - mesh->n_cells];
+		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
+		const auto& at = bc_thm.mech_tangen.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		const auto& ap = bc_thm.flow.a[conn.elem_id2 - mesh->n_cells];
+		const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
 
 		
 		// Skip if pure neumann
@@ -384,9 +385,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const Me
 		assert(val == val && std::isfinite(val));
 
 	  auto& cur_grad = u_grads[i];
+      // 9 x 5*stencil matrix for the each cell
 	  cur_grad.a = to_invert * A.transpose() * cur_rhs;
+      // 5 x 1
 	  cur_grad.rhs = to_invert * A.transpose() * rest;
 	  cur_grad.stencil = st;
+      // sorted array needed for the fast merge of two arrays
 	  cur_grad.sort();
 	}
 	catch (const std::exception&)
@@ -534,6 +538,8 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 	{
 	  const auto& conn = mesh->conns[mesh->adj_matrix[j]];
 	  cell_id2 = mesh->adj_matrix_cols[j];
+		// the connection stores only one-side normal, so need to use a sign
+		// the normal for the elem_id1 points outside the cell
 	  sign = (conn.elem_id1 == cell_id1) ? 1.0 : -1.0;
 
 	  if (conn.type == mesh::MAT_MAT)
