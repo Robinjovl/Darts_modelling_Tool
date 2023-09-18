@@ -1,6 +1,6 @@
 import numpy as np
 from darts.engines import *
-from darts.models.physics.physics_base import PhysicsBase
+from darts.physics.physics_base import PhysicsBase
 from physics.operator_evaluator_sup import *
 
 # Define our own operator evaluator class
