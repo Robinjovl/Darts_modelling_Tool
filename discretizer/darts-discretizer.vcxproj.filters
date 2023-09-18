@@ -91,6 +91,9 @@
     <ClCompile Include="src\pybind11\py_mech_discretizer.cpp">
       <Filter>Source Files\pybind</Filter>
     </ClCompile>
+    <ClCompile Include="src\pybind11\py_approximation.cpp">
+      <Filter>Source Files\pybind</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\pybind11\py_discretizer.h">

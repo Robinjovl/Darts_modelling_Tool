@@ -116,7 +116,8 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -146,7 +147,8 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -178,7 +180,8 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -212,7 +215,8 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -256,6 +260,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClCompile Include="src\mesh\mshio\load_msh_physical_groups.cpp" />
     <ClCompile Include="src\mesh\mshio\load_msh_post_process.cpp" />
     <ClCompile Include="src\mesh\mshio\validate_spec.cpp" />
+    <ClCompile Include="src\pybind11\py_approximation.cpp" />
     <ClCompile Include="src\pybind11\py_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_elem.cpp" />
     <ClCompile Include="src\pybind11\py_linalg.cpp" />

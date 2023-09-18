@@ -29,7 +29,7 @@ namespace dis
     LinearApproximation() {};
     LinearApproximation(index_t apprx_size, index_t stencil_size)
     {
-      a = Matrix(apprx_size, stencil_size * var_names.size());
+      a = Matrix(apprx_size, stencil_size * n_block);
       rhs = Matrix(apprx_size, 1);
       stencil.reserve(stencil_size);
     };
@@ -78,7 +78,8 @@ namespace dis
     };
   };
 
-  // utilities for compile-time estimate of the type of approximation merged from two elements
+  // utilities for compile-time estimate of the type of approximation 
+  // merged from two approximations of different types
   template <VarName...>
   struct TypeList {};
 
@@ -131,6 +132,7 @@ namespace dis
   template <VarName V, typename List>
   struct IndexOf;
 
+  // assign value to the position of V in Others if present, otherwise value = -1
   template <VarName V, VarName... Others>
   struct IndexOf<V, TypeList<Others...>> {
     static constexpr int value = [] {
