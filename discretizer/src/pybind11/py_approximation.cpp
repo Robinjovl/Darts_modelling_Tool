@@ -85,7 +85,23 @@ struct linear_approximation_exposer
 		  ap.stencil = t[2].cast<std::vector<index_t>>();
 		  return ap;
 		}));
-	py::bind_vector<std::vector<LinearApproximation<VarNames...>>>(m, "vector_" + class_name);
+	py::bind_vector<std::vector<LinearApproximation<VarNames...>>>(m, "vector_" + class_name)
+	  .def(py::pickle(
+		[](const std::vector<LinearApproximation<VarNames...>>& ap) { // __getstate__
+		  py::tuple t(ap.size());
+		  for (int i = 0; i < ap.size(); i++)
+			t[i] = ap[i];
+
+		  return t;
+		},
+		[](py::tuple t) { // __setstate__
+		  std::vector<LinearApproximation<VarNames...>> ap(t.size());
+
+		  for (int i = 0; i < ap.size(); i++)
+			ap[i] = t[i].cast<LinearApproximation<VarNames...>>();
+
+		  return ap;
+		}));
   }
 };
 
