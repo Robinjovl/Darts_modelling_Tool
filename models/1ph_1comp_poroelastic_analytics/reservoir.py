@@ -410,6 +410,11 @@ class UnstructReservoir:
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(self.F / self.a) / 2
+
+        from compare_grad_discr import compare_gradients
+        compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
+
+
     def terzaghi(self, scheme='non_stabilized', mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
