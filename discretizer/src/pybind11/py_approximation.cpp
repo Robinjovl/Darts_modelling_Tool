@@ -1,4 +1,4 @@
-#include <functional>
+#include <string>
 #include "py_global.h"
 #include "approximation.h"
 
@@ -29,7 +29,7 @@ MAKE_OPAQUE_VARIADIC(LinearApproximation, VarName::Pvar, VarName::Tvar, VarName:
 MAKE_OPAQUE_VARIADIC(LinearApproximation, VarName::Tvar, VarName::Uvar, VarName::Pvar);
 MAKE_OPAQUE_VARIADIC(LinearApproximation, VarName::Tvar, VarName::Pvar, VarName::Uvar);
 
-constexpr std::string var_to_string(VarName v)
+constexpr std::string_view var_to_string(VarName v)
 {
   switch (v)
   {
@@ -46,13 +46,13 @@ struct VarNameHelper;
 template <VarName V>
 struct VarNameHelper<V> 
 {
-  static inline const std::string value = var_to_string(V);
+  static inline const std::string value = std::string(var_to_string(V));
 };
 
 template <VarName First, VarName... Rest>
 struct VarNameHelper<First, Rest...> 
 {
-  static inline const std::string value = var_to_string(First) + VarNameHelper<Rest...>::value;
+  static inline const std::string value = std::string(var_to_string(First)) + VarNameHelper<Rest...>::value;
 };
 
 template <VarName... VarNames>
