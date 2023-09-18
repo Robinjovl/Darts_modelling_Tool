@@ -400,7 +400,7 @@ class UnstructReservoir:
         self.timer.node["discretization"] = timer_node()
         self.timer.node["discretization"].start()
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
-        #self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_mech)
+        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_mpfa_transmissibilities(False)
         self.timer.node["discretization"].stop()
 
