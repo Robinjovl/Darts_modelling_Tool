@@ -116,6 +116,8 @@ void pybind_discretizer(py::module &m)
 		.def_readwrite("flux_offset", &Discretizer::flux_offset)
 		.def_readwrite("flux_stencil", &Discretizer::flux_stencil)
 		.def_readwrite("grav_vec", &Discretizer::grav_vec)
+		.def_readwrite("p_grads", &Discretizer::p_grads)
+		.def_readwrite("t_grads", &Discretizer::t_grads)
 
 		.def("init", &Discretizer::init)
 		.def("write_tran_cube", &Discretizer::write_tran_cube)
