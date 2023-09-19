@@ -1,7 +1,7 @@
 from darts.engines import conn_mesh, ms_well, ms_well_vector, index_vector, value_vector
 import numpy as np
-from math import inf, pi
-from darts.mesh.unstruct_discretizer import UnstructDiscretizer
+from math import inf
+from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 from itertools import compress
 
 

@@ -1,14 +1,11 @@
-# Section of the Python code where we import all dependencies on third party Python modules/libaries or our own
-# libraries (exposed C++ code to Python, i.e. darts.engines && darts.physics)
-import time
-from .transcalc import *
+import numpy as np
 
-# Class definition of the StructDiscretizer, which discretizes a structured reservoir
+
 class StructDiscretizer:
     # Define Darcy constant for changes to correct units:
     darcy_constant = 0.0085267146719160104986876640419948
 
-    def __init__(self, nx, ny, nz, dx, dy, dz, permx, permy, permz, global_to_local = 0, coord = 0, zcorn = 0, is_cpg = False):
+    def __init__(self, nx: int, ny: int, nz: int, global_data: dict, global_to_local=0, coord=0, zcorn=0, is_cpg=False):
         """
         Class constructor method.
 
@@ -36,11 +33,12 @@ class StructDiscretizer:
         self.nx = nx
         self.ny = ny
         self.nz = nz
+        dx, dy, dz = global_data['dx'], global_data['dy'], global_data['dz']
+        permx, permy, permz = global_data['permx'], global_data['permy'], global_data['permz']
         self.nodes_tot = nx * ny * nz
         self.arr_shape = (nx, ny, nz)
         self.min_tran_tranD = 1e-5
         self.eps_div = 1e-8
-
 
         self.is_cpg = is_cpg
         if self.is_cpg:
@@ -130,6 +128,17 @@ class StructDiscretizer:
             self.len_cell_ydir = self.convert_to_3d_array(dy, 'dy')
             self.len_cell_zdir = self.convert_to_3d_array(dz, 'dz')
             self.volume = self.len_cell_xdir * self.len_cell_ydir * self.len_cell_zdir
+
+            self.centroids_all_cells = []
+            z = self.len_cell_zdir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_zdir)
+            for k in range(self.nz):
+                y = self.len_cell_ydir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_ydir)
+                for j in range(self.ny):
+                    x = self.len_cell_xdir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_xdir)
+                    for i in range(self.nx):
+                        self.centroids_all_cells.append(np.array([x[i], y[j], z[k]]))
+            self.centroids_all_cells = np.array(self.centroids_all_cells)
+
         self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
         self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
         self.perm_z_cell = self.convert_to_3d_array(permz, 'permz')
@@ -377,6 +386,7 @@ class StructDiscretizer:
         np.seterr(**old_settings)
 
         return cell_m, cell_p, tran, tran_thermal
+
     def calc_cpg_discr(self):
         """
         Class methods which performs the actual construction of the connection list
@@ -471,6 +481,7 @@ class StructDiscretizer:
         np.seterr(**old_settings)
 
         return cell_m, cell_p, tran, tran_thermal
+
     def calc_cell_dimensions(self, i, j, k):
         dx0 = np.zeros(2)
         dy0 = np.zeros(2)

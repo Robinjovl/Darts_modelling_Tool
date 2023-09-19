@@ -39,7 +39,6 @@ class Geothermal(PhysicsBase):
         """
         # Set nc=1, thermal=True
         nc = 1
-        self.thermal = True
 
         # Define phases and variables
         self.mass_rate = mass_rate
@@ -60,7 +59,7 @@ class Geothermal(PhysicsBase):
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
 
-    def set_operators(self, regions, output_properties=None):
+    def set_operators(self, regions):
         """
         Function to set operator objects: :class:`acc_flux_gravity_evaluator` for each of the reservoir regions,
         :class:`acc_flux_gravity_evaluator_python_well` for the well cells
@@ -80,9 +79,6 @@ class Geothermal(PhysicsBase):
         else:
             self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[regions[0]])
 
-        # Create property evaluator
-        if output_properties is not None:
-            self.property_operators = output_properties
         return
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
@@ -94,10 +90,9 @@ class Geothermal(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        self.engine = eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
-        return
+        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
-    def set_well_controls(self):
+    def define_well_controls(self):
         # create well controls
         # water stream
         # pure water injection at constant temperature
@@ -126,23 +121,13 @@ class Geothermal(PhysicsBase):
                                                                                     rate, self.rate_itor)
         return
 
-    def init_wells(self, wells):
-        """""
-        Function to initialize the well rates for each well
-        Arguments:
-            -wells: well_object array
-        """
-        for w in wells:
-            assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.nc + 1, self.phases, self.rate_itor)
-
     def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_temperature):
         """""
         Function to set uniform initial reservoir condition
-        Arguments:
-            -mesh: mesh object
-            -uniform_pressure: uniform pressure setting
-            -uniform_temperature: uniform temperature setting
+
+        :param mesh: :class:`Mesh` object
+        :param uniform_pressure: Uniform pressure setting
+        :param uniform_temperature: Uniform temperature setting
         """
         assert isinstance(mesh, conn_mesh)
         # nb = mesh.n_blocks
@@ -159,12 +144,12 @@ class Geothermal(PhysicsBase):
         enthalpy.fill(enth)
 
     def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad):
-        """""
-        Function to set uniform initial reservoir condition
-        Arguments:
-            -mesh: mesh object
-            -pressure_grad, default unit [1/km]
-            -temperature_grad, default unit [1/km]
+        """
+        Function to set nonuniform initial reservoir condition
+
+        :param mesh: :class:`Mesh` object
+        :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
+        :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
         """
         assert isinstance(mesh, conn_mesh)
 

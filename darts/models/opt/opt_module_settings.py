@@ -19,6 +19,7 @@ import os.path as osp
 from typing import List
 sq_norm = lambda x: np.inner(x, x)
 
+
 class OptModuleSettings:
     def __init__(self):
         self.terminated_runs = 0
@@ -136,10 +137,10 @@ class OptModuleSettings:
         self.binary_array = []
         self.save_error = False
         self.label = ''
-        
+
         # MPFA
         self.n_fm = 0
-        
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 #---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
@@ -194,9 +195,9 @@ class OptModuleSettings:
         self.modifier.set_x_by_du_dT(self, x)
         # self.modifier.set_x(self, x)
 
-        self.physics.engine.opt_history_matching = True
+        self.engine.opt_history_matching = True
         if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
-            self.physics.engine.is_mp = True
+            self.engine.is_mp = True
 
         # 2. Reset
         self.set_initial_conditions()
@@ -208,10 +209,10 @@ class OptModuleSettings:
         # 3. Run
         if args:
             args = args[0]
-            self.physics.engine.clear_previous_adjoint_assembly()
+            self.engine.clear_previous_adjoint_assembly()
             self.run(start_opt=args[0],stop_opt=args[1])
         else:
-            self.physics.engine.clear_previous_adjoint_assembly()
+            self.engine.clear_previous_adjoint_assembly()
             self.run(export_to_vtk=False)
             # self.run_python()opt_history_matching
         # self.run()
@@ -241,7 +242,7 @@ class OptModuleSettings:
                 self.terminated_runs += 1
                 self.modifier.set_x_by_du_dT(self, x)
                 self.reset()
-                self.physics.engine.clear_previous_adjoint_assembly()
+                self.engine.clear_previous_adjoint_assembly()
                 self.run()
                 redirect_darts_output('')
 
@@ -274,7 +275,7 @@ class OptModuleSettings:
         self.modifier.set_x_by_du_dT(self, u)
         # self.modifier.set_x(self, x)
 
-        self.physics.engine.opt_history_matching = True
+        self.engine.opt_history_matching = True
 
         # 2. Reset
         self.set_initial_conditions()
@@ -286,10 +287,10 @@ class OptModuleSettings:
         # 3. Run
         if args:
             args = args[0]
-            self.physics.engine.clear_previous_adjoint_assembly()
+            self.engine.clear_previous_adjoint_assembly()
             self.run(start_opt=args[0],stop_opt=args[1])
         else:
-            self.physics.engine.clear_previous_adjoint_assembly()
+            self.engine.clear_previous_adjoint_assembly()
             self.run(export_to_vtk=False)
             # self.run_python()opt_history_matching
         # self.run()
@@ -319,7 +320,7 @@ class OptModuleSettings:
                 self.terminated_runs += 1
                 self.modifier.set_x_by_du_dT(self, u)
                 self.reset()
-                self.physics.engine.clear_previous_adjoint_assembly()
+                self.engine.clear_previous_adjoint_assembly()
                 self.run()
                 redirect_darts_output('')
 
@@ -347,7 +348,7 @@ class OptModuleSettings:
         self.modifier.set_x_by_du_dT(self, x)
         # self.modifier.set_x(self, x)
 
-        # self.physics.engine.opt_history_matching = True
+        # self.engine.opt_history_matching = True
 
         # 2. Reset
         self.set_initial_conditions()
@@ -473,8 +474,8 @@ class OptModuleSettings:
                     else:
                         c.target_rate = 0
 
-            self.physics.engine.run(self.time_step_arr[ts])
-            self.physics.engine.report()
+            self.engine.run(self.time_step_arr[ts])
+            self.engine.report()
 
 
         self.forward_temp_time += time.time()
@@ -482,7 +483,7 @@ class OptModuleSettings:
 
         print(', %f s/forward_temp' % (self.forward_temp_time / self.n_forward_temp), end='', flush=True)
 
-        self.forward_temp_result = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        self.forward_temp_result = pd.DataFrame.from_dict(self.engine.time_data)
 
         return 0
 
@@ -500,47 +501,47 @@ class OptModuleSettings:
         self.opt_comp_rate = opt_comp_rate
         self.opt_phase_rate = opt_phase_rate
 
-        self.physics.engine.prod_well_name = well_name
-        # self.physics.engine.component_index = index_vector(component_index)
-        # self.physics.engine.phase_index = index_vector(phase_index)
-        self.physics.engine.prod_phase_name = phase_name
-        self.physics.engine.unit = unit
-        self.physics.engine.optimize_component_rate = opt_comp_rate
-        self.physics.engine.optimize_phase_rate = opt_phase_rate
+        self.engine.prod_well_name = well_name
+        # self.engine.component_index = index_vector(component_index)
+        # self.engine.phase_index = index_vector(phase_index)
+        self.engine.prod_phase_name = phase_name
+        self.engine.unit = unit
+        self.engine.optimize_component_rate = opt_comp_rate
+        self.engine.optimize_phase_rate = opt_phase_rate
 
     def set_optimization_scale_parameter(self, scale_fun_val: float):
         '''
         Legacy code for the settings of some scaling factors. This will be deprecated.
         '''
         self.scale_function_value = scale_fun_val
-        self.physics.engine.scale_function_value = scale_fun_val
+        self.engine.scale_function_value = scale_fun_val
 
     def activate_opt_options(self):
         '''
         The activation of some history matching settings, including well names, phase names, customized operators, scaling factors, etc.
         '''
-        self.physics.engine.objfun_prod_phase_rate = self.objfun_prod_phase_rate
-        self.physics.engine.prod_well_name = self.prod_well_name
-        self.physics.engine.prod_phase_name = self.prod_phase_name
+        self.engine.objfun_prod_phase_rate = self.objfun_prod_phase_rate
+        self.engine.prod_well_name = self.prod_well_name
+        self.engine.prod_phase_name = self.prod_phase_name
 
-        self.physics.engine.objfun_inj_phase_rate = self.objfun_inj_phase_rate
-        self.physics.engine.inj_well_name = self.inj_well_name
-        self.physics.engine.inj_phase_name = self.inj_phase_name
+        self.engine.objfun_inj_phase_rate = self.objfun_inj_phase_rate
+        self.engine.inj_well_name = self.inj_well_name
+        self.engine.inj_phase_name = self.inj_phase_name
 
-        self.physics.engine.objfun_BHP = self.objfun_BHP
-        self.physics.engine.BHP_well_name = self.BHP_well_name
+        self.engine.objfun_BHP = self.objfun_BHP
+        self.engine.BHP_well_name = self.BHP_well_name
 
-        self.physics.engine.objfun_well_tempr = self.objfun_well_tempr
-        self.physics.engine.well_tempr_name = self.well_tempr_name
+        self.engine.objfun_well_tempr = self.objfun_well_tempr
+        self.engine.well_tempr_name = self.well_tempr_name
 
-        self.physics.engine.objfun_temperature = self.objfun_temperature
+        self.engine.objfun_temperature = self.objfun_temperature
 
-        self.physics.engine.objfun_customized_op = self.objfun_customized_op
+        self.engine.objfun_customized_op = self.objfun_customized_op
 
-        self.physics.engine.objfun_saturation = self.objfun_saturation
+        self.engine.objfun_saturation = self.objfun_saturation
 
 
-        self.physics.engine.scale_function_value = self.scale_function_value
+        self.engine.scale_function_value = self.scale_function_value
 
         if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
             self.col_idx = list(range(self.n_fm))
@@ -550,18 +551,18 @@ class OptModuleSettings:
             self.col_idx_original = []
             self.col_idx_original = list(range(self.x_idx[-1]))
             self.col_idx = self.col_idx_original
-    
+
             self.perforation_idx = []
             for i, w in enumerate(self.reservoir.wells):
                 for p, per in enumerate(w.perforations):
                     self.perforation_idx.append(per[1])
-    
+
             self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
             for i in range(np.size(self.perforation_idx)):
                 for j in range(np.size(self.perforation_idx)):
                     if self.perforation_idx[j] < self.perforation_idx[i]:
                         self.sort_perforation_idx[i] += 1
-    
+
             temp_idx = self.sort_perforation_idx.astype(int)
             n_T_res = np.size(self.col_idx) - np.size(temp_idx)
             col_idx_well = self.col_idx[np.size(self.col_idx) - np.size(temp_idx):]
@@ -617,7 +618,7 @@ class OptModuleSettings:
             if np.size(np.array(self.phase_relative_density)) == 0:
                 self.phase_relative_density = np.ones(np.size(self.prod_phase_name))
 
-            self.physics.engine.phase_relative_density = value_vector(self.phase_relative_density)
+            self.engine.phase_relative_density = value_vector(self.phase_relative_density)
 
             self.std_gaussian_noise_prod = []
             # self.Q_temp = []
@@ -933,7 +934,7 @@ class OptModuleSettings:
                     if ts == tr:
                         self.dirac_vec[i] = 1
 
-            self.physics.engine.dirac_vec = value_vector(self.dirac_vec)
+            self.engine.dirac_vec = value_vector(self.dirac_vec)
 
 
             if self.objfun_prod_phase_rate:
@@ -992,20 +993,20 @@ class OptModuleSettings:
 
             # phase rate
             if self.opt_phase_rate:
-                # self.physics.engine.clear_Q()
-                # self.physics.engine.prod_phase_name = self.prod_phase_name
+                # self.engine.clear_Q()
+                # self.engine.prod_phase_name = self.prod_phase_name
 
                 for w in range(np.size(self.obs_Q, 0)):
-                    self.physics.engine.clear_Q_p()
-                    self.physics.engine.clear_cov_prod_p()
-                    self.physics.engine.clear_prod_wei_p()
+                    self.engine.clear_Q_p()
+                    self.engine.clear_cov_prod_p()
+                    self.engine.clear_prod_wei_p()
                     for p in range(np.size(self.obs_Q, 1)):
-                        self.physics.engine.add_value_to_Q_p(value_vector(self.obs_Q[w][p]))
-                        self.physics.engine.add_value_to_cov_prod_p(value_vector(self.prod_cov_mat_inv[w][p]))
-                        self.physics.engine.add_value_to_prod_wei_p(value_vector(self.prod_weights[w][p]))
-                    self.physics.engine.push_back_to_Q_all()
-                    self.physics.engine.push_back_to_cov_prod_all()
-                    self.physics.engine.push_back_to_prod_wei_all()
+                        self.engine.add_value_to_Q_p(value_vector(self.obs_Q[w][p]))
+                        self.engine.add_value_to_cov_prod_p(value_vector(self.prod_cov_mat_inv[w][p]))
+                        self.engine.add_value_to_prod_wei_p(value_vector(self.prod_weights[w][p]))
+                    self.engine.push_back_to_Q_all()
+                    self.engine.push_back_to_cov_prod_all()
+                    self.engine.push_back_to_prod_wei_all()
 
         # injection phase rate ------------------------
         if self.objfun_inj_phase_rate:
@@ -1013,16 +1014,16 @@ class OptModuleSettings:
                 self.inj_weights = np.ones(np.shape(self.obs_Q_inj))
 
             for w in range(np.size(self.obs_Q_inj, 0)):
-                self.physics.engine.clear_Q_inj_p()
-                self.physics.engine.clear_cov_inj_p()
-                self.physics.engine.clear_inj_wei_p()
+                self.engine.clear_Q_inj_p()
+                self.engine.clear_cov_inj_p()
+                self.engine.clear_inj_wei_p()
                 for p in range(np.size(self.obs_Q_inj, 1)):
-                    self.physics.engine.add_value_to_Q_inj_p(value_vector(self.obs_Q_inj[w][p]))
-                    self.physics.engine.add_value_to_cov_inj_p(value_vector(self.inj_cov_mat_inv[w][p]))
-                    self.physics.engine.add_value_to_inj_wei_p(value_vector(self.inj_weights[w][p]))
-                self.physics.engine.push_back_to_Q_inj_all()
-                self.physics.engine.push_back_to_cov_inj_all()
-                self.physics.engine.push_back_to_inj_wei_all()
+                    self.engine.add_value_to_Q_inj_p(value_vector(self.obs_Q_inj[w][p]))
+                    self.engine.add_value_to_cov_inj_p(value_vector(self.inj_cov_mat_inv[w][p]))
+                    self.engine.add_value_to_inj_wei_p(value_vector(self.inj_weights[w][p]))
+                self.engine.push_back_to_Q_inj_all()
+                self.engine.push_back_to_cov_inj_all()
+                self.engine.push_back_to_inj_wei_all()
 
         # BHP ------------------------------------------------
         if self.objfun_BHP:
@@ -1031,9 +1032,9 @@ class OptModuleSettings:
                 self.BHP_weights = np.ones(np.shape(self.obs_BHP))
 
             for w in range(np.size(self.obs_BHP, 0)):
-                self.physics.engine.push_back_to_BHP_all(value_vector(self.obs_BHP[w]))
-                self.physics.engine.push_back_to_cov_BHP_all(value_vector(self.BHP_cov_mat_inv[w]))
-                self.physics.engine.push_back_to_BHP_wei_all(value_vector(self.BHP_weights[w]))
+                self.engine.push_back_to_BHP_all(value_vector(self.obs_BHP[w]))
+                self.engine.push_back_to_cov_BHP_all(value_vector(self.BHP_cov_mat_inv[w]))
+                self.engine.push_back_to_BHP_wei_all(value_vector(self.BHP_weights[w]))
 
         # well temperature ------------------------------------
         if self.objfun_well_tempr:
@@ -1041,9 +1042,9 @@ class OptModuleSettings:
                 self.well_tempr_weights = np.ones(np.shape(self.obs_well_tempr))
 
             for w in range(np.size(self.obs_well_tempr, 0)):
-                self.physics.engine.push_back_to_well_tempr_all(value_vector(self.obs_well_tempr[w]))
-                self.physics.engine.push_back_to_cov_well_tempr_all(value_vector(self.well_tempr_cov_mat_inv[w]))
-                self.physics.engine.push_back_to_well_tempr_wei_all(value_vector(self.well_tempr_weights[w]))
+                self.engine.push_back_to_well_tempr_all(value_vector(self.obs_well_tempr[w]))
+                self.engine.push_back_to_cov_well_tempr_all(value_vector(self.well_tempr_cov_mat_inv[w]))
+                self.engine.push_back_to_well_tempr_wei_all(value_vector(self.well_tempr_weights[w]))
 
 
         # temperature -----------------------------------------
@@ -1052,9 +1053,9 @@ class OptModuleSettings:
                 self.temperature_weights = np.ones(np.shape(self.obs_TEMPERATURE))
 
             for t in range(np.size(self.obs_TEMPERATURE, 0)):
-                self.physics.engine.push_back_to_temperature_all(value_vector(self.obs_TEMPERATURE[t]))
-                self.physics.engine.push_back_to_cov_temperature_all(value_vector(self.temperature_cov_mat_inv[t]))
-                self.physics.engine.push_back_to_temperature_wei_all(value_vector(self.temperature_weights[t]))
+                self.engine.push_back_to_temperature_all(value_vector(self.obs_TEMPERATURE[t]))
+                self.engine.push_back_to_cov_temperature_all(value_vector(self.temperature_cov_mat_inv[t]))
+                self.engine.push_back_to_temperature_wei_all(value_vector(self.temperature_weights[t]))
                 
         # customized operator -----------------------------------------
         if self.objfun_customized_op:
@@ -1062,14 +1063,14 @@ class OptModuleSettings:
                 self.customized_op_weights = np.ones(np.shape(self.obs_CUSTOMIZED_OP))
 
             for t in range(np.size(self.obs_CUSTOMIZED_OP, 0)):
-                self.physics.engine.push_back_to_customized_op_all(value_vector(self.obs_CUSTOMIZED_OP[t]))
-                self.physics.engine.push_back_to_cov_customized_op_all(value_vector(self.customized_op_cov_mat_inv[t]))
-                self.physics.engine.push_back_to_customized_op_wei_all(value_vector(self.customized_op_weights[t]))
+                self.engine.push_back_to_customized_op_all(value_vector(self.obs_CUSTOMIZED_OP[t]))
+                self.engine.push_back_to_cov_customized_op_all(value_vector(self.customized_op_cov_mat_inv[t]))
+                self.engine.push_back_to_customized_op_wei_all(value_vector(self.customized_op_weights[t]))
 
             if len(self.binary_array) > 0:
-                self.physics.engine.threshold = self.threshold
+                self.engine.threshold = self.threshold
                 for t in range(np.size(self.binary_array, 0)):
-                    self.physics.engine.push_back_to_binary_all(value_vector(self.binary_array[t]))
+                    self.engine.push_back_to_binary_all(value_vector(self.binary_array[t]))
 
         # saturation-----------------------------------
         if self.objfun_saturation:
@@ -1081,7 +1082,7 @@ class OptModuleSettings:
         # self.cov_mat_inv_diagnal = []
         # for i in range(np.size(self.cov_mat_inv, 0)):
         #     self.cov_mat_inv_diagnal.append(self.cov_mat_inv[i][i])
-        # self.physics.engine.cov_mat_inv = value_vector(self.cov_mat_inv_diagnal)
+        # self.engine.cov_mat_inv = value_vector(self.cov_mat_inv_diagnal)
 
 
 
@@ -1098,7 +1099,7 @@ class OptModuleSettings:
             self.prepare_obs_data = False
 
         # get the model response
-        response = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        response = pd.DataFrame.from_dict(self.engine.time_data)
         try:
             t_sim = response['time']
         except KeyError:
@@ -1111,7 +1112,7 @@ class OptModuleSettings:
                 if ts == tr:
                     self.dirac_vec[i] = 1
 
-        self.physics.engine.dirac_vec = value_vector(self.dirac_vec)
+        self.engine.dirac_vec = value_vector(self.dirac_vec)
 
         self.objfun_dict = {}
         self.objfun_list = []
@@ -1309,8 +1310,8 @@ class OptModuleSettings:
 
         # add temperature data in objective function---------------------------------------------
         if self.objfun_temperature:
-            # cc=np.array(self.physics.engine.time_data_customized)
-            temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
+            # cc=np.array(self.engine.time_data_customized)
+            temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
 
             # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             TotStep = np.size(t_sim)
@@ -1347,8 +1348,8 @@ class OptModuleSettings:
         # add customized operator data in objective function---------------------------------------------
         if self.objfun_customized_op:
             if len(self.binary_array) == 0:
-                # cc=np.array(self.physics.engine.time_data_customized)
-                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
+                # cc=np.array(self.engine.time_data_customized)
+                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1383,8 +1384,8 @@ class OptModuleSettings:
 
             else:
                 # hinge loss function---------------------------------
-                # cc=np.array(self.physics.engine.time_data_customized)
-                customized_op_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
+                # cc=np.array(self.engine.time_data_customized)
+                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1457,8 +1458,8 @@ class OptModuleSettings:
 
 
         if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
-            # # cc=np.array(self.physics.engine.time_data_customized)
-            # temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
+            # # cc=np.array(self.engine.time_data_customized)
+            # temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
             # 
             # # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             # TotStep = np.size(t_sim)
@@ -1624,15 +1625,15 @@ class OptModuleSettings:
 
         grad_linear = np.zeros(self.x_idx[2])
 
-        self.physics.engine.n_control_vars = np.size(x)
-        self.physics.engine.col_dT_du = index_vector(self.col_idx)
+        self.engine.n_control_vars = np.size(x)
+        self.engine.col_dT_du = index_vector(self.col_idx)
 
         grad_linear = np.zeros(np.size(x))
 
         try:
-            self.physics.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
+            self.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
 
-            temp_grad = np.array(self.physics.engine.derivatives, copy=False)  # get the adjoint gradinet from C++
+            temp_grad = np.array(self.engine.derivatives, copy=False)  # get the adjoint gradinet from C++
 
             grad_linear = self.modifier.set_grad(temp_grad, self.x_idx)  # set the gradient to modifiers
         except IndexError:
@@ -1691,13 +1692,13 @@ class OptModuleSettings:
 
 
         # for heuristic rate control--------------------------
-        # self.previous_forward_result = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        # self.previous_forward_result = pd.DataFrame.from_dict(self.engine.time_data)
 
         if self.heuristic_rate_control:
             self.make_single_forward_simulation(x)  # convert rate control to BHP control
 
         return GRAD
-    
+
     def grad_adjoint_method_mpfa_all(self, x: np.array) -> np.array:
         '''
         The preparation of the adjoint gradient for transmissibility and well index
@@ -1709,15 +1710,15 @@ class OptModuleSettings:
 
         grad_linear = np.zeros(self.n_fm)
 
-        self.physics.engine.n_control_vars = np.size(x)
-        self.physics.engine.col_dT_du = index_vector(self.col_idx)
+        self.engine.n_control_vars = np.size(x)
+        self.engine.col_dT_du = index_vector(self.col_idx)
 
         grad_linear = np.zeros(np.size(x))
 
         try:
-            self.physics.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
+            self.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
 
-            temp_grad = np.array(self.physics.engine.derivatives, copy=True)  # get the adjoint gradinet from C++
+            temp_grad = np.array(self.engine.derivatives, copy=True)  # get the adjoint gradinet from C++
 
             grad_linear = self.modifier.set_grad(temp_grad, self.x_idx)  # set the gradient to modifiers
         except IndexError:
@@ -1797,15 +1798,15 @@ class OptModuleSettings:
 
         grad_linear = np.zeros(self.x_idx[2])
 
-        self.physics.engine.n_control_vars = np.size(u)
-        self.physics.engine.col_dT_du = index_vector(self.col_idx)
+        self.engine.n_control_vars = np.size(u)
+        self.engine.col_dT_du = index_vector(self.col_idx)
 
         grad_linear = np.zeros(np.size(u))
 
         try:
-            self.physics.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
+            self.engine.calc_adjoint_gradient_dirac_all()  # call the adjoint calculation function from C++
 
-            temp_grad = np.array(self.physics.engine.derivatives, copy=False)  # get the adjoint gradinet from C++
+            temp_grad = np.array(self.engine.derivatives, copy=False)  # get the adjoint gradinet from C++
 
             grad_linear = self.modifier.set_grad(temp_grad, self.x_idx)  # set the gradient to modifiers
         except IndexError:
@@ -1863,7 +1864,7 @@ class OptModuleSettings:
             self.objfunval = self.fval_temp
 
         # for heuristic rate control--------------------------
-        # self.previous_forward_result = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        # self.previous_forward_result = pd.DataFrame.from_dict(self.engine.time_data)
 
         if self.heuristic_rate_control:
             self.make_single_forward_simulation(u)  # convert rate control to BHP control
@@ -3136,7 +3137,7 @@ class model_modifier_aggregator:
             if type(m) == flux_multiplier_modifier:
                 temp_grad = m.set_grad(grad_original)
                 grad = np.append(grad, temp_grad)
-                
+
 
         return grad
 
@@ -3203,7 +3204,7 @@ class transmissibility_modifier:
         t = value_vector([])
         t_D = value_vector([])
 
-        model.reservoir.mesh.get_res_tran(t, t_D)
+        model.mesh.get_res_tran(t, t_D)
         self.t = t
 
         return np.array(t) / self.norms
@@ -3230,7 +3231,7 @@ class transmissibility_modifier:
         '''
         tran = x * self.norms
         tranD = tran
-        model.reservoir.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
+        model.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
 
     def set_grad(self, grad_original: np.array) -> np.array:
         '''
@@ -3291,7 +3292,7 @@ class flux_multiplier_modifier:
         fm_full = np.ones(np.size(fm) + len(model.reservoir.wells))
         fm_full[0:np.size(fm)] = fm
 
-        model.physics.engine.flux_multiplier = value_vector(fm_full)
+        model.engine.flux_multiplier = value_vector(fm_full)
 
     def set_grad(self, grad_original: np.array) -> np.array:
         '''
@@ -3316,7 +3317,7 @@ class transmissibility_fracture_modifier:
         t = value_vector([])
         t_D = value_vector([])
 
-        model.reservoir.mesh.get_res_tran(t, t_D)
+        model.mesh.get_res_tran(t, t_D)
         self.t = t
         self.t_D = t_D
 
@@ -3334,7 +3335,7 @@ class transmissibility_fracture_modifier:
         tran[0:self.nr_frac_frac_con] = value_vector(x * self.norms)
         tranD = self.t_D
 
-        model.reservoir.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
+        model.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
 
 
 class well_index_modifier:
@@ -3353,7 +3354,7 @@ class well_index_modifier:
         :return: initial guess of well index modifier
         '''
         well_index = value_vector([])
-        model.reservoir.mesh.get_wells_tran(well_index)
+        model.mesh.get_wells_tran(well_index)
         self.wi = well_index
 
         return np.array(well_index) / self.norms
@@ -3378,7 +3379,7 @@ class well_index_modifier:
         :param x: updated well index
         '''
         well_index = x * self.norms
-        model.reservoir.mesh.set_wells_tran(value_vector(well_index))
+        model.mesh.set_wells_tran(value_vector(well_index))
 
     def set_grad(self, grad_original: np.array) -> np.array:
         '''

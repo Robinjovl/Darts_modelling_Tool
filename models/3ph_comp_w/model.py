@@ -1,7 +1,6 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
-import numpy as np
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -20,42 +19,28 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
-        self.set_physics()
         self.set_wells()
+        self.set_physics()
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
 
+        self.initial_values = {self.physics.vars[0]: 50.,
+                               self.physics.vars[1]: self.ini_stream[0],
+                               self.physics.vars[2]: self.ini_stream[1],
+                               self.physics.vars[3]: self.ini_stream[2]
+                               }
+
     def set_reservoir(self):
-        """Reservoir"""
-        self.reservoir = StructReservoir(self.timer, nx=1000, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
+        nx = 1000
+        reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
                                          permz=10, poro=0.3, depth=1000)
+        reservoir.add_well("I1", perf_list=(1, 1, 1))
+        reservoir.add_well("P1", perf_list=(nx, 1, 1))
 
-        #self.reservoir.set_boundary_volume(yz_plus=1e8)
-
-        # overwrite depth to involve gravity
-        self.depth_start = self.reservoir.depth[0]
-        self.depth_end = self.reservoir.depth[0]                # by changing this, one can change the inclined angle
-
-        # self.layer_1 = np.linspace(self.depth_start, self.depth_end, self.reservoir.nx)       # inclined
-        # for i in range(self.reservoir.nz):
-        #     self.reservoir.depth[i*self.reservoir.nx: (i+1)*self.reservoir.nx] = self.layer_1 + i*self.reservoir.global_data['dz']
-        return
-
-    def set_wells(self):
-        """well location"""
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1000, j=1, k=1, multi_segment=False)
-
-        # self.reservoir.add_well("P1")
-        # for i in range(int(self.reservoir.nz / 2)):
-        #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
-        return
+        return super().set_reservoir(reservoir)
 
     def set_physics(self):
         """Physical properties"""
@@ -84,23 +69,13 @@ class Model(CICDModel):
                                                ('wat', PhaseRelPerm("wat"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
-        self.physics.add_property_region(property_container)
-        self.physics.init_physics()
+        physics = Compositional(components, phases, self.timer,
+                                n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+        physics.add_property_region(property_container)
 
-        return
+        return super().set_physics(physics)
 
-    # Initialize reservoir and set boundary conditions:
-    def set_initial_conditions(self):
-        """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, 50, self.ini_stream)
-
-        # composition = np.array(self.reservoir.mesh.composition, copy=False)
-        # n_half = int(self.reservoir.nx * self.reservoir.ny * self.reservoir.nz / 2)
-        # composition[2*n_half:] = 1e-6
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.new_rate_inj(20, self.inj_stream, 0)

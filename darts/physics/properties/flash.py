@@ -23,6 +23,14 @@ class Flash:
         return self.x
 
 
+class SinglePhase(Flash):
+    def __init__(self, nc):
+        super().__init__(nph=1, nc=nc)
+
+    def evaluate(self, pressure, temperature, zc):
+        return np.array([1.]), np.array([zc])
+
+
 class ConstantK(Flash):
     def __init__(self, nc, ki, min_z=1e-11):
         super().__init__(nph=2, nc=nc)

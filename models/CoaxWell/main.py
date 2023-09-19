@@ -16,7 +16,7 @@ m.print_stat()
 m.export_pro_vtk()
 
 
-td = pd.DataFrame.from_dict(m.physics.engine.time_data)
+td = pd.DataFrame.from_dict(m.engine.time_data)
 td.to_pickle("darts_time_data.pkl")
 writer = pd.ExcelWriter('time_data.xlsx')
 td.to_excel(writer, 'Sheet1')

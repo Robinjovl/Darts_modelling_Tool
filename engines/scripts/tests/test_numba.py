@@ -1,8 +1,7 @@
 import numpy as np
-from darts.mesh.geometrymodule import Hexahedron, Wedge, Pyramid, Tetrahedron
-from darts.mesh.nb_geometrymodule import nbHexahedron, nbWedge, nbPyramid, nbTetrahedron
+from darts.reservoirs.mesh.geometrymodule import Hexahedron, Wedge, Pyramid, Tetrahedron
+from darts.reservoirs.mesh.nb_geometrymodule import nbHexahedron, nbWedge, nbPyramid, nbTetrahedron
 import meshio
-import numba as nb
 from numba import jit, types
 from numba.typed import Dict, List
 import time

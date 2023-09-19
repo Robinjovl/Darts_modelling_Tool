@@ -21,7 +21,7 @@ class CICDModel(DartsModel):
         data_et = self.load_performance_data(perf_file, pkl_suffix=pkl_suffix)
         if data_et and not overwrite:
             data = self.get_performance_data()
-            nb = self.reservoir.mesh.n_res_blocks
+            nb = self.mesh.n_res_blocks
             nv = self.physics.n_vars
 
             # Check final solution - data[0]
@@ -73,17 +73,17 @@ class CICDModel(DartsModel):
         :rtype: dict
         """
         perf_data = dict()
-        perf_data['solution'] = np.copy(self.physics.engine.X)
-        perf_data['reservoir blocks'] = self.reservoir.mesh.n_res_blocks
+        perf_data['solution'] = np.copy(self.engine.X)
+        perf_data['reservoir blocks'] = self.mesh.n_res_blocks
         perf_data['variables'] = self.physics.n_vars
         perf_data['OBL resolution'] = self.physics.n_points
         perf_data['operators'] = self.physics.n_ops
-        perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-        perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-        perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-        perf_data['wasted newton iterations'] = self.physics.engine.stat.n_newton_wasted
-        perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
-        perf_data['wasted linear iterations'] = self.physics.engine.stat.n_linear_wasted
+        perf_data['timesteps'] = self.engine.stat.n_timesteps_total
+        perf_data['wasted timesteps'] = self.engine.stat.n_timesteps_wasted
+        perf_data['newton iterations'] = self.engine.stat.n_newton_total
+        perf_data['wasted newton iterations'] = self.engine.stat.n_newton_wasted
+        perf_data['linear iterations'] = self.engine.stat.n_linear_total
+        perf_data['wasted linear iterations'] = self.engine.stat.n_linear_wasted
 
         sim = self.timer.node['simulation']
         jac = sim.node['jacobian assembly']

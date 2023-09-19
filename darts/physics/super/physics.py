@@ -64,7 +64,7 @@ class Compositional(PhysicsBase):
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
 
-    def set_operators(self, regions, output_properties=None):
+    def set_operators(self, regions):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
         :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
@@ -85,12 +85,6 @@ class Compositional(PhysicsBase):
 
         self.rate_operators = RateOperators(self.property_containers[regions[0]])
 
-        # Create property evaluator
-        if output_properties is not None:
-            self.property_operators = output_properties
-        if output_properties is not None:
-            self.property_operators = output_properties
-
         return
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
@@ -104,34 +98,27 @@ class Compositional(PhysicsBase):
         """
         if discr_type == 'mpfa':
             if self.thermal:
-                self.engine = eval("engine_super_mp_%s%d_%d_t" % (platform, self.nc, self.nph))()
+                return eval("engine_super_mp_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                self.engine = eval("engine_super_mp_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval("engine_super_mp_%s%d_%d" % (platform, self.nc, self.nph))()
         else:
             if self.thermal:
-                self.engine = eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
+                return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                self.engine = eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
 
-    def set_well_controls(self):
+    def define_well_controls(self):
         # define well control factories
         # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
         self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
         self.new_rate_inj = lambda rate, inj_stream, iph: rate_inj_well_control(self.phases, iph, self.n_vars,
-                                                                               self.n_vars, rate,
-                                                                               value_vector(inj_stream), self.rate_itor)
+                                                                                self.n_vars, rate, value_vector(inj_stream),
+                                                                                self.rate_itor)
         # Production wells:
         self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
         self.new_rate_prod = lambda rate, iph: rate_prod_well_control(self.phases, iph, self.n_vars,
-                                                                      self.n_vars,
-                                                                     rate, self.rate_itor)
+                                                                      self.n_vars, rate, self.rate_itor)
         return
-
-    # Define some class methods:
-    def init_wells(self, wells):
-        for w in wells:
-            assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.phases, self.rate_itor)
 
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
                                        uniform_pressure: float, uniform_composition: list, uniform_temp: float = None):
@@ -170,15 +157,3 @@ class Compositional(PhysicsBase):
         else:
             for c in range(self.nc - 1):  # Denis
                 composition[c::(self.nc - 1)] = uniform_composition[c]
-
-    def set_boundary_conditions(self, mesh: conn_mesh, uniform_pressure: float, uniform_composition: list):
-        assert isinstance(mesh, conn_mesh)
-
-        # Class methods which can create constant pressure and composition boundary condition:
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
-
-        mesh.composition.resize(mesh.n_blocks * (self.nc - 1))
-        composition = np.array(mesh.composition, copy=False)
-        for c in range(self.nc - 1):
-            composition[c::(self.nc - 1)] = uniform_composition[c]

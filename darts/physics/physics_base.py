@@ -32,9 +32,9 @@ class PhysicsBase:
     property_containers = {}
 
     reservoir_operators = {}
-    wellbore_operators = {}
-    rate_operators = {}
-    property_operators = None
+    wellbore_operators: operator_set_evaluator_iface
+    rate_operators: operator_set_evaluator_iface
+    property_operators: operator_set_evaluator_iface = None
 
     def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_points: int,
@@ -84,15 +84,14 @@ class PhysicsBase:
             self.created_itors = []
             atexit.register(self.write_cache)
 
-    def init_physics(self, regions: list = None, output_props=None, discr_type: str = 'tpfa', platform: str = 'cpu',
-                     itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd'):
+    def init_physics(self, regions: list = None, discr_type: str = 'tpfa', platform: str = 'cpu',
+                     itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
+                     verbose: bool = False):
         """
         Function to initialize all contained objects within the Physics object.
 
         :param regions: List of regions. It contains the keys of the `property_containers` and `reservoir_operators` dict
         :type regions: list
-        :param output_props: Output property operators object, default is None
-        :type output_props:
         :param discr_type: Discretization type, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
@@ -103,18 +102,19 @@ class PhysicsBase:
         :type itor_mode: str
         :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
         :type itor_precision: str
+        :param verbose: Set verbose level
+        :type verbose: bool
         """
         # If no list of regions has been provided, generate it from the keys of self.property_containers dict
         if regions is None:
-            regions = [key for key in self.property_containers.keys()]
+            regions = list(self.property_containers.keys())
 
         # Define operators, set engine, set interpolators and define well controls
-        self.n_props = output_props.n_props if output_props is not None else 0
-        self.set_operators(regions, output_props)
-        self.set_engine(discr_type, platform)
+        self.set_operators(regions)
+        engine = self.set_engine(discr_type, platform)
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
-        self.set_well_controls()
-        return
+        self.define_well_controls()
+        return engine
 
     def add_property_region(self, property_container, region=0):
         """
@@ -127,30 +127,41 @@ class PhysicsBase:
         self.property_containers[region] = property_container
         return
 
-    def set_operators(self, regions: list, output_properties=None):
+    def add_property_operators(self, property_operators: operator_set_evaluator_iface):
+        """
+        Function to add PropertyOperators object for interpolation of properties after simulation
+
+        :param property_operators: :class:`PropertyOperators` object
+        """
+        self.property_operators = property_operators
+        self.n_props = property_operators.n_props
+        return
+
+    def set_operators(self, regions: list):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
         :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
         and a :class:`PropertyOperator` for the evaluation of properties.
 
-        In PhysicsBase, this is a virtual function, needs to be defined in child classes.
+        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
 
         :param regions: List of regions. It contains the keys of the `property_containers` and `reservoir_operators` dict
         :type regions: list
-        :param output_properties: Output property operators object, default is None
         """
         pass
 
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    @abc.abstractmethod
+    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu') -> engine_base:
         """
         Function to set :class:`engine` object.
 
-        In PhysicsBase, this is a virtual function, needs to be defined in child classes.
+        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
 
         :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
+        :returns: :class:`Engine` object
         """
         pass
 
@@ -197,48 +208,55 @@ class PhysicsBase:
 
         return
 
-    def set_well_controls(self):
+    @abc.abstractmethod
+    def define_well_controls(self):
         pass
+
+    def init_wells(self, wells):
+        """
+        Function to initialize the well rates for each well.
+
+        :param wells: List of :class:`ms_well` objects
+        """
+        for w in wells:
+            assert isinstance(w, ms_well)
+            w.init_rate_parameters(self.n_vars, self.phases, self.rate_itor)
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, n_dims: int, n_ops: int,
                             axes_n_points: index_vector, axes_min: value_vector, axes_max: value_vector,
                             algorithm: str = 'multilinear', mode: str = 'adaptive',
                             platform: str = 'cpu', precision: str = 'd'):
         """
-                Create interpolator object according to specified parameters
+        Create interpolator object according to specified parameters
 
-                Parameters
-                ----------
-                evaluator : an operator_set_evaluator_iface object
-                    State operators to be interpolated. Evaluator object is used to generate supporting points
-                n_dims : integer
-                    The number of dimensions for interpolation (parameter space dimensionality)
-                n_ops : integer
-                    The number of operators to be interpolated. Should be consistent with evaluator.
-                axes_n_points: an index_vector, pybind-type vector of integers
-                    The number of supporting points for each axis.
-                axes_min : a value_vector, pybind-type vector of floats
-                    The minimum value for each axis.
-                axes_max : a value_vector, pybind-type vector of floats
-                    The maximum value for each axis.
-                type : string
-                    interpolator type:
-                    'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on
-                                              rectangles
+        :param evaluator: State operators to be interpolated. Evaluator object is used to generate supporting points
+        :type evaluator: darts.engines.operator_set_evaluator_iface
+        :param n_dims: The number of dimensions for interpolation (parameter space dimensionality)
+        :type n_dims: int
+        :param n_ops: The number of operators to be interpolated. Should be consistent with evaluator.
+        :type n_ops: int
+        :param axes_n_points: The number of supporting points for each axis.
+        :type axes_n_points: darts.engines.index_vector
+        :param axes_min, axes_max: The minimum/maximum value for each axis.
+        :type axes_min: darts.engines.value_vector
+        :param algorithm: interpolator type:
+                    'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation
+                                              on rectangles;
                     'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
-                type : string
-                    interpolator mode:
-                    'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly
+        :type algorithm: str
+        :param mode: interpolator mode:
+                    'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly;
                     'static' - all supporting points are evaluated during itor object construction
-                platform : string
-                    platform used for interpolation calculations :
-                    'cpu' (default) - interpolation happens on CPU
+        :type mode: str
+        :param platform: platform used for interpolation calculations :
+                    'cpu' (default) - interpolation happens on CPU;
                     'gpu' - interpolation happens on GPU
-                precision : string
-                    precision used in interpolation calculations:
-                    'd' (default) - supporting points are stored and interpolation is performed using double precision
+        :type platform: str
+        :param precision: precision used in interpolation calculations:
+                    'd' (default) - supporting points are stored and interpolation is performed using double precision;
                     's' - supporting points are stored and interpolation is performed using single precision
-            """
+        :type precision: str
+        """
         # verify then inputs are valid
         assert len(axes_n_points) == n_dims
         assert len(axes_min) == n_dims
@@ -305,17 +323,15 @@ class PhysicsBase:
                 pickle.dump(itor.point_data, fp, protocol=4)
         return itor
 
-    def create_itor_timers(self, itor, timer_name: str):
+    def create_itor_timers(self, itor: operator_set_gradient_evaluator_iface, timer_name: str):
         """
-                Create timers for interpolators.
+        Create timers for interpolators.
 
-                Parameters
-                ----------
-                itor : an operator_set_gradient_evaluator_iface object
-                    The object which performes evaluation of operator gradient (interpolators currently, AD-based in future)
-                timer_name: string
-                    Timer name to be used for the given interpolator
-            """
+        :param itor: The object which performes evaluation of operator gradient (interpolators currently, AD-based in future)
+        :type itor: operator_set_gradient_evaluator_iface object
+        :param timer_name: Timer name to be used for the given interpolator
+        :type timer_name: str
+        """
         try:
             # in case this is a subsequent call, create only timer node for the given timer
             self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name] = timer_node()

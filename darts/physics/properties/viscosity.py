@@ -4,8 +4,9 @@ import numpy as np
 
 
 class Viscosity:
-    def __init__(self, components: list = None):
+    def __init__(self, components: list = None, ions: list = None):
         self.nc = len(components) if components is not None else 0
+        self.ni = len(ions) if ions is not None else 0
 
     def evaluate(self, pressure, temperature, x, rho):
         pass
@@ -66,40 +67,77 @@ class Lee1966(Viscosity):
 
 class MaoDuan2009(Viscosity):
     """
-    Correlation for brine + NaCl viscosity: Mao & Duan (2009) - The Viscosity of Aqueous Alkali-Chloride Solutions
-                                                                up to 623 K, 1,000 bar, and High Ionic Strength
+    Correlation for brine + NaCl viscosity: Mao and Duan (2009) - The Viscosity of Aqueous Alkali-Chloride Solutions
+                                                                  up to 623 K, 1,000 bar, and High Ionic Strength
     """
-    a = 9.03591045e1
-    b = [3.40285740e4, 8.23556123e8, -9.28022905e8]
-    c = [1.40090092e-2, 4.86126399e-2, 5.26696663e-2]
-    d = [-1.22757462e-1, 2.15995021e-2, -3.65253919e-4, 1.97270835e-6]
+    # # Data from Mao and Duan (2009) for pure water viscosity
+    # mu_d = [0.28853170e7, -0.11072577e5, -0.90834095e1, 0.30925651e-1, -0.27407100e-4,
+    #         -0.19283851e7, 0.56216046e4, 0.13827250e2, -0.47609523e-1, 0.35545041e-4]
+
+    # Data from Islam and Carlson (2012) for pure water viscosity
+    mu_a = 9.03591045e1
+    mu_b = [3.40285740e4, 8.23556123e8, -9.28022905e8]
+    mu_c = [1.40090092e-2, 4.86126399e-2, 5.26696663e-2]
+    mu_d = [-1.22757462e-1, 2.15995021e-2, -3.65253919e-4, 1.97270835e-6]
+
+    # Data from Islam and Carlson (2012) for pure water density
+    rho_a = 1.34136579e2
+    rho_b = [-4.07743800e3, 1.63192756e4, 1.37091355e3]
+    rho_c = [-5.56126409e-3, -1.07149234e-2, -5.46294495e-4]
+    rho_d = [4.45861703e-1, -4.51029739e-4]
+
+    # Data from Mao and Duan (2009) for relative viscosity of solutions of NaCl
+    a = [-0.21319213, 0.13651589e-2, -0.12191756e-5]
+    b = [0.69161945e-1, -0.27292263e-3, 0.20852448e-6]
+    c = [-0.25988855e-2, 0.77989227e-5]
 
     def __init__(self, components: list, ions: list = None):
-        super().__init__(components)
-        self.ions = ions
-        self.ni = len(ions) if ions is not None else 0
+        super().__init__(components, ions)
+
+        self.H2O_idx = components.index("H2O")
 
     def evaluate(self, pressure, temperature, x, rho):
-        # Viscosity of pure water
-        muH2O = self.a
+        # Density of pure water (Islam and Carlson, 2012)
+        rhoH2O = self.rho_a
         for i in range(3):
-            muH2O += self.b[i] * np.exp(-self.c[i] * temperature)
-        for i in range(4):
-            muH2O += pressure*0.1 * self.d[i] * (temperature-293.15)**i
+            rhoH2O += self.rho_b[i] * 10 ** (self.rho_c[i] * temperature)
+        for i in range(2):
+            rhoH2O += self.rho_d[i] * pressure ** i
 
-        # Viscosity of H2O + salt
-        mu_r = 1.
-        mu = mu_r * muH2O
+        # Viscosity of pure water (Islam and Carlson, 2012)
+        muH2O = self.mu_a
+        for i in range(3):
+            muH2O += self.mu_b[i] * np.exp(-self.mu_c[i] * temperature)
+        for i in range(4):
+            muH2O += pressure * 0.1 * self.mu_d[i] * (temperature - 293.15) ** (i+1)
+
+        # # Viscosity of pure water (Mao and Duan, 2009)
+        # muH2O = 0.
+        # for i in range(5):
+        #     muH2O += self.mu_d[i] * temperature ** (i-3)
+        # for i in range(5, 10):
+        #     muH2O += self.mu_d[i] * rhoH2O * temperature ** (i-8)
+        # muH2O = np.exp(muH2O)
+
+        # Relative viscosity of solution (Mao and Duan, 2009)
+        A = self.a[0] + self.a[1] * temperature + self.a[2] * temperature ** 2
+        B = self.b[0] + self.b[1] * temperature + self.b[2] * temperature ** 2
+        C = self.c[0] + self.c[1] * temperature
+        m = np.sum([55.509 * x[i] / x[self.H2O_idx] for i in range(self.nc, self.nc + self.ni)]) * 0.5  # half because sum of ions molality is double NaCl molality
+
+        mu_r = np.exp(A * m + B * m ** 2 + C * m ** 3)
+        mu = mu_r * muH2O  # Pa.s
 
         return mu * 1e-3
 
 
 class Islam2012(MaoDuan2009):
     """
-    Correlation for brine + NaCl + CO2 viscosity: Islam & Carlson (2012) - Viscosity Models and Effects of Dissolved CO2
+    Correlation for H2O + NaCl + CO2 viscosity: Islam and Carlson (2012) - Viscosity Models and Effects of Dissolved CO2
     """
     def __init__(self, components: list, ions: list = None):
         super().__init__(components, ions)
+
         self.CO2_idx = components.index("CO2") if "CO2" in components else None
 
     def evaluate(self, pressure, temperature, x, rho):
@@ -107,6 +145,6 @@ class Islam2012(MaoDuan2009):
 
         # Viscosity of Aq + CO2
         if self.CO2_idx is not None:
-            mu_brine *= 1. + 4.65 * pow(x[self.CO2_idx], 1.0134)
+            mu_brine *= 1. + 4.65 * x[self.CO2_idx] ** 1.0134
 
         return mu_brine
