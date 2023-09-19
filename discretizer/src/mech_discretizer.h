@@ -85,9 +85,11 @@ namespace dis
 	protected:
 	  struct InnerMatrices
 	  {
-		// R1, R2, y1, y2 - geometric components
-		Matrix T1, T2, G1, G2, Q1, Q2, Th1, Th2, R1, R2, y1, y2, S1, S2;
-		value_t r1, r2, beta_stab1, beta_stab2, k_stab1, k_stab2, c_stab1, c_stab2;
+		Matrix T1, T2;	// 3x3 matrices, conormal stiffness,
+		Matrix G1, G2;	// 3x9 matrices, transversal stiffness
+		Matrix R1, R2;	// 3x1 vectors, free terms in traction balance
+		Matrix y1, y2;	// 3x1 vectors, tangential components of vectors between cell and inteface centers
+		value_t r1, r2; // distances from cell centers to the interface
 	  };
 	  
 	  std::unordered_map<index_t, Matrix> pre_grad_A_u, pre_grad_R_u, pre_grad_rhs_u;

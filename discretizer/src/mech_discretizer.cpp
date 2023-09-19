@@ -56,8 +56,6 @@ void MechDiscretizer<MODE>::init()
 		inner[i][face_id] = InnerMatrices();
 		auto& cur = inner[i][face_id];
 
-		cur.Q1 = Matrix(ND, ND);		  cur.Q2 = Matrix(ND, ND);
-		cur.Th1 = Matrix(ND, ND * ND);	  cur.Th2 = Matrix(ND, ND * ND);
 		cur.R1 = Matrix(ND, 1);			  cur.R2 = Matrix(ND, 1);
 		cur.y1 = Matrix(ND, 1);			  cur.y2 = Matrix(ND, 1);
 		cur.T1 = Matrix(ND, ND);		  cur.T2 = Matrix(ND, ND);
@@ -89,7 +87,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   std::vector<index_t> admissible_connections(4, 0);
   Matrix n(ND, 1), conn_c(ND, 1), P(ND, ND), B1n(ND, 1), B2n(ND, 1), A1n(ND, 1), A2n(ND, 1), K1n(ND, 1), gam1(ND, 1), tmp(ND, 1);
   Vector3 n_vec, diff1, diff2;
-  Matrix C1(ND * ND, ND * ND), C2(ND * ND, ND * ND), T1(ND, ND), T2(ND, ND), G1(ND, ND * ND), G2(ND, ND * ND);
+  Matrix C1(ND * ND, ND * ND), C2(ND * ND, ND * ND), T1(ND, ND), G1(ND, ND * ND);
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
   Matrix mult_p(ND, 1), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), An(ND, ND), At(ND, ND), L(ND, ND), y1(ND, 1), c1_mat(ND, 1);
   Matrix to_invert(ND * ND, ND * ND);
@@ -100,7 +98,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   // allocate memory for arrays
   u_grads.resize(mesh->n_cells, ApproximationType<MODE>(ND * ND, MAX_STENCIL));
 
-	bc_thm = bc_thm_new;
+  bc_thm = bc_thm_new;
 
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
@@ -143,15 +141,15 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 	  {
 		// Clean matrices
 		auto& cur = inner[i][conn_id];
-		std::fill_n(&cur.Q1.values[0], cur.Q1.values.size(), 0.0);
-		std::fill_n(&cur.Q2.values[0], cur.Q2.values.size(), 0.0);
-		std::fill_n(&cur.Th1.values[0], cur.Th1.values.size(), 0.0);
-		std::fill_n(&cur.Th2.values[0], cur.Th2.values.size(), 0.0);
+		std::fill_n(&cur.T1.values[0], cur.T1.values.size(), 0.0);
+		std::fill_n(&cur.T2.values[0], cur.T2.values.size(), 0.0);
+		std::fill_n(&cur.G1.values[0], cur.G1.values.size(), 0.0);
+		std::fill_n(&cur.G2.values[0], cur.G2.values.size(), 0.0);
 		std::fill_n(&cur.R1.values[0], cur.R1.values.size(), 0.0);
 		std::fill_n(&cur.R2.values[0], cur.R2.values.size(), 0.0);
 
-		const index_t& cell_id1 = conn.elem_id1;
-		const index_t& cell_id2 = conn.elem_id2;
+		const index_t& cell_id1 = i;
+		const index_t& cell_id2 = mesh->adj_matrix_cols[loop_face_id];
 		const auto& c1 = mesh->centroids[cell_id1];
 		const auto& c2 = mesh->centroids[cell_id2];
 		
@@ -176,53 +174,44 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		nblock = make_block_diagonal(n, ND);
 		nblock_t = make_block_diagonal(n.transpose(), ND);
 		tblock = make_block_diagonal(P, ND);
-		T1 = nblock_t * C1 * nblock;
-		T2 = nblock_t * C2 * nblock;
-		G1 = nblock_t * C1 * tblock;
-		G2 = nblock_t * C2 * tblock;
+		auto& T1 = cur.T1;	  		auto& G1 = cur.G1;		  auto& R1 = cur.R1;
+		auto& T2 = cur.T2;			auto& G2 = cur.G2;		  auto& R2 = cur.R2;
+		T1.values = (nblock_t * C1 * nblock).values;
+		T2.values = (nblock_t * C2 * nblock).values;
+		G1.values = (nblock_t * C1 * tblock).values;
+		G2.values = (nblock_t * C2 * tblock).values;
 
 		// Process geometry
 		conn_c.values = std::valarray<value_t>(conn.c.values.data(), ND);
-		auto& r1 = cur.r1;
-		auto& r2 = cur.r2;
+		auto& r1 = cur.r1;			auto& y1 = cur.y1;
+		auto& r2 = cur.r2;			auto& y2 = cur.y2;
 		r1 = dot(n_vec, conn.c - c1);
 		r2 = dot(n_vec, c2 - conn.c);
 		assert(r1 > 0.0);		assert(r2 > 0.0);
-		auto& y1 = cur.y1;
-		auto& y2 = cur.y2;
 		y1.values = std::valarray<value_t>((c1 + r1 * n_vec).values.data(), ND);	 
 		y2.values = std::valarray<value_t>((c2 - r2 * n_vec).values.data(), ND);
-		// Assemble matrices
-		auto& Q1 = cur.Q1;						auto& Q2 = cur.Q2;
-		auto& Th1 = cur.Th1;					auto& Th2 = cur.Th2;
-		auto& R1 = cur.R1;						auto& R2 = cur.R2;
-
-		Q1(0, { ND, ND }, { (uint8_t)Q1.N, 1 }) = -T1.values;
-		Q2(0, { ND, ND }, { (uint8_t)Q1.N, 1 }) = -T2.values;
-		Th1(0, { ND, ND * ND }, { (uint8_t)Th1.N, 1 }) = -G1.values;
-		Th2(0, { ND, ND * ND }, { (uint8_t)Th1.N, 1 }) = -G2.values;
 		
 		// projection to normal
 		B1n = biots[cell_id1] * n;				B2n = biots[cell_id2] * n;
-		if /* constexpr */ (MODE == THERMOPOROELASTIC)
+		if constexpr  (MODE == THERMOPOROELASTIC)
 		{
 		  A1n = th_exps[cell_id1] * n;			A2n = th_exps[cell_id2] * n;
 		}
 		
 		// main matrix
-		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = ((Q2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (Th1 - Th2)) * make_block_diagonal(P, ND) +
-					(r2 * Q1 + r1 * Q2) * make_block_diagonal(n.transpose(), ND)).values;
+		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = ((T2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (G1 - G2)) * make_block_diagonal(P, ND) +
+					(r2 * T1 + r1 * T2) * make_block_diagonal(n.transpose(), ND)).values;
 		
 		// RHS
 		res1 = findInVector(st, cell_id1);
 		if (res1.first) { id1 = res1.second; }
 		else { id1 = st.size(); st.push_back(cell_id1); }
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -Q2.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -T2.values;
 
 		res2 = findInVector(st, cell_id2);
 		if (res2.first) { id2 = res2.second; }
 		else { id2 = st.size(); st.push_back(cell_id2); }
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += Q2.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += T2.values;
 		
 		// left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B1n.values;
