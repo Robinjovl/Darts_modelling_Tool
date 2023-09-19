@@ -3,19 +3,18 @@ from darts.engines import value_vector, sim_params, mech_operators, rsf_props, f
 from reservoir import UnstructReservoir
 import numpy as np
 from darts.mesh.transcalc import TransCalculations as TC
-from physics.physics_comp_sup import Poroelasticity
-from physics.property_container import *
-from physics.properties_basic import *
+from darts.physics.mech.poroelasticity import Poroelasticity
+from darts.physics.super.property_container import PropertyContainer
 
 class Model(DartsModel):
-    def __init__(self, n_points=64, case='mandel', scheme='non_stabilized', mesh='rect'):
+    def __init__(self, n_points=64, case='mandel', scheme='non_stabilized', discretizer='new_discretizer', mesh='rect'):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
         self.physics_type = 'poromechanics'
         self.case = case
 
-        self.reservoir = UnstructReservoir(timer=self.timer, case=case, scheme=scheme, mesh=mesh)
+        self.reservoir = UnstructReservoir(timer=self.timer, case=case, scheme=scheme, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
         self.params.first_ts = 1e-5  # Size of the first time-step [days]
@@ -497,52 +496,4 @@ def check_performance_data(ref_data, cur_data, prev_fail,
             return 1
 
 
-class model_properties(property_container):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z)
-        self.x = np.zeros((self.nph, self.nc))
 
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
-
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        ph = list(range(0, self.nph))
-
-        for j in ph:
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, 0)  # output in [kg/m3]
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        return self.dens, self.mu
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = list(range(0, self.nph))
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-
-        return self.sat, self.dens_m

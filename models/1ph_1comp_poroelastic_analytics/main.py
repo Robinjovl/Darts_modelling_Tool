@@ -317,6 +317,13 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
+def test_discretizer(case='mandel', scheme='non_stabilized'):
+    print('New discretizer: ')
+    new_model = Model(case=case, scheme=scheme, discretizer='new_discretizer')
+    print('Old discretizer: ')
+    old_model = Model(case=case, scheme=scheme, discretizer='pm_discretizer')
+
+
 # test_args = [
 #     [['terzaghi', 'non_stabilized', 'rect'],
 #      ['terzaghi', 'non_stabilized', 'wedge'],
@@ -339,6 +346,7 @@ def run_test(args: list = []):
 
 #test(case='terzaghi', scheme='stabilized', mesh='rect')
 
-run_and_plot(case='mandel', scheme='non_stabilized')#, mesh='rect')
+#run_and_plot(case='mandel', scheme='non_stabilized')#, mesh='rect')
+test_discretizer(case='mandel', scheme='non_stabilized')#, mesh='rect')
 #test(case='mandel', scheme='stabilized', mesh='rect')
 
