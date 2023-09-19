@@ -318,11 +318,45 @@ def run_test(args: list = []):
         return 1, 0.0
 
 def test_discretizer(case='mandel', scheme='non_stabilized'):
-    print('New discretizer: ')
-    new_model = Model(case=case, scheme=scheme, discretizer='new_discretizer')
     print('Old discretizer: ')
     old_model = Model(case=case, scheme=scheme, discretizer='pm_discretizer')
+    print('New discretizer: ')
+    new_model = Model(case=case, scheme=scheme, discretizer='new_discretizer')
 
+    for i in range(old_model.reservoir.unstr_discr.mat_cells_tot):
+        # check if cells are the same
+        c_new = np.array(new_model.reservoir.discr_mesh.centroids[i].values, copy=False)
+        c_old = np.array(old_model.reservoir.pm.cell_centers[i].values, copy=False)
+        assert(np.linalg.norm(c_new - c_old) < 1.e-5)
+
+        # extract gradients
+        new_p_grad = new_model.reservoir.discr.p_grads[i]
+        new_u_grad = new_model.reservoir.discr.u_grads[i]
+        old_grad = old_model.reservoir.pm.get_gradient(i)
+
+        # check stencils
+        new_p_stencil = np.array(new_p_grad.stencil, copy=False)
+        new_u_stencil = np.array(new_p_grad.stencil, copy=False)
+        old_stencil = np.array(old_grad[0], copy=False)
+        assert(set(new_u_stencil) == set(old_stencil))
+
+        # check values
+        n_vars = old_model.reservoir.n_vars
+        new_p_vals = np.array(new_p_grad.a.values, copy=False).reshape(3, new_p_stencil.size)
+        new_u_vals = np.array(new_u_grad.a.values, copy=False)\
+            .reshape(3 * 3, new_u_stencil.size * n_vars)
+        old_vals = np.array(old_grad[1], copy=False)\
+            .reshape(3 * n_vars, old_stencil.size * n_vars)
+        old_stencil_ids = np.argsort(old_stencil)
+        old_stencil_cols = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in old_stencil_ids])
+        old_stencil_zero_cols = np.concatenate([np.arange(i * n_vars, i * n_vars + (n_vars - 1)) for i in old_stencil_ids])
+
+        dp_grad = np.fabs(old_vals[9:, n_vars * old_stencil_ids + 3] - new_p_vals)
+        assert((dp_grad < 1.e-3 * np.fabs(old_vals[9:, n_vars * old_stencil_ids + 3])).all())
+        old_p_du_grad = np.fabs(old_vals[9:, old_stencil_zero_cols])
+        assert((old_p_du_grad < 1.e-6).all())
+        du_grad = np.fabs(old_vals[:9, old_stencil_cols] - new_u_vals)
+        assert((du_grad < 1.e-3 * np.fabs(old_vals[:9, old_stencil_cols])).all())
 
 # test_args = [
 #     [['terzaghi', 'non_stabilized', 'rect'],

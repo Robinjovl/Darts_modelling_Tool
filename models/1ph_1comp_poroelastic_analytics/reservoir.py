@@ -1,5 +1,9 @@
 from darts.engines import conn_mesh, ms_well, ms_well_vector, index_vector, value_vector, contact, contact_vector, vector_matrix, scheme_type
-from darts.engines import matrix33, matrix, pm_discretizer, Face, vector_face_vector, face_vector, vector_matrix33, Stiffness, stf_vector, critical_stress
+from darts.engines import matrix33 as engine_matrix33
+from darts.discretizer import matrix33 as disc_matrix33
+from darts.engines import Stiffness as engine_stiffness
+from darts.discretizer import Stiffness as disc_stiffness
+from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face_vector, vector_matrix33, stf_vector, critical_stress
 import numpy as np
 from math import inf, pi
 from darts.mesh.unstruct_discretizer import UnstructDiscretizer
@@ -18,7 +22,7 @@ from scipy.special import erfc as erfc
 
 import darts.discretizer as dis
 from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
-from darts.discretizer import matrix33, vector_matrix33, vector_vector3, matrix, value_vector, index_vector, Stiffness
+from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoir:
@@ -27,8 +31,7 @@ class UnstructReservoir:
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
         self.discretizer_name = discretizer
-
-        self.n_vars = 5
+        self.n_vars = 4
 
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
@@ -47,15 +50,29 @@ class UnstructReservoir:
         if discretizer == 'new_discretizer':
             pass
         elif discretizer == 'pm_discretizer':
-            self.mesh.init_pm(self.discr.cell_m, self.discr.cell_p,
-                              self.discr.stencil, self.discr.offset,
-                              self.discr.tran, self.discr.rhs,
-                              self.discr.tran_biot, self.discr.rhs_biot,
-                              self.n_matrix, self.n_bounds, self.n_fracs, self.n_vars)
+            self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
+            self.unstr_discr.x_new[:, 0] = self.u_init[0]
+            self.unstr_discr.x_new[:, 1] = self.u_init[1]
+            self.unstr_discr.x_new[:, 2] = self.u_init[2]
+            self.unstr_discr.x_new[:, 3] = self.p_init
+            dt = 0.0
+            self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
+            self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                         index_vector(self.ref_contact_cells))
+            self.pm.reconstruct_gradients_per_cell(dt)
+            self.pm.calc_all_fluxes_once(dt)
+
+            self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p,
+                              self.pm.stencil, self.pm.offset,
+                              self.pm.tran, self.pm.rhs,
+                              self.pm.tran_biot, self.pm.rhs_biot,
+                              self.unstr_discr.mat_cells_tot,
+                              self.unstr_discr.bound_cells_tot,
+                              self.unstr_discr.frac_cells_tot)
+            self.unstr_discr.store_volume_all_cells()
 
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.poro = np.array(self.mesh.poro, copy=False)
-        self.depth = np.array(self.mesh.depth, copy=False)
         self.volume = np.array(self.mesh.volume, copy=False)
         self.bc = np.array(self.mesh.bc, copy=False)
         self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
@@ -73,7 +90,6 @@ class UnstructReservoir:
 
             self.poro[:self.unstr_discr.mat_cells_tot] = self.porosity
             self.poro[self.unstr_discr.mat_cells_tot:] = 1
-            self.depth[:] = self.unstr_discr.depth_all_cells[:]#self.unstr_discr.frac_cells_tot + self.unstr_discr.mat_cells_tot]
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
             for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
                 self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
@@ -245,9 +261,9 @@ class UnstructReservoir:
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
 
-            self.discr.perms.append(matrix33(self.permx, self.permy, self.permz))
-            self.discr.biots.append(matrix33(self.biot))
-            self.discr.stfs.append(Stiffness(self.lam, self.mu))
+            self.discr.perms.append(disc_matrix33(self.permx, self.permy, self.permz))
+            self.discr.biots.append(disc_matrix33(self.biot))
+            self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
             self.biot_mean[9 * cell_id] = self.biot
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
@@ -878,9 +894,9 @@ class UnstructReservoir:
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-            self.pm.perms.append(matrix33(self.permx, self.permy, self.permz))
-            self.pm.biots.append(matrix33(self.biot))
-            self.pm.stfs.append(Stiffness(self.lam, self.mu))
+            self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
+            self.pm.biots.append(engine_matrix33(self.biot))
+            self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
             self.biot_mean[9 * cell_id] = self.biot
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot

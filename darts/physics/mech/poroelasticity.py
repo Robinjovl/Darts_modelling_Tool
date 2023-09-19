@@ -41,16 +41,14 @@ class Poroelasticity(Compositional):
         super().__init__(components, phases, timer, n_points,
                  min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
 
-    def init_physics(self, regions: list = None, output_props=None, discr_type: str = 'tpfa', platform: str = 'cpu',
+    def init_physics(self, regions: list = None, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
-                     discretizer: str = 'new_discretizer'):
+                     verbose: bool = False, discretizer: str = 'new_discretizer'):
         """
         Function to initialize all contained objects within the Physics object.
 
         :param regions: List of regions. It contains the keys of the `property_containers` and `reservoir_operators` dict
         :type regions: list
-        :param output_props: Output property operators object, default is None
-        :type output_props:
         :param discr_type: Discretization type, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
@@ -61,6 +59,8 @@ class Poroelasticity(Compositional):
         :type itor_mode: str
         :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
         :type itor_precision: str
+        :param verbose: Set verbose level
+        :type verbose: bool
         :param discretizer: name of the discretizer
         :type discretizer: str
         """
@@ -69,12 +69,11 @@ class Poroelasticity(Compositional):
             regions = [key for key in self.property_containers.keys()]
 
         # Define operators, set engine, set interpolators and define well controls
-        self.n_props = output_props.n_props if output_props is not None else 0
-        self.set_operators(regions, output_props)
-        self.set_engine(discretizer, platform)
+        self.set_operators(regions)
+        engine = self.set_engine(discretizer, platform)
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
-        self.set_well_controls()
-        return
+        self.define_well_controls()
+        return engine
 
 
     def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):

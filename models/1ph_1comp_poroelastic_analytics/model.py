@@ -5,6 +5,10 @@ import numpy as np
 from darts.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.super.property_container import PropertyContainer
+from darts.physics.properties.flash import SinglePhase
+from darts.physics.properties.basic import ConstFunc
+from darts.physics.properties.density import DensityBasic
+
 
 class Model(DartsModel):
     def __init__(self, n_points=64, case='mandel', scheme='non_stabilized', discretizer='new_discretizer', mesh='rect'):
@@ -34,24 +38,31 @@ class Model(DartsModel):
 
         self.timer.node["initialization"].stop()
     def set_physics(self):
-        self.zero = 1e-13
-        """Physical properties"""
-        self.property_container = model_properties(phases_name=['wat'], components_name=['w'],
-                                                   min_z=self.zero/10)
+        zero = 1e-8
+        # Create property containers:
+        components = ['H2O']
+        phases = ['wat']
+        thermal = 0
+        Mw = [18.015]
 
+        property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                               Mw=Mw, min_z=zero / 10, temperature=1.)
+
+        """ properties correlations """
+        property_container.flash_ev = SinglePhase(nc=1)
         self.reservoir.fluid_density0 = 1014.0
-        self.property_container.density_ev = dict([('wat', Density(compr=self.reservoir.fluid_compressibility,
+        property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
                                                                    dens0=self.reservoir.fluid_density0))])
-        self.property_container.viscosity_ev = dict([('wat', ViscosityConst(self.reservoir.fluid_viscosity))])
-        self.property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("single", 0.0, 0.0))])
+        property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
 
+        # self.property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("single", 0.0, 0.0))])
         # create physics
-        # self.physics = Poromechanics(timer=self.timer, physics_filename='input/physics.in',
-        #             n_points=self.n_points, min_p=-1000, max_p=1000, max_u=1.E+20)
-        self.physics = Poroelasticity(self.property_container, self.timer, n_points=400,
-                                     min_p=-10, max_p=1000)
+        physics = Poroelasticity(components, phases, self.timer,
+                                n_points=200, min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10)
+        physics.add_property_region(property_container)
 
-        self.reservoir.P_VAR = self.physics.engine.P_VAR
+        # self.reservoir.P_VAR = physics.engine.P_VAR # TODO
+        return super().set_physics(physics)
 
     def init(self):
         DartsModel.init(self)
