@@ -85,6 +85,7 @@ namespace dis
 	protected:
 	  struct InnerMatrices
 	  {
+		// R1, R2, y1, y2 - geometric components
 		Matrix T1, T2, G1, G2, Q1, Q2, Th1, Th2, R1, R2, y1, y2, S1, S2;
 		value_t r1, r2, beta_stab1, beta_stab2, k_stab1, k_stab2, c_stab1, c_stab2;
 	  };
@@ -93,14 +94,15 @@ namespace dis
 	  std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs;
 	  std::vector<MechApproximation<MODE>> mech_fluxes;
 	  Matrix W;
+	  // cache for the "inner" (matrix-matrix) connections to reduce computations, size n_cells
 	  std::vector<std::map<index_t, InnerMatrices>> inner;
-
+	  // the number of variables per cell
 	  static const uint8_t n_unknowns;
 
-	  std::vector<index_t>::const_iterator it_find;
 	  std::pair<bool, size_t> res1, res2;
 	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
 	  {
+		std::vector<index_t>::const_iterator it_find;
 		// Find given element in vector
 		it_find = std::find(vec.begin(), vec.end(), element);
 		if (it_find != vec.end())
@@ -152,9 +154,11 @@ namespace dis
 	  MechDiscretizer();
 	  ~MechDiscretizer();
 
+	  // all geomechanical properties such as  Biot, Stifffness, etc are for the drained conditions
+
 	  // 3x3 matrices of Biot coefficients for the each cell
 	  std::vector<Matrix33> biots;
-	  // 6x6 stiffness matrices for the each cell
+	  // 6x6 stiffness matrices for the each cell (tensor of rank 4)
 	  std::vector<Stiffness> stfs;
 	  // 3x3 matrices of thermal expansion coefficients for the each cell
 	  std::vector<Matrix33> th_exps;
@@ -171,8 +175,7 @@ namespace dis
 	  std::vector<ApproximationType<MODE>> u_grads;
 
 		// grad = sum(i=1..stencil) A_i * (u, p, temperature)_i + b
-		// A - 9x5, b - 5x1 for THM. 
-		// 5: u_x, u_y, u_z, p, temperature
+		// fot THM: A - 9x5, b - 5x1, len{u_x, u_y, u_z, p, temperature}
 
 	  // approximations 
 	  std::vector<index_t> mech_cell_m, mech_cell_p, mech_stencil, mech_offset;

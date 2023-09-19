@@ -154,7 +154,9 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		const index_t& cell_id2 = conn.elem_id2;
 		const auto& c1 = mesh->centroids[cell_id1];
 		const auto& c2 = mesh->centroids[cell_id2];
-
+		
+		//TODO: as connection's normal is always outside for the cell_id1 (see sign = (conn.elem_id1 == cell_id1) ? 1.0 : -1.0;)
+		// here the second condition should always be true
 		if (dot((conn.c - c1), conn.n) < 0)
 		{
 		  n.values = -std::valarray<value_t>(conn.n.values.data(), conn.n.values.size());
@@ -168,6 +170,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		P = I3 - linalg::outer_product(n, n.transpose());
 
 		// Stiffness decomposition
+		// Stiffness : (div(u) + div(u)^T)/2 = [I*n^T]S[div*u], where '*' is tensor multiplication and ':' is tensor reduction, where S = WCW^T
 		C1 = W * stfs[cell_id1] * W.transpose();
 		C2 = W * stfs[cell_id2] * W.transpose();
 		nblock = make_block_diagonal(n, ND);
@@ -199,7 +202,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		Th1(0, { ND, ND * ND }, { (uint8_t)Th1.N, 1 }) = -G1.values;
 		Th2(0, { ND, ND * ND }, { (uint8_t)Th1.N, 1 }) = -G2.values;
 		
-
+		// projection to normal
 		B1n = biots[cell_id1] * n;				B2n = biots[cell_id2] * n;
 		if /* constexpr */ (MODE == THERMOPOROELASTIC)
 		{
