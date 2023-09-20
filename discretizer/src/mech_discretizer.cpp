@@ -106,6 +106,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   // loop through the adjacency matrix (matrix cells)
   for (index_t i = 0; i < mesh->region_ranges.at(mesh::MATRIX).second; i++)
   {
+	st.clear();
+
 	// Build the system from the continuity at the interfaces
 	n_cur_faces = 0;
 	for (index_t j = mesh->adj_matrix_offset[i]; j < mesh->adj_matrix_offset[i + 1]; j++)
@@ -134,7 +136,6 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 	face_id = conn_id = 0;
 	for (loop_face_id = mesh->adj_matrix_offset[i]; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++, conn_id++)
 	{
-	  st.clear();
 	  const auto& conn = mesh->conns[mesh->adj_matrix[loop_face_id]];
 
 	  if (conn.type == mesh::MAT_MAT)
