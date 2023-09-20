@@ -124,7 +124,7 @@ class UnstructReservoir:
                                            self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1])):
             c = np.array(self.discr_mesh.centroids[bound_id].values, copy=False)
             bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
-            self.solution[self.n_vars * cell_id: self.n_vars * (cell_id + 1)] = ref1(np.append(c, 0.0))
+            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = ref1(np.append(c, 0.0))
         # specify boundary conditions, loop over tags for speedup
         for tag in domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -238,7 +238,7 @@ class UnstructReservoir:
         u_trans = np.array(u_grad.a.values, copy=False).\
             reshape(3 * 3, len(u_grad.stencil) * self.n_vars)
         nabla_u = u_trans.dot(self.solution[stencil_cols])
-        nabla_p = p_trans.dot(self.solution[np.array(p_grad.stencil, copy=False)])
+        nabla_p = p_trans.dot(self.solution[self.n_vars * np.array(p_grad.stencil) + 3])
 
         return np.append(nabla_u, nabla_p)
 
