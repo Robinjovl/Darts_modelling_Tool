@@ -142,12 +142,6 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 	  {
 		// Clean matrices
 		auto& cur = inner[i][conn_id];
-		std::fill_n(&cur.T1.values[0], cur.T1.values.size(), 0.0);
-		std::fill_n(&cur.T2.values[0], cur.T2.values.size(), 0.0);
-		std::fill_n(&cur.G1.values[0], cur.G1.values.size(), 0.0);
-		std::fill_n(&cur.G2.values[0], cur.G2.values.size(), 0.0);
-		std::fill_n(&cur.R1.values[0], cur.R1.values.size(), 0.0);
-		std::fill_n(&cur.R2.values[0], cur.R2.values.size(), 0.0);
 
 		const index_t& cell_id1 = i;
 		const index_t& cell_id2 = mesh->adj_matrix_cols[loop_face_id];
@@ -175,8 +169,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		nblock = make_block_diagonal(n, ND);
 		nblock_t = make_block_diagonal(n.transpose(), ND);
 		tblock = make_block_diagonal(P, ND);
-		auto& T1 = cur.T1;	  		auto& G1 = cur.G1;		  auto& R1 = cur.R1;
-		auto& T2 = cur.T2;			auto& G2 = cur.G2;		  auto& R2 = cur.R2;
+		auto& T1 = cur.T1;	  		auto& G1 = cur.G1;
+		auto& T2 = cur.T2;			auto& G2 = cur.G2;
 		T1.values = (nblock_t * C1 * nblock).values;
 		T2.values = (nblock_t * C2 * nblock).values;
 		G1.values = (nblock_t * C1 * tblock).values;
@@ -200,14 +194,14 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		}
 		
 		// main matrix
-		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = ((T2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (G1 - G2)) * make_block_diagonal(P, ND) +
+		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (T2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (G1 - G2) +
 					(r2 * T1 + r1 * T2) * make_block_diagonal(n.transpose(), ND)).values;
 		
 		// RHS
 		res1 = findInVector(st, cell_id1);
 		if (res1.first) { id1 = res1.second; }
 		else { id1 = st.size(); st.push_back(cell_id1); }
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += -T2.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) -= T2.values;
 
 		res2 = findInVector(st, cell_id2);
 		if (res2.first) { id2 = res2.second; }
@@ -215,7 +209,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += T2.values;
 		
 		// left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B1n.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, {ND, 1}, {(size_t)rhs_mult.N, 1}) += r2 * B1n.values;
 
 		diff1 = conn.c - c1;
 		const auto& g1 = p_grads[cell_id1];
@@ -228,16 +222,16 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		  buf1 = diff1.x * g1.a(0, k) +
 				  diff1.y * g1.a(1, k) +
 					diff1.z * g1.a(2, k);
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf1 * B1n.values;
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf1 * B1n.values;
 		}
 
 		buf1 = diff1.x * g1.rhs(0, 0) +
 				diff1.y * g1.rhs(1, 0) +
 				  diff1.z * g1.rhs(2, 0);
-		rest(ND * face_id, { ND }, { 1 }) -= r2 * buf1 * B1n.values;
+		rest(ND * face_id, { ND }, { 1 }) += r2 * buf1 * B1n.values;
 
 		// right Biot term: B_2 * n * (p_2 + (x_c - x_2)^T * \nabla p_2)
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B2n.values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
 
 		diff2 = conn.c - c2;
 		const auto& g2 = p_grads[cell_id2];
@@ -245,18 +239,18 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		{
 		  cur_cell_id = g2.stencil[k];
 		  res2 = findInVector(st, cur_cell_id);
-		  if (res1.first) { id2 = res2.second; }
+		  if (res2.first) { id2 = res2.second; }
 		  else { id2 = st.size(); st.push_back(cur_cell_id); }
 		  buf2 = diff2.x * g2.a(0, k) +
 				  diff2.y * g2.a(1, k) +
 					diff2.z * g2.a(2, k);
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf2 * B2n.values;
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf2 * B2n.values;
 		}
 
 		buf2 = diff2.x * g2.rhs(0, 0) +
 				diff2.y * g2.rhs(1, 0) +
 				  diff2.z * g2.rhs(2, 0);
-		rest(ND * face_id, { ND }, { 1 }) += r2 * buf2 * B2n.values;
+		rest(ND * face_id, { ND }, { 1 }) -= r2 * buf2 * B2n.values;
 
 		face_id++;
 	  }
@@ -341,7 +335,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
 
 		// pressure gradient
-		tmp.values = ((- Ap * bp) * (lam1 / r1 * (y1 - conn_c) + gam1).transpose() * P).values;
+		tmp.values = ((-Ap * bp) * (lam1 / r1 * (y1 - conn_c) + gam1).transpose() * P).values;
 		const auto& g1 = p_grads[cell_id1];
 		for (index_t k = 0; k < g1.stencil.size(); k++)
 		{
@@ -378,7 +372,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		assert(val == val && std::isfinite(val));
 
 	  auto& cur_grad = u_grads[i];
-      // 9 x 5*stencil matrix for the each cell
+      // 9 x n_unknowns * stencil matrix for the each cell
 	  cur_grad.a = to_invert * A.transpose() * cur_rhs;
       // 5 x 1
 	  cur_grad.rhs = to_invert * A.transpose() * rest;

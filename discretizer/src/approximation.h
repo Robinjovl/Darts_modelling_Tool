@@ -10,6 +10,7 @@ namespace dis
   using mesh::index_t;
   using mesh::value_t;
   using mesh::Matrix;
+  using mesh::ND;
 
   // variable's names we perform approxiamtion over: 
   // 'Uvar' - vector of displacements, 
@@ -24,7 +25,12 @@ namespace dis
   {
   public:
     static inline const std::array<VarName, sizeof...(VarNames)> var_names = { VarNames... };
-    static inline const index_t n_block = sizeof...(VarNames);
+    static inline const index_t n_block = [] 
+    {
+      index_t count = 0;
+      ((VarNames == Uvar ? count += ND : count += 1), ...);
+      return count;
+    }();
 
     LinearApproximation() {};
     LinearApproximation(index_t apprx_size, index_t stencil_size)
