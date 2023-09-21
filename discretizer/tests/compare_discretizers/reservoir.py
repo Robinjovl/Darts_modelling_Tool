@@ -224,6 +224,7 @@ class UnstructReservoir:
         stencil_cols = np.concatenate([
             np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
         trans = np.array(coef, copy=False).reshape(3 * self.n_vars, stencil.size * self.n_vars)
+        assert((np.sum(trans, axis=1) < 1.e-8).all())
 
         grad = trans.dot(self.solution[stencil_cols])
         return grad
@@ -237,6 +238,8 @@ class UnstructReservoir:
         p_trans = np.array(p_grad.a.values).reshape(3, len(p_grad.stencil))
         u_trans = np.array(u_grad.a.values, copy=False).\
             reshape(3 * 3, len(u_grad.stencil) * self.n_vars)
+        assert((np.sum(p_trans, axis=1) < 1.e-8).all())
+        assert((np.sum(u_trans, axis=1) < 1.e-8).all())
         nabla_u = u_trans.dot(self.solution[stencil_cols])
         nabla_p = p_trans.dot(self.solution[self.n_vars * np.array(p_grad.stencil) + 3])
 
