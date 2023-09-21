@@ -67,6 +67,9 @@ class Model(CICDModel):
         reservoir = UnstructReservoir(timer=self.timer, mesh_file=mesh_file, permx=permx, permy=permy, permz=permz,
                                       poro=poro, frac_aper=frac_aper)
 
+        return super().set_reservoir(reservoir)
+
+    def set_wells(self):
         well_coord = np.genfromtxt('Brugge_struct/well_coord_Brugge.txt')
         n_injector = 10  # the first 10 wells are injectors
         n_wells = 30  # the number of wells
@@ -87,9 +90,11 @@ class Model(CICDModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
-            reservoir.add_well(name, wc, well_index=well_index_list[i], well_indexD=0)
+            self.reservoir.add_well(name)
+            idx = self.reservoir.find_cell_index(wc)
+            self.reservoir.add_perforation(name, cell_index=idx, well_index=well_index_list[i], well_indexD=0)
 
-        return super().set_reservoir(reservoir)
+        return super().set_wells()
 
     def set_physics(self):
         """Physical properties"""

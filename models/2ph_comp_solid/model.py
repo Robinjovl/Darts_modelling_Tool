@@ -43,9 +43,14 @@ class Model(CICDModel):
         nx = 1000
         reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
                                     permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
-        reservoir.add_well("I1", perf_list=(1, 1, 1))
-        reservoir.add_well("P1", perf_list=(nx, 1, 1))
         return super().set_reservoir(reservoir)
+
+    def set_wells(self):
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_well("P1")
+        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        return super().set_wells()
 
     def set_physics(self):
         self.zero = 1e-12

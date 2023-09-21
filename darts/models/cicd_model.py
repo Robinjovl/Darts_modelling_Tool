@@ -21,7 +21,7 @@ class CICDModel(DartsModel):
         data_et = self.load_performance_data(perf_file, pkl_suffix=pkl_suffix)
         if data_et and not overwrite:
             data = self.get_performance_data()
-            nb = self.mesh.n_res_blocks
+            nb = self.reservoir.mesh.n_res_blocks
             nv = self.physics.n_vars
 
             # Check final solution - data[0]
@@ -74,7 +74,7 @@ class CICDModel(DartsModel):
         """
         perf_data = dict()
         perf_data['solution'] = np.copy(self.engine.X)
-        perf_data['reservoir blocks'] = self.mesh.n_res_blocks
+        perf_data['reservoir blocks'] = self.reservoir.mesh.n_res_blocks
         perf_data['variables'] = self.physics.n_vars
         perf_data['OBL resolution'] = self.physics.n_points
         perf_data['operators'] = self.physics.n_ops

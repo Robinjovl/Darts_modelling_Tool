@@ -45,7 +45,7 @@ class UnstructReservoir(ReservoirBase):
         # Create empty list of wells:
         self.wells = []
 
-    def discretize(self) -> conn_mesh:
+    def discretize(self):
         # Construct instance of Unstructured Discretization class:
         self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, permx=self.permx, permy=self.permy,
                                                permz=self.permz, frac_aper=self.frac_aper)
@@ -65,18 +65,18 @@ class UnstructReservoir(ReservoirBase):
         cell_m, cell_p, tran, tran_thermal = self.discretizer.calc_connections_all_cells()
 
         # Initialize mesh using built connection list
-        mesh = conn_mesh()
-        mesh.init(index_vector(cell_m), index_vector(cell_p), value_vector(tran), value_vector(tran_thermal))
+        self.mesh = conn_mesh()
+        self.mesh.init(index_vector(cell_m), index_vector(cell_p), value_vector(tran), value_vector(tran_thermal))
 
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
-        np.array(mesh.poro, copy=False)[:] = self.poro
-        np.array(mesh.rock_cond, copy=False)[:] = self.rcond
-        np.array(mesh.heat_capacity, copy=False)[:] = self.hcap
-        np.array(mesh.op_num, copy=False)[:] = self.op_num
-        np.array(mesh.depth, copy=False)[:] = self.discretizer.depth_all_cells
-        np.array(mesh.volume, copy=False)[:] = self.discretizer.volume_all_cells
+        np.array(self.mesh.poro, copy=False)[:] = self.poro
+        np.array(self.mesh.rock_cond, copy=False)[:] = self.rcond
+        np.array(self.mesh.heat_capacity, copy=False)[:] = self.hcap
+        np.array(self.mesh.op_num, copy=False)[:] = self.op_num
+        np.array(self.mesh.depth, copy=False)[:] = self.discretizer.depth_all_cells
+        np.array(self.mesh.volume, copy=False)[:] = self.discretizer.volume_all_cells
 
-        return mesh
+        return
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # Set-up dictionary with data for boundary cells:
@@ -180,46 +180,40 @@ class UnstructReservoir(ReservoirBase):
                                     self.discretizer.fracture_cell_count
         return 0
 
-    def add_perforations(self, mesh: conn_mesh, verbose: bool = False):
+    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
+                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
-
-        :param mesh: :class:`Mesh` object
-        :param verbose: Switch for verbose level
         """
-        cell_idxs = []
-        for perf in self.perforations:
-            well = self.get_well(perf.well_name)
+        well = self.get_well(well_name)
 
-            res_block = self.find_cell_index(perf.cell_index)
-            if res_block not in cell_idxs:
-                cell_idxs.append(res_block)
-            else:
-                print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
-                exit()
+        if cell_index in well.perforations:
+            print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
+            exit()
 
-            # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(res_block, perf.well_radius, perf.skin)
+        # calculate well index and get local index of reservoir block
+        wi, wid = self.discretizer.calc_equivalent_well_index(cell_index, well_radius, skin)
+        # well.well_head_depth = np.array(self.mesh.depth, copy=False)[cell_index]
+        # well.well_body_depth = well.well_head_depth
 
-            if perf.well_index is None:
-                perf.well_index = wi
+        if well_index is None:
+            well_index = wi
 
-            if perf.well_indexD is None:
-                perf.well_indexD = wid
+        if well_indexD is None:
+            well_indexD = wid
 
-            # set well segment index (well block) equal to index of perforation layer
-            if perf.multi_segment:
-                well_block = len(well.perforations)
-            else:
-                well_block = 0
+        # set well segment index (well block) equal to index of perforation layer
+        if multi_segment:
+            well_block = len(well.perforations)
+        else:
+            well_block = 0
 
-            well.perforations = well.perforations + [(well_block, res_block, perf.well_index, perf.well_indexD)]
+        well.perforations = well.perforations + [(well_block, cell_index, well_index, well_indexD)]
 
-            if verbose:
-                print('Added perforation for well %s to block %d with WI=%f, WID=%f' % (well.name, res_block,
-                                                                                        perf.well_index,
-                                                                                        perf.well_indexD))
-
+        if verbose:
+            print('Added perforation for well %s to block %d with WI=%f, WID=%f' % (well.name, cell_index,
+                                                                                    well_index, well_indexD))
         return
 
     def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:

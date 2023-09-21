@@ -9,9 +9,11 @@ from darts.physics.super.operator_evaluator import PropertyOperators as props
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
     nc = n.property_container.nc + n.thermal
-    P = Xn[0:n.reservoir.nb * nc:nc]
-    z = np.ones((nc, n.reservoir.nb))
-    phi = np.ones(n.reservoir.nb)
+    nb = n.reservoir.mesh.n_res_blocks
+
+    P = Xn[0:nb * nc:nc]
+    z = np.ones((nc, nb))
+    phi = np.ones(nb)
     sat_ev = props(n.property_container)
     prop = np.zeros(2*n.property_container.nph)
 
@@ -20,7 +22,7 @@ def plot_sol(n):
         z[i][:] = Xn[i + 1:n.reservoir.nb * nc:nc]
         z[-1][:] -= z[i][:]
 
-    for i in range(n.reservoir.nb):
+    for i in range(nb):
         state = Xn[i*nc:(i+1)*nc]
         sat_ev.evaluate(state, prop)
         density_tot = np.sum(prop[0:3] * prop[3:6])
@@ -70,11 +72,12 @@ if __name__ == '__main__':
     if 1:
         Xn = np.array(n.engine.X, copy=False)
         nc = n.physics.nc + n.physics.thermal
+        nb = n.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:n.reservoir.mesh.n_res_blocks*nc:nc])
+            plt.plot(Xn[i:nb*nc:nc])
             plt.savefig(str(i) + '.png')
     else:
         #plot_sol(n)

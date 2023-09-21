@@ -52,7 +52,7 @@ class Model(CICDModel):
 
         solid_init = 0.7
         self.set_reservoir(grid_1D, res, solid_init)
-        self.set_wells()
+        self.set_wells(grid_1D)
         self.set_physics(grid_1D, solid_init, custom_physics)
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_newton=1e-3, tol_linear=1e-5,
@@ -71,11 +71,6 @@ class Model(CICDModel):
             (self.nx, self.ny) = (1000, 1)
             reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
                                         permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
-
-            """well location"""
-            reservoir.add_well("INJ_GAS", perf_list=(1, 1, 1))
-
-            reservoir.add_well("PROD", perf_list=(self.nx, 1, 1))
 
             self.map = []
 
@@ -97,10 +92,23 @@ class Model(CICDModel):
             reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=self.ny, dx=self.dx, dy=10, dz=self.dy,
                                         permx=perm, permy=perm, permz=perm, poro=1, depth=self.depth)
 
-            perf_list = [(self.nx, 1, k+1) for k in range(self.ny)]
-            reservoir.add_well("PROD_" + str(1), perf_list=perf_list)
-
         return super().set_reservoir(reservoir)
+
+    def set_wells(self, grid_1D):
+        if grid_1D:
+            """well location"""
+            self.reservoir.add_well("INJ_GAS")
+            self.reservoir.add_perforation("INJ_GAS", cell_index=(1, 1, 1))
+
+            self.reservoir.add_well("PROD")
+            self.reservoir.add_perforation("PROD", cell_index=(self.reservoir.nx, 1, 1))
+
+        else:
+            self.reservoir.add_well("PROD_" + str(1))
+            for k in range(self.reservoir.ny):
+                self.reservoir.add_perforation("PROD_" + str(1), cell_index=(self.reservoir.nx, 1, k + 1))
+
+        return super().set_wells()
 
     def set_physics(self, grid_1D: bool, solid_init: float, custom_physics: bool):
         """PHYSICS AND RESERVOIR"""
@@ -219,12 +227,12 @@ class Model(CICDModel):
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):
         """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.mesh, self.init_pres, self.ini_comp)
+        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.init_pres, self.ini_comp)
 
         if len(self.map) > 0:
             nc = self.physics.nc
-            nb = self.mesh.n_res_blocks
-            composition = np.array(self.mesh.composition, copy=False)
+            nb = self.reservoir.mesh.n_res_blocks
+            composition = np.array(self.reservoir.mesh.composition, copy=False)
             zc = np.zeros(nb)
             for i in range(nc-1):
                 zc[:] = self.ini_comp[i]
@@ -244,8 +252,8 @@ class Model(CICDModel):
                 w.control = self.physics.new_bhp_prod(95)
 
     def set_op_list(self):
-        self.op_num = np.array(self.mesh.op_num, copy=False)
-        n_res = self.mesh.n_res_blocks
+        self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+        n_res = self.reservoir.mesh.n_res_blocks
         self.op_num[n_res:] = 1
 
         if self.grid_1D:
@@ -263,7 +271,7 @@ class Model(CICDModel):
 
     def print_and_plot_1D(self):
         nc = self.physics.nc
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         Sg = np.zeros(nb)
         Ss = np.zeros(nb)
         X = np.zeros((nb, nc - 1, 2))
@@ -347,7 +355,7 @@ class Model(CICDModel):
                            }
 
         nc = self.physics.nc
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         Sg = np.zeros(nb)
         Ss = np.zeros(nb)
         X = np.zeros((nb, nc - 1, 2))
@@ -465,12 +473,6 @@ class ModelProperties(PropertyContainer):
 
 
 class CustomPropertyOperators(PropertyOperators):
-    def __init__(self, variables, property_container):
-        super().__init__(variables, property_container)  # Initialize base-class
-
-        self.props = []
-        self.n_props = len(self.props)
-
     def evaluate(self, state, values):
         """
         Class methods which evaluates the state operators for the element based physics

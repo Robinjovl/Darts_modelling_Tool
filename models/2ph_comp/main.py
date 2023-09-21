@@ -70,11 +70,12 @@ if __name__ == '__main__':
     if 1:
         Xn = np.array(n.engine.X, copy=False)
         nc = n.physics.nc + n.physics.thermal
+        nb = n.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:n.mesh.n_res_blocks*nc:nc])
+            plt.plot(Xn[i:nb*nc:nc])
         plt.show()
     else:
         #plot_sol(n)

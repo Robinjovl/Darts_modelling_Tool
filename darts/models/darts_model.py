@@ -80,7 +80,7 @@ class DartsModel:
         """
         Function to initialize the engine by calling 'engine.init()' method.
         """
-        self.engine.init(self.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
+        self.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                          self.params, self.timer.node["simulation"])
 
     def set_reservoir(self, reservoir: ReservoirBase, verbose: bool = False) -> None:
@@ -93,17 +93,19 @@ class DartsModel:
         :type verbose: bool
         """
         self.reservoir = reservoir
-        self.mesh = self.reservoir.init_reservoir(verbose=verbose)
+        self.reservoir.init_reservoir(verbose=verbose)
         return
 
     def set_wells(self, verbose: bool = False) -> None:
         """
-        Function to define wells and initialize :class:`ms_wells` object.
+        Function to set (optionally) predefined wells in :class:`Reservoir` object
+        and initialize :class:`ms_wells` object.
 
         :param verbose: Set verbose level
         :type verbose: bool
         """
-        self.wells = self.reservoir.init_wells(self.mesh, verbose=verbose)
+        self.reservoir.set_wells()
+        self.wells = self.reservoir.init_wells(self.reservoir.mesh, verbose=verbose)
         return
 
     def set_physics(self, physics: PhysicsBase, discr_type: str = 'tpfa', platform: str = 'cpu',
@@ -141,17 +143,17 @@ class DartsModel:
             if variable not in initial_values.keys():
                 raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
 
-            self.mesh.composition.resize(self.mesh.n_blocks * (self.physics.nc - 1))
+            self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
             if variable == 'pressure':
-                values = np.array(self.mesh.pressure, copy=False)
+                values = np.array(self.reservoir.mesh.pressure, copy=False)
             elif variable == 'temperature':
-                values = np.array(self.mesh.temperature, copy=False)
+                values = np.array(self.reservoir.mesh.temperature, copy=False)
             elif variable == 'enthalpy':
-                values = np.array(self.mesh.enthalpy, copy=False)
+                values = np.array(self.reservoir.mesh.enthalpy, copy=False)
             else:
-                values = np.array(self.mesh.composition, copy=False)
+                values = np.array(self.reservoir.mesh.composition, copy=False)
 
-            # values = np.array(self.mesh.values[i], copy=False)
+            # values = np.array(self.reservoir.mesh.values[i], copy=False)
             initial_value = initial_values[variable]
 
             if variable not in ['pressure', 'temperature', 'enthalpy']:
@@ -162,8 +164,8 @@ class DartsModel:
                 values[:] = initial_value
             elif gradient is not None and variable in gradient.keys():
                 # If gradient has been defined, calculate distribution over depth and assign to array
-                for ith_cell in range(self.mesh.n_res_blocks):
-                    values[ith_cell] = initial_value + self.mesh.depth[ith_cell] * gradient[variable]
+                for ith_cell in range(self.reservoir.mesh.n_res_blocks):
+                    values[ith_cell] = initial_value + self.reservoir.mesh.depth[ith_cell] * gradient[variable]
             else:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
@@ -194,8 +196,8 @@ class DartsModel:
         """
         if type(self.physics.acc_flux_itor) == dict:
             self.op_list = [acc_flux_itor for acc_flux_itor in self.physics.acc_flux_itor.values()] + [self.physics.acc_flux_w_itor]
-            self.op_num = np.array(self.mesh.op_num, copy=False)
-            self.op_num[self.mesh.n_res_blocks:] = len(self.op_list) - 1
+            self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+            self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
         else: # for backward compatibility
             self.op_list = [self.physics.acc_flux_itor]
 
@@ -302,7 +304,7 @@ class DartsModel:
         if not hasattr(self, 'rhs_flux') or self.rhs_flux is None:
             return
         rhs = np.array(self.engine.RHS, copy=False)
-        n_res = self.mesh.n_res_blocks * self.physics.n_vars
+        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
         rhs[:n_res] += self.rhs_flux * dt
         return
 
@@ -355,7 +357,7 @@ class DartsModel:
         n_vars = self.physics.n_vars
         n_props = self.physics.n_props
         tot_props = n_vars + n_props
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         property_array = np.zeros((nb, tot_props))
 
         # Obtain primary variables from engine
@@ -396,7 +398,7 @@ class DartsModel:
         """
         # get current engine time
         t = self.engine.t
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         nv = self.physics.n_vars
         X = np.array(self.engine.X, copy=False)
 

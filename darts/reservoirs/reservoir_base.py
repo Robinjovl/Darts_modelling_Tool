@@ -7,26 +7,13 @@ from typing import Union
 
 from darts.engines import conn_mesh, timer_node, ms_well_vector, ms_well
 
-from dataclasses import dataclass
-
 
 class ReservoirBase:
     """
     Base class for generating a mesh
     """
-    @dataclass
-    class Perforation:
-        well_name: str
-        cell_index: Union[tuple, int]
-        well_radius: float
-        well_index: float
-        well_indexD: float
-        segment_direction: str = 'z_axis'
-        skin: float = 0.
-        multi_segment: bool = False
-
+    mesh: conn_mesh
     wells: ms_well_vector = []
-    perforations: list = []
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
@@ -38,24 +25,45 @@ class ReservoirBase:
             self.created_itors = []
             atexit.register(self.write_cache)
 
-    def init_reservoir(self, verbose: bool = False) -> conn_mesh:
+    def init_reservoir(self, verbose: bool = False):
         """
         Generic function to initialize reservoir.
 
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
-        mesh = self.discretize()
-        return mesh
+        self.discretize()
+        return
 
     @abc.abstractmethod
-    def discretize(self) -> conn_mesh:
+    def discretize(self, cache: bool = False):
         """
         Function to generate discretized mesh
 
         This function is virtual, needs to be overloaded in derived Reservoir classes
 
-        :returns: Mesh object
-        :rtype: conn_mesh
+        :param cache: Option to cache mesh discretization
+        :type cache: bool
+        """
+        pass
+
+    def set_layer_properties(self, layers: dict = {}, layer_properties: dict = {}) -> None:
+        """
+        Function to set properties for different layers, will be called in Reservoir.discretize()
+
+        This function is empty by default, can be overloaded by child classes
+
+        :param layers: Dictionary of [layer, cell_idxs]
+        :type layers: dict
+        :param layer_properties: Dictionary of [layer, properties]
+        :type layer_properties: dict
+        """
+        pass
+
+    def set_wells(self):
+        """
+        Function to predefine wells inside Reservoir class, will be called in DartsModel.set_wells()
+
+        This function is empty by default, can be overloaded by child classes
         """
         pass
 
@@ -69,24 +77,15 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, name: str, perf_list: list, well_radius: float = 0.1524,
-                 wellbore_diameter: float = 0.15, well_index: float = None, well_indexD: float = None,
-                 segment_direction: str = 'z_axis', skin: float = 0, multi_segment: bool = False) -> None:
+    def add_well(self, well_name: str, wellbore_diameter: float = 0.15) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
 
-        :param name: Well name
-        :param perf_cell_idxs: Set of cells to perforate, (i, j, k)
-        :param well_radius:
+        :param well_name: Well name
         :param wellbore_diameter:
-        :param well_index:
-        :param well_indexD:
-        :param segment_direction:
-        :param skin:
-        :param multi_segment:
         """
         well = ms_well()
-        well.name = name
+        well.name = well_name
 
         # first put only area here, to be multiplied by segment length later
         well.segment_volume = pi * wellbore_diameter ** 2 / 4
@@ -97,23 +96,25 @@ class ReservoirBase:
         well.segment_depth_increment = 0
         self.wells.append(well)
 
-        if isinstance(perf_list, (tuple, int, np.ndarray)):
-            perf_list = [perf_list]
-
-        for p, perf_idx in enumerate(perf_list):
-            self.perforations.append(self.Perforation(well_name=name, cell_index=perf_idx, well_radius=well_radius,
-                                                      well_index=well_index, well_indexD=well_indexD,
-                                                      segment_direction=segment_direction, skin=skin,
-                                                      multi_segment=multi_segment))
         return
 
     @abc.abstractmethod
-    def add_perforations(self, mesh: conn_mesh, verbose: bool = False) -> None:
+    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
+                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to well objects.
 
-        :param mesh: Mesh object
-        :type mesh: conn_mesh
+        :param well_name: Name of well to add perforation to
+        :type well_name: str
+        :param cell_index: Index of cell to be perforated
+        :type cell_index: int or tuple
+        :param well_radius: Radius of well, default is 0.1524
+        :param well_index: Well index, default is calculated inside
+        :param well_indexD: Thermal well index, default is calculated inside
+        :param segment_direction: X-, Y- or Z-direction, default is `z_axis`
+        :param skin: default is 0
+        :param multi_segment: default is False
         :param verbose: Switch to set verbose level
         """
         pass
@@ -149,8 +150,6 @@ class ReservoirBase:
         :param mesh: conn_mesh object
         :param verbose: Switch to set verbose level
         """
-        self.add_perforations(mesh, verbose)
-
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
         mesh.add_wells(ms_well_vector(self.wells))

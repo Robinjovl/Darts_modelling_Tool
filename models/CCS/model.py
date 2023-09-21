@@ -33,11 +33,19 @@ class Model(DartsModel):
 
         reservoir = StructReservoir(self.timer, nx, ny, nz, dx=dx, dy=10, dz=dz,
                                     permx=100, permy=100, permz=10, hcap=2200, rcond=100, poro=0.2, depth=depth)
-        reservoir.add_well("I1", perf_list=(1, 1, nz), well_index=100, well_indexD=100)
-        perf_list = [(nx, ny, k+1) for k in range(nz)]
-        reservoir.add_well("P1", perf_list=perf_list, well_index=100, well_indexD=100)
 
         return super().set_reservoir(reservoir)
+
+    def set_wells(self):
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, self.reservoir.nz), well_index=100, well_indexD=100)
+
+        self.reservoir.add_well("P1")
+        for k in range(self.reservoir.nz):
+            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, self.reservoir.ny, k+1),
+                                           well_index=100, well_indexD=100)
+
+        return super().set_wells()
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""

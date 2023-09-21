@@ -1311,7 +1311,7 @@ class OptModuleSettings:
         # add temperature data in objective function---------------------------------------------
         if self.objfun_temperature:
             # cc=np.array(self.engine.time_data_customized)
-            temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
+            temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
             # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             TotStep = np.size(t_sim)
@@ -1349,7 +1349,7 @@ class OptModuleSettings:
         if self.objfun_customized_op:
             if len(self.binary_array) == 0:
                 # cc=np.array(self.engine.time_data_customized)
-                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
+                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1385,7 +1385,7 @@ class OptModuleSettings:
             else:
                 # hinge loss function---------------------------------
                 # cc=np.array(self.engine.time_data_customized)
-                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
+                customized_op_separate = np.array(self.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
 
                 # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
                 TotStep = np.size(t_sim)
@@ -1459,7 +1459,7 @@ class OptModuleSettings:
 
         if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
             # # cc=np.array(self.engine.time_data_customized)
-            # temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.mesh.n_res_blocks]
+            # temperature_separate = np.array(self.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
             # 
             # # compute fval in a backward direction to make it similar with adjoint backward integration in C++ engine
             # TotStep = np.size(t_sim)
@@ -3204,7 +3204,7 @@ class transmissibility_modifier:
         t = value_vector([])
         t_D = value_vector([])
 
-        model.mesh.get_res_tran(t, t_D)
+        model.reservoir.mesh.get_res_tran(t, t_D)
         self.t = t
 
         return np.array(t) / self.norms
@@ -3231,7 +3231,7 @@ class transmissibility_modifier:
         '''
         tran = x * self.norms
         tranD = tran
-        model.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
+        model.reservoir.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
 
     def set_grad(self, grad_original: np.array) -> np.array:
         '''
@@ -3317,7 +3317,7 @@ class transmissibility_fracture_modifier:
         t = value_vector([])
         t_D = value_vector([])
 
-        model.mesh.get_res_tran(t, t_D)
+        model.reservoir.mesh.get_res_tran(t, t_D)
         self.t = t
         self.t_D = t_D
 
@@ -3335,7 +3335,7 @@ class transmissibility_fracture_modifier:
         tran[0:self.nr_frac_frac_con] = value_vector(x * self.norms)
         tranD = self.t_D
 
-        model.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
+        model.reservoir.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
 
 
 class well_index_modifier:
@@ -3354,7 +3354,7 @@ class well_index_modifier:
         :return: initial guess of well index modifier
         '''
         well_index = value_vector([])
-        model.mesh.get_wells_tran(well_index)
+        model.reservoir.mesh.get_wells_tran(well_index)
         self.wi = well_index
 
         return np.array(well_index) / self.norms
@@ -3379,7 +3379,7 @@ class well_index_modifier:
         :param x: updated well index
         '''
         well_index = x * self.norms
-        model.mesh.set_wells_tran(value_vector(well_index))
+        model.reservoir.mesh.set_wells_tran(value_vector(well_index))
 
     def set_grad(self, grad_original: np.array) -> np.array:
         '''

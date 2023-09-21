@@ -4,6 +4,7 @@ from darts.discretizer import load_single_int_keyword
 from darts.discretizer import value_vector as value_vector_discr
 from darts.discretizer import index_vector as index_vector_discr
 import numpy as np
+from typing import Union
 
 from opmcpg._cpggrid import UnstructuredGrid, process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
@@ -30,19 +31,6 @@ from dataclasses import dataclass
 
 
 class CPG_Reservoir(ReservoirBase):
-    @dataclass
-    class Perforation:
-        well_name: str
-        cell_index: tuple
-        well_radius: float
-        well_index: float
-        well_indexD: float
-        segment_direction: str = 'z_axis'
-        skin: float = 0.
-        multi_segment: bool = False
-
-    perforations: list = []
-
     def __init__(self, timer, gridfile, propfile, faultfile=None, cache=False):
         """
         Class constructor for UnstructReservoir class
@@ -108,7 +96,7 @@ class CPG_Reservoir(ReservoirBase):
             self.actnum = np.ones(self.dims[0] * self.dims[1] * self.dims[2])
             print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
-    def discretize(self) -> conn_mesh:
+    def discretize(self):
         '''
         reads grid and reservoir properties, initialize mesh, creates discretizer object and computes
         transmissibilities using two point flux approximation
@@ -118,7 +106,7 @@ class CPG_Reservoir(ReservoirBase):
         '''
 
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
-        mesh = conn_mesh()
+        self.mesh = conn_mesh()
 
         # empty dict just to pass to func
         displaced_tags = dict()
@@ -142,7 +130,7 @@ class CPG_Reservoir(ReservoirBase):
         self.nx = self.discr_mesh.nx = self.dims[0]
         self.ny = self.discr_mesh.ny = self.dims[1]
         self.nz = self.discr_mesh.nz = self.dims[2]
-        self.nb = mesh.n_res_blocks
+        self.nb = self.mesh.n_res_blocks
         self.discr_mesh.n_cells = ugrid.number_of_cells
         # cells + boundary_faces, approximate
         self.discr_mesh.num_of_elements = self.discr_mesh.n_cells + \
@@ -212,7 +200,7 @@ class CPG_Reservoir(ReservoirBase):
         #poro could be modified here
         #self.poro[poro < 1e-2] = 1e-2
         self.discr.set_porosity(self.discr_mesh.poro)
-        mesh.poro = darts.engines.value_vector(self.discr.poro)
+        self.mesh.poro = darts.engines.value_vector(self.discr.poro)
         self.poro = np.array(self.discr_mesh.poro, copy=False)
 
         # calculate transmissibilities
@@ -232,8 +220,8 @@ class CPG_Reservoir(ReservoirBase):
             # self.discr.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
 
         tran = np.fabs(tran)
-        mesh.init(darts.engines.index_vector(cell_m), darts.engines.index_vector(cell_p),
-                  darts.engines.value_vector(tran), darts.engines.value_vector(tranD))
+        self.mesh.init(darts.engines.index_vector(cell_m), darts.engines.index_vector(cell_p),
+                       darts.engines.value_vector(tran), darts.engines.value_vector(tranD))
 
         # debug
         # d = {'cell_m': cell_m, 'cell_p': cell_p, 'tran': tran, 'tranD': tranD}
@@ -245,15 +233,15 @@ class CPG_Reservoir(ReservoirBase):
         #    df_cpg.to_excel(writer, sheet_name='cpg')
 
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
-        mesh.depth = darts.engines.value_vector(self.discr_mesh.depths)
-        mesh.volume = darts.engines.value_vector(self.discr_mesh.volumes)
-        self.bc = np.array(mesh.bc, copy=False)
+        self.mesh.depth = darts.engines.value_vector(self.discr_mesh.depths)
+        self.mesh.volume = darts.engines.value_vector(self.discr_mesh.volumes)
+        self.bc = np.array(self.mesh.bc, copy=False)
 
         # rock thermal properties
-        self.hcap = np.array(mesh.heat_capacity, copy=False)
-        self.conduction = np.array(mesh.rock_cond, copy=False)
+        self.hcap = np.array(self.mesh.heat_capacity, copy=False)
+        self.conduction = np.array(self.mesh.rock_cond, copy=False)
 
-        return mesh
+        return
 
     def calc_well_index(self, i, j, k, well_radius=0.1524, segment_direction='z_axis', skin=0.):
         """
@@ -402,16 +390,12 @@ class CPG_Reservoir(ReservoirBase):
 
         return bc
 
-    def add_well(self, name: str, perf_list, well_radius=0.1524, wellbore_diameter=0.15, well_index=-1,
-                 well_indexD=-1, segment_direction='z_axis', skin=0, multi_segment=False, verbose=False):
+    def add_well(self, well_name: str, wellbore_diameter: float = 0.15):
         """
         Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
         """
         well = ms_well()
-        well.name = name
+        well.name = well_name
         well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
         well.well_head_depth = 0
         well.well_body_depth = 0
@@ -419,65 +403,60 @@ class CPG_Reservoir(ReservoirBase):
         well.segment_depth_increment = 1
         self.wells.append(well)
 
-        if isinstance(perf_list, (tuple, int)):
-            perf_list = [perf_list]
-
-        for p, perf_idx in enumerate(perf_list):
-            self.perforations.append(CPG_Reservoir.Perforation(well_name=name, cell_index=perf_idx, well_radius=well_radius,
-                                                               well_index=well_index, well_indexD=well_indexD,
-                                                               segment_direction=segment_direction, skin=skin,
-                                                               multi_segment=multi_segment))
         return 0
 
-    # ijk indices are is 1-based (starts from 1)
-    def add_perforations(self, mesh, verbose: bool = False):
-        for perf in self.perforations:
-            well = self.get_well(perf.well_name)
+    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
+                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+        """
+        Function to add perforations to wells.
+        """
+        well = self.get_well(well_name)
 
-            # calculate well index and get local index of reservoir block
-            i, j, k = perf.cell_index
-            res_block_local, wi, wiD = self.calc_well_index(i, j, k, well_radius=perf.well_radius,
-                                                            segment_direction=perf.segment_direction, skin=perf.skin)
+        # calculate well index and get local index of reservoir block
+        # ijk indices are is 1-based (starts from 1)
+        i, j, k = cell_index
+        res_block_local, wi, wiD = self.calc_well_index(i, j, k, well_radius=well_radius,
+                                                        segment_direction=segment_direction, skin=skin)
 
-            if perf.well_index is None:
-                perf.well_index = wi
+        if well_index is None:
+            well_index = wi
 
-            if perf.well_indexD is None:
-                perf.well_indexD = wiD
+        if well_indexD is None:
+            well_indexD = wiD
 
-            # set well segment index (well block) equal to index of perforation layer
-            if perf.multi_segment:
-                well_block = len(well.perforations)
-            else:
-                well_block = 0
+        # set well segment index (well block) equal to index of perforation layer
+        if multi_segment:
+            well_block = len(well.perforations)
+        else:
+            well_block = 0
 
-            # add completion only if target block is active
-            if res_block_local > -1:
-                if len(well.perforations) == 0:
-                    well.well_head_depth = self.depth_all_cells[res_block_local]
-                    well.well_body_depth = well.well_head_depth
-                    dx, dy, dz = self.discr_mesh.calc_cell_sizes(i - 1, j - 1, k - 1)
-                    well.segment_depth_increment = dz
-                    well.segment_volume *= well.segment_depth_increment
-                for p in well.perforations:
-                    if p[0] == well_block and p[1] == res_block_local:
-                        print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))
-                        return
-                well.perforations = well.perforations + [(well_block, res_block_local, perf.well_index, perf.well_indexD)]
-                if verbose:
-                    print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f WID=%f' % (
-                        well.name, res_block_local, i, j, k, perf.well_index, perf.well_indexD))
-            else:
-                if verbose:
-                    print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+        # add completion only if target block is active
+        if res_block_local > -1:
+            if len(well.perforations) == 0:
+                well.well_head_depth = self.depth_all_cells[res_block_local]
+                well.well_body_depth = well.well_head_depth
+                dx, dy, dz = self.discr_mesh.calc_cell_sizes(i - 1, j - 1, k - 1)
+                well.segment_depth_increment = dz
+                well.segment_volume *= well.segment_depth_increment
+            for p in well.perforations:
+                if p[0] == well_block and p[1] == res_block_local:
+                    print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))
+                    return
+            well.perforations = well.perforations + [(well_block, res_block_local, well_index, well_indexD)]
+            if verbose:
+                print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f WID=%f' % (
+                    well.name, res_block_local, i, j, k, well_index, well_indexD))
+        else:
+            if verbose:
+                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+        return
 
     def init_wells(self, mesh: conn_mesh, verbose: bool = False) -> ms_well_vector:
         """
         Class method which initializes the wells (adding wells and their perforations to the reservoir)
         :return:
         """
-        self.add_perforations(mesh, verbose)
-
         # Add wells to the DARTS mesh object and sort connection (DARTS related):
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name

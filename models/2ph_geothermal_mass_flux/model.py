@@ -20,8 +20,8 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.mode = mode
         self.well_rate = well_rate
-        self.set_reservoir(mode)
-        self.set_wells()
+        self.set_reservoir()
+        self.set_wells(mode)
         self.set_physics()
 
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
@@ -36,16 +36,20 @@ class Model(CICDModel):
                                self.physics.vars[1]: 350.
                                }
 
-    def set_reservoir(self, mode: str):
+    def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
         nx = 100
         reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=5, permy=5, permz=5,
                                     poro=0.2, hcap=2200, rcond=181.44, depth=100)
-        if mode == 'wells':
-            reservoir.add_well("P1", perf_list=[(nx//2, 1, 1)], multi_segment=False)
 
         return super().set_reservoir(reservoir)
+
+    def set_wells(self, mode: str):
+        if mode == 'wells':
+            self.reservoir.add_well("P1")
+            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx//2, 1, 1), multi_segment=False)
+        return super().set_wells()
 
     def set_physics(self):
         """Physical properties"""
@@ -100,7 +104,7 @@ class Model(CICDModel):
         if outflow < 0 then it is actually inflow
         '''
         nv = self.physics.n_vars
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         self.rhs_flux = np.zeros(nb * nv)
         # extract pointer to values corresponding to var_idx
         rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]

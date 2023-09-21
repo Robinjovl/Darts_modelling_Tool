@@ -31,8 +31,8 @@ class Model(CICDModel, OptModuleSettings):
         # initialize global data to record the well location in vtk output file
         self.global_data = {'well location': 0}  # will be updated later in "run"
 
-        self.set_reservoir(perm, poro, Peaceman_WI)
-        self.set_wells()
+        self.set_reservoir(perm, poro)
+        self.set_wells(Peaceman_WI)
         self.set_physics()
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
@@ -46,7 +46,7 @@ class Model(CICDModel, OptModuleSettings):
                                self.physics.vars[2]: self.ini_stream[1]
                                }
 
-    def set_reservoir(self, perm, poro, Peaceman_WI):
+    def set_reservoir(self, perm, poro):
         """Reservoir construction"""
         nx = 20
         ny = 10
@@ -56,6 +56,9 @@ class Model(CICDModel, OptModuleSettings):
         reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=30, dy=30, dz=12,
                                     permx=perm, permy=perm, permz=perm, poro=poro, depth=2000)
 
+        return super().set_reservoir(reservoir)
+
+    def set_wells(self, Peaceman_WI):
         self.inj_list = [[5, 5]]
         self.prod_list = [[15, 3], [15, 8]]
 
@@ -68,16 +71,22 @@ class Model(CICDModel, OptModuleSettings):
         else:
             WI = 200
 
-        n_perf = nz
+        n_perf = self.reservoir.nz
         for i, inj in enumerate(self.inj_list):
-            perf_list = [(inj[0], inj[1], k+1) for k in range(n_perf)]
-            reservoir.add_well('I' + str(i + 1), perf_list=perf_list, well_radius=0.1, well_index=WI)
+            self.reservoir.add_well('I' + str(i + 1))
+
+            for k in range(n_perf):
+                self.reservoir.add_perforation('I' + str(i + 1), cell_index=(inj[0], inj[1], k + 1),
+                                               well_radius=0.1, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
-            perf_list = [(prod[0], prod[1], k+1) for k in range(n_perf)]
-            reservoir.add_well('P' + str(p + 1), perf_list=perf_list, well_radius=0.1, well_index=WI)
+            self.reservoir.add_well('P' + str(p + 1))
 
-        return super().set_reservoir(reservoir)
+            for k in range(n_perf):
+                self.reservoir.add_perforation('P' + str(p + 1), cell_index=(prod[0], prod[1], k + 1),
+                                               well_radius=0.1, well_index=WI)
+
+        return super().set_wells()
 
     def set_physics(self):
         """Physical properties"""
@@ -131,15 +140,15 @@ class Model(CICDModel, OptModuleSettings):
 
             # specify the index of blocks of customized operator
             idx_in_op_list = 1
-            op_num_new = np.array(self.mesh.op_num, copy=True)
+            op_num_new = np.array(self.reservoir.mesh.op_num, copy=True)
             op_num_new[:] = idx_in_op_list  # set the second interpolator (i.e. "customized_component_itor") from "self.op_list" to all blocks
             self.engine.idx_customized_operator = idx_in_op_list
             self.engine.customize_op_num = index_vector(op_num_new)
         else:
             # self.op_list = [self.physics.acc_flux_itor]
 
-            self.op_num = np.array(self.mesh.op_num, copy=False)
-            n_res = self.mesh.n_res_blocks
+            self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+            n_res = self.reservoir.mesh.n_res_blocks
             self.op_num[n_res:] = 1
             self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
 

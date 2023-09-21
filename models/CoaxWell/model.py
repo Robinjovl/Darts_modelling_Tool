@@ -17,7 +17,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir(resolution)
-        self.set_wells()
+        self.set_wells(resolution)
         self.set_physics(n_points)
 
         self.set_sim_params(first_ts=1e-5, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
@@ -56,31 +56,38 @@ class Model(CICDModel):
         reservoir.boundary_volumes['xz_minus'] = 1e8
         reservoir.boundary_volumes['xz_plus'] = 1e8
 
+        return super().set_reservoir(reservoir)
+
+    def set_wells(self, resolution):
         # add well's start locations
         iw = [resolution // 2, resolution // 2]
-        jw = [4, ny - 4]
+        jw = [4, self.reservoir.ny - 4]
 
-        n = nz // 2
-        j_mid = ny // 2
+        n = self.reservoir.nz // 2
+        j_mid = self.reservoir.ny // 2
 
         well_radius = 0.3
 
         # add well
-        perf_list = [(iw[0], j, n+1) for j in range(jw[0], j_mid + 1)]
-        reservoir.add_well("INJ", perf_list=perf_list,
-                           well_radius=well_radius, segment_direction='y_axis', well_index=0, multi_segment=True)
-        perf_1 = len(perf_list)  # last segment is n_perf+1
+        self.reservoir.add_well("INJ")
+        for j in range(jw[0], j_mid + 1):
+            self.reservoir.add_perforation("INJ", cell_index=(iw[0], j, n + 1), well_radius=well_radius,
+                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+        perf_1 = len(self.reservoir.wells[-1].perforations)  # last segment is n_perf+1
 
-        perf_list = [(iw[1], j, n+1) for j in range(jw[1], j_mid, -1)]
-        perf_2 = len(perf_list)
-        reservoir.add_well("PRD", perf_list=perf_list,
-                           well_radius=well_radius, segment_direction='y_axis', well_index=0, multi_segment=True)
+        self.reservoir.add_well("PRD")
+        for j in range(jw[1], j_mid, -1):
+            self.reservoir.add_perforation("PRD", cell_index=(iw[1], j, n + 1), well_radius=well_radius,
+                                           segment_direction='y_axis', well_index=0, multi_segment=True)
+        perf_2 = len(self.reservoir.wells[-1].perforations)
 
         # connect the last two perforations of two wells
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
-        reservoir.connected_well_segments = {(reservoir.wells[0].name, reservoir.wells[1].name): [(perf_1, perf_2)]}
+        self.reservoir.connected_well_segments = {
+            (self.reservoir.wells[0].name, self.reservoir.wells[1].name): [(perf_1, perf_2)]
+        }
 
-        return super().set_reservoir(reservoir)
+        return super().set_wells()
 
     def set_physics(self, n_points):
         # create pre-defined physics for geothermal
@@ -98,13 +105,13 @@ class Model(CICDModel):
                 w.control = self.physics.new_bhp_prod(195)
 
     def compute_temperature(self, X):
-        nb = self.mesh.n_blocks
+        nb = self.reservoir.mesh.n_blocks
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         return temp
 
     def export_pro_vtk(self, file_name='Results'):
         X = np.array(self.engine.X, copy=False)
-        nb = self.mesh.n_res_blocks
+        nb = self.reservoir.mesh.n_res_blocks
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         local_cell_data = {'Temperature': temp,
                            'Perm': self.reservoir.global_data['permx'][self.reservoir.discretizer.local_to_global]}
