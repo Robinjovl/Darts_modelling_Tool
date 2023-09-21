@@ -395,97 +395,33 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 template <MechDiscretizerMode MODE>
 void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 {
-  /*if (grad_stencil != u_grad_stencil) //// unify approximations of gradients under the same stencil
+  index_t i, j;
+  std::vector<index_t> new_stencil;
+  new_stencil.reserve(MAX_STENCIL);
+  
+  for (index_t cell_id = 0; cell_id < mesh->region_ranges.at(mesh::FRACTURE).second; cell_id++)
   {
-	const index_t n_grandients = std::max(grad_offset.size(), u_grad_offset.size()) - 1;
-	const index_t min_n_gradients = std::min(grad_offset.size(), u_grad_offset.size()) - 1;
-	const index_t max_stencil_size = 1.5 * std::max(grad_stencil.size(), u_grad_stencil.size());
-	index_t i, j;
-	vector<index_t> new_stencil, new_offset;
-	vector<value_t> new_p_grad_vals, new_t_grad_vals, new_u_grad_vals;
+	auto& p_grad = p_grads[cell_id];
+	auto& u_grad = u_grads[cell_id];
 
-	new_offset.reserve(n_grandients + 1);
-	new_stencil.reserve(max_stencil_size);
-	new_p_grad_vals.reserve(ND * max_stencil_size * n_grandients);
-	new_t_grad_vals.reserve(ND * max_stencil_size * n_grandients);
-	new_u_grad_vals.reserve(ND * ND * n_unknowns * max_stencil_size * n_grandients);
-
-	i = j = 0;
-	new_offset.push_back(0);
-	for (index_t elem_id = 0; elem_id < min_n_gradients; elem_id++)
+	if (p_grad.stencil != u_grad.stencil)
 	{
-	  while (i < grad_offset[elem_id + 1] && j < u_grad_offset[elem_id + 1])
+	  new_stencil.clear();
+	  merge_stencils(u_grad.stencil, p_grad.stencil, new_stencil);
+	  Matrix new_a(ND, new_stencil.size());
+
+	  for (i = 0, j = 0; i < p_grad.stencil.size(); i++)
 	  {
-		const auto& st_i = grad_stencil[i];
-		const auto& st_j = u_grad_stencil[j];
-		if (st_i == st_j)
-		{
-		  new_stencil.push_back(st_i);
-		  new_p_grad_vals.insert(end(new_p_grad_vals), begin(p_grad_vals) + i * ND,
-			begin(p_grad_vals) + (i + 1) * ND);
-		  if constexpr (MODE == THERMOPOROELASTIC)
-			new_t_grad_vals.insert(end(new_t_grad_vals), begin(t_grad_vals) + i * ND,
-			  begin(t_grad_vals) + (i + 1) * ND);
-		  new_u_grad_vals.insert(end(new_u_grad_vals), begin(u_grad_vals) + j * ND * ND * n_unknowns,
-			begin(p_grad_vals) + (j + 1) * ND * ND * n_unknowns);
-		  i++; j++;
-		}
-		else if (st_i < st_j)
-		{
-		  new_stencil.push_back(st_i);
-		  new_p_grad_vals.insert(end(new_p_grad_vals), begin(p_grad_vals) + i * ND,
-			begin(p_grad_vals) + (i + 1) * ND);
-		  if constexpr (MODE == THERMOPOROELASTIC)
-			new_t_grad_vals.insert(end(new_t_grad_vals), begin(t_grad_vals) + i * ND,
-			  begin(t_grad_vals) + (i + 1) * ND);
-		  new_u_grad_vals.insert(end(new_u_grad_vals), ND * ND * n_unknowns, 0.0);
-		  i++;
-		}
-		else
-		{
-		  new_stencil.push_back(st_j);
-		  new_p_grad_vals.insert(end(new_p_grad_vals), ND, 0.0);
-		  if constexpr (MODE == THERMOPOROELASTIC)
-			new_t_grad_vals.insert(end(new_t_grad_vals), ND, 0.0);
-		  new_u_grad_vals.insert(end(new_u_grad_vals), begin(u_grad_vals) + j * ND * ND * n_unknowns,
-			begin(p_grad_vals) + (j + 1) * ND * ND * n_unknowns);
-		  j++;
-		}
-	  }
-	  // remaining terms in pressure gradients
-	  while (i < grad_offset[elem_id + 1]) 
-	  {
-		new_stencil.push_back(grad_stencil[i]);
-		new_p_grad_vals.insert(end(new_p_grad_vals), begin(p_grad_vals) + i * ND,
-		  begin(p_grad_vals) + (i + 1) * ND);
-		if constexpr (MODE == THERMOPOROELASTIC)
-		  new_t_grad_vals.insert(end(new_t_grad_vals), begin(t_grad_vals) + i * ND,
-			begin(t_grad_vals) + (i + 1) * ND);
-		new_u_grad_vals.insert(end(new_u_grad_vals), ND * ND * n_unknowns, 0.0);
-		i++;
-	  }
-	  // remaining terms in displacement gradients
-	  while (j < u_grad_offset[elem_id + 1])
-	  {
-		new_stencil.push_back(u_grad_stencil[j]);
-		new_p_grad_vals.insert(end(new_p_grad_vals), ND, 0.0);
-		if constexpr (MODE == THERMOPOROELASTIC)
-		  new_t_grad_vals.insert(end(new_t_grad_vals), ND, 0.0);
-		new_u_grad_vals.insert(end(new_u_grad_vals), begin(u_grad_vals) + j * ND * ND * n_unknowns,
-		  begin(p_grad_vals) + (j + 1) * ND * ND * n_unknowns);
-		j++;
+		while (new_stencil[j] != p_grad.stencil[i]) { j++; }
+
+		for (uint8_t row = 0; row < ND; row++)
+		  new_a(row, j) = p_grad.a(row, i);
 	  }
 
-	  new_offset.push_back(new_stencil.size());
+	  p_grad.a = new_a;
+	  p_grad.stencil = new_stencil;
 	}
-
-	grad_stencil = u_grad_stencil = new_stencil;
-	grad_offset = u_grad_offset = new_offset;
-	p_grad_vals = new_p_grad_vals;
-	if constexpr (MODE == THERMOPOROELASTIC)
-	  t_grad_vals = new_t_grad_vals;
-	u_grad_vals = new_u_grad_vals;
-  }*/
+  }
 }
 
 template <MechDiscretizerMode MODE>
