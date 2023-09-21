@@ -14,11 +14,12 @@ def test_compare_discretizers(mesh='rect'):
         assert((np.fabs(old_grad - true_grad) < 1.e-4 * true_grad).all())
         assert((np.fabs(new_grad - true_grad) < 1.e-4 * true_grad).all())
 
-    print('OK')
+    print('OK: ' + mesh)
 
 
 
 
 
 test_compare_discretizers(mesh='rect')
+test_compare_discretizers(mesh='tetra')
 
