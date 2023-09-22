@@ -185,6 +185,7 @@ namespace dis
 
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
+	  bool GRADIENTS_EXTENDED_STENCIL;
 
 	  void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
 

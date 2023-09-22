@@ -30,6 +30,7 @@ MechDiscretizer<MODE>::MechDiscretizer() : W(9, 6)
   W(8, 2) = 1.0;
 
   NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION = true;
+  GRADIENTS_EXTENDED_STENCIL = false;
 }
 
 template <MechDiscretizerMode MODE>
@@ -85,13 +86,13 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   // Variables
   std::vector<index_t> st;		st.reserve(MAX_STENCIL);
   std::vector<index_t> admissible_connections(4, 0);
-  Matrix n(ND, 1), conn_c(ND, 1), P(ND, ND), B1n(ND, 1), B2n(ND, 1), A1n(ND, 1), A2n(ND, 1), K1n(ND, 1), gam1(ND, 1), tmp(ND, 1);
+  Matrix n(ND, 1), conn_c(ND, 1), P(ND, ND), B1n(ND, 1), B2n(ND, 1), A1n(ND, 1), A2n(ND, 1), K1n(ND, 1), gam1(ND, 1), K2n(ND, 1), gam2(ND, 1), tmp(ND, 1);
   Vector3 n_vec, diff1, diff2;
-  Matrix C1(ND * ND, ND * ND), C2(ND * ND, ND * ND), T1(ND, ND), G1(ND, ND * ND);
+  Matrix C1(ND * ND, ND * ND), C2(ND * ND, ND * ND), T1(ND, ND), G1(ND, ND * ND), mat_diff1(1, ND), mat_diff2(1, ND);
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
   Matrix mult_p(ND, 1), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), An(ND, ND), At(ND, ND), L(ND, ND), y1(ND, 1), c1_mat(ND, 1);
   Matrix to_invert(ND * ND, ND * ND);
-  value_t buf1, buf2, Ap, gamma, r1, lam1;
+  value_t buf1, buf2, Ap, gamma, r1, lam1, lam2;
   index_t n_cur_faces, loop_face_id, face_id, conn_id, id1, id2, cur_cell_id;
   bool res;
 
@@ -208,49 +209,86 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		else { id2 = st.size(); st.push_back(cell_id2); }
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += T2.values;
 		
-		// left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, {ND, 1}, {(size_t)rhs_mult.N, 1}) += r2 * B1n.values;
-
-		diff1 = conn.c - c1;
-		const auto& g1 = p_grads[cell_id1];
-		for (index_t k = 0; k < g1.stencil.size(); k++)
+		if (GRADIENTS_EXTENDED_STENCIL) // use of \nabla p_2
 		{
-		  cur_cell_id = g1.stencil[k];
-		  res1 = findInVector(st, cur_cell_id);
-		  if (res1.first) { id1 = res1.second; }
-		  else { id1 = st.size(); st.push_back(cur_cell_id); }
-		  buf1 = diff1.x * g1.a(0, k) +
-				  diff1.y * g1.a(1, k) +
-					diff1.z * g1.a(2, k);
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf1 * B1n.values;
+		  // left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
+
+		  diff1 = conn.c - c1;
+		  const auto& g1 = p_grads[cell_id1];
+		  for (index_t k = 0; k < g1.stencil.size(); k++)
+		  {
+			cur_cell_id = g1.stencil[k];
+			res1 = findInVector(st, cur_cell_id);
+			if (res1.first) { id1 = res1.second; }
+			else { id1 = st.size(); st.push_back(cur_cell_id); }
+			buf1 = diff1.x * g1.a(0, k) +
+			  diff1.y * g1.a(1, k) +
+			  diff1.z * g1.a(2, k);
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * buf1 * B1n.values;
+		  }
+
+		  buf1 = diff1.x * g1.rhs(0, 0) +
+			diff1.y * g1.rhs(1, 0) +
+			diff1.z * g1.rhs(2, 0);
+		  rest(ND * face_id, { ND }, { 1 }) += r2 * buf1 * B1n.values;
+
+		  // right Biot term: B_2 * n * (p_2 + (x_c - x_2)^T * \nabla p_2)
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
+
+		  diff2 = conn.c - c2;
+		  const auto& g2 = p_grads[cell_id2];
+		  for (index_t k = 0; k < g2.stencil.size(); k++)
+		  {
+			cur_cell_id = g2.stencil[k];
+			res2 = findInVector(st, cur_cell_id);
+			if (res2.first) { id2 = res2.second; }
+			else { id2 = st.size(); st.push_back(cur_cell_id); }
+			buf2 = diff2.x * g2.a(0, k) +
+			  diff2.y * g2.a(1, k) +
+			  diff2.z * g2.a(2, k);
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf2 * B2n.values;
+		  }
+
+		  buf2 = diff2.x * g2.rhs(0, 0) +
+			diff2.y * g2.rhs(1, 0) +
+			diff2.z * g2.rhs(2, 0);
+		  rest(ND * face_id, { ND }, { 1 }) -= r2 * buf2 * B2n.values;
 		}
-
-		buf1 = diff1.x * g1.rhs(0, 0) +
-				diff1.y * g1.rhs(1, 0) +
-				  diff1.z * g1.rhs(2, 0);
-		rest(ND * face_id, { ND }, { 1 }) += r2 * buf1 * B1n.values;
-
-		// right Biot term: B_2 * n * (p_2 + (x_c - x_2)^T * \nabla p_2)
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
-
-		diff2 = conn.c - c2;
-		const auto& g2 = p_grads[cell_id2];
-		for (index_t k = 0; k < g2.stencil.size(); k++)
+		else // no use of \nabla p_2 (default)
 		{
-		  cur_cell_id = g2.stencil[k];
-		  res2 = findInVector(st, cur_cell_id);
-		  if (res2.first) { id2 = res2.second; }
-		  else { id2 = st.size(); st.push_back(cur_cell_id); }
-		  buf2 = diff2.x * g2.a(0, k) +
-				  diff2.y * g2.a(1, k) +
-					diff2.z * g2.a(2, k);
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * buf2 * B2n.values;
-		}
+		  // r_2 * (p_{\beta1} * B_1 * n - p_{\beta2} * B_2 * n )
+		  // p_{\beta1} remains the same, p_{\beta2} uses the following approximation
+		  // p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
+		  // + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n  
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
 
-		buf2 = diff2.x * g2.rhs(0, 0) +
-				diff2.y * g2.rhs(1, 0) +
-				  diff2.z * g2.rhs(2, 0);
-		rest(ND * face_id, { ND }, { 1 }) -= r2 * buf2 * B2n.values;
+		  K1n = DARCY_CONSTANT * perms[cell_id1] * n;
+		  K2n = DARCY_CONSTANT * perms[cell_id2] * n;
+		  lam2 = (n.transpose() * K2n).values[0];
+		  gam2 = K2n - lam2 * n;
+
+		  mat_diff1.values = std::valarray<value_t>((conn.c - c1).values.data(), ND);
+		  mat_diff2.values = std::valarray<value_t>(conn.c.values.data(), ND) - y2.values;
+		  
+		  const auto& g1 = p_grads[cell_id1];
+		  Matrix grad_mult(ND, ND);
+		  Matrix grad_term(ND, g1.stencil.size());
+		  grad_mult = outer_product(B1n, mat_diff1) - outer_product(B2n, mat_diff2 + r2 / lam2 * (gam2 - K1n).transpose());
+		  grad_term = grad_mult * g1.a;
+		  for (index_t k = 0; k < g1.stencil.size(); k++)
+		  {
+			cur_cell_id = g1.stencil[k];
+			res1 = findInVector(st, cur_cell_id);
+			if (res1.first) { id1 = res1.second; }
+			else { id1 = st.size(); st.push_back(cur_cell_id); }
+			Matrix block(grad_term(k, { ND, 1 }, { (size_t)grad_term.N, 1 }), ND, 1);
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * block.values;
+		  }
+		  rest(ND * face_id, { ND }, { 1 }) += r2 * (grad_mult * g1.rhs + r2 / lam2 * (grav_vec * (K2n - K1n)).values[0] * B2n).values;
+
+		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
+		}
 
 		face_id++;
 	  }
