@@ -459,6 +459,8 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 	  p_grad.a = new_a;
 	  p_grad.stencil = new_stencil;
 	}
+
+	assert(p_grad.stencil == u_grad.stencil);
   }
 }
 
