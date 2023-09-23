@@ -71,9 +71,9 @@ namespace dis
 		std::unordered_map<index_t, Matrix> pre_Wsvd, pre_Zsvd, pre_w_svd;
 		std::vector<FlowHeatApproximation> pre_merged_flux, fluxes;
 
-		void calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal = false);
+		void calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal = false);
 		void calc_fault_fault(const mesh::Connection& conn, FlowHeatApproximation& flux);
-		void calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
+		void calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal = false);
 
 		inline void write_trans(const FlowHeatApproximation& flux)
 		{
@@ -159,8 +159,6 @@ namespace dis
 		std::vector<index_t> flux_stencil;
 		// free-term (gravity) in flux approximation
 		std::vector<value_t> flux_rhs;
-
-		bool USE_CONNECTION_BASED_GRADIENTS;
 
 		// Two-Point Flux Approximation
 		void calc_tpfa_transmissibilities(const PhysicalTags& tags);

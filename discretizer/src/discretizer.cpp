@@ -29,7 +29,6 @@ const Matrix Discretizer::I4 = Matrix({ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 }, ND
 Discretizer::Discretizer()
 {
 	grav_vec = Matrix({ 0, 0, 0 },  1, ND);
-	USE_CONNECTION_BASED_GRADIENTS = true;
 }
 
 Discretizer::~Discretizer()
@@ -289,8 +288,6 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags& tags)
 
 void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryCondition& bc)
 {
-	USE_CONNECTION_BASED_GRADIENTS = false;
-
 	// allocate memory for arrays
 	p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
 
@@ -656,8 +653,6 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 
 void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& bc)
 {
-  USE_CONNECTION_BASED_GRADIENTS = false;
-
   // allocate memory for arrays
   p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
   t_grads.resize(mesh->n_cells, LinearApproximation<Tvar>(ND, MAX_STENCIL));
@@ -1407,7 +1402,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 			{
 				auto& flux = fluxes[0];
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
-				calc_matrix_matrix(conn, flux, j, adj_nebr_id, with_thermal);
+				calc_matrix_matrix(conn, flux, with_thermal);
 				
 				flux.darcy.a.values *= sign * conn.area;
 				flux.fick.a.values *= sign * conn.area;
@@ -1441,7 +1436,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 			else if (conn.type == mesh::MAT_BOUND)
 			{
 				auto& flux = fluxes[0];
-				calc_matrix_boundary(conn, flux, j, with_thermal);
+				calc_matrix_boundary(conn, flux, with_thermal);
 
 				flux.darcy.a.values *= conn.area;
 				flux.fourier.a.values *= conn.area;
@@ -1460,7 +1455,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 			{
 				auto& flux = fluxes[0];
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
-				calc_matrix_matrix(conn, flux, j, adj_nebr_id);
+				calc_matrix_matrix(conn, flux);
 
 				flux.darcy.a.values *= sign * conn.area;
 				flux.darcy.rhs.values *= sign * conn.area;
@@ -1487,7 +1482,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 			{
 				auto& flux = fluxes[0];
 				for (index_t k = mesh->adj_matrix_offset[cell_id2]; k < mesh->adj_matrix_offset[cell_id2 + 1]; k++) { if (mesh->adj_matrix_cols[k] == cell_id1) { adj_nebr_id = k; break; } }
-				calc_matrix_matrix(conn, flux, j, adj_nebr_id);
+				calc_matrix_matrix(conn, flux);
 
 				flux.darcy.a.values *= sign * conn.area;
 				flux.darcy.rhs.values *= sign * conn.area;
@@ -1533,14 +1528,13 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 	cout << "Find MPFA trans: \t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
 
-void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal)
+void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal)
 {
 	uint8_t id1, id2;
 	value_t lam1, lam2, d1, d2, Fh, T1, T2, T;
 	Matrix gam1(ND, 1), gam2(ND, 1), y1(ND, 1), y2(ND, 1), grad_coef, n(ND, 1), K1n(ND, 1), K2n(ND, 1);
 	const auto& x1 = mesh->centroids[conn.elem_id1];
 	const auto& x2 = mesh->centroids[conn.elem_id2];
-	index_t grad_id1, grad_id2;
 	Vector3 vec1, vec2;
 	std::vector<index_t> th_stencil;
 	
@@ -1561,20 +1555,9 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	y1.values = { x1.values[0], x1.values[1], x1.values[2] };	y1 += d1 * n;
 	y2.values = { x2.values[0], x2.values[1], x2.values[2] };	y2 -= d2 * n;
 
-	if (USE_CONNECTION_BASED_GRADIENTS)
-	{
-		grad_id1 = adj_mat_id1;
-		grad_id2 = adj_mat_id2;
-	}
-	else
-	{
-		grad_id1 = conn.elem_id1;
-		grad_id2 = conn.elem_id2;
-	}
-
 	// allocate arrays for merging gradients
-	const auto& g1 = p_grads[grad_id1];
-	const auto& g2 = p_grads[grad_id2];
+	const auto& g1 = p_grads[conn.elem_id1];
+	const auto& g2 = p_grads[conn.elem_id2];
 
 	flux.darcy = g1 / 2.0 + g2 / 2.0;
 	
@@ -1610,8 +1593,8 @@ void Discretizer::calc_matrix_matrix(const mesh::Connection& conn, FlowHeatAppro
 	  gam1 = K1n - lam1 * n;
 	  gam2 = K2n - lam2 * n;
 	  // temperature gradients
-	  const auto& g1 = t_grads[grad_id1];
-	  const auto& g2 = t_grads[grad_id2];
+	  const auto& g1 = t_grads[conn.elem_id1];
+	  const auto& g2 = t_grads[conn.elem_id2];
 	  flux.fourier = g1 / 2.0 + g2 / 2.0;
 	  // flux approximation
 	  grad_coef = -(lam1 * lam2 * (y1 - y2).transpose() + lam1 * d2 * gam2.transpose() + lam2 * d1 * gam1.transpose()) / (lam1 * d2 + lam2 * d1);
@@ -1662,7 +1645,7 @@ void Discretizer::calc_fault_fault(const mesh::Connection& conn, FlowHeatApproxi
 	flux.darcy.a(0, id2) += Fh;
 }
 
-void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const index_t adj_mat_id1, const bool with_thermal)
+void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal)
 {
 	uint8_t id1, id2;
 	value_t lam1, d1, T1, T;
@@ -1671,7 +1654,6 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	const auto& x2 = mesh->centroids[conn.elem_id2];
 	const value_t mu = 1.0;
 	Vector3 vec1;
-	index_t grad_id1;
 
 	// normal vector
 	copy_n(std::begin(conn.n.values), ND, std::begin(n.values));
@@ -1688,15 +1670,6 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	d1 = fabs(dot(conn.c - x1, n));
 	y1.values = { x1.values[0], x1.values[1], x1.values[2] };	y1 += d1 * n;
 	c2.values = { x2.values[0], x2.values[1], x2.values[2] };
-
-	if (USE_CONNECTION_BASED_GRADIENTS)
-	{
-		grad_id1 = adj_mat_id1;
-	}
-	else
-	{
-		grad_id1 = conn.elem_id1;
-	}
 
 	const auto& g1 = p_grads[conn.elem_id1];
 
