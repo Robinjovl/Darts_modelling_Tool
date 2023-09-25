@@ -82,6 +82,17 @@ namespace dis
                       std::begin(a.values) + row * a.N + i * n_block);
       }
     };
+
+    template <VarName... OtherNames>
+    auto operator+=(const LinearApproximation<OtherNames...>& ap)
+    {
+      return operator+(*this, ap);
+    }
+    template <VarName... OtherNames>
+    auto operator-=(const LinearApproximation<OtherNames...>& ap)
+    {
+      return operator-(*this, ap);
+    }
   };
 
   // utilities for compile-time estimate of the type of approximation 
@@ -327,7 +338,15 @@ namespace dis
   {
     return ap * (1 / val);
   }
-
+  template <VarName... VarNames>
+  LinearApproximation<VarNames...> operator*(const Matrix& m, const LinearApproximation<VarNames...>& ap)
+  {
+    LinearApproximation<VarNames...> res(m.M, ap.stencil.size());
+    res.a = m * ap.a;
+    res.rhs = m * ap.rhs;
+    res.stencil = ap.stencil;
+    return res;
+  }
 }
 
 #endif /* APPROXIMATION_H_ */

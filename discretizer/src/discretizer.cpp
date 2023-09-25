@@ -1520,7 +1520,6 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal)
 				cell_p.push_back(cell_id2);
 				write_trans(flux);
 			}
-
 		}
 	}
 	
