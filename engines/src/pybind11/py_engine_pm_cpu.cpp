@@ -19,10 +19,14 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def("post_newtonloop", &engine_pm_cpu::post_newtonloop) \
 		.def("post_explicit", &engine_pm_cpu::post_explicit) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
+		.def("newmark_predictor", &engine_pm_cpu::newmark_predictor) \
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \
 		.def_readwrite("print_linear_system", &engine_pm_cpu::PRINT_LINEAR_SYSTEM) \
 		.def_readwrite("time_dependent_discretization", &engine_pm_cpu::TIME_DEPENDENT_DISCRETIZATION) \
 		.def_readwrite("explicit_scheme", &engine_pm_cpu::EXPLICIT_SCHEME) \
+		.def_readwrite("newmark_scheme", &engine_pm_cpu::NEWMARK_SCHEME) \
+		.def_readwrite("newmark_beta", &engine_pm_cpu::newmark_beta) \
+		.def_readwrite("newmark_gamma", &engine_pm_cpu::newmark_gamma) \
 		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \
 		.def_readwrite("scale_dimless", &engine_pm_cpu::SCALE_DIMLESS) \
 		.def_readwrite("geomechanics_mode", &engine_pm_cpu::geomechanics_mode) \
@@ -52,6 +56,10 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("Xn1", &engine_pm_cpu::Xn1) \
 		.def_readwrite("dt", &engine_pm_cpu::dt) \
 		.def_readwrite("dt1", &engine_pm_cpu::dt1) \
+		.def_readwrite("vel", &engine_pm_cpu::vel) \
+		.def_readwrite("vel_n", &engine_pm_cpu::vel_n) \
+		.def_readwrite("acc", &engine_pm_cpu::acc) \
+		.def_readwrite("acc_n", &engine_pm_cpu::acc_n) \
 		.def_readwrite("momentum_inertia", &engine_pm_cpu::momentum_inertia) \
 		.def_readwrite("Xref", &engine_pm_cpu::Xref) \
 		.def_readwrite("Xn_ref", &engine_pm_cpu::Xn_ref) \

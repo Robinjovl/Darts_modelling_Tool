@@ -12,11 +12,15 @@
 #include "mech/engine_pm_cpu.hpp"
 
 const value_t engine_pm_cpu::BAR_DAY2_TO_PA_S2 = 86400.0 * 86400.0 * 1.E+5;
+const value_t engine_pm_cpu::BAR_TO_PA = 1.E+5;
 
 engine_pm_cpu::engine_pm_cpu()
 {
   engine_name = "Single phase " + std::to_string(NC_) + "-component isothermal poromechanics CPU engine";
-  t_dim = m_dim = x_dim = p_dim = 1.0;
+
+  NEWMARK_SCHEME = false;
+  newmark_gamma = 0.5;
+  newmark_beta = 0.25;
 }
 
 engine_pm_cpu::~engine_pm_cpu()
@@ -43,6 +47,8 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	momentum_inertia = 0.0;
 	EXPLICIT_SCHEME = false;
 	active_linear_solver_id = 0;
+
+	t_dim = m_dim = x_dim = p_dim = 1.0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 	return 0;
@@ -198,6 +204,14 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   eps_vol.resize(mesh->n_matrix);
   max_row_values.resize(n_vars * mesh->n_blocks);
   jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
+
+  if (NEWMARK_SCHEME)
+  {
+	vel.resize(ND_ * mesh->n_blocks);
+	vel_n.resize(ND_ * mesh->n_blocks);
+	acc.resize(ND_ * mesh->n_blocks);
+	acc_n.resize(ND_ * mesh->n_blocks);
+  }
 
   for (index_t i = 0; i < mesh->n_blocks; i++)
   {
@@ -615,43 +629,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			Jac[diag_idx + P_VAR * N_VARS + P_VAR] += V[i] * comp_mult * op_vals_arr[i * N_OPS + ACC_OP];
 		}
 
-		if (!FIND_EQUILIBRIUM)
-		{
-			// momentum inertia
-			if (dt > 0.0)
-			{
-				for (d = 0; d < ND_; d++)
-				{
-					RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-				}
-
-				if (dt1 > 0.0)
-				{
-					for (d = 0; d < ND_; d++)
-					{
-						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					}
-				}
-			}
-		}
-
 		// calc CFL for reservoir cells, not connected with wells
 		if (i < n_res_blocks)
 		{
-			if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
-			{
-				CFL_max_local = 0.0;
-				for (uint8_t d = 0; d < ND_; d++)
-				{
-					tmp = engine_pm_cpu::BAR_DAY2_TO_PA_S2 * CFL_mech[d] / momentum_inertia / mesh->volume[i] /
-						((X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt);
-					CFL_max_local += tmp * tmp;
-				}
-				if (fabs(X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) > EQUALITY_TOLERANCE)
-					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
-			}
-
 			// volumetric forces and source/sink 
 			for (d = 0; d < ND_; d++)
 			{
@@ -701,8 +681,11 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
 	dt = _dt;
-	// We need extended connection list for that with all connections for each block
 
+	// for a Newmark scheme
+	newmark_jacobian_multiplier = (NEWMARK_SCHEME) ? dt * dt * newmark_beta : 1.0;
+
+	// We need extended connection list for that with all connections for each block
 	index_t n_blocks = mesh->n_blocks;
 	index_t n_matrix = mesh->n_matrix;
 	index_t n_res_blocks = mesh->n_res_blocks;
@@ -836,8 +819,8 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 						{
 							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
 							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += newmark_jacobian_multiplier * tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += newmark_jacobian_multiplier * tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
 						}
 						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
 						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
@@ -845,16 +828,24 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
 					}
 					// mass balance
-					for (v = 0; v < N_VARS; v++)
+					for (v = 0; v < ND_; v++)
 					{
-						Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + v] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v];
+						Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + v] += dt * newmark_jacobian_multiplier * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + v];
 						// biot
 						fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] * (X[stencil[conn_st_id] * N_VARS + v] - Xref[stencil[conn_st_id] * N_VARS + v]);
 						RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v] *
 							(op_vals_arr[i * N_OPS + ACC_OP] * X[stencil[conn_st_id] * N_VARS + v] -
 								op_vals_arr_n[i * N_OPS + ACC_OP] * Xn[stencil[conn_st_id] * N_VARS + v]);
-						Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + v] += op_vals_arr[i * N_OPS + ACC_OP] * tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v];
+						Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + v] += newmark_jacobian_multiplier * op_vals_arr[i * N_OPS + ACC_OP] * tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + v];
 					}
+					Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * tran[conn_st_id * N_VARS_SQ + P_VAR * N_VARS + P_VAR];
+					// biot
+					fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - Xref[stencil[conn_st_id] * N_VARS + P_VAR]);
+					RHS[i * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + P_VAR] *
+					  (op_vals_arr[i * N_OPS + ACC_OP] * X[stencil[conn_st_id] * N_VARS + P_VAR] -
+						op_vals_arr_n[i * N_OPS + ACC_OP] * Xn[stencil[conn_st_id] * N_VARS + P_VAR]);
+					Jac[st_id * N_VARS_SQ + P_VAR * N_VARS + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP] * tran_biot[conn_st_id * N_VARS_SQ + N_VARS * P_VAR + P_VAR];
+					
 					conn_st_id++;
 				}
 			}
@@ -950,23 +941,11 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 
 		if (!FIND_EQUILIBRIUM)
 		{
-			// momentum inertia
-			if (dt > 0.0)
-			{
-				for (d = 0; d < ND_; d++)
-				{
-					RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-				}
-
-				if (dt1 > 0.0)
-				{
-					for (d = 0; d < ND_; d++)
-					{
-						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					}
-				}
-			}
+		  for (d = 0; d < ND_; d++)
+		  {
+			  RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * acc[i * ND_ + d] / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+			  Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+		  }
 		}
 
 		// calc CFL for reservoir cells, not connected with wells
@@ -1268,7 +1247,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 		if (!FIND_EQUILIBRIUM)
 		{
 			// momentum inertia
-			if (dt > 0.0)
+			/*if (dt > 0.0)
 			{
 				for (d = 0; d < ND_; d++)
 				{
@@ -1283,7 +1262,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
 					}
 				}
-			}
+			}*/
 		}
 
 		// calc CFL for reservoir cells, not connected with wells
@@ -1296,7 +1275,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 			}
 			RHS[i * N_VARS + P_VAR] += V[i] * dt * f[i * N_VARS + P_VAR];
 
-			if (fabs(momentum_inertia) > 0.0 && dt1 > 0.0)
+			/*if (fabs(momentum_inertia) > 0.0 && dt1 > 0.0)
 			{
 				CFL_max_local = 0.0;
 				for (uint8_t d = 0; d < ND_; d++)
@@ -1307,7 +1286,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 					  CFL_max_local += tmp * tmp;
 				}
 			  	CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
-			}
+			}*/
 		}
 
 		// solve the equation
@@ -1585,6 +1564,25 @@ int engine_pm_cpu::run_single_newton_iteration(value_t deltat)
 	return 0;
 }
 
+int engine_pm_cpu::newmark_predictor(value_t _dt)
+{
+  dt = _dt;
+
+  // Newmark scheme predictor
+  for (index_t i = 0; i < mesh->n_blocks; i++)
+  {
+	for (uint8_t d = 0; d < ND_; d++)
+	{
+	  acc[ND_ * i + d] = 0.0;
+	  vel[ND_ * i + d] = vel_n[ND_ * i + d] + dt * ( (1.0 - newmark_gamma) * acc_n[ND_ * i + d] + newmark_gamma * acc[ND_ * i + d] ) ;
+	  X[N_VARS * i + U_VAR + d] = Xn[N_VARS * i + U_VAR + d] + dt * (vel_n[ND_ * i + d] + 
+		dt / 2.0 * ((1 - 2.0 * newmark_beta) * acc_n[ND_ * i + d]) + 2.0 * newmark_beta * acc[ND_ * i + d]);
+	}
+  }
+
+  return 0;
+}
+
 int engine_pm_cpu::apply_newton_update(value_t dt)
 {
 	/*if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
@@ -1614,12 +1612,28 @@ int engine_pm_cpu::apply_newton_update(value_t dt)
 	//for (auto& contact : contacts)
 	//	contact.apply_direction_chop(X, Xn, dX);
 
-
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+	if (NEWMARK_SCHEME)
 	{
+	  for (index_t i = 0; i < mesh->n_blocks; i++)
+	  {
 		for (uint8_t d = 0; d < ND_; d++)
-			X[N_VARS * i + U_VAR + d] -= newton_update_coefficient * dX[N_VARS * i + U_VAR + d];
+		{
+		  acc[ND_ * i + d] -= newton_update_coefficient * dX[N_VARS * i + U_VAR + d];
+		  // Newmark scheme corrector
+		  vel[ND_ * i + d] -= dt * newmark_gamma * newton_update_coefficient * dX[N_VARS * i + U_VAR + d];
+		  X[N_VARS * i + U_VAR + d] -= newmark_jacobian_multiplier * newton_update_coefficient * dX[N_VARS * i + U_VAR + d];
+		}
 		X[N_VARS * i + P_VAR] -= newton_update_coefficient * dX[N_VARS * i + P_VAR];
+	  }
+	}
+	else
+	{
+	  for (index_t i = 0; i < mesh->n_blocks; i++)
+	  {
+		for (uint8_t d = 0; d < ND_; d++)
+		  X[N_VARS * i + U_VAR + d] -= newton_update_coefficient * dX[N_VARS * i + U_VAR + d];
+		X[N_VARS * i + P_VAR] -= newton_update_coefficient * dX[N_VARS * i + P_VAR];
+	  }
 	}
 
 	return 0;
@@ -1798,6 +1812,8 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 
 		X = Xn;
 		Xref = Xn_ref;
+		vel = vel_n;
+		acc = acc_n;
 		std::copy(fluxes_n.begin(), fluxes_n.end(), fluxes.begin());
 		std::copy(fluxes_biot_n.begin(), fluxes_biot_n.end(), fluxes_biot.begin());
 		std::copy(fluxes_ref_n.begin(), fluxes_ref_n.end(), fluxes_ref.begin());
@@ -1843,6 +1859,8 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 		Xn1 = Xn;
 		Xn = X;
 		Xn_ref = Xref;
+		vel_n = vel;
+		acc_n = acc;
 		std::copy(fluxes.begin(), fluxes.end(), fluxes_n.begin());
 		std::copy(fluxes_biot.begin(), fluxes_biot.end(), fluxes_biot_n.begin());
 		std::copy(fluxes_ref.begin(), fluxes_ref.end(), fluxes_ref_n.begin());
@@ -2099,7 +2117,6 @@ void engine_pm_cpu::make_dimensionless()
   fflush(stdout);
 }
 
-
 void engine_pm_cpu::dimensionalize_unknowns()
 {
   const index_t n_blocks = mesh->n_blocks;
@@ -2117,7 +2134,6 @@ void engine_pm_cpu::dimensionalize_unknowns()
 
   // TODO: add well equations
 }
-
 
 int engine_pm_cpu::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {

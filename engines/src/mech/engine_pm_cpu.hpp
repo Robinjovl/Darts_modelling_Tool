@@ -49,6 +49,7 @@ public:
   const static uint8_t GRAV_OP = 0;
   // coefficient to fit units
   const static value_t BAR_DAY2_TO_PA_S2;
+  const static value_t BAR_TO_PA;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -123,6 +124,13 @@ public:
 public:
   bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
+
+  // Newmark's scheme
+  bool NEWMARK_SCHEME;
+  value_t newmark_gamma, newmark_beta, newmark_jacobian_multiplier;
+  std::vector<value_t> acc, acc_n, vel, vel_n;
+
+  int newmark_predictor(value_t _dt);
   
   value_t t_dim, x_dim, p_dim, m_dim;
 protected:
