@@ -77,4 +77,3 @@ writer = pd.ExcelWriter('time_data.xlsx')
 td.to_excel(writer, 'Sheet1')
 writer.save()
 
-plt.show()
