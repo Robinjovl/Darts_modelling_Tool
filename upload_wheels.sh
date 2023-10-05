@@ -8,4 +8,4 @@ fi
 
 fname='dist/*'
 
-smbclient -U $2%$3 //$1/darts-private-artifacts -c "put $fname" -D=wheels/"$commit"_"ODLS$odls"/linux 
+smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $fname" -D=wheels/"$commit"_"ODLS$odls"/linux 
