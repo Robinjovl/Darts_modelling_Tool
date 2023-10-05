@@ -17,8 +17,8 @@ description = "Delft Advanced Research Terra Simulator"
 readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.7"
-# Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'pyevtk', 'opmcpg', 'openpyxl', 'matplotlib', 'pyvista']
+# open-darts dependencies
+dependencies = ['numpy==1.24.4', 'numba==0.57.1', 'scipy==1.11.2', 'pandas==2.1.0', 'meshio==5.3.4', 'gmsh==4.11.1', 'iapws==1.5.3', 'pyevtk==1.6.0', 'opmcpg==0.0.3', 'openpyxl==3.1.2', 'matplotlib==3.8.0', 'pyvista==0.42.2']
 
 license = {text = "LICENSE.md"}
 
