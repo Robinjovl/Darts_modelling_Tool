@@ -251,6 +251,7 @@ build-windows-3.7-ODLS:
     script:
         - echo "build *.pyd on linux started with ODLS=$ODLS"
         - ./build_darts.sh "$ODLS"
+        - ./upload_wheels.sh "$CI_COMMIT_SHORT_SHA" $ODLS
     artifacts:
       paths:
         - './dist/*.whl'
@@ -278,6 +279,7 @@ build-windows-3.7-ODLS:
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
         - .\build_darts.bat $env:ODLS release
+        - .\upload_wheels.bat  $env:CI_COMMIT_SHORT_SHA $env:ODLS
     artifacts:
       paths:
         - '.\dist\*.whl'
@@ -574,7 +576,6 @@ test-windows-3.7-ODLS:
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - ./upload_pkl.sh "$CI_COMMIT_SHORT_SHA" $ODLS
-        - ./upload_wheels.sh "$CI_COMMIT_SHORT_SHA" $ODLS
         - cd ..
         - echo "test finished"
     artifacts:
@@ -610,7 +611,6 @@ test-windows-3.7-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - .\upload_pkl.bat $env:CI_COMMIT_SHORT_SHA $env:ODLS
-        - .\upload_wheels.bat  $env:CI_COMMIT_SHORT_SHA $env:ODLS
         - cd ..
     artifacts:
       paths:
