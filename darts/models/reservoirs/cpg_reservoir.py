@@ -739,7 +739,7 @@ class CPG_Reservoir:
 
 #####################################################################
 
-def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='w'):
+def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='w', make_full=True):
     '''
     writes numpy array of n_active_cell size to text file in GRDECL format with n_cells_total
     :param arr: numpy array to write
@@ -749,7 +749,10 @@ def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='
     :param mode: 'w' to rewrite the file or 'a' to append
     :return: None
     '''
-    arr_full = make_full_cube(arr, actnum)
+    if make_full:
+        arr_full = make_full_cube(arr, actnum)
+    else:
+        arr_full = arr
     with open(fname, mode) as f:
         f.write(keyword + '\n')
         s = ''
@@ -823,7 +826,7 @@ def read_arrays(gridfile: str, propfile: str):
             load_single_int_keyword(actnum_cpp, fname, 'ACTNUM', -1)
             arrays['ACTNUM'] = np.array(actnum_cpp, copy=False)
     if arrays['ACTNUM'].size == 0:
-        arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
+        arrays['ACTNUM'] = np.ones(self.dims[0] * self.dims[1] * self.dims[2])
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
     return arrays
