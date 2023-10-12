@@ -744,6 +744,37 @@ Mesh::get_centers() const
 	return centers_vec;
 }
 
+// compute node coords for vtk output
+std::vector<value_t>
+Mesh::get_nodes_array() const
+{
+	std::array<double, 8> X;
+	std::array<double, 8> Y;
+	std::array<double, 8> Z;
+
+	std::vector<value_t> nodes_array;
+	nodes_array.resize(8 * 3 * n_cells);
+
+	int idx_cell = 0, idx = 0;
+	std::array<int, 8> permute = { 0,4,5,1,2,6,7,3 }; // need this order for vtk
+	for (int k = 0; k < nz; k++)
+		for (int j = 0; j < ny; j++)
+			for (int i = 0; i < nx; i++) {
+				if (global_to_local[idx_cell++] < 0) // cell is inactive => skip
+					continue;
+				calc_cell_nodes(i, j, k, X, Y, Z);
+
+				index_t start = idx * 8 * 3;
+				for (int ii = 0; ii < 8; ii++) {
+					index_t jj = permute[ii];
+					nodes_array[start + ii * 3 + 0] = X[jj];
+					nodes_array[start + ii * 3 + 1] = Y[jj];
+					nodes_array[start + ii * 3 + 2] = Z[jj];
+				}
+				idx++;
+			}
+	return nodes_array;
+}
 
 std::vector<int>
 Mesh::cpg_elems_nodes(

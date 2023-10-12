@@ -11,11 +11,17 @@ from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from darts.discretizer import Mesh, Elem, Discretizer, BoundaryCondition, elem_loc, elem_type
 from darts.discretizer import index_vector, value_vector, matrix33, vector_matrix33, vector_vector3
 from darts.discretizer import load_single_float_keyword
+from darts.mesh.struct_discretizer import StructDiscretizer
 
-import datetime
+import datetime, time
 import darts
 from pyevtk import hl, vtk
-from darts.mesh.struct_discretizer import StructDiscretizer
+
+try:
+    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+    from vtk import vtkCellArray, vtkHexahedron, vtkPoints
+except ImportError:
+    warnings.warn("No vtk module loaded.")
 
 import os
 import sys
@@ -88,6 +94,7 @@ class CPG_Reservoir:
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
         self.vtk_grid_type = 1
+        self.optimized_vtk_export = True
 
     def set_arrays(self, arrays):
         '''
@@ -683,8 +690,48 @@ class CPG_Reservoir:
         self.vtkobj.GRDECL_Data.NZ = self.nz
         self.vtkobj.GRDECL_Data.N = self.nx * self.ny * self.nz
         self.vtkobj.GRDECL_Data.GRID_type = 'CornerPoint'
-        self.vtkobj.GRDECL2VTK(self.discr_mesh.actnum)
-        # self.vtkobj.decomposeModel()
+
+        start = time.perf_counter()
+        if not self.optimized_vtk_export:
+            self.vtkobj.GRDECL2VTK(self.actnum)
+        else:
+            print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data (new implementation)....')
+            nodes_cpp = self.discr_mesh.get_nodes_array()
+            nodes_1d = np.array(nodes_cpp, copy=True)
+            points = nodes_1d.reshape((nodes_1d.size // 3, 3))
+
+            cells_1d = np.arange(self.discr_mesh.n_cells * 8)
+            cells = cells_1d.reshape((cells_1d.size//8, 8))
+            cells = [("hexahedron", cells)]
+
+            offset = np.arange(self.discr_mesh.n_cells + 1) * 8
+            offset_vtk = numpy_to_vtk(np.asarray(offset, dtype=np.int64), deep=True)
+
+            cells_vtk = numpy_to_vtk(np.asarray(cells_1d, dtype=np.int64), deep=True)
+
+            cellArray = vtkCellArray()
+            cellArray.SetNumberOfCells(cells_1d.size)
+            cellArray.SetData(offset_vtk, cells_vtk)
+
+            Cell = vtkHexahedron()
+            self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(),cellArray)
+
+            vtk_points = vtkPoints()
+            vtk_points.SetNumberOfPoints(points.size)
+            points_vtk = numpy_to_vtk(np.asarray(points, dtype=np.float32), deep=True)
+            vtk_points.SetData(points_vtk)
+            self.vtkobj.VTK_Grids.SetPoints(vtk_points)
+
+            print("new     NumOfPoints",self.vtkobj.VTK_Grids.GetNumberOfPoints())
+            print("new     NumOfCells",self.vtkobj.VTK_Grids.GetNumberOfCells())
+
+            # 3. Load grid properties data if applicable
+            for keyword,data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
+                self.vtkobj.AppendScalarData(keyword,data)
+            print('new.....Done!')
+
+        end = time.perf_counter()
+        print('time:', end - start, 'sec.')
 
 
     def apply_fault_mult(self, faultfile, cell_m, cell_p, mpfa_tran, ids):

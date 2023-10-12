@@ -191,7 +191,7 @@ namespace mesh
 		void write_cell_sizes(const std::string fname) const;
 		std::vector<value_t> get_prisms() const;
 		std::vector<value_t> get_centers() const;
-
+		std::vector<value_t> get_nodes_array() const;
 		void print_arrays() const;
 
 		std::vector<int> cpg_elems_nodes(
