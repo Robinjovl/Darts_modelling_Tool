@@ -278,6 +278,7 @@ class CPG_Reservoir:
             well_index = well_index * StructDiscretizer.darcy_constant
         else:
             well_index = 0
+            well_indexD = 0
 
         return local_block, well_index, well_indexD
 
