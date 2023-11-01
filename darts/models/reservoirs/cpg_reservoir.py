@@ -874,7 +874,7 @@ def read_arrays(gridfile: str, propfile: str):
             load_single_int_keyword(actnum_cpp, fname, 'ACTNUM', -1)
             arrays['ACTNUM'] = np.array(actnum_cpp, copy=False)
     if arrays['ACTNUM'].size == 0:
-        arrays['ACTNUM'] = np.ones(self.dims[0] * self.dims[1] * self.dims[2])
+        arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
     return arrays
