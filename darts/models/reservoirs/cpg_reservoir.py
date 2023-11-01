@@ -852,9 +852,14 @@ def read_arrays(gridfile: str, propfile: str):
             permy_cpp = permx_cpp
             arrays['PERMX'] = np.array(permx_cpp, copy=False)
             arrays['PERMY'] = np.array(permy_cpp, copy=False)
+    if arrays['PERMY'].size == 0:
+        arrays['PERMY'] = arrays['PERMX']
+        print('No PERMY found in input files. PERMY=PERMX will be used')
     load_single_float_keyword(permz_cpp, propfile, 'PERMZ', -1)
     arrays['PERMZ'] = np.array(permz_cpp, copy=False)
-
+    if arrays['PERMZ'].size == 0:
+        arrays['PERMZ'] = arrays['PERMX'] * 0.1
+        print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
     poro_cpp = value_vector_discr() #self.discr_mesh.poro
     load_single_float_keyword(poro_cpp, propfile, 'PORO', -1)
     arrays['PORO'] = np.array(poro_cpp, copy=False)
