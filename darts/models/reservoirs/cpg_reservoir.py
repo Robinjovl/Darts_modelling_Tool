@@ -291,9 +291,10 @@ class CPG_Reservoir:
 
     def set_boundary_volume(self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1):
         mesh_volume = np.array(self.volume_all_cells, copy=False)
+        global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
 
         # get 3d shape
-        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], self.discr_mesh.global_to_local)
+        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], global_to_local)
         volume = volume.reshape(self.nx, self.ny, self.nz, order='F')
 
         actnum3d = self.actnum.reshape(self.nx, self.ny, self.nz, order='F')
