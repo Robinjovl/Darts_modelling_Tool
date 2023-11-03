@@ -291,10 +291,11 @@ class CPG_Reservoir:
 
     def set_boundary_volume(self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1):
         mesh_volume = np.array(self.volume_all_cells, copy=False)
+        local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
         global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
 
         # get 3d shape
-        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], global_to_local)
+        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], local_to_global, global_to_local)
         volume = volume.reshape(self.nx, self.ny, self.nz, order='F')
 
         actnum3d = self.actnum.reshape(self.nx, self.ny, self.nz, order='F')
@@ -788,7 +789,7 @@ class CPG_Reservoir:
 
 #####################################################################
 
-def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='w', make_full=True):
+def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w', make_full=True):
     '''
     writes numpy array of n_active_cell size to text file in GRDECL format with n_cells_total
     :param arr: numpy array to write
@@ -799,7 +800,7 @@ def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='
     :return: None
     '''
     if make_full:
-        arr_full = make_full_cube(arr, actnum)
+        arr_full = make_full_cube(arr, local_to_global, global_to_local)
     else:
         arr_full = arr
     with open(fname, mode) as f:
@@ -815,17 +816,17 @@ def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='
         print('Array saved to file', fname, ' (keyword ' + keyword + ')')
 
 
-def make_full_cube(cube: np.array, global_to_local: np.array):
+def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array):
     '''
     returns 1d-array of size nx*ny*nz, filled with zeros where actnum is zero
     :param cube: 1d-array of size n_active_cells
     :param actnum: 1d-array of size nx*ny*nz
     :return:
     '''
-    #if actnum.size == cube.size:
-    #    return cube
+    if global_to_local.size == cube.size:
+        return cube
     cube_full = np.zeros(global_to_local.size)
-    cube_full[global_to_local] = cube
+    cube_full[local_to_global] = cube
     return cube_full
     
 

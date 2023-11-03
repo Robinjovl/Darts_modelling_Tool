@@ -628,8 +628,12 @@ void Mesh::construct_local_global(std::vector<index_t> & global_cell)
 	index_t gidx = 0, lidx = 0;
 	for (auto gi : global_cell) {
 #endif
-		if (gidx && gi == 0) // gi=0 means we run out active cells, but for the first cell zero index is OK
+		if (gidx && gi == 0) {// gi=0 means we run out active cells, but for the first cell zero index is OK
+			while (gidx < n_all) {
+				global_to_local[gidx++] = -1; // fill the rest array (inactive cells)
+			}
 			break;
+		}
 
 		// local_to_global is the same as global_cell except size (it doesn't contain zeros in the end)
 		local_to_global.push_back(gi);
