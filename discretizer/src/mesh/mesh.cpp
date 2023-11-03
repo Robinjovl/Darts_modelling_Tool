@@ -611,11 +611,11 @@ Mesh::calc_cell_center(const int i, const int j, const int k) const
 }
 
 //
-void Mesh::construct_local_global()
+void Mesh::construct_local_global(std::vector<index_t> & global_cell)
 {
   index_t n_all = get_n_cells_total();
 
-	local_to_global.resize(n_cells);
+	local_to_global.reserve(n_cells);
 	global_to_local.resize(n_all);
 #if 0
 	index_t j = 0;
@@ -625,16 +625,25 @@ void Mesh::construct_local_global()
 			{
 				index_t i = get_global_index(i1, j1, k1);
 #else
-	for (index_t i = 0, j = 0; i < n_all; i++) {
+	index_t gidx = 0, lidx = 0;
+	for (auto gi : global_cell) {
 #endif
-		if (actnum[i] > 0) {
-			local_to_global[j] = i;
-			global_to_local[i] = j;
-			j++;
+		if (gidx && gi == 0) // gi=0 means we run out active cells, but for the first cell zero index is OK
+			break;
+
+		// local_to_global is the same as global_cell except size (it doesn't contain zeros in the end)
+		local_to_global.push_back(gi);
+
+		while (gidx < n_all) { // infinite loop, added condition just in case
+			if (gi == gidx) {
+				global_to_local[gidx++] = lidx;
+				break;
+			}
+			else { // store -1 for inactive cells
+				global_to_local[gidx++] = -1;
+			}
 		}
-		else {
-			global_to_local[i] = -1;
-		}
+		lidx++;
 	}
 }
 

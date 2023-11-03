@@ -182,7 +182,7 @@ class CPG_Reservoir:
         bnd_faces_num = res[0]
         #self.discr_mesh.print_elems_nodes()
 
-        self.discr_mesh.construct_local_global()
+        self.discr_mesh.construct_local_global(global_cell)
 
         self.discr_mesh.cpg_cell_props(number_of_nodes, number_of_cells, number_of_faces,
                                            cell_volumes, cell_centroids, global_cell,
@@ -293,7 +293,7 @@ class CPG_Reservoir:
         mesh_volume = np.array(self.volume_all_cells, copy=False)
 
         # get 3d shape
-        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], self.actnum)
+        volume = make_full_cube(mesh_volume[:self.discr_mesh.n_cells], self.discr_mesh.global_to_local)
         volume = volume.reshape(self.nx, self.ny, self.nz, order='F')
 
         actnum3d = self.actnum.reshape(self.nx, self.ny, self.nz, order='F')
@@ -814,17 +814,17 @@ def save_array(arr: np.array, fname: str, keyword: str, actnum: np.array, mode='
         print('Array saved to file', fname, ' (keyword ' + keyword + ')')
 
 
-def make_full_cube(cube: np.array, actnum: np.array):
+def make_full_cube(cube: np.array, global_to_local: np.array):
     '''
     returns 1d-array of size nx*ny*nz, filled with zeros where actnum is zero
     :param cube: 1d-array of size n_active_cells
     :param actnum: 1d-array of size nx*ny*nz
     :return:
     '''
-    if actnum.size == cube.size:
-        return cube
-    cube_full = np.zeros(actnum.size)
-    cube_full[actnum > 0] = cube
+    #if actnum.size == cube.size:
+    #    return cube
+    cube_full = np.zeros(global_to_local.size)
+    cube_full[global_to_local] = cube
     return cube_full
     
 
