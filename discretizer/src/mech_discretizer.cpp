@@ -507,16 +507,18 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 
 	  if (conn.type == mesh::MAT_MAT)
 	  {
+		// assemble approximations
 		auto& flux = mech_fluxes[0];
 		calc_matrix_matrix_mech(conn, flux, conn_id);
 		calc_matrix_matrix(conn, flux.flow, false);
 
+		// multiply matrix by sign * area
 		flux.hooke.a.values *= sign * conn.area;		  
 		flux.biot_traction.a.values *= sign * conn.area;
 		flux.vol_strain.a.values *= sign * conn.area;
 		flux.flow.darcy.a.values *= sign * conn.area;
 		flux.flow.fick.a.values *= sign * conn.area;
-
+		// multiply rhs by sign * area
 		flux.hooke.rhs.values *= sign * conn.area;
 		flux.biot_traction.rhs.values *= sign * conn.area;
 		flux.vol_strain.rhs.values *= sign * conn.area;
@@ -529,16 +531,18 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 	  }
 	  else if (conn.type == mesh::MAT_BOUND)
 	  {
+		// assemble approximations
 		auto& flux = mech_fluxes[0];
 		calc_matrix_boundary_mech(conn, flux, conn_id);
 		calc_matrix_boundary(conn, flux.flow, false);
 
+		// multiply matrix by sign * area
 		flux.hooke.a.values *= sign * conn.area;
 		flux.biot_traction.a.values *= sign * conn.area;
 		flux.vol_strain.a.values *= sign * conn.area;
 		flux.flow.darcy.a.values *= sign * conn.area;
 		flux.flow.fick.a.values *= sign * conn.area;
-
+		// multiply rhs by sign * area
 		flux.hooke.rhs.values *= sign * conn.area;
 		flux.biot_traction.rhs.values *= sign * conn.area;
 		flux.vol_strain.rhs.values *= sign * conn.area;
@@ -611,8 +615,8 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
   LinearApproximation<Pvar> p_beta = face_unknown_coef * (p_grad1 + p_grad2) / 2.0;
 
   // gradient for the biot contribution to fluid flow
-  mat_diff1.values = std::valarray<value_t>(conn.c.values.data(), ND) - cur.y1.values;
-  mat_diff2.values = std::valarray<value_t>(conn.c.values.data(), ND) - cur.y2.values;
+  mat_diff1.values = (conn_c - cur.y1).values;
+  mat_diff2.values = (conn_c - cur.y2).values;
   u_beta_grad_coef = det * (cur.r1 * cur.r2 * (cur.G2 - cur.G1) +
 							  cur.r2 * cur.T1 * make_block_diagonal(mat_diff1, ND) +
 								cur.r1 * cur.T2 * make_block_diagonal(mat_diff2, ND));
@@ -622,30 +626,39 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
   if (res1.first) { id1 = res1.second; }
   else { printf("Gradient within %d cell does not depend on its value!\n", conn.elem_id1);	exit(-1); }
   flux.hooke.a(n_unknowns * id1, { (size_t)flux.hooke.a.M, ND }, { (size_t)flux.hooke.a.N, 1 }) += T.values;
-  p_beta.a(id1, 0) += det_lam * cur.r2 * lam1;
+  p_beta.a(0, id1) += det_lam * cur.r2 * lam1; // need same stencil for pressure and displacement gradients
   u_beta.a(id1 * n_unknowns, { ND, ND }, { (size_t)u_beta.a.N, 1 }) += cur.r2 * (det * cur.T1).values;
 
   res2 = findInVector(flux.hooke.stencil, conn.elem_id2);
   if (res2.first) { id2 = res2.second; }
   else { printf("Gradient within %d cell does not depend on its value!\n", conn.elem_id2);	exit(-1); }
   flux.hooke.a(n_unknowns * id2, { (size_t)flux.hooke.a.M, ND }, { (size_t)flux.hooke.a.N, 1 }) -= T.values;
-  p_beta.a(id2, 0) += det_lam * cur.r1 * lam2;
+  p_beta.a(0, id2) += det_lam * cur.r1 * lam2; // need same stencil for pressure and displacement gradients
   u_beta.a(id2 * n_unknowns, { ND, ND }, { (size_t)u_beta.a.N, 1 }) += cur.r1 * (det * cur.T2).values;
 
-  p_beta.rhs += cur.r1 * cur.r2 * grav_vec * (K1n - K2n);
+  p_beta.rhs += cur.r1 * cur.r2 * grav_vec * (K1n - K2n); // p_beta assembled
 
   // pressure contribution to elastic traction
+  // coef2 * (p_{\beta2} * B_2 - p_{\beta1} * B_1) * n
+  // p_{\beta1} = p_1 + (x_c - x_1)^T * \nabla p_1
+  // p_{\beta2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
+  // + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n
   flux.hooke.a(n_unknowns * id1 + ND, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) -= (coef2 * B1n).values;
   flux.hooke.a(n_unknowns * id2 + ND, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) += (coef2 * B2n).values;
 
   mat_diff1.values = std::valarray<value_t>((conn.c - x1).values.data(), ND);
   mat_diff2.values = std::valarray<value_t>(conn.c.values.data(), ND) - cur.y2.values;
-  flux.hooke += coef2 * (outer_product(B2n, mat_diff2 + cur.r2 / lam2 * (gam2 - K1n).transpose()) - 
-						  outer_product(B1n, mat_diff1)) * p_grad1;
-  flux.hooke.rhs.values += cur.r2 / lam2 * (grav_vec * (K1n - K2n)).values[0] * (coef2 * B2n).values;
+  const auto d_pressure_terms = (outer_product(B2n, mat_diff2 + cur.r2 / lam2 * (gam2 - K1n).transpose()) -
+	outer_product(B1n, mat_diff1)) * p_grad1;
+  flux.hooke += coef2 * d_pressure_terms;
+  flux.hooke.rhs.values += cur.r2 / lam2 * (grav_vec * (K1n - K2n)).values[0] * (coef2 * B2n).values; // Hooke's term assembled
 
   // biot term in traction
-  flux.biot_traction = B1n * p_beta;
+  flux.biot_traction = B1n * p_beta; // Biot's term in traction assembled
+
+  u_beta -= cur.r1 * cur.r2 * d_pressure_terms; // u_beta assembled
+  flux.vol_strain = B1n.transpose() * u_beta;
+  flux.vol_strain.a(id1 * n_unknowns, { ND }, { 1 }) -= B1n.transpose().values; // Biot's term for fluid flow assembled
 }
 
 template <MechDiscretizerMode MODE>
