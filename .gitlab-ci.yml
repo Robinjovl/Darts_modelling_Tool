@@ -575,6 +575,11 @@ test-windows-3.7-ODLS:
         - echo "run_test_suite2 returned" $?
         - ./upload_pkl.sh "$CI_COMMIT_SHORT_SHA" $ODLS
         - cd ..
+        # test discretizer
+        - cd discretizer/tests/compare_discretizers
+        - python main.py
+        - cd ../../..
+        #
         - echo "test finished"
     artifacts:
       paths:
@@ -610,6 +615,10 @@ test-windows-3.7-ODLS:
         - python run_test_suite2.py LOG
         - .\upload_pkl.bat $env:CI_COMMIT_SHORT_SHA $env:ODLS
         - cd ..
+        # test discretizer
+        - cd discretizer\tests\compare_discretizers
+        - python main.py
+        - cd ..\..\..
     artifacts:
       paths:
         - '.\models\_logs\*.log'
