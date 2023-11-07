@@ -13,11 +13,23 @@ namespace dis
   using mesh::ND;
 
   // variable's names we perform approxiamtion over: 
-  // 'Uvar' - vector of displacements, 
+  // 'Uvar' - vector of three displacements, 
   // 'Pvar' - pressure 
   // 'Tvar' - temperature
   enum VarName { Uvar, Pvar, Tvar };
   
+  template <VarName Var> constexpr index_t var_block_size;
+  template <> constexpr index_t var_block_size<Uvar> = 3;
+  template <> constexpr index_t var_block_size<Pvar> = 1;
+  template <> constexpr index_t var_block_size<Tvar> = 1;
+
+  template <VarName... VarNames> constexpr index_t vars_size = []
+  {
+    index_t count = 0;
+    ((count += var_block_size<VarNames>), ...);
+    return count;
+  }();
+
   // class template that represents a linear approximation
   // template parameters are variables used in approximation
   template <VarName... VarNames>
@@ -25,12 +37,7 @@ namespace dis
   {
   public:
     static inline const std::array<VarName, sizeof...(VarNames)> var_names = { VarNames... };
-    static inline const index_t n_block = [] 
-    {
-      index_t count = 0;
-      ((VarNames == Uvar ? count += ND : count += 1), ...);
-      return count;
-    }();
+    static constexpr index_t n_block = vars_size<VarNames...>;
 
     LinearApproximation() {};
     LinearApproximation(index_t apprx_size, index_t stencil_size)
@@ -52,7 +59,7 @@ namespace dis
     };
     ~LinearApproximation() {};
 
-    // gradinents stored in 1-dimensional arrays with the stride=9
+    // gradinents stored in 1-dimensional arrays with e.g. the stride=9 for LinearApproximation<Uvar>
     // 9 values for the each cell
     // (u_x)'x   (u_x)'y   (u_x)'z
     // (u_y)'x   (u_y)'y   (u_y)'z
@@ -161,13 +168,24 @@ namespace dis
     }();
   };
 
-  template <VarName V, VarName... Others>
+  template <VarName V>
   constexpr int CalculateMapping() {
-    constexpr VarName arr[] = { Others... };
-    for (std::size_t i = 0; i < sizeof...(Others); ++i) {
-      if (arr[i] == V) return static_cast<int>(i);
+    return -1; // V not found in Others.
+  }
+
+  // Recursive case: peel off the first element from Others and check it.
+  template <VarName V, VarName First, VarName... Others>
+  constexpr int CalculateMapping() {
+    if constexpr (V == First) {
+      // If we find V, we should return the accumulated index (0 in this case).
+      return 0;
     }
-    return -1;
+    else {
+      // Recurse with the rest of Others, and add the block size to the index if V was not found.
+      constexpr int next = CalculateMapping<V, Others...>();
+      // If V was not found in the remaining Others, next will be -1.
+      return next == -1 ? -1 : var_block_size<First> + next;
+    }
   }
 
   // merge stencils
@@ -222,18 +240,25 @@ namespace dis
     res.a = Matrix(ap1.a.M, res.n_block * res.stencil.size());
     res.rhs = Matrix(ap1.a.M, 1);
 
-    // compile-time evaluation of output columns where we need to add the second matrix
     constexpr std::array<int, sizeof...(VarNames2)> mapping2 = { []() -> int
-      {
-        if (IndexOf<VarNames2, TypeList<VarNames1...>>::value != -1)
-        { return IndexOf<VarNames2, TypeList<VarNames1...>>::value; }
-        else { return CalculateMapping<VarNames2, VarNames1..., VarNames2>(); }
+    {
+      int idx = IndexOf<VarNames2, TypeList<VarNames1...>>::value;
+            if (idx != -1) {
+        // If the variable is found in the first list, calculate its mapping index accounting for the block size
+        return CalculateMapping<VarNames2, VarNames1...>();
+            }
+            else {
+        // If the variable is not found in the first list, append it at the end
+        return CalculateMapping<VarNames2, VarNames1..., VarNames2>();
+            }
       }()...
     };
 
     constexpr index_t nb1 = ap1.n_block;
     constexpr index_t nb2 = ap2.n_block;
     constexpr index_t nb = res.n_block;
+
+    constexpr auto var_sizes2 = std::array{ var_block_size<VarNames2>... };
 
     index_t i = 0, j = 0, k = 0;
     while (i != ap1.stencil.size() && j != ap2.stencil.size())
@@ -248,9 +273,12 @@ namespace dis
             res.a(it, k * nb + jt) += ap1.a(it, i * nb1 + jt);
           }
           // 2nd contribution
-          for (index_t jt = 0; jt < nb2; ++jt)
+          for (index_t v2 = 0, jt = 0; v2 < var_sizes2.size(); ++v2)
           {
-            res.a(it, k * nb + mapping2[jt]) += mult2 * ap2.a(it, j * nb2 + jt);
+            for (index_t v_block2 = 0; v_block2 < var_sizes2[v2]; ++v_block2, ++jt)
+            {
+              res.a(it, k * nb + mapping2[v2] + v_block2) += mult2 * ap2.a(it, j * nb2 + jt);
+            }
           }
         }
         i++; j++; k++;
@@ -270,9 +298,12 @@ namespace dis
         for (index_t it = 0; it < ap1.a.M; ++it)
         {
           // 2nd contribution
-          for (index_t jt = 0; jt < nb2; ++jt)
+          for (index_t v2 = 0, jt = 0; v2 < var_sizes2.size(); ++v2)
           {
-            res.a(it, k * nb + mapping2[jt]) += mult2 * ap2.a(it, j * nb2 + jt);
+            for (index_t v_block2 = 0; v_block2 < var_sizes2[v2]; ++v_block2, ++jt)
+            {
+              res.a(it, k * nb + mapping2[v2] + v_block2) += mult2 * ap2.a(it, j * nb2 + jt);
+            }
           }
         }
         k++; j++;
@@ -297,9 +328,12 @@ namespace dis
       for (index_t it = 0; it < ap1.a.M; ++it)
       {
         // 2nd contribution
-        for (index_t jt = 0; jt < nb2; ++jt)
+        for (index_t v2 = 0, jt = 0; v2 < var_sizes2.size(); ++v2)
         {
-          res.a(it, k * nb + mapping2[jt]) += mult2 * ap2.a(it, j * nb2 + jt);
+          for (index_t v_block2 = 0; v_block2 < var_sizes2[v2]; ++v_block2, ++jt)
+          {
+            res.a(it, k * nb + mapping2[v2] + v_block2) += mult2 * ap2.a(it, j * nb2 + jt);
+          }
         }
       }
       k++; j++;
