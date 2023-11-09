@@ -119,24 +119,25 @@ namespace dis
 		}
 	  };
 
-	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t cell_id, index_t conn_id);
 
 	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
 	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
 	  //void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
 
-	  inline void write_trans_mech_old_format(const MechApproximation<MODE>& flux)
+	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
 		assert(flux.is_same_stencil);
 		value_t coef_darcy, coef_fick, coef_fourier;
+		assert(flux.hooke.stencil == flux.flow.darcy.stencil);
 
 		// stencil & transmissibilities
-		for (uint8_t st_id = 0; st_id < flux.hooke.stencil.size(); st_id++)
+		for (index_t st_id = 0; st_id < flux.hooke.stencil.size(); st_id++)
 		{
 		  auto block_hooke = flux.hooke.a(flux.hooke.n_block * st_id, { (size_t)flux.hooke.a.M, (size_t)flux.hooke.n_block }, { (size_t)flux.hooke.a.N, 1 });
 		  auto block_biot = flux.biot_traction.a(flux.biot_traction.n_block * st_id, { (size_t)flux.biot_traction.a.M, (size_t)flux.biot_traction.n_block }, { (size_t)flux.biot_traction.a.N, 1 });
-		  auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.a.M, (size_t)flux.vol_strain.n_block }, { (size_t)flux.vol_strain.a.N, 1 });
+		  auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.n_block }, { 1 });
 		  coef_darcy = flux.flow.darcy.a.values[st_id];
 		  coef_fick = flux.flow.fick.a.values[st_id];
 		  // eliminate numerical noise: TODO: formalize
@@ -151,30 +152,26 @@ namespace dis
 		  {
 			// stencil
 			flux_stencil.push_back(flux.hooke.stencil[st_id]);
-			// first 3 rows
-			mech_tran.insert(std::end(mech_tran), std::begin(block_hooke), std::end(block_hooke));
-			// last row
-			mech_tran.insert(std::end(mech_tran), ND, 0.0); 
-			mech_tran.push_back(coef_darcy);
-			// first three rows
-			for (uint8_t row = 0; row < ND; row++)
-			{
-			  mech_tran_biot.insert(std::end(mech_tran_biot), ND, 0.0);
-			  mech_tran_biot.push_back(block_biot[row]);
-			}
-			// last row
-			mech_tran_biot.insert(std::end(mech_tran_biot), std::begin(block_vol_strain), std::end(block_vol_strain));
-			flux_vals_homo.push_back(coef_fick);
+			// Hooke's law
+			hooke.insert(std::end(hooke), std::begin(block_hooke), std::end(block_hooke));
+			// Biot's term in traction
+			biot_traction.insert(std::end(biot_traction), std::begin(block_biot), std::end(block_biot));
+			// Biot's term in fluid flow
+			biot_vol_strain.insert(std::end(biot_vol_strain), std::begin(block_vol_strain), std::end(block_vol_strain));
+			// Darcy's flow
+			darcy.push_back(coef_darcy);
+			fick.push_back(coef_fick);
 		  }
 		}
+		// free terms
+		hooke_rhs.insert(std::end(hooke_rhs), std::begin(flux.hooke.rhs.values), std::end(flux.hooke.rhs.values));
+		biot_traction_rhs.insert(std::end(biot_traction_rhs), std::begin(flux.biot_traction.rhs.values), std::end(flux.biot_traction.rhs.values));
+		biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
+		darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
+		fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
+
 		// offset
 		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
-		// free terms
-		mech_rhs.insert(std::end(mech_rhs), std::begin(flux.hooke.rhs.values), std::end(flux.hooke.rhs.values));
-		mech_rhs.push_back(flux.flow.darcy.rhs.values[0]);
-		// free terms
-		mech_rhs_biot.insert(std::end(mech_rhs_biot), std::begin(flux.biot_traction.rhs.values), std::end(flux.biot_traction.rhs.values));
-		mech_rhs_biot.push_back(flux.vol_strain.rhs.values[0]);
 	  };
 
 	  void keep_same_stencil_gradients();
@@ -209,7 +206,12 @@ namespace dis
 		// fot THM: A - 9x5, b - 5x1, len{u_x, u_y, u_z, p, temperature}
 
 	  // approximations 
-	  std::vector<index_t> mech_tran, mech_rhs, mech_tran_biot, mech_rhs_biot;
+	  std::vector<index_t> hooke, hooke_rhs;
+	  std::vector<index_t> biot_traction, biot_traction_rhs;
+	  std::vector<index_t> darcy, darcy_rhs;
+	  std::vector<index_t> biot_vol_strain, biot_vol_strain_rhs;
+	  std::vector<index_t> fick, fick_rhs;
+	  std::vector<index_t> fourier, fourier_rhs;
 
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
