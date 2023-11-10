@@ -520,7 +520,7 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 	  {
 		// assemble approximations
 		auto& flux = mech_fluxes[0];
-		calc_matrix_matrix_mech(conn, flux, i, conn_id);
+		calc_matrix_matrix_mech(conn, flux, cell_id1, conn_id);
 		calc_matrix_matrix(conn, flux.flow, false);
 
 		// multiply matrix by sign * area
@@ -562,7 +562,7 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 
 		cell_m.push_back(cell_id1);
 		cell_p.push_back(cell_id2);
-		write_trans_mech(flux);
+		//write_trans_mech(flux);
 	  }
 	}
   }
@@ -587,7 +587,7 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
   std::pair<bool, size_t> res1, res2;
 
   const index_t cell_id1 = cell_id;
-  const index_t cell_id2 = conn.elem_id2 ? cell_id1 == conn.elem_id1 : conn.elem_id1;
+  const index_t cell_id2 = cell_id1 == conn.elem_id1 ? conn.elem_id2 : conn.elem_id1;
 
   const auto& x1 = mesh->centroids[cell_id1];
   const auto& x2 = mesh->centroids[cell_id2];
