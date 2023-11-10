@@ -169,9 +169,6 @@ namespace dis
 		biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
 		darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
 		fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
-
-		// offset
-		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 	  };
 
 	  void keep_same_stencil_gradients();
@@ -206,12 +203,12 @@ namespace dis
 		// fot THM: A - 9x5, b - 5x1, len{u_x, u_y, u_z, p, temperature}
 
 	  // approximations 
-	  std::vector<index_t> hooke, hooke_rhs;
-	  std::vector<index_t> biot_traction, biot_traction_rhs;
-	  std::vector<index_t> darcy, darcy_rhs;
-	  std::vector<index_t> biot_vol_strain, biot_vol_strain_rhs;
-	  std::vector<index_t> fick, fick_rhs;
-	  std::vector<index_t> fourier, fourier_rhs;
+	  std::vector<value_t> hooke, hooke_rhs;
+	  std::vector<value_t> biot_traction, biot_traction_rhs;
+	  std::vector<value_t> darcy, darcy_rhs;
+	  std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs;
+	  std::vector<value_t> fick, fick_rhs;
+	  std::vector<value_t> fourier, fourier_rhs;
 
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;

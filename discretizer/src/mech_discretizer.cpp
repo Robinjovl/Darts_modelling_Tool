@@ -539,6 +539,9 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 		cell_m.push_back(cell_id1);
 		cell_p.push_back(cell_id2);
 		write_trans_mech(flux);
+
+		// offset
+		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 	  }
 	  else if (conn.type == mesh::MAT_BOUND)
 	  {
@@ -563,6 +566,9 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 		cell_m.push_back(cell_id1);
 		cell_p.push_back(cell_id2);
 		//write_trans_mech(flux);
+
+		// offset
+		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 	  }
 	}
   }
