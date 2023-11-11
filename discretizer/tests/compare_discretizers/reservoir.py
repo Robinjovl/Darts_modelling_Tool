@@ -29,6 +29,7 @@ class UnstructReservoir:
     def __init__(self, discretizer='new_discretizer', mesh='rect'):
         self.discretizer_name = discretizer
         self.n_vars = 4
+        self.n_dim = 3
 
         if mesh == 'rect':
             self.mesh_path = 'meshes/unit_trans.msh'
@@ -51,6 +52,20 @@ class UnstructReservoir:
 
         if discretizer == 'new_discretizer':
             self.unit_cube_new_discretizer()
+
+            self.offset = np.array(self.discr.flux_offset, copy=False)
+            self.stencil = np.array(self.discr.flux_stencil, copy=False)
+            self.hooke_trans = np.array(self.discr.hooke, copy=False)
+            self.hooke_rhs = np.array(self.discr.hooke_rhs, copy=False)
+            self.biot_traction_trans = np.array(self.discr.biot_traction, copy=False)
+            self.biot_traction_rhs = np.array(self.discr.biot_traction_rhs, copy=False)
+            self.biot_vol_strain_trans = np.array(self.discr.biot_vol_strain, copy=False)
+            self.biot_vol_strain_rhs = np.array(self.discr.biot_vol_strain_rhs, copy=False)
+            self.darcy_trans = np.array(self.discr.darcy, copy=False)
+            self.darcy_rhs = np.array(self.discr.darcy_rhs, copy=False)
+            self.fick_trans = np.array(self.discr.fick, copy=False)
+            self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
+
         elif discretizer == 'pm_discretizer':
             self.unit_cube_pm_discretizer()
 
@@ -58,6 +73,24 @@ class UnstructReservoir:
             self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot, index_vector([]))
             self.pm.reconstruct_gradients_per_cell(dt)
             self.pm.calc_all_fluxes_once(dt)
+
+            self.offset = np.array(self.pm.offset, copy=False)
+            self.stencil = np.array(self.pm.stencil, copy=False)
+            self.tran = np.array(self.pm.tran, copy=False)
+            self.rhs = np.array(self.pm.rhs, copy=False)
+            self.tran_biot = np.array(self.pm.tran_biot, copy=False)
+            self.rhs_biot = np.array(self.pm.rhs_biot, copy=False)
+
+        self.W = np.zeros((9, 6))
+        self.W[0, 0] = 1.0
+        self.W[1, 5] = 1.0
+        self.W[2, 4] = 1.0
+        self.W[3, 5] = 1.0
+        self.W[4, 1] = 1.0
+        self.W[5, 3] = 1.0
+        self.W[6, 4] = 1.0
+        self.W[7, 3] = 1.0
+        self.W[8, 2] = 1.0
 
     # new discretizer
     def unit_cube_new_discretizer(self):
@@ -152,6 +185,7 @@ class UnstructReservoir:
         # gradient reconstruction
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+        self.discr.calc_mpfa_mpsa_transmissibilities()
 
     # old discretizer
     def unit_cube_pm_discretizer(self):
@@ -217,7 +251,7 @@ class UnstructReservoir:
             sol = ref1(np.append(b_cell.centroid, 0.0))
             self.solution[self.n_vars * cell_id:self.n_vars * (cell_id + 1)] = sol
 
-    # calculate gradients, new discretizer
+    # calculate gradients, old discretizer
     def get_gradients_pm_discretizer(self, cell_id: int):
         st, coef = self.pm.get_gradient(cell_id)
         stencil = np.array(st, copy=False)
@@ -228,7 +262,7 @@ class UnstructReservoir:
 
         grad = trans.dot(self.solution[stencil_cols])
         return grad
-
+    # calculate gradients, new discretizer
     def get_gradients_new_discretizer(self, cell_id: int):
         p_grad = self.discr.p_grads[cell_id]
         u_grad = self.discr.u_grads[cell_id]
@@ -244,6 +278,50 @@ class UnstructReservoir:
         nabla_p = p_trans.dot(self.solution[self.n_vars * np.array(p_grad.stencil) + 3])
 
         return np.append(nabla_u, nabla_p)
+    # calculate analytical fluxes
+    def get_analytical_fluxes(self, x, n):
+        grad_an = nabla_ref1(x)
+        stf = np.array(self.stf).reshape(6, 6)
+        hooke_stress = self.W.dot(stf.dot(self.W.T)).\
+            dot(grad_an[:self.n_dim, :self.n_dim].flatten()).\
+            reshape(self.n_dim, self.n_dim)
+        hooke_traction = hooke_stress.dot(n)
+        return -hooke_traction
+    # calculate fluxes, old discretizer
+    def get_fluxes_pm_discretizer(self, flux_id):
+        n_block = 4
+        stencil = self.stencil[self.offset[flux_id]:
+                               self.offset[flux_id + 1]]
+        stencil_cols = np.concatenate([
+            np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
+        main_terms = self.tran[n_block * n_block * self.offset[flux_id]:
+                                 n_block * n_block * self.offset[flux_id + 1]].\
+            reshape((stencil.size, n_block, n_block))
+        main_terms = np.transpose(main_terms, (1, 0, 2)).reshape(n_block, n_block * stencil.size)
+        hooke_coefs = main_terms[:self.n_dim, :]
+        main_rhs = self.rhs[n_block * flux_id:n_block * (flux_id + 1)]
+        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + main_rhs[:self.n_dim]
+
+        return hooke
+    # calculate fluxes, new discretizer
+    def get_fluxes_new_discretizer(self, flux_id):
+        n_block = self.n_vars # for poroelastic mode in discretizer
+        n_hooke = n_block * self.n_dim
+        stencil = self.stencil[self.offset[flux_id]:
+                               self.offset[flux_id + 1]]
+        if stencil.size > 0:
+            stencil_cols = np.concatenate([
+                np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
+            hooke_coefs = self.hooke_trans[n_hooke * self.offset[flux_id]:
+                                           n_hooke * self.offset[flux_id + 1]].\
+                    reshape((stencil.size, self.n_dim, n_block))
+            hooke_coefs = np.transpose(hooke_coefs, (1, 0, 2)).reshape(self.n_dim, n_block * stencil.size)
+
+            hooke_rhs = self.hooke_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+            hooke = hooke_coefs.dot(self.solution[stencil_cols]) + hooke_rhs
+        else:
+            hooke = np.array([0.0, 0.0, 0.0])
+        return hooke
 
     def get_normal_to_bound_face(self, b_id):
         cell = self.unstr_discr.bound_cell_info_dict[b_id]
@@ -255,7 +333,6 @@ class UnstructReservoir:
                 n = face.n
                 if np.inner(t_face, n) < 0: n = -n
                 return n
-
 
 
 # reference solution
