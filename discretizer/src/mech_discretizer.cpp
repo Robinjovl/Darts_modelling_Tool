@@ -1,4 +1,5 @@
 #include "mech_discretizer.h"
+#include "utils.h"
 #include <chrono>
 
 using namespace dis;
@@ -11,6 +12,7 @@ using std::chrono::steady_clock;
 using std::chrono::duration_cast;
 using std::fill_n;
 using std::copy_n;
+using utils::get_valarray_from_array;
 
 template <MechDiscretizerMode MODE>
 const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
@@ -130,9 +132,9 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 	auto& A = pre_grad_A_u[n_cur_faces];
 	auto& rhs_mult = pre_grad_R_u[n_cur_faces];
 	auto& rest = pre_grad_rhs_u[n_cur_faces];
-	std::fill_n(&A.values[0], A.values.size(), 0.0);
-	std::fill_n(&rest.values[0], rest.values.size(), 0.0);
-	std::fill_n(&rhs_mult.values[0], rhs_mult.values.size(), 0.0);
+	A.values = 0.;
+	rest.values = 0.;
+	rhs_mult.values = 0.;
 
 	face_id = conn_id = 0;
 	for (loop_face_id = mesh->adj_matrix_offset[i]; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++, conn_id++)
@@ -148,17 +150,15 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		const index_t& cell_id2 = mesh->adj_matrix_cols[loop_face_id];
 		const auto& c1 = mesh->centroids[cell_id1];
 		const auto& c2 = mesh->centroids[cell_id2];
-		
-		//TODO: as connection's normal is always outside for the cell_id1 (see sign = (conn.elem_id1 == cell_id1) ? 1.0 : -1.0;)
-		// here the second condition should always be true
+
 		if (dot((conn.c - c1), conn.n) < 0)
 		{
-		  n.values = -std::valarray<value_t>(conn.n.values.data(), conn.n.values.size());
+		  n.values = -get_valarray_from_array(conn.n.values);
 		  n_vec = -conn.n;
 		}
 		else
 		{
-		  n.values = std::valarray<value_t>(conn.n.values.data(), conn.n.values.size());
+		  n.values = get_valarray_from_array(conn.n.values);
 		  n_vec = conn.n;
 		}
 		P = I3 - linalg::outer_product(n, n.transpose());

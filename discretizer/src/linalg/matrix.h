@@ -326,9 +326,9 @@ namespace linalg
 			w.resize(n);
 
 		// copy from Eigen SVD to output arrays
-		std::fill_n(&vc.values[0], vc.values.size(), 0.0);
-		std::fill_n(&w[0], w.size(), 0.0);
-		std::fill_n(&this->values[0], this->values.size(), 0.0);
+		vc.values = 0.;
+		w = 0.;
+		values = 0.;
 		int n_max = this->N > this->M ? this->N : this->M;
 		for (int i = 0; i < n_max; i++) {
 			if (i < S.rows())
