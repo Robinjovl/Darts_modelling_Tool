@@ -565,7 +565,7 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 
 		cell_m.push_back(cell_id1);
 		cell_p.push_back(cell_id2);
-		//write_trans_mech(flux);
+		write_trans_mech(flux);
 
 		// offset
 		flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
@@ -588,7 +588,7 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
   Matrix conn_c(ND, 1), face_unknown_coef(1, ND), biot_grad_coef(ND, ND), mat_diff1(1, ND), mat_diff2(1, ND);
   Vector3 diff1, diff2;
   size_t id1, id2;
-  value_t buf1, buf2, lam1, lam2, det_lam;
+  value_t lam1, lam2, det_lam;
   index_t cur_cell_id;
   std::pair<bool, size_t> res1, res2;
 
@@ -686,9 +686,12 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   Matrix An(ND, ND), At(ND, ND), L(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND);
   Matrix coef(ND, ND), mult_p(ND, 1), mult_u(ND, ND), gu_coef(ND, ND * ND);
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
-  Matrix grad_coef(n_unknowns, ND * n_unknowns), biot_grad_coef(n_unknowns, ND * n_unknowns);
+  Matrix grad_coef(ND, ND * ND), biot_grad_coef(ND, ND);
+  Matrix vol_strain_u_grad_coef(1, ND * ND), vol_strain_p_grad_coef(1, ND);
   value_t r1, lam1, Ap, gamma;
+  index_t id1, id2;
   bool res;
+  std::pair<bool, size_t> res1, res2;
   const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
   const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
   const auto& at = bc_thm.mech_tangen.a[conn.elem_id2 - mesh->n_cells];
@@ -697,6 +700,7 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
 
   const index_t& cell_id1 = conn.elem_id1;
+  const index_t& cell_id2 = conn.elem_id2;
   const auto& c1 = mesh->centroids[cell_id1];
   std::copy_n(c1.values.begin(), ND, std::begin(c1_mat.values));
   std::copy_n(conn.c.values.begin(), ND, std::begin(conn_mat.values));
@@ -746,24 +750,39 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   gu_coef = T1 / r1 * make_block_diagonal((y1 - conn_mat).transpose(), ND) + G1;
 
   //// Filling mechanics equations
-  grad_coef(0, { ND, ND * ND }, { (size_t)grad_coef.N, 1 }) = -(coef * gu_coef).values;
-  biot_grad_coef(ND * ND, { ND, ND }, { (size_t)grad_coef.N, 1 }) = (coef * outer_product(mult_p, -Ap * bp * (lam1 / r1 * (y1 - conn_mat) + gam1).transpose())).values;
-  flux.biot_traction.rhs.values = (Ap * bp * (grav_vec * K1n).values[0] * coef * mult_p).values;
+  grad_coef.values = -(coef * gu_coef).values;
+  biot_grad_coef.values = (coef * outer_product(mult_p, -Ap * bp * (lam1 / r1 * (y1 - conn_mat) + gam1).transpose())).values;
 
   //// Filling flow equation
-  biot_grad_coef(ND * biot_grad_coef.N, { ND * ND }, { 1 }) = -(mult_p.transpose() * mult_u * gu_coef).values;
-  grad_coef(ND * grad_coef.N + ND * ND, { ND }, { 1 }) = (-Ap * ap * (lam1 / r1 * (y1 - conn_mat) + gam1)).values;
-  biot_grad_coef(ND * biot_grad_coef.N + ND * ND, { ND }, { 1 }) = -((mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp *
-	(lam1 / r1 * (y1 - conn_mat) + gam1)).values;
-  //flux.vol_strain.rhs.values = Ap * (bp * (grav_vec * K1n).values[0]) * (mult_p.transpose() * (mult_u * mult_p)).values[0];
+  vol_strain_u_grad_coef.values = -(mult_p.transpose() * mult_u * gu_coef).values;
+  vol_strain_p_grad_coef.values = -((mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp *
+			(lam1 / r1 * (y1 - conn_mat) + gam1)).values;
 
   //// Assembling fluxes
-  /*fill_n(std::begin(flux.a.values), flux.a.values.size(), 0.0);
-  fill_n(std::begin(flux.a_biot.values), flux.a_biot.values.size(), 0.0);
-  flux.a(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a.N, 1 }) = (grad_coef * make_block_diagonal(P, BLOCK_SIZE) * g.mat).values;
-  flux.a_biot(0, { BLOCK_SIZE, (size_t)g.mat.N }, { (size_t)flux.a_biot.N, 1 }) = (biot_grad_coef * make_block_diagonal(P, BLOCK_SIZE) * g.mat).values;
-  flux.f += grad_coef * make_block_diagonal(P, BLOCK_SIZE) * g.rhs;
-  flux.f_biot += biot_grad_coef * make_block_diagonal(P, BLOCK_SIZE) * g.rhs;*/
+  flux.hooke = grad_coef * make_block_diagonal(P, ND) * u_grads[cell_id1];
+  flux.biot_traction = biot_grad_coef * P * p_grads[cell_id1];
+  flux.biot_traction.rhs.values += (Ap * bp * (grav_vec * K1n).values[0] * coef * mult_p).values;
+  flux.vol_strain = vol_strain_u_grad_coef * make_block_diagonal(P, ND) * u_grads[cell_id1];
+  flux.vol_strain += vol_strain_p_grad_coef * P * p_grads[cell_id1];
+  flux.vol_strain.rhs.values += Ap * (bp * (grav_vec * K1n).values[0]) * (mult_p.transpose() * (mult_u * mult_p)).values[0];
+
+  // matrix cell contribution
+  res1 = findInVector(flux.hooke.stencil, cell_id1);
+  if (res1.first) { id1 = res1.second; }
+  else { printf("Gradient within %d cell does not depend on its value!\n", cell_id1);	exit(-1); }
+  flux.hooke.a(n_unknowns * id1, { ND, ND }, { (size_t)flux.hooke.a.N, 1 }) += (coef * T1 / r1).values;
+  flux.biot_traction.a(id1, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (coef * mult_p * Ap * bp * lam1 / r1).values;
+  flux.vol_strain.a(n_unknowns * id1, { ND }, { 1 }) += (mult_u * T1 / r1 * mult_p).values;
+  flux.vol_strain.a(0, n_unknowns * id1 + ND) += (mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp * lam1 / r1;
+
+  // boundary condition contribution
+  res2 = findInVector(flux.hooke.stencil, cell_id2);
+  if (res2.first) { id2 = res2.second; }
+  else { printf("Gradient within %d cell does not depend on its value!\n", cell_id2);	exit(-1); }
+  flux.hooke.a(n_unknowns * id2, { ND, ND }, { (size_t)flux.hooke.a.N, 1 }) += (-T1 / r1 * At * (gamma_nnt + (I3 - gamma_nnt * L) * P)).values;
+  flux.biot_traction.a(id2, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (Ap * coef * mult_p).values;
+  flux.vol_strain.a(n_unknowns * id2, { ND }, { 1 }) += (mult_p.transpose() * At * (gamma_nnt + (I3 - gamma_nnt * L) * P)).values;
+  flux.vol_strain.a(0, n_unknowns * id2 + ND) += Ap * (mult_p.transpose() * (mult_u * mult_p)).values[0];
 }
 
 template class MechDiscretizer<POROELASTIC>;

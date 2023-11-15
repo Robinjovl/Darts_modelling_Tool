@@ -251,6 +251,17 @@ class UnstructReservoir:
             sol = ref1(np.append(b_cell.centroid, 0.0))
             self.solution[self.n_vars * cell_id:self.n_vars * (cell_id + 1)] = sol
 
+    def get_normal_to_bound_face(self, b_id):
+        cell = self.unstr_discr.bound_cell_info_dict[b_id]
+        cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
+        cell_id = next(iter(set(cells[0]).intersection(*cells)))
+        for face in self.unstr_discr.faces[cell_id].values():
+            if face.cell_id1 == face.cell_id2 and face.face_id2 == b_id:
+                t_face = cell.centroid - self.unstr_discr.mat_cell_info_dict[cell_id].centroid
+                n = face.n
+                if np.inner(t_face, n) < 0: n = -n
+                return n
+
     # calculate gradients, old discretizer
     def get_gradients_pm_discretizer(self, cell_id: int):
         st, coef = self.pm.get_gradient(cell_id)
@@ -279,14 +290,20 @@ class UnstructReservoir:
 
         return np.append(nabla_u, nabla_p)
     # calculate analytical fluxes
-    def get_analytical_fluxes(self, x, n):
+    def get_analytical_fluxes(self, x, n, x_cell):
+        sol_an = ref1(x)
         grad_an = nabla_ref1(x)
         stf = np.array(self.stf).reshape(6, 6)
+        biot = np.array(self.biot).reshape(3, 3)
+        perm = TC.darcy_constant * np.array(self.perm).reshape(3, 3)
         hooke_stress = self.W.dot(stf.dot(self.W.T)).\
             dot(grad_an[:self.n_dim, :self.n_dim].flatten()).\
             reshape(self.n_dim, self.n_dim)
-        hooke_traction = hooke_stress.dot(n)
-        return -hooke_traction
+        hooke_traction = -hooke_stress.dot(n)
+        biot_traction = sol_an[3] * biot.dot(n)
+        darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim])
+        vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
+        return hooke_traction, biot_traction, darcy, vol_strain
     # calculate fluxes, old discretizer
     def get_fluxes_pm_discretizer(self, flux_id):
         n_block = 4
@@ -298,42 +315,66 @@ class UnstructReservoir:
                                  n_block * n_block * self.offset[flux_id + 1]].\
             reshape((stencil.size, n_block, n_block))
         main_terms = np.transpose(main_terms, (1, 0, 2)).reshape(n_block, n_block * stencil.size)
-        hooke_coefs = main_terms[:self.n_dim, :]
         main_rhs = self.rhs[n_block * flux_id:n_block * (flux_id + 1)]
-        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + main_rhs[:self.n_dim]
+        biot_terms = self.tran_biot[n_block * n_block * self.offset[flux_id]:
+                                 n_block * n_block * self.offset[flux_id + 1]].\
+            reshape((stencil.size, n_block, n_block))
+        biot_terms = np.transpose(biot_terms, (1, 0, 2)).reshape(n_block, n_block * stencil.size)
+        biot_rhs = self.rhs_biot[n_block * flux_id:n_block * (flux_id + 1)]
 
-        return hooke
+        # Hooke's
+        hooke_coefs = main_terms[:self.n_dim, :]
+        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + main_rhs[:self.n_dim]
+        # Biot's
+        biot_coefs = biot_terms[:self.n_dim, :]
+        biot = biot_coefs.dot(self.solution[stencil_cols]) + biot_rhs[:self.n_dim]
+        # Darcy's
+        darcy_coefs = main_terms[self.n_dim, :]
+        darcy = darcy_coefs.dot(self.solution[stencil_cols]) + main_rhs[self.n_dim]
+        # Vols strain
+        vol_strain_coefs = biot_terms[self.n_dim, :]
+        vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols]) + biot_rhs[self.n_dim]
+
+        return hooke, biot, darcy, vol_strain
     # calculate fluxes, new discretizer
     def get_fluxes_new_discretizer(self, flux_id):
         n_block = self.n_vars # for poroelastic mode in discretizer
         n_hooke = n_block * self.n_dim
+        n_biot = self.n_dim
         stencil = self.stencil[self.offset[flux_id]:
                                self.offset[flux_id + 1]]
         if stencil.size > 0:
             stencil_cols = np.concatenate([
                 np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
+            # Hooke's
             hooke_coefs = self.hooke_trans[n_hooke * self.offset[flux_id]:
-                                           n_hooke * self.offset[flux_id + 1]].\
-                    reshape((stencil.size, self.n_dim, n_block))
+                                   n_hooke * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, n_block))
             hooke_coefs = np.transpose(hooke_coefs, (1, 0, 2)).reshape(self.n_dim, n_block * stencil.size)
-
             hooke_rhs = self.hooke_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
             hooke = hooke_coefs.dot(self.solution[stencil_cols]) + hooke_rhs
+            # Biot's
+            biot_coefs = self.biot_traction_trans[n_biot * self.offset[flux_id]:
+                                   n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
+            biot_coefs = np.transpose(biot_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
+            biot_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+            biot = biot_coefs.dot(self.solution[stencil * self.n_vars + 3]) + biot_rhs
+            # Darcy's
+            darcy_coefs = self.darcy_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
+            darcy_coefs = np.transpose(darcy_coefs, (1, 0, 2)).reshape(1, stencil.size)
+            darcy_rhs = self.darcy_rhs[flux_id]
+            darcy = darcy_coefs.dot(self.solution[stencil * self.n_vars + 3])[0] + darcy_rhs
+            # Volumetric strain
+            vol_strain_coefs = self.biot_vol_strain_trans[n_block * self.offset[flux_id]:
+                                    n_block * self.offset[flux_id + 1]].reshape((stencil.size, 1, n_block))
+            vol_strain_coefs = np.transpose(vol_strain_coefs, (1, 0, 2)).reshape(1, n_block * stencil.size)
+            vol_strain_rhs = self.biot_vol_strain_rhs[flux_id]
+            vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols])[0] + vol_strain_rhs
         else:
             hooke = np.array([0.0, 0.0, 0.0])
-        return hooke
-
-    def get_normal_to_bound_face(self, b_id):
-        cell = self.unstr_discr.bound_cell_info_dict[b_id]
-        cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
-        cell_id = next(iter(set(cells[0]).intersection(*cells)))
-        for face in self.unstr_discr.faces[cell_id].values():
-            if face.cell_id1 == face.cell_id2 and face.face_id2 == b_id:
-                t_face = cell.centroid - self.unstr_discr.mat_cell_info_dict[cell_id].centroid
-                n = face.n
-                if np.inner(t_face, n) < 0: n = -n
-                return n
-
+            biot = np.array([0.0, 0.0, 0.0])
+            darcy = 0.0
+            vol_strain = 0.0
+        return hooke, biot, darcy, vol_strain
 
 # reference solution
 def ref1(x):
