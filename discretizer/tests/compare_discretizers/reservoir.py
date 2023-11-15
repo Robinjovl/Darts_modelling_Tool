@@ -30,6 +30,8 @@ class UnstructReservoir:
         self.discretizer_name = discretizer
         self.n_vars = 4
         self.n_dim = 3
+        self.fluid_density = 1000.0
+        self.gravity = np.array([0.0, 0.0, -9.81])
 
         if mesh == 'rect':
             self.mesh_path = 'meshes/unit_trans.msh'
@@ -124,7 +126,7 @@ class UnstructReservoir:
 
         # initialize poromechanics discretizer
         self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
+        self.discr.grav_vec = matrix(list(self.gravity), 1, 3)  # 0.0??
         self.tags = np.array(self.discr_mesh.tags, copy=False)
         self.discr.set_mesh(self.discr_mesh)
         self.discr.init()
@@ -221,7 +223,7 @@ class UnstructReservoir:
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.pm.grav = matrix(list(self.gravity), 1, 3)
         self.pm.visc = 1  # 9.81e-2
         self.solution = np.zeros(self.n_vars * (self.unstr_discr.mat_cells_tot + self.unstr_discr.bound_cells_tot))
         for cell_id in range(self.unstr_discr.mat_cells_tot):
@@ -301,7 +303,7 @@ class UnstructReservoir:
             reshape(self.n_dim, self.n_dim)
         hooke_traction = -hooke_stress.dot(n)
         biot_traction = sol_an[3] * biot.dot(n)
-        darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim])
+        darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim] - self.fluid_density * self.gravity)
         vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
         return hooke_traction, biot_traction, darcy, vol_strain
     # calculate fluxes, old discretizer
@@ -324,16 +326,16 @@ class UnstructReservoir:
 
         # Hooke's
         hooke_coefs = main_terms[:self.n_dim, :]
-        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + main_rhs[:self.n_dim]
+        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + self.fluid_density * main_rhs[:self.n_dim]
         # Biot's
         biot_coefs = biot_terms[:self.n_dim, :]
-        biot = biot_coefs.dot(self.solution[stencil_cols]) + biot_rhs[:self.n_dim]
+        biot = biot_coefs.dot(self.solution[stencil_cols]) + self.fluid_density * biot_rhs[:self.n_dim]
         # Darcy's
         darcy_coefs = main_terms[self.n_dim, :]
-        darcy = darcy_coefs.dot(self.solution[stencil_cols]) + main_rhs[self.n_dim]
+        darcy = darcy_coefs.dot(self.solution[stencil_cols]) + self.fluid_density * main_rhs[self.n_dim]
         # Vols strain
         vol_strain_coefs = biot_terms[self.n_dim, :]
-        vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols]) + biot_rhs[self.n_dim]
+        vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols]) + self.fluid_density * biot_rhs[self.n_dim]
 
         return hooke, biot, darcy, vol_strain
     # calculate fluxes, new discretizer
@@ -343,37 +345,32 @@ class UnstructReservoir:
         n_biot = self.n_dim
         stencil = self.stencil[self.offset[flux_id]:
                                self.offset[flux_id + 1]]
-        if stencil.size > 0:
-            stencil_cols = np.concatenate([
-                np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
-            # Hooke's
-            hooke_coefs = self.hooke_trans[n_hooke * self.offset[flux_id]:
-                                   n_hooke * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, n_block))
-            hooke_coefs = np.transpose(hooke_coefs, (1, 0, 2)).reshape(self.n_dim, n_block * stencil.size)
-            hooke_rhs = self.hooke_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
-            hooke = hooke_coefs.dot(self.solution[stencil_cols]) + hooke_rhs
-            # Biot's
-            biot_coefs = self.biot_traction_trans[n_biot * self.offset[flux_id]:
-                                   n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
-            biot_coefs = np.transpose(biot_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
-            biot_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
-            biot = biot_coefs.dot(self.solution[stencil * self.n_vars + 3]) + biot_rhs
-            # Darcy's
-            darcy_coefs = self.darcy_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
-            darcy_coefs = np.transpose(darcy_coefs, (1, 0, 2)).reshape(1, stencil.size)
-            darcy_rhs = self.darcy_rhs[flux_id]
-            darcy = darcy_coefs.dot(self.solution[stencil * self.n_vars + 3])[0] + darcy_rhs
-            # Volumetric strain
-            vol_strain_coefs = self.biot_vol_strain_trans[n_block * self.offset[flux_id]:
-                                    n_block * self.offset[flux_id + 1]].reshape((stencil.size, 1, n_block))
-            vol_strain_coefs = np.transpose(vol_strain_coefs, (1, 0, 2)).reshape(1, n_block * stencil.size)
-            vol_strain_rhs = self.biot_vol_strain_rhs[flux_id]
-            vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols])[0] + vol_strain_rhs
-        else:
-            hooke = np.array([0.0, 0.0, 0.0])
-            biot = np.array([0.0, 0.0, 0.0])
-            darcy = 0.0
-            vol_strain = 0.0
+        stencil_cols = np.concatenate([
+            np.arange(i * self.n_vars, i * self.n_vars + self.n_vars) for i in stencil])
+        # Hooke's
+        hooke_coefs = self.hooke_trans[n_hooke * self.offset[flux_id]:
+                               n_hooke * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, n_block))
+        hooke_coefs = np.transpose(hooke_coefs, (1, 0, 2)).reshape(self.n_dim, n_block * stencil.size)
+        hooke_rhs = self.hooke_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+        hooke = hooke_coefs.dot(self.solution[stencil_cols]) + self.fluid_density * hooke_rhs
+        # Biot's
+        biot_coefs = self.biot_traction_trans[n_biot * self.offset[flux_id]:
+                               n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
+        biot_coefs = np.transpose(biot_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
+        biot_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+        biot = biot_coefs.dot(self.solution[stencil * self.n_vars + 3]) + self.fluid_density * biot_rhs
+        # Darcy's
+        darcy_coefs = self.darcy_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
+        darcy_coefs = np.transpose(darcy_coefs, (1, 0, 2)).reshape(1, stencil.size)
+        darcy_rhs = self.darcy_rhs[flux_id]
+        darcy = darcy_coefs.dot(self.solution[stencil * self.n_vars + 3])[0] + self.fluid_density * darcy_rhs
+        # Volumetric strain
+        vol_strain_coefs = self.biot_vol_strain_trans[n_block * self.offset[flux_id]:
+                                n_block * self.offset[flux_id + 1]].reshape((stencil.size, 1, n_block))
+        vol_strain_coefs = np.transpose(vol_strain_coefs, (1, 0, 2)).reshape(1, n_block * stencil.size)
+        vol_strain_rhs = self.biot_vol_strain_rhs[flux_id]
+        vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols])[0] + self.fluid_density * vol_strain_rhs
+
         return hooke, biot, darcy, vol_strain
 
 # reference solution
