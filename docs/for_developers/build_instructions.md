@@ -49,6 +49,6 @@ cd build && make -j 4
 The '4' is number of threads used for parallel compilation.
 In case you use gcc 11.2 you probably will get a compilation error in std_function.h, 
 use this [solution](https://github.com/NVIDIA/nccl/issues/102#issuecomment-1021420403)
-3. Do the items 1-4 from the Linux (multithread) instruction with `make gpu` (multithread with GPU support) 
-instead of `make mt` (multithread)
+3. Do the items from the Linux (multithread) instruction with run `build_darts.sh 0 gpu` in third step.
+In case you want to compile only engine, run `make gpu USE_OPENDARTS_LINEAR_SOLVERS=0` in engines folder.
 

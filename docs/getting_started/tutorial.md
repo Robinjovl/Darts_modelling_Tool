@@ -22,8 +22,8 @@ set_num_threads(NT)  <br>
 All cores used by default.
 
 Turn on GPU usage in calculation by adding the next lines at the start of the python script:
-Add palatform='gpu' at physics constructor, usually in model.py, for example  
-<code>self.physics = DeadOil(..., platform='gpu')</code>
+Add palatform='gpu' at set_physics call, for example:
+<code>super.set_physics(physics, platform='gpu')
 
 If you would like to change the GPU device, add these lines to your model script:  
 <code>
