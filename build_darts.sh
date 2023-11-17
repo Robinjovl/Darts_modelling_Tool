@@ -38,6 +38,10 @@ then
         config_engines="mt_debug"
         config_discretizer="debug"
         config_solvers="Debug"
+    elif [ $config == "gpu" ]
+    then
+        config_engines="gpu"
+        config_solvers="gpu"
     elif [ $config == "release" ]
     then
         : # do nothing
@@ -50,7 +54,7 @@ fi
 NT="-j 8" # number of threads used to compile
 if [ $# -gt 2 ] # use the second cmd argument if it is passed
 then
-    NT="-j $2"
+    NT="-j $3"
 fi
 
 echo "ODLS=$ODLS config=$config config_engines=$config_engines config_discretizer=$config_discretizer config_solvers=$config_solvers NT=$NT"
