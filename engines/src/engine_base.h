@@ -663,6 +663,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			break;
 		}
 #endif
+		default:
+		{
+		    std::cerr << "Linear solver type " << params->linear_type << " is not supproted for " << engine_name << std::endl << std::flush;
+		    exit(1);
+		}
+		
 		}
 	}
 

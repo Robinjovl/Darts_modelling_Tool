@@ -339,7 +339,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     }
     default:
     {
-      std::cout << "Linear solver type " << params->linear_type << " is not supproted for " << engine_name << std::endl;
+      std::cerr << "Linear solver type " << params->linear_type << " is not supproted for " << engine_name << std::endl << std::flush;
+      exit(1);
     }
     }
   }
