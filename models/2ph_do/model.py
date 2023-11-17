@@ -65,11 +65,6 @@ class Model(CICDModel):
         physics = Compositional(components, phases, self.timer,
                                 n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
         physics.add_property_region(property_container)
-        self.physics.init_physics()
-        #self.physics.init_physics(platform='gpu')
-        #if self.platform == 'gpu':
-        #    self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
-
 
         return super().set_physics(physics)
 
