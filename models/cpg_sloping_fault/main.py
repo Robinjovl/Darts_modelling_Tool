@@ -14,7 +14,7 @@ import time
 
 import os
 
-from darts.models.reservoirs.cpg_reservoir import save_array, make_full_cube
+from darts.reservoirs.cpg_reservoir import save_array, make_full_cube
 def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
         dt : float, n_time_steps : int,
         export_vtk=False):
@@ -31,12 +31,12 @@ def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
     #    nnc_fname = os.path.join(model_dir, 'nnc.txt')
     #    m.reservoir.discr.write_tran_cube(tran_fname, nnc_fname)
 
-    # add wells
-    if True:
-        m.add_wells(mode='read', sch_fname=sch_fname, verbose=True)#, well_index=1000) # add only perforations
-        m.set_wells() # set well controls - for dap (case_201) only
-    else:
-        m.add_wells(mode='generate', sch_fname=sch_fname)
+    # # add wells
+    # if True:
+    #     m.add_wells(mode='read', sch_fname=sch_fname, verbose=True)#, well_index=1000) # add only perforations
+    #     m.set_well_controls() # set well controls - for dap (case_201) only
+    # else:
+    #     m.add_wells(mode='generate', sch_fname=sch_fname)
 
     m.init()
     if export_vtk:
@@ -57,15 +57,15 @@ def run(discr_type : str, gridfile : str, propfile : str, sch_fname : str,
             m.export_vtk(vtk_filename)
 
         #m.save_cubes(os.path.join(model_dir, 'res_' + str(ti+1)))
-        m.physics.engine.report()
+        m.engine.report()
 
     m.save_cubes(os.path.join(model_dir, 'res_last'))
     m.print_timers()
     m.print_stat()
 
-    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    time_data = pd.DataFrame.from_dict(m.engine.time_data)
     time_data.to_pickle(os.path.join(model_dir, 'time_data_' + discr_type + '.pkl'))
-    time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
+    time_data_report = pd.DataFrame.from_dict(m.engine.time_data_report)
 
     if False: # write xls
         # filter data and write to xlsx

@@ -75,16 +75,16 @@ def prepare_synthetic_observation_data():
         true_model.print_stat()
 
         # Save realization output as a true data
-        time_data = pd.DataFrame.from_dict(true_model.physics.engine.time_data)
+        time_data = pd.DataFrame.from_dict(true_model.engine.time_data)
         time_data.to_pickle("_TRUE_%s_darts_time_data_%s_%sdays.pkl" % (true_realization, T, report_step))
-        time_data_report = pd.DataFrame.from_dict(true_model.physics.engine.time_data_report)
+        time_data_report = pd.DataFrame.from_dict(true_model.engine.time_data_report)
         time_data_report.to_pickle(
             "_TRUE_%s_darts_time_data_report_%s_%sdays.pkl" % (true_realization, T, report_step))
 
         if customize_new_operator:
             # time-lapse temperature data
-            time_data_customized = np.array(true_model.physics.engine.time_data_customized)[:, 0:true_model.reservoir.nb]
-            time_data_report_customized = np.array(true_model.physics.engine.time_data_report_customized)[:, 0:true_model.reservoir.nb]
+            time_data_customized = np.array(true_model.engine.time_data_customized)[:, 0:true_model.reservoir.mesh.n_res_blocks]
+            time_data_report_customized = np.array(true_model.engine.time_data_report_customized)[:, 0:true_model.reservoir.mesh.n_res_blocks]
             np.savetxt('_TRUE_%s_darts_time_data_customized_%s_%sdays.txt' % (true_realization, T, report_step), np.array(time_data_customized))
             np.savetxt('_TRUE_%s_darts_time_data_report_customized_%s_%sdays.txt' % (true_realization, T, report_step), np.array(time_data_report_customized))
 
@@ -433,14 +433,14 @@ def process_adjoint(history_matching=False):
                     proxy_model.reset()
 
                     proxy_model.run()
-                    response_initial = proxy_model.physics.engine.time_data_report
+                    response_initial = proxy_model.engine.time_data_report
                     unopt_df_report = pd.DataFrame.from_dict(response_initial)
                     unopt_df_report.to_pickle('time_data_report_unopt_%s.pkl' % job_id)
-                    unopt_df = pd.DataFrame.from_dict(proxy_model.physics.engine.time_data)
+                    unopt_df = pd.DataFrame.from_dict(proxy_model.engine.time_data)
                     unopt_df.to_pickle('time_data_unopt_%s.pkl' % job_id)
                     if customize_new_operator:
-                        unopt_tempr_pred = np.array(proxy_model.physics.engine.time_data_report_customized)[:,
-                                           0:proxy_model.reservoir.nb]
+                        unopt_tempr_pred = np.array(proxy_model.engine.time_data_report_customized)[:,
+                                           0:proxy_model.reservoir.mesh.n_res_blocks]
                         np.save('Tempr_distr_unopt_report_%s.npy' % job_id, unopt_tempr_pred)
 
 
@@ -469,16 +469,16 @@ def process_adjoint(history_matching=False):
                     proxy_model.reset()
 
                     proxy_model.run()
-                    response_optimized = proxy_model.physics.engine.time_data_report
+                    response_optimized = proxy_model.engine.time_data_report
                     opt_df_report_pred = pd.DataFrame.from_dict(response_optimized)
                     opt_df_report_pred.to_pickle('time_data_report_opt_%s.pkl' % job_id)
-                    opt_df_pred = pd.DataFrame.from_dict(proxy_model.physics.engine.time_data)
+                    opt_df_pred = pd.DataFrame.from_dict(proxy_model.engine.time_data)
                     opt_df_pred.to_pickle('time_data_opt_%s.pkl' % job_id)
                     if customize_new_operator:
-                        opt_tempr_pred = np.array(proxy_model.physics.engine.time_data_report_customized)[:,
-                                         0:proxy_model.reservoir.nb]
-                        tempr_time_data = np.array(proxy_model.physics.engine.time_data_customized)[:,
-                                          0:proxy_model.reservoir.nb]
+                        opt_tempr_pred = np.array(proxy_model.engine.time_data_report_customized)[:,
+                                         0:proxy_model.reservoir.mesh.n_res_blocks]
+                        tempr_time_data = np.array(proxy_model.engine.time_data_customized)[:,
+                                          0:proxy_model.reservoir.mesh.n_res_blocks]
                         np.save('Tempr_distr_opt_report_%s.npy' % job_id, opt_tempr_pred)
 
                     time_report_opt = opt_df_report_pred['time'].to_numpy()

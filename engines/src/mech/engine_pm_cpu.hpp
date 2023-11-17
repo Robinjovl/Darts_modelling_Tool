@@ -61,7 +61,8 @@ public:
   const uint8_t get_n_comps() { return NC_; };
   const uint8_t get_z_var() { return Z_VAR; };
 
-  engine_pm_cpu() { engine_name = "Single phase " + std::to_string(NC_) + "-component isothermal poromechanics CPU engine"; };
+  engine_pm_cpu();
+  ~engine_pm_cpu();
 
   //inline index_t get_z_idx(char c, index_t block_idx) { return block_idx * N_VARS + c + 1; };
 
@@ -115,14 +116,18 @@ public:
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
+  std::vector<linsolv_iface*> linear_solvers;
+  std::vector<linear_solver_params> ls_params;
+  index_t active_linear_solver_id;
 
 public:
   bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
   
-  value_t t_dim, x_dim, p_dim;
+  value_t t_dim, x_dim, p_dim, m_dim;
 protected:
   void scale_rows();
   void make_dimensionless();
+  void dimensionalize_unknowns();
 };
 #endif /* CPU_SIMULATOR_PM_HPP */

@@ -1,19 +1,19 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
 import numpy as np
 from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator
+from darts.physics.super.operator_evaluator import PropertyOperators
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators, DefaultPropertyEvaluator
+from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators
 
 import matplotlib.pyplot as plt
 
@@ -41,7 +41,7 @@ def create_map(lx, ly, nx, ny):
 
 
 # Model class creation here!
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self, grid_1D=True, res=1, custom_physics=False):
         # Call base class constructor
         super().__init__()
@@ -50,42 +50,33 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
-        self.zero = 1e-12
-        init_ions = 0.5
         solid_init = 0.7
-        equi_prod = (init_ions / 2) ** 2
-        solid_inject = self.zero
-        trans_exp = 3
-        self.combined_ions = True
-        self.init_pres = 95
-        self.physics_type = 'kin'  # equi or kin
+        self.set_reservoir(grid_1D, res, solid_init)
+        self.set_wells(grid_1D)
+        self.set_physics(grid_1D, solid_init, custom_physics)
 
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_newton=1e-3, tol_linear=1e-5,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+
+        self.timer.node["initialization"].stop()
+
+    def set_reservoir(self, grid_1D: bool, res: int, solid_init):
         """Reservoir"""
+        trans_exp = 3
+        self.params.trans_mult_exp = trans_exp
         if grid_1D:
             self.dx = 1
             self.dy = 1
             perm = 100 / (1 - solid_init) ** trans_exp
             (self.nx, self.ny) = (1000, 1)
-            self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
-                                             permx=perm, permy=perm, permz=perm/10, poro=1, depth=1000)
-
-            """well location"""
-            self.reservoir.add_well("INJ_GAS")
-            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
-            self.reservoir.add_well("PROD")
-            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.nx, j=1, k=1, multi_segment=False)
-
-            self.inj_gas_rate = 0.2
-
-            zc_fl_init = [self.zero / (1 - solid_init), init_ions]
-            zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
-            self.ini_comp = [x * (1 - solid_init) for x in zc_fl_init]
+            reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=self.dx, dy=self.dy, dz=1,
+                                        permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
 
             self.map = []
+
         else:
             (Lx, Ly) = (600, 240)
-            (self.nx, self.ny) = (res*60, res*24)
+            (self.nx, self.ny) = (res * 60, res * 24)
             self.dx = Lx / self.nx
             self.dy = Ly / self.ny
 
@@ -98,25 +89,47 @@ class Model(DartsModel):
             for j in range(self.ny):
                 self.depth[j * self.nx:(j + 1) * self.nx] += j * self.dy
 
-            self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=self.ny, dx=self.dx, dy=10, dz=self.dy,
-                                             permx=perm, permy=perm, permz=perm, poro=1, depth=self.depth)
+            reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=self.ny, dx=self.dx, dy=10, dz=self.dy,
+                                        permx=perm, permy=perm, permz=perm, poro=1, depth=self.depth)
 
-            # Perforate the left and right boundary:
-            # for ii in range(int(self.ny / 2)):
-            #     self.reservoir.add_well("INJ_WAT_" + str(ii + 1))
-            #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=ii + 1, multi_segment=False)
-            #
-            # for ii in range(int(self.ny / 2), self.ny):
-            #     self.reservoir.add_well("INJ_GAS_" + str(ii + 1))
-            #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=ii + 1,
-            #                                    multi_segment=False)
+        return super().set_reservoir(reservoir)
 
+    def set_wells(self, grid_1D):
+        if grid_1D:
+            """well location"""
+            self.reservoir.add_well("INJ_GAS")
+            self.reservoir.add_perforation("INJ_GAS", cell_index=(1, 1, 1))
+
+            self.reservoir.add_well("PROD")
+            self.reservoir.add_perforation("PROD", cell_index=(self.reservoir.nx, 1, 1))
+
+        else:
             self.reservoir.add_well("PROD_" + str(1))
-            for ii in range(self.ny):
-                # self.reservoir.add_well("PROD_" + str(ii) + str(1))
-                self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.nx, j=1, k=ii + 1,
-                                               multi_segment=False)
+            for k in range(self.reservoir.ny):
+                self.reservoir.add_perforation("PROD_" + str(1), cell_index=(self.reservoir.nx, 1, k + 1))
 
+        return super().set_wells()
+
+    def set_physics(self, grid_1D: bool, solid_init: float, custom_physics: bool):
+        """PHYSICS AND RESERVOIR"""
+        self.zero = 1e-12
+        init_ions = 0.5
+        equi_prod = (init_ions / 2) ** 2
+        solid_inject = self.zero
+        self.combined_ions = True
+        self.init_pres = 95
+        self.physics_type = 'kin'  # equi or kin
+
+        """Reservoir"""
+        trans_exp = 3
+        self.params.trans_mult_exp = trans_exp
+        if grid_1D:
+            self.inj_gas_rate = 0.2
+
+            zc_fl_init = [self.zero / (1 - solid_init), init_ions]
+            zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
+            self.ini_comp = [x * (1 - solid_init) for x in zc_fl_init]
+        else:
             self.inj_gas_rate = 1000 / self.ny * 2
             self.inj_wat_rate = 200 / self.ny * 2
 
@@ -176,20 +189,19 @@ class Model(DartsModel):
         kinetic_rate_ev = {}
         kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne, self.combined_ions)
 
+        """ Activate physics """
         delta_volume = self.dx * self.dy * 10
         num_well_blocks = int(self.ny / 2)
-        mass_sources = [None,
-                        MassSource(0, 1000, delta_volume, num_well_blocks),
-                        MassSource(2, 200, delta_volume, num_well_blocks)]
-
-        """ Activate physics """
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
-            self.physics = CustomPhysics(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                         cache=0, volume=delta_volume, num_wells=num_well_blocks)
+            physics = CustomPhysics(components, phases, self.timer,
+                                    n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                    cache=0, volume=delta_volume, num_wells=num_well_blocks)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
-            self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+            mass_sources = [None,
+                            MassSource(0, 1000, delta_volume, num_well_blocks),
+                            MassSource(2, 200, delta_volume, num_well_blocks)]
+            physics = Compositional(components, phases, self.timer,
+                                    n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
@@ -202,28 +214,15 @@ class Model(DartsModel):
             property_container.rel_perm_ev = rel_perm_ev
             property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
 
-            if not custom_physics and mass_sources[i] is not None:
-                property_container.kinetic_rate_ev[1] = mass_sources[i]
+            if not custom_physics:
+                if mass_sources[i] is not None:
+                    property_container.kinetic_rate_ev[1] = mass_sources[i]
 
-            self.physics.add_property_region(property_container, i)
+            physics.add_property_region(property_container, i)
 
-        self.physics.init_physics()
-
-        self.params.trans_mult_exp = trans_exp
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.001
-        self.params.max_ts = 0.1
-        self.params.mult_ts = 2
-
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-5
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.newton_params[0] = 0.2
-
-        self.runtime = 50
-        self.timer.node["initialization"].stop()
+        property_operators = CustomPropertyOperators(physics.vars, property_container)
+        physics.add_property_operators(property_operators)
+        return super().set_physics(physics=physics)
 
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):
@@ -232,7 +231,7 @@ class Model(DartsModel):
 
         if len(self.map) > 0:
             nc = self.physics.nc
-            nb = self.reservoir.nb
+            nb = self.reservoir.mesh.n_res_blocks
             composition = np.array(self.reservoir.mesh.composition, copy=False)
             zc = np.zeros(nb)
             for i in range(nc-1):
@@ -241,7 +240,7 @@ class Model(DartsModel):
                 composition[i:(nc-1)*nb:nc-1] = zc
         return
 
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
                 w.control = self.physics.new_rate_inj(self.inj_gas_rate, self.inj_stream_gas, 0)
@@ -260,8 +259,8 @@ class Model(DartsModel):
         if self.grid_1D:
             self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
         else:
-            self.slice_liq_inj = np.arange(0, np.int(self.nx * self.ny / 2) - 1, self.nx, dtype=int)
-            self.slice_gas_inj = np.arange(np.int(self.nx * self.ny / 2), self.nx * self.ny - 1, self.nx, dtype=int)
+            self.slice_liq_inj = np.arange(0, self.nx * self.ny // 2 - 1, self.nx, dtype=int)
+            self.slice_gas_inj = np.arange(self.nx * self.ny // 2, self.nx * self.ny - 1, self.nx, dtype=int)
 
             self.op_num[self.slice_gas_inj] = 2
             self.op_num[self.slice_liq_inj] = 3
@@ -272,35 +271,36 @@ class Model(DartsModel):
 
     def print_and_plot_1D(self):
         nc = self.physics.nc
-        Sg = np.zeros(self.reservoir.nb)
-        Ss = np.zeros(self.reservoir.nb)
-        X = np.zeros((self.reservoir.nb, nc - 1, 2))
+        nb = self.reservoir.mesh.n_res_blocks
+        Sg = np.zeros(nb)
+        Ss = np.zeros(nb)
+        X = np.zeros((nb, nc - 1, 2))
 
-        rel_perm = np.zeros((self.reservoir.nb, 2))
-        visc = np.zeros((self.reservoir.nb, 2))
-        density = np.zeros((self.reservoir.nb, 3))
-        density_m = np.zeros((self.reservoir.nb, 3))
+        rel_perm = np.zeros((nb, 2))
+        visc = np.zeros((nb, 2))
+        density = np.zeros((nb, 3))
+        density_m = np.zeros((nb, 3))
 
-        Xn = np.array(self.physics.engine.X, copy=True)
+        Xn = np.array(self.engine.X, copy=True)
 
-        P = Xn[0:self.reservoir.nb * nc:nc]
-        z_caco3 = 1 - (Xn[1:self.reservoir.nb * nc:nc] + Xn[2:self.reservoir.nb * nc:nc] + Xn[3:self.reservoir.nb * nc:nc])
+        P = Xn[0:nb * nc:nc]
+        z_caco3 = 1 - (Xn[1:nb * nc:nc] + Xn[2:nb * nc:nc] + Xn[3:nb * nc:nc])
 
-        z_co2 = Xn[1:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_inert = Xn[2:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_h2o = Xn[3:self.reservoir.nb * nc:nc] / (1 - z_caco3)
+        z_co2 = Xn[1:nb * nc:nc] / (1 - z_caco3)
+        z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
+        z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
 
-        for ii in range(self.reservoir.nb):
+        for ii in range(nb):
             x_list = Xn[ii*nc:(ii+1)*nc]
             state = value_vector(x_list)
-            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators.property.evaluate(state)
+            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators.property_container.evaluate(state)
 
             rel_perm[ii, :] = kr
             visc[ii, :] = mu
             density[ii, :2] = rho
             density_m[ii, :2] = rho_m
 
-            density[2] = self.physics.property_operators.property.solid_dens[-1]
+            density[2] = self.physics.property_operators.property_container.solid_dens[-1]
 
             X[ii, :, 0] = x[1][:-1]
             X[ii, :, 1] = x[0][:-1]
@@ -355,23 +355,23 @@ class Model(DartsModel):
                            }
 
         nc = self.physics.nc
-        Sg = np.zeros(self.reservoir.nb)
-        Ss = np.zeros(self.reservoir.nb)
-        X = np.zeros((self.reservoir.nb, nc - 1, 2))
-        Xn = np.array(self.physics.engine.X, copy=True)
+        nb = self.reservoir.mesh.n_res_blocks
+        Sg = np.zeros(nb)
+        Ss = np.zeros(nb)
+        X = np.zeros((nb, nc - 1, 2))
+        Xn = np.array(self.engine.X, copy=True)
 
-        P = Xn[0:self.reservoir.nb * nc:nc]
-        z_caco3 = 1 - (
-                    Xn[1:self.reservoir.nb * nc:nc] + Xn[2:self.reservoir.nb * nc:nc] + Xn[3:self.reservoir.nb * nc:nc])
+        P = Xn[0:nb * nc:nc]
+        z_caco3 = 1 - (Xn[1:nb * nc:nc] + Xn[2:nb * nc:nc] + Xn[3:nb * nc:nc])
 
-        z_co2 = Xn[1:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_inert = Xn[2:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_h2o = Xn[3:self.reservoir.nb * nc:nc] / (1 - z_caco3)
+        z_co2 = Xn[1:nb * nc:nc] / (1 - z_caco3)
+        z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
+        z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
 
-        for ii in range(self.reservoir.nb):
+        for ii in range(nb):
             x_list = Xn[ii * nc:(ii + 1) * nc]
             state = value_vector(x_list)
-            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators.property.evaluate(state)
+            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators.property_container.evaluate(state)
 
             X[ii, :, 0] = x[1][:-1]
             X[ii, :, 1] = x[0][:-1]
@@ -472,13 +472,7 @@ class ModelProperties(PropertyContainer):
         return mass_source
 
 
-class PropertyEvaluator(DefaultPropertyEvaluator):
-    def __init__(self, variables, property_container):
-        super().__init__(variables, property_container)  # Initialize base-class
-
-        self.props = []
-        self.n_props = len(self.props)
-
+class CustomPropertyOperators(PropertyOperators):
     def evaluate(self, state, values):
         """
         Class methods which evaluates the state operators for the element based physics
@@ -486,7 +480,7 @@ class PropertyEvaluator(DefaultPropertyEvaluator):
         :param values: values of the operators (used for storing the operator values)
         :return: updated value for operators, stored in values
         """
-        ph, sat, x, dens, dens_m, mu, kr, pc, mass_source = self.property.evaluate(state)
+        ph, sat, x, dens, dens_m, mu, kr, pc, mass_source = self.property_container.evaluate(state)
 
         nph = self.property.nph
         for i in range(nph):
@@ -533,7 +527,7 @@ class CustomPhysics(Compositional):
         self.rate_operators = RateOperators(self.property_containers[0])
 
         if output_props is None:
-            self.property_operators = DefaultPropertyEvaluator(self.vars, self.property_containers[0])
+            self.property_operators = PropertyOperators(self.vars, self.property_containers[0])
         else:
             self.property_operators = output_props
 

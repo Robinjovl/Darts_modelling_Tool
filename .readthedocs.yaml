@@ -14,7 +14,7 @@ build:
     - make
   jobs:
     pre_install:
-      - bash ./build_darts.sh 1 4
+      - bash ./build_darts.sh 1
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

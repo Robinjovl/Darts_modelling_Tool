@@ -36,6 +36,23 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             sim_params *params_, timer_node *timer_)
 {
+
+	// prepare dg_dx_n_temp for adjoint method
+	if (opt_history_matching)
+	{
+
+		if (!dg_dx_n_temp)
+		{
+			dg_dx_n_temp = new csr_matrix<N_VARS>;
+			dg_dx_n_temp->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+		}
+
+		// allocate Adjoint matrices
+		(static_cast<csr_matrix<N_VARS>*>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+	}
+
+
+
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
 	return 0;
@@ -375,6 +392,149 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
 	}
 
+
+
+
+
+
+
+
+
+
+
+	// for adjoint method------------------------------------------
+
+	if (opt_history_matching)
+	{
+		//prepare cell_m_one_way, cell_p_one_way, and conn_index_to_one_way
+		mesh->cell_m_one_way.clear();
+		mesh->cell_p_one_way.clear();
+		mesh->conn_idx_to_one_way.clear();
+
+		int idx_one_way = 0;
+
+		// make sure const here, otherwise it will be out of vector boundary for some reason
+		const index_t* block_m_ = mesh->block_m.data();
+		const index_t* block_p_ = mesh->block_p.data();
+
+		std::vector<int> cp_indices, cm_indices;
+
+		for (int idx = 0; idx < mesh->block_m.size(); ++idx) {
+			//if (block_m_[idx] < block_p_[idx] && block_p_[idx] < mesh->n_blocks)
+			if (block_m_[idx] < block_p_[idx])
+			{
+				mesh->cell_m_one_way.push_back(block_m_[idx]);
+				mesh->cell_p_one_way.push_back(block_p_[idx]);
+				mesh->conn_idx_to_one_way.push_back(idx_one_way);
+				idx_one_way++;
+			}
+			else if (block_m_[idx] > block_p_[idx])
+			{
+				for (size_t i = 0; i < mesh->cell_m_one_way.size() && i < mesh->cell_p_one_way.size(); ++i)
+				{
+					if (mesh->cell_m_one_way[i] == block_p_[idx] && mesh->cell_p_one_way[i] == block_m_[idx])
+					{
+						mesh->conn_idx_to_one_way.push_back(i);
+						break;
+					}
+				}
+			}
+			else  // boundaries. This may be removed in the future
+			{
+				mesh->conn_idx_to_one_way.push_back(-999);
+			}
+		}
+
+		flux_multiplier.resize(mesh->cell_m_one_way.size(), 1);
+
+
+
+
+
+
+
+		n_interfaces = mesh->cell_m_one_way.size();
+
+		// prepare dg_dx_n_temp
+		init_adjoint_structure_mpfa(dg_dx_n_temp);
+
+		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
+		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
+		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
+		col_dT_du = Temp_1;
+
+		// initialization of linear solver
+		if (!linear_solver_ad)
+		{
+			if (0)
+			{
+				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
+				linear_solver_ad = new linsolv_bos_gmres<1>;
+				linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+
+			}
+			else
+				linear_solver_ad = new linsolv_superlu<1>;
+		}
+		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
+
+		well_head_idx_collection.clear();
+		for (ms_well* w : wells)
+		{
+			well_head_idx_collection.push_back(w->well_head_idx);
+		}
+
+		dg_dx_T = new csr_matrix<1>;
+		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+		dg_dx_n = new csr_matrix<1>;
+		dg_dx_n->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+		//dg_dT = new csr_matrix<1>;
+		//dg_dT->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+		dg_dT_general = new csr_matrix<1>;
+		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+		(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, mesh->n_links * n_vars * n_vars);
+		(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, mesh->n_links * n_vars * n_vars);
+		(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, mesh->block_m.size() * n_vars);
+		init_adjoint_structure_mpfa(dg_dT_general);
+
+
+		dT_du = new csr_matrix<1>;
+		dT_du->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+		(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_interfaces - wells.size(), 1, n_interfaces - wells.size());
+	}
+
+
+	if (customize_operator)
+	{
+		time_data_report_customized.clear();
+		time_data_customized.clear();
+
+		index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
+
+		op_vals_arr_customized.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));   // [1 * (n_blocks+n_bounds)] array of values of operators
+		op_ders_arr_customized.resize(n_ops * n_state * (mesh->n_blocks + mesh->n_bounds));   // [1 * n_state * (n_blocks+n_bounds)] array of dedrivatives of operators
+
+		// create a block list for the customized operator
+		customize_block_idxs.resize(acc_flux_op_set_list.size());
+		for (auto op_region : customize_op_num)
+		{
+			customize_block_idxs[op_region].clear();
+		}
+
+		index_t idx = 0;
+		for (auto op_region : customize_op_num)
+		{
+			customize_block_idxs[op_region].emplace_back(idx++);
+		}
+	}
+
+	well_control_arr.clear();
+
+
 	return 0;
 }
 
@@ -419,6 +579,129 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_jacobian_structure_mpfa(csr_matri
 	return 0;
 }
 
+
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+int engine_super_mp_cpu<NC, NP, THERMAL>::init_adjoint_structure_mpfa(csr_matrix_base* init_adjoint)
+{
+	//// uncomment this when debugging
+	//const index_t n_blocks = mesh->n_blocks;
+	//std::vector <index_t> rows_test(n_blocks * n_vars + 1, 0);  //plus 1 because CSR requires row pointer start from 0 to n_blocks
+	//std::vector <index_t> cols_test(mesh->block_m.size() * n_vars, 0);
+
+
+	if (init_adjoint->is_square) // dg_dx_n, this is identical to the initialization of Jacobian in "init_jacobian_structure_mpfa()"
+	{
+		const char n_vars = get_n_vars();
+
+		// init Jacobian structure
+		index_t* rows_ptr = init_adjoint->get_rows_ptr();
+		index_t* diag_ind = init_adjoint->get_diag_ind();
+		index_t* cols_ind = init_adjoint->get_cols_ind();
+		index_t* row_thread_starts = init_adjoint->get_row_thread_starts();
+
+		const index_t n_blocks = mesh->n_blocks;
+		std::vector<index_t>& block_m = mesh->block_m;
+		std::vector<index_t>& block_p = mesh->block_p;
+
+		rows_ptr[0] = 0;
+		memset(diag_ind, -1, n_blocks * sizeof(index_t)); // t_long <-----> index_t
+		for (index_t i = 0; i < n_blocks; i++)
+		{
+			const auto& cur = mesh->cell_stencil[i];
+			rows_ptr[i + 1] = rows_ptr[i] + cur.size();
+			std::copy_n(cur.data(), cur.size(), cols_ind + rows_ptr[i]);
+			diag_ind[i] = rows_ptr[i] + index_t(find(cur.begin(), cur.end(), i) - cur.begin());
+		}
+	}
+	else // dg_dT_general
+	{
+		//std::vector <index_t> rows(n_blocks * n_vars + 1, 0);  //plus 1 because CSR requires row pointer start from 0 to n_blocks
+        ////std::vector <index_t> cols(mesh->cell_m_one_way.size() * 2 * n_vars, 0); // 2 means for each interface, there are 2 neighboring cells
+        //std::vector <index_t> cols(mesh->block_m.size() * n_vars, 0);
+
+		// init adjoint structure
+		index_t* rows = init_adjoint->get_rows_ptr();
+		//index_t* diag_ind_general = init_adjoint->get_diag_ind();
+		index_t* cols = init_adjoint->get_cols_ind();
+		//index_t* row_thread_starts_general = init_adjoint->get_row_thread_starts();
+
+		const index_t n_blocks = mesh->n_blocks;
+		
+
+		// make sure const here, otherwise it will be out of vector boundary for some reason
+		const index_t* block_m_ = mesh->block_m.data();
+		const index_t* block_p_ = mesh->block_p.data();
+
+		// generate row and colomn pointers of dg_du (or dg_dT)
+		index_t start = 0;
+		index_t end = n_blocks;
+
+		rows[0] = 0;
+
+		// 1. Find out row pointer
+		index_t n_conns = mesh->n_conns;
+		index_t count = 0, idx_conn_global = 0, idx_conn_local = 0;  //count: blocks;   idx_conn_global: global index of one-way conn;   idx_conn_local: local index of one-way conn for each block
+		index_t i = 0, j = 0, k = 0, c = 0, n_element = 0, conn_id = 0, conn_id_two_way = 0, old_i = 0;
+
+		for (index_t i = start; i < end; ++i)
+		{ // loop over grid blocks
+
+			// [1] loop to count the neighbors for cell i, and store it in n_element. This loop is similar to [3]
+			n_element = 0;
+			for (; block_m_[conn_id_two_way] == i && conn_id_two_way < n_conns; conn_id_two_way++)
+			{ // loop over local cell connections related to cell i
+
+				//j = block_p_[conn_id_two_way];
+				//if (j < n_blocks)
+				//{
+				//	n_element++;
+				//}
+
+				n_element++;
+			}
+
+			// [2] initialize row pointer
+			for (index_t m = 0; m < n_vars; m++)
+			{
+				rows[k + 1] = rows[k];
+				rows[k + 1] += n_element;
+				k++;
+			}
+
+			// [3] initialize cols pointer
+			idx_conn_local = 0;
+			for (; block_m_[conn_id] == i && conn_id < n_conns; conn_id++)
+			{ // loop over local cell connections related to cell i
+				j = block_p_[conn_id];
+
+				idx_conn_global = mesh->conn_idx_to_one_way[conn_id];
+
+				if (idx_conn_global >= 0) // skip boundary dummy index of -999. This may be removed in the future
+				{
+					for (c = 0; c < NE; c++)
+					{
+						cols[count + c * n_element + idx_conn_local] = idx_conn_global;
+					}
+					idx_conn_local++;
+				}
+			}
+
+			count += NE * n_element;
+		}
+
+
+		//// uncomment this when debugging
+		//std::memcpy(rows_test.data(), rows, (n_blocks * n_vars + 1) * sizeof(index_t));
+		//std::memcpy(cols_test.data(), cols, (mesh->block_m.size() * n_vars) * sizeof(index_t));
+	}
+	
+
+	return 0;
+}
+
+
+
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
@@ -450,6 +733,9 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 	index_t *row_thread_starts = jacobian->get_row_thread_starts();
 
 	CFL_max = 0;
+
+	// adjoint method
+	value_t fm = 1.0;  // fluxes multiplier
 
 #ifdef _OPENMP
   //#pragma omp parallel reduction (max: CFL_max)
@@ -759,7 +1045,17 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 			// [7] residual
 			for (c = 0; c < NE; c++)
 			{
-				RHS[i * N_VARS + P_VAR + c] += dt * fluxes[N_VARS * conn_id + P_VAR + c];
+				// define the multiplier value
+				if (opt_history_matching)
+				{
+					fm = flux_multiplier[mesh->conn_idx_to_one_way[conn_id]];
+				}
+				else
+				{
+					fm = 1.0;
+				}
+
+				RHS[i * N_VARS + P_VAR + c] += dt * fm * fluxes[N_VARS * conn_id + P_VAR + c];
 			}
 		}
 
@@ -829,6 +1125,367 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
+	index_t n_blocks = mesh->n_blocks;
+	index_t n_matrix = mesh->n_matrix;
+	index_t n_res_blocks = mesh->n_res_blocks;
+	index_t n_bounds = mesh->n_bounds;
+	index_t n_conns = mesh->n_conns;
+
+	const index_t* block_m = mesh->block_m.data();
+	const index_t* block_p = mesh->block_p.data();
+	const index_t* stencil = mesh->stencil.data();
+	const index_t* offset = mesh->offset.data();
+	const value_t* tran = mesh->tran.data();
+	value_t* bc = mesh->bc.data();
+	const value_t* rhs = mesh->rhs.data();
+	const value_t* f = mesh->f.data();
+	const value_t* V = mesh->volume.data();
+	const value_t* tran_heat_cond = mesh->tran_heat_cond.data();
+	const value_t* tranD = mesh->tranD.data();
+	const value_t* hcap = mesh->heat_capacity.data();
+	const value_t* kin_fac = mesh->kin_factor.data(); // default value of 1
+	const value_t* grav_coef = mesh->grav_coef.data();
+
+	value_t* Jac = Jacobian->get_values();
+	index_t* diag_ind = Jacobian->get_diag_ind();
+	index_t* rows = Jacobian->get_rows_ptr();
+	index_t* cols = Jacobian->get_cols_ind();
+	index_t* row_thread_starts = Jacobian->get_row_thread_starts();
+
+	value_t* ad_values = dg_dx_T->get_values();
+	index_t* ad_rows = dg_dx_T->get_rows_ptr();
+	index_t* ad_cols = dg_dx_T->get_cols_ind();
+	index_t* ad_diag = dg_dx_T->get_diag_ind();
+	index_t* row_T_thread_starts = dg_dx_T->get_row_thread_starts();
+
+	value_t* Jac_n = dg_dx_n_temp->get_values();
+	//value_t* v_g_T = dg_dT->get_values();
+	value_t* value_dg_dT = dg_dT_general->get_values();
+	well_head_tran_idx_collection.clear();
+
+	CFL_max = 0;
+
+	
+
+//#ifdef _OPENMP
+//	//#pragma omp parallel reduction (max: CFL_max)
+//#pragma omp parallel
+//	{
+//		int id = omp_get_thread_num();
+//		index_t start = row_thread_starts[id];
+//		index_t end = row_thread_starts[id + 1];
+//		numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
+//#else
+//	index_t start = 0;
+//	index_t end = n_blocks;
+//	memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
+//#endif //_OPENMP
+
+	index_t start = 0;
+	index_t end = n_blocks;
+	//memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
+
+
+	memset(Jac_n, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
+	memset(value_dg_dT, 0, mesh->block_m.size() * N_VARS * sizeof(value_t));
+
+	index_t count = 0, idx_conn_global = 0, idx_conn_local = 0;  //count: blocks;   idx_conn_global: global index of one-way conn;   idx_conn_local: local index of one-way conn for each block
+	index_t i = 0, j = 0, k = 0, c = 0, n_element = 0, conn_id = 0, conn_id_two_way = 0, old_i = 0;
+
+
+	index_t r_ind, r_ind1, r_ind2, r_ind3, l_ind, l_ind1, upwd_idx[NP], d_upwd_idx[NP * NE];
+	index_t diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], d_upwd_jac_idx[NP * NE], st_id = 0, conn_st_id = 0;
+	value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
+	value_t avg_density, * buf, * buf_c, * buf_diff, avg_heat_cond_multiplier;
+	uint8_t d, v, p;
+	value_t CFL_in[NC], CFL_out[NC];
+	value_t CFL_max_local = 0;
+	int connected_with_well;
+
+	//std::fill_n(Jac, mesh->n_links * N_VARS * N_VARS, 0.0);
+	//std::fill(RHS.begin(), RHS.end(), 0.0);
+	std::fill(fluxes.begin(), fluxes.end(), 0.0);
+	std::fill_n(ZEROS, NP * NE, 0.0);
+
+	for (index_t i = start; i < end; ++i)
+	{ // loop over grid blocks
+
+
+		// loop to count the neighbors for cell i, and store it in n_element
+		n_element = 0;
+		for (; block_m[conn_id_two_way] == i && conn_id_two_way < n_conns; conn_id_two_way++)
+		{ // loop over local cell connections related to cell i
+			n_element++;
+		}
+
+
+
+
+
+
+
+		// initialize the CFL_in and CFL_out
+		for (uint8_t c = 0; c < NC; c++)
+		{
+			CFL_out[c] = 0;
+			CFL_in[c] = 0;
+			connected_with_well = 0;
+		}
+
+		// index of diagonal block entry for block i in CSR values array
+		diag_idx = N_VARS_SQ * diag_ind[i];
+		// index of first entry for block i in CSR cols array
+		csr_idx_start = rows[i];
+		// index of last entry for block i in CSR cols array
+		csr_idx_end = rows[i + 1];
+
+
+
+
+
+
+		// loop over cell connections
+		idx_conn_local = 0;
+		for (; block_m[conn_id] == i && conn_id < n_conns; conn_id++)
+		{
+			j = block_p[conn_id];
+			if (j >= n_res_blocks && j < n_blocks)
+				connected_with_well = 1;
+
+			nebr_jac_idx = csr_idx_end;
+			// [1] fluid flux evaluation q = -Kn * \nabla p
+			p_diff = t_diff = 0.0;
+			std::fill_n(pc_diff, NP, 0.0);
+			std::fill_n(diff_diff, NP * NE, 0.0);
+			conn_st_id = offset[conn_id];
+			for (st_id = csr_idx_start; conn_st_id < offset[conn_id + 1]; st_id++)
+			{
+				// skip entry if cell is different
+				if (stencil[conn_st_id] != cols[st_id] && st_id < csr_idx_end) continue;
+
+				// upwind index in jacobian
+				if (st_id < csr_idx_end && cols[st_id] == j) nebr_jac_idx = st_id;
+
+				if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
+				{
+					buf = &X[N_VARS * stencil[conn_st_id]];
+					buf_c = &op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
+					buf_diff = &op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
+				}
+				else									// boundary condition
+				{
+					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
+					buf_c = &ZEROS[0]; // TODO: zeros only for Neumann
+					buf_diff = &ZEROS[0]; // TODO: zeros only for Neumann
+				}
+
+
+				p_diff += tran[conn_st_id] * buf[P_VAR];
+				// heat conduction
+				if (THERMAL)
+					t_diff += tran_heat_cond[conn_st_id] * buf[T_VAR];
+
+				for (p = 0; p < NP; p++)
+				{
+					// capillary
+					pc_diff[p] += tran[conn_st_id] * buf_c[p];
+					// diffusion
+					for (c = 0; c < NE; c++)
+						diff_diff[c * NP + p] += tranD[conn_st_id] * buf_diff[c * NP + p];
+				}
+
+				conn_st_id++;
+			}
+
+			// [2] phase fluxes & upwind direction
+			for (p = 0; p < NP; p++)
+			{
+				// avoid non-zero pc within region; TODO: discuss MPFA scheme in the presence of capillarity
+				if (fabs(op_vals_arr[i * N_OPS + PC_OP + p] - op_vals_arr[j * N_OPS + PC_OP + p]) < 1.e-8)
+					pc_diff[p] = 0.0;
+
+				// calculate gravity term for phase p
+				avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+
+				// sum up gravity and cappillary terms
+				phase_p_diff[p] = p_diff - pc_diff[p] + avg_density * rhs[conn_id];
+
+				// identify upwind flow direction
+				if (phase_p_diff[p] >= 0)
+				{
+					upwd_idx[p] = i;
+					upwd_jac_idx[p] = diag_ind[i];
+					for (c = 0; c < NE; c++)
+					{
+						if (c < NC) CFL_out[c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+						fluxes[N_VARS * conn_id + P_VAR + c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+					}
+				}
+				else
+				{
+					upwd_idx[p] = j;
+					upwd_jac_idx[p] = nebr_jac_idx;
+					for (c = 0; c < NE; c++)
+					{
+						if (c < NC && j < n_res_blocks) CFL_in[c] += -phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+						fluxes[N_VARS * conn_id + P_VAR + c] += phase_p_diff[p] * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c];
+					}
+				}
+				// identify upwind diffusion direction
+				for (c = 0; c < NE; c++)
+				{
+					if (diff_diff[c * NP + p] >= 0)
+					{
+						d_upwd_idx[c * NP + p] = i;
+						d_upwd_jac_idx[c * NP + p] = diag_ind[i];
+					}
+					else
+					{
+						d_upwd_idx[c * NP + p] = j;
+						d_upwd_jac_idx[c * NP + p] = nebr_jac_idx;
+					}
+				}
+			}
+
+			if (j < mesh->n_res_blocks)
+			{
+				phi_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5; // diffusion term depends on total porosity!
+				avg_heat_cond_multiplier = (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) +
+					op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j])) * 0.5;
+			}
+			else
+			{
+				phi_avg = mesh->poro[i];
+				avg_heat_cond_multiplier = op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]);
+			}
+			// rock heat conduction
+			if (THERMAL)
+				fluxes[N_VARS * conn_id + T_VAR] += avg_heat_cond_multiplier * t_diff;
+
+
+
+
+
+
+
+
+			// TODO: probably "well_head_tran_idx_collection" only need to be generated once in "init_adjoint_structure_mpfa"
+			for (index_t wh : well_head_idx_collection)
+			{
+				if (i == wh)
+				{
+					well_head_tran_idx_collection.push_back(mesh->conn_idx_to_one_way[conn_id]);
+				}
+			}
+
+			// [7] residual
+			for (c = 0; c < NE; c++)
+			{
+				//RHS[i * N_VARS + P_VAR + c] += dt * fm * fluxes[N_VARS * conn_id + P_VAR + c];
+				value_dg_dT[count + c * n_element + idx_conn_local] += dt * fluxes[N_VARS * conn_id + P_VAR + c];
+			}
+			idx_conn_local++;
+		}
+
+		count += NE * n_element;
+
+
+
+		// [8] accumulation terms
+		for (c = 0; c < NE; c++)
+		{
+			for (v = 0; v < N_STATE; v++)
+			{
+				Jac_n[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] -= (PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v]);
+			}
+		}
+		if (THERMAL)
+		{
+			for (v = 0; v < NE; v++)
+			{
+				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i]);
+			}
+		}
+
+
+	} // end of loop over grid blocks
+
+
+	// make sure all well head is 0. this is very important!
+	for (ms_well* w : wells)
+	{
+		//w->add_to_jacobian(dt, X, dg_dx, RHS);
+
+		value_t* jac_n_well_head = &(dg_dx_n_temp->get_values()[dg_dx_n_temp->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
+		memset(jac_n_well_head, 0, 2 * N_VARS_SQ * sizeof(value_t));
+		for (uint8_t idx = 0; idx < N_VARS; idx++)
+		{
+			jac_n_well_head[idx + idx * N_VARS] = 0;
+		}
+	}
+
+	// we have to convert the csr matrix to the csr matrix with block size of 1
+    // because the function "build_transpose" is only applicable for the csr matrix with the block size of 1
+    // this is also required by the linear solver "linsolv_superlu<1>", as the preconditioner is not applicable to adjoint so far
+    // so this might be improved in the future
+	csr_matrix<1> Temp, T1, T2;
+	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+	T1.build_transpose(&Temp);
+
+	value_t* T1_values = T1.get_values();
+	index_t* T1_rows = T1.get_rows_ptr();
+	index_t* T1_cols = T1.get_cols_ind();
+	index_t* T1_diag = T1.get_diag_ind();
+
+	for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+	{
+		//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
+		ad_rows[i] = T1_rows[i];
+	}
+
+
+	index_t n_value = mesh->n_links * N_VARS * N_VARS;
+	//test_value_vec.clear();
+	//test_value_vec.insert(test_value_vec.end(), T1_values, T1_values + n_value);
+	for (index_t i = 0; i < n_value; i++)
+	{
+		//test_index = i;
+		//test_value = T1_values[i];
+		ad_values[i] = T1_values[i];
+		ad_cols[i] = T1_cols[i];
+		//test_value = ad_values[i];
+	}
+
+
+
+	T2.to_nb_1(static_cast<csr_matrix<N_VARS>*>(dg_dx_n_temp));
+	//T2.build_transpose(&Temp);
+
+	value_t* T2_values = T2.get_values();
+	index_t* T2_rows = T2.get_rows_ptr();
+	index_t* T2_cols = T2.get_cols_ind();
+	index_t* T2_diag = T2.get_diag_ind();
+
+	value_t* ad_values_n = dg_dx_n->get_values();
+	index_t* ad_rows_n = dg_dx_n->get_rows_ptr();
+	index_t* ad_cols_n = dg_dx_n->get_cols_ind();
+	index_t* ad_diag_n = dg_dx_n->get_diag_ind();
+
+	for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+	{
+		//ad_diag_n[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
+		ad_rows_n[i] = T2_rows[i];
+	}
+
+	n_value = mesh->n_links * N_VARS * N_VARS;
+	for (index_t i = 0; i < n_value; i++)
+	{
+		ad_values_n[i] = T2_values[i];
+		ad_cols_n[i] = T2_cols[i];
+	}
+
+
+
 	return 0;
 };
 
@@ -859,6 +1516,13 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t de
 
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
+
+	
+	if (opt_history_matching && is_mp)
+	{
+		Xop_mp = Xop;
+		//Jacobian->write_matrix_to_file("jac_mpfa.txt");
+	}
 
 #ifdef WITH_GPU
 	if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)

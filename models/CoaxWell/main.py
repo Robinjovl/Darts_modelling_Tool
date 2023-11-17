@@ -10,17 +10,17 @@ m = Model(resolution=10)
 
 m.init()
 m.export_pro_vtk()
-m.run(30*10)
+m.run(365)
 m.print_timers()
 m.print_stat()
 m.export_pro_vtk()
 
 
-td = pd.DataFrame.from_dict(m.physics.engine.time_data)
+td = pd.DataFrame.from_dict(m.engine.time_data)
 td.to_pickle("darts_time_data.pkl")
 writer = pd.ExcelWriter('time_data.xlsx')
 td.to_excel(writer, 'Sheet1')
-writer.save()
+writer.close()
 
 string = 'PRD : temperature'
 ax1 = td.plot(x='time', y=[col for col in td.columns if string in col])
@@ -30,4 +30,3 @@ ax1.set_xlabel('Days', fontsize=14)
 ax1.legend(['temp', 'limit'], fontsize=14)
 plt.grid()
 plt.savefig('prod_temperature.png')
-plt.show()

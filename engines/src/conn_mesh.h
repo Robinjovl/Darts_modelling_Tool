@@ -322,6 +322,15 @@ public:
 
   std::vector<value_t> one_way_flux;
   std::vector<value_t> one_way_gravity_flux;
+
+
+  // adjoint method
+  std::vector <index_t> cell_m_one_way;
+  std::vector <index_t> cell_p_one_way;
+  std::vector <index_t> conn_idx_to_one_way;
+
+  std::vector <index_t> test_debug;
+
 private:
   // one-way, unsorted conection list
   std::vector <index_t> one_way_block_m;

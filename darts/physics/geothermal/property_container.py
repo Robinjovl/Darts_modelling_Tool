@@ -1,6 +1,7 @@
 from darts.engines import value_vector
 from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.properties.iapws.custom_rock_property import *
+from darts.physics.properties.basic import ConstFunc
 
 
 class PropertyContainer:
@@ -34,12 +35,16 @@ class PropertyContainer:
             self.steam_relperm = steam_relperm_evaluator(self.steam_saturation)
             self.rock_compaction = custom_rock_compaction_evaluator(self.rock)
             self.rock_energy = custom_rock_energy_evaluator(self.rock)
+            self.water_conduction = ConstFunc(172.8)
+            self.steam_conduction = ConstFunc(0)
+            
 
         elif property_evaluator == 'IAPWS':
             # properties implemented in python (the IAPWS package)
             self.temperature = iapws_temperature_evaluator()                    # Create temperature object
             self.water_enthalpy = iapws_water_enthalpy_evaluator()              # Create water_enthalpy object
             self.steam_enthalpy = iapws_steam_enthalpy_evaluator()              # Create steam_enthalpy object
+            self.total_enthalpy = iapws_total_enthalpy_evalutor
             self.water_saturation = iapws_water_saturation_evaluator()          # Create water_saturation object
             self.steam_saturation = iapws_steam_saturation_evaluator()          # Create steam_saturation object
             self.water_relperm = iapws_water_relperm_evaluator()                # Create water_relperm object
@@ -50,3 +55,5 @@ class PropertyContainer:
             self.steam_viscosity = iapws_steam_viscosity_evaluator()            # Create steam_viscosity object
             self.rock_compaction = custom_rock_compaction_evaluator(self.rock)  # Create rock_compaction object
             self.rock_energy = custom_rock_energy_evaluator(self.rock)          # Create rock_energy object
+            self.water_conduction = ConstFunc(172.8)
+            self.steam_conduction = ConstFunc(0)

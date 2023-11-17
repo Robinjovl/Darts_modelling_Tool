@@ -3,7 +3,6 @@ import numpy as np
 
 class ConstFunc:
     def __init__(self, value):
-        super().__init__()
         self.value = value
 
     def evaluate(self, dummy1=0, dummy2=0, dummy3=0, dummy4=0):

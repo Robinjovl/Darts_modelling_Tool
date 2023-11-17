@@ -1,68 +1,74 @@
 from darts.engines import *
-
+from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.physics_base import PhysicsBase
 from darts.physics.geothermal.operator_evaluator import *
-from darts.physics.properties.iapws.iapws_property import iapws_total_enthalpy_evalutor
 
-from darts.tools.keyword_file_tools import *
+import numpy as np
 
 
 class Geothermal(PhysicsBase):
-    """"
-       Class to generate geothermal physics, including
-        Important definitions:
-            - accumulation_flux_operator_evaluator
-            - accumulation_flux_operator_interpolator
-            - rate_evaluator
-            - rate_interpolator
-            - property_evaluator
-            - well_control (rate, bhp)
+    """
+    This is the Physics class for Geothermal simulation.
+
+    It includes:
+    - Creating Reservoir, Well, Rate and Property operators and interpolators for P-H simulation
+    - Initializing the :class:`nce_g_engine`
+    - Setting well controls (rate, bhp)
+    - Defining initial and boundary conditions
     """
 
-    def __init__(self, timer, property_container, n_points, min_p, max_p, min_e, max_e, mass_rate=False, cache=True):
-        """"
-           Initialize Geothermal class.
-           Arguments:
-                - timer: time recording object
-                - n_points: number of interpolation points
-                - min_p, max_p: minimum and maximum pressure
-                - min_e, max_e: minimum and maximum enthalpy
-                - platform: target simulation platform - 'cpu' (default) or 'gpu'
-                - itor_type: 'multilinear' (default) or 'linear' interpolator type
-                - itor_mode: 'adaptive' (default) or 'static' OBL parametrization
-                - itor_precision: 'd' (default) - double precision or 's' - single precision for interpolation
+    def __init__(self, timer: timer_node, n_points: int, min_p: float, max_p: float, min_e: float, max_e: float,
+                 mass_rate: bool = False, cache: bool = True):
         """
-        super().__init__(timer, cache)
+        This is the constructor of the Geothermal Physics class.
 
-        self.n_points = n_points
-        self.min_p = min_p
-        self.max_p = max_p
-        self.min_e = min_e
-        self.max_e = max_e
-        self.n_components = 1
-        self.thermal = 1
-        self.n_vars = self.n_components + self.thermal * 1
-        self.n_ops = 2 * self.n_components + self.thermal * 6
+        It defines the OBL grid for P-H simulation.
 
+        :param timer: Timer object
+        :type timer: :class:`darts.engines.timer_node`
+        :param n_points: Number of OBL points along axes
+        :type n_points: int
+        :param min_p, max_p: Minimum, maximum pressure
+        :type min_p, max_p: float
+        :param min_e, max_e: Minimum, maximum enthalpy
+        :type min_e, max_e: float
+        :param mass_rate: Switch for mass rate/volume rate?
+        :type mass_rate: bool
+        :param cache: Switch to cache operator values
+        :type cache: bool
+        """
+        # Set nc=1, thermal=True
+        nc = 1
+
+        # Define phases and variables
         self.mass_rate = mass_rate
         if self.mass_rate:
-            self.phases = ['water_mass', 'steam_mass', 'temperature', 'energy']
+            phases = ['water_mass', 'steam_mass', 'temperature', 'energy']
         else:
-            self.phases = ['water', 'steam', 'temperature', 'energy']
-        self.components = ['water']
-        self.vars = ['pressure', 'enthalpy']
-        self.n_phases = len(self.phases)
-        self.n_rate_temp_ops = self.n_phases
+            phases = ['water', 'steam', 'temperature', 'energy']
+        variables = ['pressure', 'enthalpy']
 
-        self.n_axes_points = index_vector([n_points] * self.n_vars)
-        self.n_axes_min = value_vector([min_p, min_e])
-        self.n_axes_max = value_vector([max_p, max_e])
+        # Define OBL axes
+        axes_min = value_vector([min_p, min_e])
+        axes_max = value_vector([max_p, max_e])
 
-        # evaluate names of required classes depending on amount of components, self.phases, and selected physics
-        self.n_ops = 12
-        self.add_property_region(property_container)
+        # Define number of operators:
+        n_ops = 12
 
-    def set_operators(self, regions, output_properties=None):
+        # Call PhysicsBase constructor
+        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+                         axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
+
+    def set_operators(self, regions):
+        """
+        Function to set operator objects: :class:`acc_flux_gravity_evaluator` for each of the reservoir regions,
+        :class:`acc_flux_gravity_evaluator_python_well` for the well cells
+        and :class:`geothermal_rate_custom_evaluator_python` for evaluation of rates.
+
+        :param regions: List of regions. It contains the keys of the `property_containers` and `reservoir_operators` dict
+        :type regions: list
+        :param output_properties: Output property operators object, default is None
+        """
         for region, prop_container in self.property_containers.items():
             self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(prop_container)
         self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[regions[0]])
@@ -72,49 +78,32 @@ class Geothermal(PhysicsBase):
             self.rate_operators = geothermal_mass_rate_custom_evaluator_python(self.property_containers[regions[0]])
         else:
             self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[regions[0]])
+
         return
 
-    def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive', itor_precision='d'):
-        self.engine = eval("engine_nce_g_%s%d_%d" % (platform, self.n_components, self.n_phases - 2))()
+    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+        """
+        Function to set :class:`engine_nce_g` object.
 
-        self.acc_flux_itor = {}
-        for region, operators in self.reservoir_operators.items():
-            self.acc_flux_itor[region] = self.create_interpolator(operators, self.n_vars, self.n_ops,
-                                                                  self.n_axes_points, self.n_axes_min, self.n_axes_max,
-                                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                                  precision=itor_precision)
-            self.create_itor_timers(self.acc_flux_itor[region], 'reservoir %d interpolation' % region)
+        :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
+        :type discr_type: str
+        :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
+        :type platform: str
+        """
+        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
-        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, self.n_vars, self.n_ops,
-                                                        self.n_axes_points, self.n_axes_min, self.n_axes_max,
-                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                        precision=itor_precision)
-
-        # interpolator platform is 'cpu' since rates are always computed on cpu
-        self.rate_itor = self.create_interpolator(self.rate_operators, self.n_vars, self.n_rate_temp_ops,
-                                                  self.n_axes_points, self.n_axes_min, self.n_axes_max,
-                                                  platform='cpu', algorithm=itor_type, mode=itor_mode,
-                                                  precision=itor_precision)
-
-        # set up timers
-        self.create_itor_timers(self.acc_flux_w_itor, 'well interpolation')
-        self.create_itor_timers(self.rate_itor, 'well controls interpolation')
-        return
-
-    def set_well_controls(self):
+    def define_well_controls(self):
         # create well controls
         # water stream
         # pure water injection at constant temperature
 
         self.water_inj_stream = value_vector([1.0])
         # water injection at constant temperature with bhp control
-        self.new_bhp_water_inj = lambda bhp, temp: gt_bhp_temp_inj_well_control(self.phases, self.n_vars,
-                                                                                bhp, temp,
+        self.new_bhp_water_inj = lambda bhp, temp: gt_bhp_temp_inj_well_control(self.phases, self.n_vars, bhp, temp,
                                                                                 self.water_inj_stream, self.rate_itor)
         # water injection at constant temperature with volumetric rate control
-        self.new_rate_water_inj = lambda rate, temp: gt_rate_temp_inj_well_control(self.phases, 0, self.n_vars,
-                                                                                   rate, temp,
-                                                                                   self.water_inj_stream,
+        self.new_rate_water_inj = lambda rate, temp: gt_rate_temp_inj_well_control(self.phases, 0, self.n_vars, rate,
+                                                                                   temp, self.water_inj_stream,
                                                                                    self.rate_itor)
         # water production with bhp control
         self.new_bhp_prod = lambda bhp: gt_bhp_prod_well_control(bhp)
@@ -132,23 +121,13 @@ class Geothermal(PhysicsBase):
                                                                                     rate, self.rate_itor)
         return
 
-    def init_wells(self, wells):
-        """""
-        Function to initialize the well rates for each well
-        Arguments:
-            -wells: well_object array
-        """
-        for w in wells:
-            assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_components + 1, self.phases, self.rate_itor)
-
     def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_temperature):
         """""
         Function to set uniform initial reservoir condition
-        Arguments:
-            -mesh: mesh object
-            -uniform_pressure: uniform pressure setting
-            -uniform_temperature: uniform temperature setting
+
+        :param mesh: :class:`Mesh` object
+        :param uniform_pressure: Uniform pressure setting
+        :param uniform_temperature: Uniform temperature setting
         """
         assert isinstance(mesh, conn_mesh)
         # nb = mesh.n_blocks
@@ -158,29 +137,29 @@ class Geothermal(PhysicsBase):
         pressure.fill(uniform_pressure)
 
         state = value_vector([uniform_pressure, 0])
-        E = iapws_total_enthalpy_evalutor(uniform_temperature)
+        E = self.property_containers[0].total_enthalpy(uniform_temperature)
         enth = E.evaluate(state)
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
         enthalpy.fill(enth)
 
     def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad):
-        """""
-        Function to set uniform initial reservoir condition
-        Arguments:
-            -mesh: mesh object
-            -pressure_grad, default unit [1/km]
-            -temperature_grad, default unit [1/km]
+        """
+        Function to set nonuniform initial reservoir condition
+
+        :param mesh: :class:`Mesh` object
+        :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
+        :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
         """
         assert isinstance(mesh, conn_mesh)
 
         depth = np.array(mesh.depth, copy=True)
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = depth / 1000 * pressure_grad + 1
+        pressure[:] = depth[:pressure.size] / 1000 * pressure_grad + 1
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
-        temperature = depth / 1000 * temperature_grad + 293.15
+        temperature = depth[:pressure.size] / 1000 * temperature_grad + 293.15
 
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])

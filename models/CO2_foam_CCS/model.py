@@ -1,17 +1,19 @@
-from reservoir import UnstructReservoir
-from darts.models.darts_model import DartsModel
+from darts.engines import *
+from darts.models.cicd_model import CICDModel
+
+from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.super.physics import Compositional
+from property_container import PropertyContainer
+from operator_evaluator import AccFluxGravityEvaluator, AccFluxGravityWellEvaluator, RateEvaluator, PropertyEvaluator
+
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.properties.flash import ConstantK
 
-from property_container import PropertyContainer
 import numpy as np
-from operator_evaluator import AccFluxGravityEvaluator, AccFluxGravityWellEvaluator, RateEvaluator, PropertyEvaluator
-from darts.engines import *
 
 
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -19,20 +21,52 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
-        """Reservoir"""
-        self.const_perm = 100
-        self.poro = 0.15
-        mesh_file = 'wedgesmall.msh'
-        self.reservoir = UnstructReservoir(permx=self.const_perm, permy=self.const_perm, permz=self.const_perm, frac_aper=0,
-                                           mesh_file=mesh_file, poro=self.poro)
+        self.set_reservoir()
+        self.set_wells()
+        self.set_physics()
 
-        self.zero = 1e-8
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_newton=1e-3, tol_linear=1e-4,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.params.newton_params[0] = 0.25
+
+        self.timer.node["initialization"].stop()
+
+        self.initial_values = {self.physics.vars[0]: 90.,
+                               self.physics.vars[1]: self.ini_stream[0],
+                               }
+
+    def set_reservoir(self):
+        """Reservoir"""
+        const_perm = 100
+        poro = 0.15
+        mesh_file = 'wedgesmall.msh'
+        reservoir = UnstructReservoir(self.timer, permx=const_perm, permy=const_perm, permz=const_perm,
+                                      frac_aper=0, mesh_file=mesh_file, poro=poro, cache=False)
+
+        # Add injection well for CO2:
+        reservoir.add_well("I1", depth=5, wellbore_diameter=0.1)
+        # Perforate all boundary cells:
+        for nth_perf in range(len(self.left_boundary_cells)):
+            well_index = mesh.volume[self.left_boundary_cells[nth_perf]] / self.max_well_vol * self.well_index
+            well_indexD = 0.
+            self.add_perforation(well=self.wells[-1], res_block=self.left_boundary_cells[nth_perf],
+                                 well_index=well_index, well_indexD=well_indexD)
+
+        return super().set_reservoir(reservoir)
+
+    def set_physics(self):
+        zero = 1e-8
+
         """Physical properties"""
         # Create property containers:
         components = ['CO2', 'H2O']
         Mw = np.array([44.01, 18.015])
         phases = ['gas', 'wat']
-        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=self.zero, Mw=Mw)
+
+        self.ini_stream = [1e-6]
+        self.inj_stream = [0.3]
+
+        property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=zero, Mw=Mw)
 
         """ properties correlations """
         # foam parameter, fmmob, fmdry, epdry, fmmob = 0 no foam generation
@@ -53,41 +87,15 @@ class Model(DartsModel):
         property_container.foam_STARS_FM_ev = FMEvaluator(foam_paras)
 
         """ Activate physics """
-        self.physics = CustomPhysics(components, phases, self.timer,
-                                     n_points=200, min_p=1., max_p=1000., min_z=self.zero/10, max_z=1.-self.zero/10, cache=False)
-        self.physics.add_property_region(property_container)
-        self.physics.init_physics()
+        physics = CustomPhysics(components, phases, self.timer,
+                                n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10, cache=False)
+        physics.add_property_region(property_container)
+        return super().set_physics(physics)
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 1e-4
-        self.params.mult_ts = 1.5
-        self.params.max_ts = 1
-
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-4
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        self.params.newton_params[0] = 0.25
-
-        self.runtime = 10
-
-        self.timer.node["initialization"].stop()
-
-    # Initialize reservoir and set boundary conditions:
-    def set_initial_conditions(self):
-        """ initialize conditions for all scenarios"""
-        # equilibrium pressure
-        pressure = 90
-        composition = [1e-6]
-
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, pressure, composition)
-
-    def set_boundary_conditions(self):
-        self.inj_CO2 = [0.3]
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_gas_inj(1, self.inj_CO2)
+                w.control = self.physics.new_rate_gas_inj(1, self.inj_stream)
             else:
                 w.control = self.physics.new_bhp_prod(85)
 

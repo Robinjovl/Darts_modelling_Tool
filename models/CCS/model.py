@@ -1,50 +1,22 @@
 import numpy as np
-from darts.models.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
-from darts.engines import value_vector, sim_params
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.super.operator_evaluator import DefaultPropertyEvaluator
+from darts.physics.super.operator_evaluator import PropertyOperators
 
-from darts.physics.properties.basic import PhaseRelPerm, CapillaryPressure, RockEnergyEvaluator, ConstFunc
+from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 
 from dartsflash.libflash import NegativeFlash2
-from dartsflash.libflash import PR, Ziabakhsh2012, FlashParams
+from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData, EnthalpyIdeal
 from dartsflash.eos_properties import EoSDensity, EoSEnthalpy
 
 
 class Model(DartsModel):
-    def __init__(self, n_points=1000, temp_init=350, temp_inj=350):
-        # call base class constructor
-        super().__init__()
-        self.n_points = n_points
-        # measure time spend on reading/initialization
-        self.timer.node["initialization"].start()
-
-        self.set_reservoir()
-        self.set_physics(n_points, temp_ini=temp_init)
-        self.set_wells(p_inj=60, t_inj=temp_inj, p_prod=30)
-
-        self.params.first_ts = 1e-3
-        self.params.mult_ts = 1.5
-        self.params.max_ts = 5
-
-        # Newton tolerance is relatively high because of L2-norm for residual and well segments
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-5
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-
-        self.params.newton_type = sim_params.newton_global_chop
-        self.params.newton_params = value_vector([1])
-
-        self.runtime = 1000
-        self.timer.node["initialization"].stop()
-
     def set_reservoir(self):
         nx = 100
         ny = 1
@@ -59,78 +31,54 @@ class Model(DartsModel):
         self.x_axes = np.logspace(-0.3, 2, nx)
         dx = np.tile(self.x_axes, nz)
 
-        self.reservoir = StructReservoir(self.timer, nx, ny, nz, dx=dx, dy=10, dz=dz,
-                                         permx=100, permy=100, permz=10, poro=0.2, depth=depth)
+        reservoir = StructReservoir(self.timer, nx, ny, nz, dx=dx, dy=10, dz=dz,
+                                    permx=100, permy=100, permz=10, hcap=2200, rcond=100, poro=0.2, depth=depth)
 
-        # get wrapper around local array (length equal to active blocks number)
-        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
+        return super().set_reservoir(reservoir)
 
-        hcap.fill(2200)  # 2200 kJ/m3.K for sandstone
-        rcond.fill(100)
+    def set_wells(self):
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, self.reservoir.nz), well_index=100, well_indexD=100)
 
-    def set_wells(self, p_inj=60, t_inj=None, p_prod=30):
-        """Create well objects"""
-        self.reservoir.add_well('I1')
-        for n in range(self.reservoir.nz-1, self.reservoir.nz):
-            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=n+1,
-                                           well_index=100, multi_segment=False, verbose=False)
-        self.reservoir.add_well('P1')
-        for n in range(self.reservoir.nz):
-            self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=self.reservoir.ny, k=n+1,
-                                           well_index=100, multi_segment=False, verbose=False)
+        self.reservoir.add_well("P1")
+        for k in range(self.reservoir.nz):
+            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, self.reservoir.ny, k+1),
+                                           well_index=100, well_indexD=100)
 
-        """Set operational conditions"""
-        self.p_inj = p_inj
-        self.p_prod = p_prod
+        return super().set_wells()
 
-        self.inj_stream = [0.99995]
-        if self.physics.thermal:
-            self.inj_stream.append(t_inj)
-
-    def set_physics(self, n_points, temperature=None, temp_ini=350.):
-        self.zero = 1e-7
-
+    def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
         # Fluid components, ions and solid
-        components = ["CO2", "H2O"]
+        components = ["H2O", "CO2"]
         phases = ["Aq", "V"]
         nc = len(components)
-        comp_data = CompData(components)
-        comp_data.set_properties()
+        comp_data = CompData(components, setprops=True)
 
-        pr = PR(components, comp_data)
-        # aq = Jager2003(components, [])
-        aq = Ziabakhsh2012(components, [])
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        # aq = Jager2003(comp_data)
+        aq = AQEoS(comp_data, AQEoS.Ziabakhsh2012)
 
-        flash_params = FlashParams(nc)
+        flash_params = FlashParams(comp_data)
 
         # EoS-related parameters
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
         flash_params.eos_used = ["AQ", "PR"]
 
-        from dartsflash.libflash import Henry
-        henry = Henry(components, comp_data, 1)
-        flash_params.add_initial_guess(henry)
+        flash_params.split_initial_guesses = [InitialGuess.Henry_AV]
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
 
-        self.ini_stream = [0.00005]
-        self.p_init = 60.
-
-        self.temperature = temperature  # if None, then thermal=True
-        if self.temperature is None:
+        if temperature is None:  # if None, then thermal=True
             thermal = True
-            self.init_temp = temp_ini
         else:
             thermal = False
-            self.init_temp = temperature
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=self.temperature, min_z=self.zero/10)
+                                               temperature=temperature, min_z=zero/10)
 
         property_container.flash_ev = NegativeFlash2(flash_params)
         property_container.density_ev = dict([('V', EoSDensity(pr, comp_data.Mw)),
@@ -146,68 +94,18 @@ class Model(DartsModel):
         property_container.conductivity_ev = dict([('V', ConstFunc(0.)),
                                                    ('Aq', ConstFunc(0.)), ])
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=self.zero/10,
-                                     max_z=1-self.zero/10, min_t=273.15, max_t=373.15, thermal=thermal, cache=0)
-        self.physics.add_property_region(property_container)
-        self.physics.init_physics(output_props=None)
+        physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
+                                max_z=1-zero/10, min_t=273.15, max_t=373.15, thermal=thermal, cache=False)
+        physics.add_property_region(property_container)
+        props = [('satA', 'sat', 0), ('satV', 'sat', 1), ('xCO2', 'x', (0, 1)), ('yH2O', 'x', (1, 0))]
+        physics.add_property_operators(PropertyOperators(props, property_container))
 
-    def set_initial_conditions(self):
-        if self.physics.thermal:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.p_init, self.ini_stream, self.init_temp)
-        else:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.p_init, self.ini_stream)
+        return super().set_physics(physics)
 
-        self.timer.node["initialization"].stop()
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         # define all wells as closed
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 w.control = self.physics.new_bhp_inj(self.p_inj, self.inj_stream)
             else:
                 w.control = self.physics.new_bhp_prod(self.p_prod)
-
-    def output_properties(self):
-        n_vars = self.physics.property_operators.n_vars
-        n_props = self.physics.property_operators.n_props
-        tot_props = n_vars + n_props
-
-        property_array = np.zeros((self.reservoir.nb, tot_props))
-        for j in range(n_vars):
-            property_array[:, j] = self.physics.engine.X[j:self.reservoir.nb * n_vars:n_vars]
-
-        values = value_vector(np.zeros(self.physics.n_ops))
-
-        for i in range(self.reservoir.nb):
-            state = []
-            for j in range(n_vars):
-                state.append(property_array[i, j])
-            state = value_vector(np.asarray(state))
-            self.physics.property_itor.evaluate(state, values)
-
-            for j in range(n_props):
-                property_array[i, j + n_vars] = values[j]
-
-        return property_array
-
-
-class PropertyEvaluator(DefaultPropertyEvaluator):
-    def __init__(self, variables, property_container):
-        super().__init__(variables, property_container)  # Initialize base-class
-
-        self.props = ['sat0', 'xCO2']
-        self.n_props = len(self.props)
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        ph, sat, x, dens, dens_m, mu, kr, pc, mass_source = self.property.evaluate(state)
-
-        values[0] = sat[0]
-        values[1] = x[0, 0]
-
-        return 0

@@ -1,5 +1,5 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, value_vector
 import numpy as np
 
@@ -13,7 +13,7 @@ from darts.physics.properties.kinetics import KineticBasic
 
 
 # Model class creation here!
-class Model(DartsModel):
+class Model(CICDModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -21,6 +21,38 @@ class Model(DartsModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
+        self.set_reservoir()
+        self.set_wells()
+        self.set_physics()
+
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
+                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+
+        self.timer.node["initialization"].stop()
+
+        self.initial_values = {self.physics.vars[0]: 95,
+                               self.physics.vars[1]: self.ini_stream[0],
+                               self.physics.vars[2]: self.ini_stream[1],
+                               self.physics.vars[3]: self.ini_stream[2]
+                               }
+
+    def set_reservoir(self):
+        trans_exp = 3
+        perm = 100  # / (1 - solid_init) ** trans_exp
+        """Reservoir"""
+        nx = 1000
+        reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
+                                    permx=perm, permy=perm, permz=perm / 10, poro=1, depth=1000)
+        return super().set_reservoir(reservoir)
+
+    def set_wells(self):
+        self.reservoir.add_well("I1")
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
+        self.reservoir.add_well("P1")
+        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        return super().set_wells()
+
+    def set_physics(self):
         self.zero = 1e-12
 
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
@@ -45,32 +77,13 @@ class Model(DartsModel):
         zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
         self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
 
-        trans_exp = 3
-        perm = 100 #/ (1 - solid_init) ** trans_exp
-        """Reservoir"""
-        nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1, permx=perm, permy=perm,
-                                         permz=perm/10, poro=1, depth=1000)
-
-
-        """well location"""
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=nx, j=1, k=1, multi_segment=False)
-
-        # self.reservoir.add_well("P1")
-        # for i in range(int(self.reservoir.nz / 2)):
-        #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
-
         """Physical properties"""
         # Create property containers:
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
                                              diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
+        property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                                               ('wat', DensityBasic(compr=1e-6, dens0=1000))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.1)),
@@ -81,37 +94,13 @@ class Model(DartsModel):
         property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero/10, max_z=1-self.zero/10)
-        self.physics.add_property_region(property_container)
-        self.physics.init_physics()
+        physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
+                                min_z=self.zero / 10, max_z=1 - self.zero / 10)
+        physics.add_property_region(property_container)
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.001
-        self.params.max_ts = 1
-        self.params.mult_ts = 2
+        return super().set_physics(physics)
 
-        self.params.tolerance_newton = 1e-5
-        self.params.tolerance_linear = 1e-6
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.newton_params[0] = 0.2
-
-        self.runtime = 1000
-
-        self.timer.node["initialization"].stop()
-
-    # Initialize reservoir and set boundary conditions:
-    def set_initial_conditions(self):
-        """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, 95, self.ini_stream)
-
-        # composition = np.array(self.reservoir.mesh.composition, copy=False)
-        # n_half = int(self.reservoir.nx * self.reservoir.ny * self.reservoir.nz / 2)
-        # composition[2*n_half:] = 1e-6
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.new_rate_inj(0.2, self.inj_stream, 0)
@@ -123,26 +112,27 @@ class Model(DartsModel):
         import matplotlib.pyplot as plt
 
         nc = self.physics.nc
-        Sg = np.zeros(self.reservoir.nb)
-        Ss = np.zeros(self.reservoir.nb)
-        X = np.zeros((self.reservoir.nb, nc - 1, 2))
+        nb = self.mesh.n_res_blocks
+        Sg = np.zeros(nb)
+        Ss = np.zeros(nb)
+        X = np.zeros((nb, nc - 1, 2))
 
-        rel_perm = np.zeros((self.reservoir.nb, 2))
-        visc = np.zeros((self.reservoir.nb, 2))
-        density = np.zeros((self.reservoir.nb, 3))
-        density_m = np.zeros((self.reservoir.nb, 3))
+        rel_perm = np.zeros((nb, 2))
+        visc = np.zeros((nb, 2))
+        density = np.zeros((nb, 3))
+        density_m = np.zeros((nb, 3))
 
-        Xn = np.array(self.physics.engine.X, copy=True)
+        Xn = np.array(self.engine.X, copy=True)
 
 
-        P = Xn[0:self.reservoir.nb * nc:nc]
-        z_caco3 = 1 - (Xn[1:self.reservoir.nb * nc:nc] + Xn[2:self.reservoir.nb * nc:nc] + Xn[3:self.reservoir.nb * nc:nc])
+        P = Xn[0:nb * nc:nc]
+        z_caco3 = 1 - (Xn[1:nb * nc:nc] + Xn[2:nb * nc:nc] + Xn[3:nb * nc:nc])
 
-        z_co2 = Xn[1:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_inert = Xn[2:self.reservoir.nb * nc:nc] / (1 - z_caco3)
-        z_h2o = Xn[3:self.reservoir.nb * nc:nc] / (1 - z_caco3)
+        z_co2 = Xn[1:nb * nc:nc] / (1 - z_caco3)
+        z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
+        z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
 
-        for ii in range(self.reservoir.nb):
+        for ii in range(nb):
             x_list = Xn[ii*nc:(ii+1)*nc]
             state = value_vector(x_list)
             (sat, x, rho, rho_m, mu, kr, pc, ph) = self.property_container.evaluate(state)
@@ -164,7 +154,7 @@ class Model(DartsModel):
             # Print headers:
             print('//Gridblock\t gas_sat\t pressure\t C_m\t poro\t co2_liq\t co2_vap\t h2o_liq\t h2o_vap\t ca_plus_co3_liq\t liq_dens\t vap_dens\t solid_dens\t liq_mole_dens\t vap_mole_dens\t solid_mole_dens\t rel_perm_liq\t rel_perm_gas\t visc_liq\t visc_gas', file=f)
             print('//[-]\t [-]\t [bar]\t [kmole/m3]\t [-]\t [-]\t [-]\t [-]\t [-]\t [-]\t [kg/m3]\t [kg/m3]\t [kg/m3]\t [kmole/m3]\t [kmole/m3]\t [kmole/m3]\t [-]\t [-]\t [cP]\t [cP]', file=f)
-            for ii in range (self.reservoir.nb):
+            for ii in range (nb):
                 print('{:d}\t {:6.5f}\t {:7.5f}\t {:7.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}\t {:8.5f}\t {:8.5f}\t {:8.5f}\t {:7.5f}\t {:7.5f}\t {:7.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}\t {:6.5f}'.format(
                     ii, Sg[ii], P[ii], Ss[ii] * density_m[ii, 2], 1 - Ss[ii], X[ii, 0, 0], X[ii, 0, 1], X[ii, 2, 0], X[ii, 2, 1], X[ii, 1, 0],
                     density[ii, 0], density[ii, 1], density[ii, 2], density_m[ii, 0], density_m[ii, 1], density_m[ii, 2],

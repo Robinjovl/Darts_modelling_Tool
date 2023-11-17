@@ -23,6 +23,8 @@ class acc_flux_custom_iapws_evaluator_python(operator_set_evaluator_iface):
         steam_vis  = self.property.steam_viscosity.evaluate(state)
         pore_volume_factor = self.property.rock_compaction.evaluate(state)
         rock_int_energy    = self.property.rock_energy.evaluate(state)
+        water_cond = self.property.water_conduction.evaluate(state)
+        steam_cond = self.property.steam_conduction.evaluate(state)
         pressure = state[0]
 
         # mass accumulation
@@ -38,7 +40,7 @@ class acc_flux_custom_iapws_evaluator_python(operator_set_evaluator_iface):
         # energy flux
         values[4] = (water_enth * water_den * water_rp / water_vis + steam_enth * steam_den * steam_rp / steam_vis)
         # fluid conduction
-        values[5] = 181.44
+        values[5] = water_cond * water_sat + steam_cond * steam_sat
         # rock conduction
         values[6] = 1 / pore_volume_factor
         # temperature
@@ -112,6 +114,8 @@ class acc_flux_gravity_evaluator_python(operator_set_evaluator_iface):
         steam_vis = self.property.steam_viscosity.evaluate(state)
         pore_volume_factor = self.property.rock_compaction.evaluate(state)
         rock_int_energy = self.property.rock_energy.evaluate(state)
+        water_cond = self.property.water_conduction.evaluate(state)
+        steam_cond = self.property.steam_conduction.evaluate(state)
         pressure = state[0]
 
         # mass accumulation
@@ -129,7 +133,7 @@ class acc_flux_gravity_evaluator_python(operator_set_evaluator_iface):
         values[5] = water_enth * water_den * water_rp / water_vis
         values[6] = steam_enth * steam_den * steam_rp / steam_vis
         # fluid conduction
-        values[7] = 2.0 * 86.4
+        values[7] = water_cond * water_sat + steam_cond * steam_sat
         # rock conduction
         values[8] = 1 / pore_volume_factor
         # temperature
@@ -179,7 +183,7 @@ class acc_flux_gravity_evaluator_python_well(operator_set_evaluator_iface):
         values[5] = water_enth * water_den * water_rp / water_vis
         values[6] = steam_enth * steam_den * steam_rp / steam_vis
         # fluid conduction
-        values[7] = 0.0 * 86.4
+        values[7] = 0.0
         # rock conduction
         values[8] = 1 / pore_volume_factor
         # temperature

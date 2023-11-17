@@ -9,10 +9,28 @@ Engines
      operator_set_evaluator_iface, operator_set_gradient_evaluator_iface, property_evaluator_iface
    :show-inheritance:
 
-Physics_sup
-###########
+Physics
+#######
 
-.. autoclass:: darts.models.physics_sup.physics_comp_sup.Compositional
+.. automodule:: darts.physics
+   :members: PhysicsBase, Geothermal, Compositional
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Geothermal
+**********
+
+.. autoclass:: darts.physics.geothermal.physics
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Super
+*****
+
+.. autoclass:: darts.physics.super.physics
    :members:
    :undoc-members:
    :show-inheritance:

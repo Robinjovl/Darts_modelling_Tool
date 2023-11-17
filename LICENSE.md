@@ -28,7 +28,7 @@ It is not used in darts-models yet.
 [License Apache 2.0](https://github.com/qnzhou/MshIO/blob/main/LICENSE)
 
 - [PyGRDECL](https://github.com/BinWang0213/PyGRDECL)
-Used in [struct-reservoir](/darts/models/reservoirs/struct_reservoir.py) to write VTK files.
+Used in [struct-reservoir](/darts/reservoirs/struct_reservoir.py) to write VTK files.
 [License BSD 3-Clause License](https://github.com/BinWang0213/PyGRDECL/blob/master/LICENSE)
 
 - [STREAM](https://www.cs.virginia.edu/stream/ref.html)

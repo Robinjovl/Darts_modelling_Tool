@@ -1,6 +1,6 @@
 from darts.engines import *
-from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.models.darts_model import DartsModel
+from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
@@ -15,10 +15,10 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.tools.keyword_file_tools import get_table_keyword
 
 
-class Model(DartsModel, OptModuleSettings):
+class Model(CICDModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, customize_new_operator=False, Peaceman_WI=False):
         # call base class constructor
-        super().__init__()
+        CICDModel.__init__(self)
         OptModuleSettings.__init__(self)
 
         # measure time spend on reading/initialization
@@ -31,25 +31,39 @@ class Model(DartsModel, OptModuleSettings):
         # initialize global data to record the well location in vtk output file
         self.global_data = {'well location': 0}  # will be updated later in "run"
 
-        """Reservoir construction"""
-        self.nx = 20
-        self.ny = 10
-        self.nz = 2
+        self.set_reservoir(perm, poro)
+        self.set_wells(Peaceman_WI)
+        self.set_physics()
 
-        # self.nx = 3
-        # self.ny = 3
-        # self.nz = 1
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
+                            tol_newton=1e-2, tol_linear=1e-3, it_newton=10, it_linear=50,
+                            newton_type=sim_params.newton_local_chop)
+
+        self.timer.node["initialization"].stop()
+
+        self.initial_values = {self.physics.vars[0]: 50,
+                               self.physics.vars[1]: self.ini_stream[0],
+                               self.physics.vars[2]: self.ini_stream[1]
+                               }
+
+    def set_reservoir(self, perm, poro):
+        """Reservoir construction"""
+        nx = 20
+        ny = 10
+        nz = 2
 
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz, dx=30, dy=30, dz=12, permx=perm, permy=perm,
-                                         permz=perm, poro=poro, depth=2000)
+        reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=30, dy=30, dz=12,
+                                    permx=perm, permy=perm, permz=perm, poro=poro, depth=2000)
 
+        return super().set_reservoir(reservoir)
+
+    def set_wells(self, Peaceman_WI):
         self.inj_list = [[5, 5]]
         self.prod_list = [[15, 3], [15, 8]]
 
         # self.inj_list = [[2, 2]]
         # self.prod_list = [[1, 2], [3, 2]]
-
 
         # well index setting
         if Peaceman_WI:
@@ -58,35 +72,38 @@ class Model(DartsModel, OptModuleSettings):
             WI = 200
 
         n_perf = self.reservoir.nz
-        perf_list = list(range(n_perf))
         for i, inj in enumerate(self.inj_list):
             self.reservoir.add_well('I' + str(i + 1))
-            for n in perf_list:
-                self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=inj[0], j=inj[1], k=n + 1,
-                                               well_radius=0.1,
-                                               well_index=WI, multi_segment=False, verbose=True)
+
+            for k in range(n_perf):
+                self.reservoir.add_perforation('I' + str(i + 1), cell_index=(inj[0], inj[1], k + 1),
+                                               well_radius=0.1, well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
             self.reservoir.add_well('P' + str(p + 1))
-            for n in perf_list:
-                self.reservoir.add_perforation(self.reservoir.wells[-1], i=prod[0], j=prod[1], k=n + 1, well_radius=0.1,
-                                               well_index=WI, multi_segment=False, verbose=True)
 
+            for k in range(n_perf):
+                self.reservoir.add_perforation('P' + str(p + 1), cell_index=(prod[0], prod[1], k + 1),
+                                               well_radius=0.1, well_index=WI)
+
+        return super().set_wells()
+
+    def set_physics(self):
         """Physical properties"""
         # Create property containers:
-        self.zero = 1e-8
+        zero = 1e-8
         components = ['CO2', 'C1', 'H2O']
         phases = ['gas', 'oil']
         Mw = [44.01, 16.04, 18.015]
         nc = len(components)
 
-        self.inj_stream = [1.0 - 2 * self.zero, self.zero]
+        self.inj_stream = [1.0 - 2 * zero, zero]
         self.ini_stream = [0.1, 0.2]
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw,
-                                               min_z=self.zero / 10, temperature=1.)
-        property_container.flash_ev = ConstantK(nc, [4, 2, 1e-1], self.zero)
+                                               min_z=zero / 10, temperature=1.)
+        property_container.flash_ev = ConstantK(nc, [4, 2, 1e-1], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
@@ -95,34 +112,13 @@ class Model(DartsModel, OptModuleSettings):
                                                ('oil', PhaseRelPerm("oil"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=self.zero/10, max_z=1-self.zero/10)
-        self.physics.add_property_region(property_container)
-        self.physics.init_physics()
+        physics = Compositional(components, phases, self.timer,
+                                n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+        physics.add_property_region(property_container)
 
-        # Some newton parameters for non-linear solution:
-        self.params.first_ts = 0.001
-        self.params.max_ts = 1
-        self.params.mult_ts = 2
+        return super().set_physics(physics)
 
-        self.params.tolerance_newton = 1e-2
-        self.params.tolerance_linear = 1e-3
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 50
-        self.params.newton_type = sim_params.newton_local_chop
-
-        # self.params.linear_type = self.params.linear_solver_t.cpu_superlu
-
-        self.runtime = 1000
-
-        self.timer.node["initialization"].stop()
-
-
-    def set_initial_conditions(self):
-        """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, 50, self.ini_stream)
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
                 w.control = self.physics.new_bhp_inj(140, self.inj_stream)
@@ -133,12 +129,12 @@ class Model(DartsModel, OptModuleSettings):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
             customized_component_itor = self.physics.create_interpolator(customized_component_etor, self.physics.n_vars, 1,
-                                                                    self.physics.n_axes_points, self.physics.n_axes_min,
-                                                                    self.physics.n_axes_max,
-                                                                    platform='cpu', algorithm='multilinear',
-                                                                    mode='adaptive', precision='d')
+                                                                         self.physics.n_axes_points, self.physics.axes_min,
+                                                                         self.physics.axes_max,
+                                                                         platform='cpu', algorithm='multilinear',
+                                                                         mode='adaptive', precision='d')
             self.physics.create_itor_timers(customized_component_itor, "customized component interpolation")
-            self.physics.engine.customize_operator = self.customize_new_operator
+            self.engine.customize_operator = self.customize_new_operator
 
             self.op_list = [self.physics.acc_flux_itor[0], customized_component_itor]
 
@@ -146,8 +142,8 @@ class Model(DartsModel, OptModuleSettings):
             idx_in_op_list = 1
             op_num_new = np.array(self.reservoir.mesh.op_num, copy=True)
             op_num_new[:] = idx_in_op_list  # set the second interpolator (i.e. "customized_component_itor") from "self.op_list" to all blocks
-            self.physics.engine.idx_customized_operator = idx_in_op_list
-            self.physics.engine.customize_op_num = index_vector(op_num_new)
+            self.engine.idx_customized_operator = idx_in_op_list
+            self.engine.customize_op_num = index_vector(op_num_new)
         else:
             # self.op_list = [self.physics.acc_flux_itor]
 
@@ -187,8 +183,8 @@ class Model(DartsModel, OptModuleSettings):
                 else:
                     w.control = self.physics.new_bhp_prod(50)
 
-            self.physics.engine.run(ts)
-            self.physics.engine.report()
+            self.engine.run(ts)
+            self.engine.report()
             if export_to_vtk:
                 self.export_vtk(file_name)
 

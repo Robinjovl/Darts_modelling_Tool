@@ -75,7 +75,7 @@ class PropertyContainer:
         pressure = vec_state_as_np[0]
 
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-        if zc[-1] < 0:
+        if zc[-1] < self.min_z:
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
@@ -91,22 +91,22 @@ class PropertyContainer:
         count_corr = 0
         check_vec = np.zeros((len(vec_composition),))
 
-        for ith_comp in range(len(vec_composition)):
-            if vec_composition[ith_comp] < self.min_z:
+        for ith_comp, zi in enumerate(vec_composition):
+            if zi < self.min_z:
                 #print(vec_composition)
                 vec_composition[ith_comp] = self.min_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
-            elif vec_composition[ith_comp] > 1 - self.min_z:
+            elif zi > 1 - self.min_z:
                 #print(vec_composition)
                 vec_composition[ith_comp] = 1 - self.min_z
                 temp_sum += vec_composition[ith_comp]
             else:
                 temp_sum += vec_composition[ith_comp]
 
-        for ith_comp in range(len(vec_composition)):
+        for ith_comp, zi in enumerate(vec_composition):
             if check_vec[ith_comp] != 1:
-                vec_composition[ith_comp] = vec_composition[ith_comp] / temp_sum * (1 - count_corr * self.min_z)
+                vec_composition[ith_comp] = zi / temp_sum * (1 - count_corr * self.min_z)
         return vec_composition
 
     def clean_arrays(self):
