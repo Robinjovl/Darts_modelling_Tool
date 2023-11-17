@@ -124,6 +124,8 @@ class DartsModel:
         """
         self.physics = physics
         self.engine = self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose)
+        if platform =='gpu':
+            self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         return
 
     def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
