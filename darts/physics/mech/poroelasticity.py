@@ -1,5 +1,6 @@
 from darts.engines import *
 from darts.physics.super.physics import Compositional
+import numpy as np
 
 class Poroelasticity(Compositional):
     """
@@ -38,12 +39,13 @@ class Poroelasticity(Compositional):
         :param cache: Switch to cache operator values
         :type cache: bool
         """
+        self.n_dim = 3
         super().__init__(components, phases, timer, n_points,
                  min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
 
     def init_physics(self, regions: list = None, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
-                     verbose: bool = False, discretizer: str = 'new_discretizer'):
+                     verbose: bool = False, discretizer: str = 'mech_discretizer'):
         """
         Function to initialize all contained objects within the Physics object.
 
@@ -89,13 +91,15 @@ class Poroelasticity(Compositional):
         self.discretizer_name = discretizer
         if discretizer == 'mech_discretizer':
             if self.thermal:
-                self.engine = eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
+                engine = eval("engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                self.engine = eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                engine = eval("engine_super_elastic_%s%d_%d" % (platform, self.nc, self.nph))()
         elif discretizer == 'pm_discretizer':
-            self.engine = eval("engine_pm_%s" % (platform))()
+            engine = eval("engine_pm_%s" % (platform))()
 
-    def init_wells(self, wells):
+        return engine
+
+    def init_wells(self, wells, engine):
         """""
         Function to initialize the well rates for each well
         Arguments:
@@ -105,7 +109,7 @@ class Poroelasticity(Compositional):
             assert isinstance(w, ms_well)
             # TODO
             # w.init_rate_parameters(self.n_components, self.rate_phases, self.rate_itor)
-            w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_components, self.rate_phases,
+            w.init_mech_rate_parameters(engine.N_VARS, engine.P_VAR, self.n_components, self.rate_phases,
                                         self.rate_itor)
 
     # TODO: add composition

@@ -21,6 +21,7 @@ class Model(DartsModel):
         self.reservoir = UnstructReservoir(timer=self.timer, case=case, scheme=scheme, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
+        self.reservoir.P_VAR = self.engine.P_VAR # TODO
         self.params.first_ts = 1e-5  # Size of the first time-step [days]
         self.params.mult_ts = 1.5  # Time-step multiplier if newton is converged (i.e. dt_new = dt_old * mult_ts)
         self.params.max_ts = 0.1  # Max size of the time-step [days]
@@ -61,11 +62,17 @@ class Model(DartsModel):
                                 n_points=200, min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10)
         physics.add_property_region(property_container)
 
-        # self.reservoir.P_VAR = physics.engine.P_VAR # TODO
-        return super().set_physics(physics)
+        return super().set_physics(physics=physics, discr_type='mech_discretizer')
 
     def init(self):
-        DartsModel.init(self)
+        self.set_boundary_conditions()
+        self.reservoir.init_wells()
+        self.physics.init_wells(self.reservoir.wells, self.engine)
+        self.set_initial_conditions()
+        self.set_well_controls()
+        self.set_op_list()
+        self.reset()
+
         self.reservoir.mech_operators = mech_operators()
         self.reservoir.mech_operators.init(self.reservoir.mesh, self.reservoir.pm,
                                  self.physics.engine.P_VAR, self.physics.engine.Z_VAR,self.physics.engine.U_VAR,

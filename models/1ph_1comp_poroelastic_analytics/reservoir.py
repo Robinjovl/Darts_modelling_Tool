@@ -48,7 +48,13 @@ class UnstructReservoir:
 
         dt = 0.0
         if discretizer == 'new_discretizer':
-            pass
+            self.mesh.init_pm_new(self.discr.cell_m, self.discr.cell_p,
+                              self.discr.flux_stencil, self.discr.flux_offset,
+                              self.discr.hooke, self.discr.hooke_rhs,
+                              self.discr.biot_traction, self.discr.biot_traction_rhs,
+                              self.discr.darcy, self.discr.darcy_rhs,
+                              self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
+                              self.n_matrix, self.n_bounds, self.n_fracs)
         elif discretizer == 'pm_discretizer':
             self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
             self.unstr_discr.x_new[:, 0] = self.u_init[0]
@@ -78,7 +84,28 @@ class UnstructReservoir:
         self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
         self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
         if discretizer == 'new_discretizer':
-            pass
+            self.mesh.f.resize(4 * (self.n_fracs + self.n_matrix))
+            self.f = np.array(self.mesh.f, copy=False)
+            self.biot_arr = np.array(self.mesh.biot, copy=False)
+            self.kd = np.array(self.mesh.kd, copy=False)
+            self.mesh.pz_bounds.resize(self.n_bounds)
+            self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+            self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
+
+            self.poro[:self.n_matrix] = self.porosity
+            self.poro[self.n_matrix:] = 1
+            volumes = np.array(self.discr_mesh.volumes, copy=False)
+            self.volume[:self.n_matrix] = volumes[:self.n_matrix]
+            self.bc_prev[:] = self.bc_prev_rhs
+            self.bc[:] = self.bc_rhs
+            # self.biot_arr[:] = np.tile([0,0,0,
+            #                             0,0,0,
+            #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
+            self.biot_arr[:] = self.biot_mean
+            self.kd[:] = self.kd_cur
+            # self.pz_bounds[:] = self.pz_bounds
+            # self.p_ref[:] = self.p_ref
+            # self.f[:] = self.f
         elif discretizer == 'pm_discretizer':
             self.mesh.f.resize(4 * (self.unstr_discr.frac_cells_tot + self.unstr_discr.mat_cells_tot))
             self.f = np.array(self.mesh.f, copy=False)
@@ -271,13 +298,21 @@ class UnstructReservoir:
         boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
         ap = np.zeros(boundary_range[1] - boundary_range[0])
         bp = np.zeros(boundary_range[1] - boundary_range[0])
-
         an = np.zeros(boundary_range[1] - boundary_range[0])
         bn = np.zeros(boundary_range[1] - boundary_range[0])
         at = np.zeros(boundary_range[1] - boundary_range[0])
         bt = np.ones(boundary_range[1] - boundary_range[0])
         self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
                                                 self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+        self.bc_prev_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+
+        # mapping boundary connections
+        adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
+        adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
+        id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
+        id_boundary_conns = adj_matrix[id_sorted]
+        conns = np.array(self.discr_mesh.conns, copy=False)
 
         for tag in domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -288,13 +323,23 @@ class UnstructReservoir:
             bn[ids] = bc['mech']['bn']
             at[ids] = bc['mech']['at']
             bt[ids] = bc['mech']['bt']
-            self.bc_rhs[self.n_vars * ids] = bc['flow']['r']
+            # flow
+            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_prev_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_prev_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+
+            for id in ids:
+                assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
+                conn = conns[id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                self.bc_rhs[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_prev_rhs[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
         self.cpp_bc.flow.b = value_vector(bp)
-        #self.cpp_bc.thermal.a = value_vector() #TODO: to be implemented
-        #self.cpp_bc.thermal.b = value_vector()
+
         self.cpp_bc.mech_normal.a = value_vector(an)
         self.cpp_bc.mech_normal.b = value_vector(bn)
         self.cpp_bc.mech_tangen.a = value_vector(at)
@@ -310,7 +355,7 @@ class UnstructReservoir:
         self.timer.node["discretization"].start()
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_mpfa_transmissibilities(False)
+        self.discr.calc_mpfa_mpsa_transmissibilities()
         self.timer.node["discretization"].stop()
 
         MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
@@ -989,7 +1034,7 @@ class UnstructReservoir:
         #
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
-        self.mesh.reverse_and_sort_pm()
+        self.mesh.reverse_and_sort_pm_mech_discretizer()
         #self.mesh.init_grav_coef()
         return 0
     def get_normal_to_bound_face(self, b_id):

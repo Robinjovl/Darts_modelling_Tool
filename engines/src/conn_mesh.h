@@ -153,6 +153,16 @@ public:
 	  std::vector<value_t>& _tran_face,
 	  std::vector<value_t>& _rhs_face,
 	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
+  int init_pm_new(
+	  std::vector<index_t>& block_m,
+	  std::vector<index_t>& block_p,
+	  std::vector<index_t>& _stencil,
+	  std::vector<index_t>& _st_offset,
+	  std::vector<value_t>& _hooke, std::vector<value_t>& _hooke_rhs,
+	  std::vector<value_t>& _biot, std::vector<value_t>& _biot_rhs,
+	  std::vector<value_t>& _darcy, std::vector<value_t>& _darcy_rhs,
+	  std::vector<value_t>& _vol_strain, std::vector<value_t>& _vol_strain_rhs,
+	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);  
   int init_pme(std::vector<index_t>& block_m,
 	  std::vector<index_t>& block_p,
 	  std::vector<index_t>& _stencil,
@@ -183,6 +193,7 @@ public:
   int reverse_and_sort_mpsa();
   int reverse_and_sort_pm();
   int reverse_and_sort_pme();
+  int reverse_and_sort_pm_mech_discretizer();
 
   /// @brief discretize ms wells into reservoir
   int add_wells(std::vector<ms_well*> &wells);         
@@ -215,6 +226,8 @@ public:
   */
   /// Number of unknowns per block
   uint8_t n_vars;
+  /// Number of spatial dimensions
+  uint8_t n_dim;
   /// array of indices of blocks are neccessary for each connection
   std::vector<index_t> stencil;
   /// [n_conns + 1] array of offsets of the first block of connection in 'stencil'
@@ -323,6 +336,11 @@ public:
   std::vector<value_t> one_way_flux;
   std::vector<value_t> one_way_gravity_flux;
 
+  /* New mechanical discretizer */
+  std::vector<value_t> hooke_tran, hooke_rhs;
+  std::vector<value_t> biot_tran, biot_rhs;
+  std::vector<value_t> darcy_tran, darcy_rhs;
+  std::vector<value_t> vol_strain_tran, vol_strain_rhs;
 
   // adjoint method
   std::vector <index_t> cell_m_one_way;
@@ -347,6 +365,11 @@ private:
   std::vector<value_t> one_way_rhs_biot;
   std::vector<value_t> one_way_tran_face;
   std::vector<value_t> one_way_rhs_face;
+  // arrays for the new mechanical discretizer
+  std::vector<value_t> one_way_hooke, one_way_hooke_rhs;
+  std::vector<value_t> one_way_biot, one_way_biot_rhs;
+  std::vector<value_t> one_way_darcy, one_way_darcy_rhs;
+  std::vector<value_t> one_way_vol_strain, one_way_vol_strain_rhs;
 
   index_t n_one_way_conns;
   index_t n_one_way_conns_res;

@@ -380,7 +380,7 @@ def test_discretizer(case='mandel', scheme='non_stabilized'):
 
 #test(case='terzaghi', scheme='stabilized', mesh='rect')
 
-#run_and_plot(case='mandel', scheme='non_stabilized')#, mesh='rect')
-test_discretizer(case='mandel', scheme='non_stabilized')#, mesh='rect')
+run_and_plot(case='mandel', scheme='non_stabilized')#, mesh='rect')
+# test_discretizer(case='mandel', scheme='non_stabilized')#, mesh='rect')
 #test(case='mandel', scheme='stabilized', mesh='rect')
 

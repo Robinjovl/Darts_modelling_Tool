@@ -39,6 +39,9 @@ void pybind_mesh_conn(py::module &m)
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm)
 	  .def("init_pm", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm)
+	  .def("init_pm_new", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
+		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
+		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm_new)
 	  .def("init_pme", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pme)
 	  .def("init_const_1d", &conn_mesh::init_const_1d)
@@ -50,6 +53,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def("reverse_and_sort_mpsa", &conn_mesh::reverse_and_sort_mpsa)
 	  .def("reverse_and_sort_pm", &conn_mesh::reverse_and_sort_pm)
 	  .def("reverse_and_sort_pme", &conn_mesh::reverse_and_sort_pme)
+	  .def("reverse_and_sort_pm_mech_discretizer", &conn_mesh::reverse_and_sort_pm_mech_discretizer)
 	  .def("init_poro", &conn_mesh::init_poro)
 	  .def("add_wells", &conn_mesh::add_wells)
 	  .def("add_wells_mpfa", &conn_mesh::add_wells_mpfa)
@@ -114,7 +118,15 @@ void pybind_mesh_conn(py::module &m)
 	  .def_readwrite("sorted_conn_ids", &conn_mesh::sorted_conn_ids)
 	  .def_readwrite("sorted_stencil_ids", &conn_mesh::sorted_stencil_ids)
 	  .def_readwrite("fault_normals", &conn_mesh::fault_normals)
-	  .def_readwrite("unsorted_gravity_fluxes", &conn_mesh::one_way_gravity_flux);
+	  .def_readwrite("unsorted_gravity_fluxes", &conn_mesh::one_way_gravity_flux)
+	  .def_readwrite("hooke_tran", &conn_mesh::hooke_tran)
+	  .def_readwrite("biot_tran", &conn_mesh::biot_tran)
+	  .def_readwrite("darcy_tran", &conn_mesh::darcy_tran)
+	  .def_readwrite("vol_strain_tran", &conn_mesh::vol_strain_tran)
+	  .def_readwrite("hooke_rhs", &conn_mesh::hooke_rhs)
+	  .def_readwrite("biot_rhs", &conn_mesh::biot_rhs)
+	  .def_readwrite("darcy_rhs", &conn_mesh::darcy_rhs)
+	  .def_readwrite("vol_strain_rhs", &conn_mesh::vol_strain_rhs);
 
 	py::bind_vector<std::vector<std::vector<index_t>>>(m, "vector_index_vector");
 }
