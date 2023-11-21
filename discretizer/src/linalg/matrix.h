@@ -22,12 +22,17 @@ namespace linalg
 	typedef int index_t;
 	typedef double value_t; //TODO: move to global.h
 
+	//!  Dense matrix class
+	/*!
+	  This class contains slicing and other matrix operators and used in discretizer
+	*/
 	template<typename T>
 	class Matrix
 	{
 	public:
-		typedef T Type;
-		int M, N;
+		typedef T Type; // datatype for the matrix values array
+		int M; // number of columns
+		int N; // number of rows
 	public:
 		std::valarray<T> values;
 		std::gslice g;
@@ -71,6 +76,13 @@ namespace linalg
 		{
 			return this->values[getIndex(i, j)];
 		};
+		//! extracts a sub-matrix from a given matrix
+		/*!
+		  \param start 1D index of starting position of etracting slice
+		  \param sizes dimensions of sub-matrix 
+		  \param strides should be 1 if extract a row, and {M,1} if extract a column 
+		  \return sub-matrix 
+		*/
 		std::valarray<T> operator()(const std::size_t start, std::valarray<std::size_t> sizes, std::valarray<std::size_t> strides) const
 		{
 			const auto s = std::gslice(start, sizes, strides);

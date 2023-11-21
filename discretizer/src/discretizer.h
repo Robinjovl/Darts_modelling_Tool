@@ -181,7 +181,7 @@ namespace dis
 
 		static const Matrix I3;
 		static const Matrix I4;
-		Matrix grav_vec;
+		Matrix grav_vec; // gravity_constant * grad(z); density is multiplied in engine
     };
 }
 
