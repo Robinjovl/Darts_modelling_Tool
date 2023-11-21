@@ -294,10 +294,11 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		  grad_mult_p = outer_product(B1n, mat_diff1) - outer_product(B2n, mat_diff2 + r2 / lam2 * (gam2 - K1n).transpose());
 		  grad_term_p = grad_mult_p * g1.a; // g1.a is grad(p)
 
+		  // pressure and thermal have the same stencil
+		  Matrix grad_mult_t(ND, ND);
+		  Matrix grad_term_t(ND, g1.stencil.size());// grad_term for all neighbours, thermal part
 		  if constexpr (MODE == THERMOPOROELASTIC) {
 			  const auto& g1_thermal = t_grads[cell_id1];
-			  Matrix grad_mult_t(ND, ND);
-			  Matrix grad_term_t(ND, g1.stencil.size());// grad_term for all neighbours, thermal part
 			  grad_mult_t = outer_product(A1n, mat_diff1) - outer_product(A2n, mat_diff2 + r2 / lam2_thermal * (gam2_thermal - C1n).transpose());
 			  grad_term_t = grad_mult_t * g1_thermal.a;
 		  }
