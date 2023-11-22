@@ -722,24 +722,8 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
 		const auto& t_grad1 = t_grads[cell_id1];
 		const auto& t_grad2 = t_grads[cell_id2];
 		LinearApproximation<Tvar> t_beta = face_unknown_coef_thermal * (t_grad1 + t_grad2) / 2.0;
-
-		res1 = findInVector(flux.hooke.stencil, cell_id1);
-		if (res1.first) { id1 = res1.second; }
-		else { printf("Gradient within %d cell does not depend on its value!\n", cell_id1);	exit(-1); }
-		//flux.hooke.a(n_unknowns * id1, { (size_t)flux.hooke.a.M, ND }, { (size_t)flux.hooke.a.N, 1 }) += T.values;
 		t_beta.a(0, id1) += det_lam_thermal * cur.r2 * lam1_thermal; // need same stencil for thermal and displacement gradients
-		//u_beta.a(id1 * n_unknowns, { ND, ND }, { (size_t)u_beta.a.N, 1 }) += cur.r2 * (det * cur.T1).values;
-
-		res2 = findInVector(flux.hooke.stencil, cell_id2);
-		if (res2.first) { id2 = res2.second; }
-		else { printf("Gradient within %d cell does not depend on its value!\n", cell_id2);	exit(-1); }
-		//flux.hooke.a(n_unknowns * id2, { (size_t)flux.hooke.a.M, ND }, { (size_t)flux.hooke.a.N, 1 }) -= T.values;
 		t_beta.a(0, id2) += det_lam_thermal * cur.r1 * lam2_thermal; // need same stencil for thermal and displacement gradients
-		//u_beta.a(id2 * n_unknowns, { ND, ND }, { (size_t)u_beta.a.N, 1 }) += cur.r1 * (det * cur.T2).values;
-
-		flux.hooke += coef2 * (A2n - A1n) * t_beta; // Hooke's term 
-
-		flux.flow.fourier = A1n * t_beta;
 	}
 
 	flux.biot_traction = B1n * p_beta; // Biot's term in traction assembled
