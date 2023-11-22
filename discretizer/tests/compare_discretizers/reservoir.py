@@ -26,12 +26,13 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoir:
-    def __init__(self, discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, discretizer='new_discretizer', mesh='rect', thermal=False):
         self.discretizer_name = discretizer
         self.n_vars = 4
         self.n_dim = 3
         self.fluid_density = 1000.0
         self.gravity = np.array([0.0, 0.0, -9.81])
+        self.thermal = thermal
 
         if mesh == 'rect':
             self.mesh_path = 'meshes/unit_trans.msh'
@@ -43,6 +44,12 @@ class UnstructReservoir:
                 2,     42,     7,
                 39,    7,      100]
         self.biot = [1,     6,      5,
+                6,     67,     27,
+                5,     27,     76]
+        self.conduction = [25,    2,      39,
+                2,     42,     7,
+                39,    7,      100]
+        self.therm_expn = [1,     6,      5,
                 6,     67,     27,
                 5,     27,     76]
         self.stf =  [93,     46,     22,     13,     72,     35,
@@ -124,6 +131,14 @@ class UnstructReservoir:
         self.boundary_conditions[995] = { 'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]) }
         self.boundary_conditions[996] = { 'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]) }
 
+        if self.thermal: # no heat flux boundary condition
+            self.boundary_conditions[991]['heat'] = NO_FLOW
+            self.boundary_conditions[992]['heat'] = NO_FLOW
+            self.boundary_conditions[993]['heat'] = NO_FLOW
+            self.boundary_conditions[994]['heat'] = NO_FLOW
+            self.boundary_conditions[995]['heat'] = NO_FLOW
+            self.boundary_conditions[996]['heat'] = NO_FLOW
+
         # initialize poromechanics discretizer
         self.discr = poro_mech_discretizer()
         self.discr.grav_vec = matrix(list(self.gravity), 1, 3)  # 0.0??
@@ -145,40 +160,51 @@ class UnstructReservoir:
             self.discr.biots.append(disc_matrix33(self.biot))
             self.discr.stfs.append(disc_stiffness(self.stf))
             self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = \
-                ref1(np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.0))
+                self.ref1(np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.0))
 
         ap = np.ones(self.n_bounds)
         bp = np.zeros(self.n_bounds)
-        an = np.ones(self.n_bounds)
-        bn = np.zeros(self.n_bounds)
-        at = np.ones(self.n_bounds)
-        bt = np.zeros(self.n_bounds)
+        amn = np.ones(self.n_bounds)
+        bmn = np.zeros(self.n_bounds)
+        amt = np.ones(self.n_bounds)
+        bmt = np.zeros(self.n_bounds)
+        if self.thermal:
+            at = np.ones(self.n_bounds)
+            bt = np.zeros(self.n_bounds)
 
         # right-hand side of boundary conditions
         for i, bound_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0],
                                            self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1])):
             c = np.array(self.discr_mesh.centroids[bound_id].values, copy=False)
-            bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
-            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = ref1(np.append(c, 0.0))
+            #bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
+            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(np.append(c, 0.0))
+            #
         # specify boundary conditions, loop over tags for speedup
         for tag in domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
             ap[ids] = bc['flow']['a']
             bp[ids] = bc['flow']['b']
-            an[ids] = bc['mech']['an']
-            bn[ids] = bc['mech']['bn']
-            at[ids] = bc['mech']['at']
-            bt[ids] = bc['mech']['bt']
+            amn[ids] = bc['mech']['an']
+            bmn[ids] = bc['mech']['bn']
+            amt[ids] = bc['mech']['at']
+            bmt[ids] = bc['mech']['bt']
+            if self.thermal:
+                at[ids] = bc['heat']['a']
+                bt[ids] = bc['heat']['b']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
         self.cpp_bc.flow.b = value_vector(bp)
 
-        self.cpp_bc.mech_normal.a = value_vector(an)
-        self.cpp_bc.mech_normal.b = value_vector(bn)
-        self.cpp_bc.mech_tangen.a = value_vector(at)
-        self.cpp_bc.mech_tangen.b = value_vector(bt)
+        if self.thermal:
+            self.cpp_bc.thermal.a = value_vector(at)
+            self.cpp_bc.thermal.b = value_vector(bt)
+
+        self.cpp_bc.mech_normal.a = value_vector(amn)
+        self.cpp_bc.mech_normal.b = value_vector(bmn)
+        self.cpp_bc.mech_tangen.a = value_vector(amt)
+        self.cpp_bc.mech_tangen.b = value_vector(bmt)
 
         self.cpp_flow = BoundaryCondition()
         self.cpp_flow.a_p = value_vector(ap)
@@ -241,7 +267,7 @@ class UnstructReservoir:
             self.pm.perms.append(engine_matrix33(self.perm))
             self.pm.biots.append(engine_matrix33(self.biot))
             self.pm.stfs.append(engine_stiffness(self.stf))
-            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = ref1(np.append(cell.centroid, 0.0))
+            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = self.ref1(np.append(cell.centroid, 0.0))
 
         for bound_id in range(self.unstr_discr.bound_cells_tot):
             b_cell = self.unstr_discr.bound_cell_info_dict[bound_id]
@@ -250,7 +276,7 @@ class UnstructReservoir:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
             cell_id = self.unstr_discr.mat_cells_tot + bound_id
-            sol = ref1(np.append(b_cell.centroid, 0.0))
+            sol = self.ref1(np.append(b_cell.centroid, 0.0))
             self.solution[self.n_vars * cell_id:self.n_vars * (cell_id + 1)] = sol
 
     def get_normal_to_bound_face(self, b_id):
@@ -293,8 +319,8 @@ class UnstructReservoir:
         return np.append(nabla_u, nabla_p)
     # calculate analytical fluxes
     def get_analytical_fluxes(self, x, n, x_cell):
-        sol_an = ref1(x)
-        grad_an = nabla_ref1(x)
+        sol_an = self.ref1(x)
+        grad_an = self.nabla_ref1(x)
         stf = np.array(self.stf).reshape(6, 6)
         biot = np.array(self.biot).reshape(3, 3)
         perm = TC.darcy_constant * np.array(self.perm).reshape(3, 3)
@@ -304,7 +330,7 @@ class UnstructReservoir:
         hooke_traction = -hooke_stress.dot(n)
         biot_traction = sol_an[3] * biot.dot(n)
         darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim] - self.fluid_density * self.gravity)
-        vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
+        vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - self.ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
         return hooke_traction, biot_traction, darcy, vol_strain
     # calculate fluxes, old discretizer
     def get_fluxes_pm_discretizer(self, flux_id):
@@ -374,20 +400,38 @@ class UnstructReservoir:
         return hooke, biot, darcy, vol_strain
 
 # reference solution
-def ref1(x):
-    A = np.array([[1, 2, 3, 4],
-                  [6, 7, 8, 9],
-                  [11, 12, 13, 14],
-                  [16, 17, 18, 19]])
-    b = np.array([5, 10, 15, 20])
-    if len(x.shape) == 1:
-        return A.dot(x) + b
-    else:
-        return A.dot(x) + b[:,np.newaxis]
 
-def nabla_ref1(x):
-    A = np.array([[1, 2, 3, 4],
-                  [6, 7, 8, 9],
-                  [11, 12, 13, 14],
-                  [16, 17, 18, 19]])
-    return A
+    def nabla_ref1(self, x):
+        if not self.thermal:
+            A = np.array([[1, 2, 3, 4],
+                          [6, 7, 8, 9],
+                          [11, 12, 13, 14],
+                          [16, 17, 18, 19]])
+        else:
+            A = np.array([[1,   2,  3,  4,  5],
+                          [7,   8,  9, 10, 11],
+                          [13, 14, 15, 16, 17],
+                          [19, 20, 21, 22, 23]])
+        return A
+
+    def nabla_ref1_b(self):
+        if not self.thermal:
+            return np.array([5, 10, 15, 20])
+        else:
+            return np.array([5, 10, 15, 20, 25])
+    def ref1(self, x):
+        '''
+        :param x:
+        :return: A*x +b
+        '''
+        A = self.nabla_ref1(x)
+        b = self.nabla_ref1_b()
+        if len(x.shape) == 1:
+            return A.dot(x) + b
+        else:
+            return A.dot(x) + b[:,np.newaxis]
+
+
+
+
+

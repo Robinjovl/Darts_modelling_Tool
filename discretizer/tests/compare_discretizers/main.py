@@ -1,18 +1,18 @@
-from reservoir import UnstructReservoir, nabla_ref1
+from reservoir import UnstructReservoir
 import numpy as np
 import os
 
-def test_compare_discretizers(mesh='rect', abs_tol=1e-2, rel_tol=1e-4):
+def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=1e-4):
     n_dim = 3
     pm_reservoir = UnstructReservoir(discretizer='pm_discretizer', mesh=mesh)
-    new_reservoir = UnstructReservoir(discretizer='new_discretizer', mesh=mesh)
+    new_reservoir = UnstructReservoir(discretizer='new_discretizer', mesh=mesh, thermal=thermal)
 
     # # check gradients
     for i in range(pm_reservoir.unstr_discr.mat_cells_tot):
         old_grad = pm_reservoir.get_gradients_pm_discretizer(i)
         new_grad = new_reservoir.get_gradients_new_discretizer(i)
         x = np.append(np.array(new_reservoir.discr_mesh.centroids[i].values, copy=False), 0.0)
-        true_grad = nabla_ref1(x)[:,:n_dim].flatten()
+        true_grad = new_reservoir.nabla_ref1(x)[:,:n_dim].flatten()
         assert np.isclose(old_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
         assert np.isclose(new_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
 
