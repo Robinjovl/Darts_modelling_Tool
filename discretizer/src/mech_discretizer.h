@@ -70,12 +70,14 @@ namespace dis
 		biot_traction = LinearApproximation<Pvar>(ND, stencil_size);
 		vol_strain = ApproximationType<MODE>(1, stencil_size);
 		flow = FlowHeatApproximation(stencil_size);
+		thermal_traction = LinearApproximation<Tvar>(ND, stencil_size);
 	  };
 
 	  ApproximationType<MODE> hooke;
 	  LinearApproximation<Pvar> biot_traction;
 	  ApproximationType<MODE> vol_strain;
 	  FlowHeatApproximation flow;
+	  LinearApproximation<Tvar> thermal_traction;
 
 	  bool is_same_stencil = true;
 	};
@@ -126,6 +128,7 @@ namespace dis
 	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
 	  //void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
 
+	// convert approximation (matrix, stencil and free term) to 1-d arrays
 	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
 		assert(flux.is_same_stencil);
@@ -140,6 +143,11 @@ namespace dis
 		  auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.n_block }, { 1 });
 		  coef_darcy = flux.flow.darcy.a.values[st_id];
 		  coef_fick = flux.flow.fick.a.values[st_id];
+		  if constexpr (MODE == THERMOPOROELASTIC) {
+		  auto block_thermal = flux.thermal_traction.a(flux.thermal_traction.n_block * st_id, { (size_t)flux.thermal_traction.a.M, (size_t)flux.thermal_traction.n_block }, { (size_t)flux.thermal_traction.a.N, 1 });
+
+		  coef_fourier = flux.flow.fourier.a.values[st_id];
+		}
 		  // eliminate numerical noise: TODO: formalize
 		  // block_hooke[abs(block_hooke) < EQUALITY_TOLERANCE] = 0.0;
 		  // block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;
@@ -161,6 +169,12 @@ namespace dis
 			// Darcy's flow
 			darcy.push_back(coef_darcy);
 			fick.push_back(coef_fick);
+			if constexpr (MODE == THERMOPOROELASTIC) {
+				// Fourier's law
+				fourier.push_back(coef_fourier);
+				// Thermal term in traction
+				thermal_traction.insert(std::end(thermal_traction), std::begin(block_thermal), std::end(block_thermal));
+			}
 		  }
 		}
 		// free terms
@@ -169,6 +183,10 @@ namespace dis
 		biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
 		darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
 		fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
+		if constexpr (MODE == THERMOPOROELASTIC) {
+			fourier_rhs.push_back(flux.flow.fourier.rhs.values[0]);
+			thermal_traction_rhs.insert(std::end(thermal_traction_rhs), std::begin(flux.thermal_traction.rhs.values), std::end(flux.thermal_traction.rhs.values));
+		}
 	  };
 
 	  void keep_same_stencil_gradients();
@@ -209,6 +227,7 @@ namespace dis
 	  std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs;
 	  std::vector<value_t> fick, fick_rhs;
 	  std::vector<value_t> fourier, fourier_rhs;
+	  std::vector<value_t> thermal_traction, thermal_traction_rhs;
 
 	  bool USE_CONNECTION_BASED_GRADIENTS;
 	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
