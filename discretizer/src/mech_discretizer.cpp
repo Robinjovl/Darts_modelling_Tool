@@ -278,8 +278,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		  gam2 = K2n - lam2 * n; // bold kappa
 
 		  if constexpr (MODE == THERMOPOROELASTIC) {
-			  C1n = DARCY_CONSTANT * heat_conductions[cell_id1] * n;
-			  C2n = DARCY_CONSTANT * heat_conductions[cell_id2] * n;
+			  C1n = heat_conductions[cell_id1] * n; //TODO check units
+			  C2n = heat_conductions[cell_id2] * n;
 			  lam2_thermal = (n.transpose() * C2n).values[0]; // scalar lambda
 			  gam2_thermal = C2n - lam2 * n; // bold lambda
 		  }
