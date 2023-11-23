@@ -143,11 +143,11 @@ namespace dis
 		  auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.n_block }, { 1 });
 		  coef_darcy = flux.flow.darcy.a.values[st_id];
 		  coef_fick = flux.flow.fick.a.values[st_id];
+		  std::valarray<value_t> block_thermal;
 		  if constexpr (MODE == THERMOPOROELASTIC) {
-		  auto block_thermal = flux.thermal_traction.a(flux.thermal_traction.n_block * st_id, { (size_t)flux.thermal_traction.a.M, (size_t)flux.thermal_traction.n_block }, { (size_t)flux.thermal_traction.a.N, 1 });
-
-		  coef_fourier = flux.flow.fourier.a.values[st_id];
-		}
+			  block_thermal = flux.thermal_traction.a(flux.thermal_traction.n_block * st_id, { (size_t)flux.thermal_traction.a.M, (size_t)flux.thermal_traction.n_block }, { (size_t)flux.thermal_traction.a.N, 1 });
+			  coef_fourier = flux.flow.fourier.a.values[st_id];
+		  }
 		  // eliminate numerical noise: TODO: formalize
 		  // block_hooke[abs(block_hooke) < EQUALITY_TOLERANCE] = 0.0;
 		  // block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;

@@ -28,12 +28,14 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 class UnstructReservoir:
     def __init__(self, discretizer='new_discretizer', mesh='rect', thermal=False):
         self.discretizer_name = discretizer
-        self.n_vars = 4
         self.n_dim = 3
         self.fluid_density = 1000.0
         self.gravity = np.array([0.0, 0.0, -9.81])
         self.thermal = thermal
-
+        if not self.thermal:
+            self.n_vars = 4
+        else:
+            self.n_vars = 5
         if mesh == 'rect':
             self.mesh_path = 'meshes/unit_trans.msh'
         elif mesh == 'tetra':
@@ -74,6 +76,9 @@ class UnstructReservoir:
             self.darcy_rhs = np.array(self.discr.darcy_rhs, copy=False)
             self.fick_trans = np.array(self.discr.fick, copy=False)
             self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
+            #if self.thermal:
+            #    self.fick_trans = np.array(self.discr.fick, copy=False)
+            #    self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
 
         elif discretizer == 'pm_discretizer':
             self.unit_cube_pm_discretizer()
@@ -159,8 +164,10 @@ class UnstructReservoir:
             self.discr.perms.append(disc_matrix33(self.perm))
             self.discr.biots.append(disc_matrix33(self.biot))
             self.discr.stfs.append(disc_stiffness(self.stf))
-            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = \
-                self.ref1(np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.0))
+            x = np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.)
+            if self.thermal:
+                x = np.append(x, 0.)
+            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = self.ref1(x)
 
         ap = np.ones(self.n_bounds)
         bp = np.zeros(self.n_bounds)
@@ -177,7 +184,10 @@ class UnstructReservoir:
                                            self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1])):
             c = np.array(self.discr_mesh.centroids[bound_id].values, copy=False)
             #bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
-            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(np.append(c, 0.0))
+            x = np.append(c, 0.0)
+            if self.thermal:
+                x = np.append(x, 0.0)
+            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(x)
             #
         # specify boundary conditions, loop over tags for speedup
         for tag in domain_tags[elem_loc.BOUNDARY]:
@@ -411,7 +421,8 @@ class UnstructReservoir:
             A = np.array([[1,   2,  3,  4,  5],
                           [7,   8,  9, 10, 11],
                           [13, 14, 15, 16, 17],
-                          [19, 20, 21, 22, 23]])
+                          [19, 20, 21, 22, 23],
+                          [25, 26, 27, 28, 29]])
         return A
 
     def nabla_ref1_b(self):

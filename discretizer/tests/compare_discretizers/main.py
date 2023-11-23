@@ -68,6 +68,8 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=
     print('OK: fluxes, ' + mesh)
 
 
-test_compare_discretizers(mesh='rect', abs_tol=1e-8, rel_tol=1e-8)
-test_compare_discretizers(mesh='tetra', abs_tol=1e-8, rel_tol=1e-8)
+#test_compare_discretizers(mesh='rect', abs_tol=1e-8, rel_tol=1e-8)
+#test_compare_discretizers(mesh='tetra', abs_tol=1e-8, rel_tol=1e-8)
 
+test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
+test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)

@@ -266,76 +266,77 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		}
 		else // no use of \nabla p_2 (default)
 		{
-		  // r_2 * (p_{\beta1} * B_1 * n - p_{\beta2} * B_2 * n )
-		  // p_{\beta1} remains the same, p_{\beta2} uses the following approximation
-		  // p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
-		  // + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n  
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
-		  if constexpr (MODE == THERMOPOROELASTIC)
-		  {
-			  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * A1n.values;
-		  }
-		  K1n = DARCY_CONSTANT * perms[cell_id1] * n;
-		  K2n = DARCY_CONSTANT * perms[cell_id2] * n;
-		  lam2 = (n.transpose() * K2n).values[0]; // scalar kappa
-		  gam2 = K2n - lam2 * n; // bold kappa
+			// r_2 * (p_{\beta1} * B_1 * n - p_{\beta2} * B_2 * n )
+			// p_{\beta1} remains the same, p_{\beta2} uses the following approximation
+			// p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
+			// + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n  
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
+			if constexpr (MODE == THERMOPOROELASTIC)
+			{
+				rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * A1n.values;
+			}
+			K1n = DARCY_CONSTANT * perms[cell_id1] * n;
+			K2n = DARCY_CONSTANT * perms[cell_id2] * n;
+			lam2 = (n.transpose() * K2n).values[0]; // scalar kappa
+			gam2 = K2n - lam2 * n; // bold kappa
 
-		  if constexpr (MODE == THERMOPOROELASTIC) {
-			  C1n = heat_conductions[cell_id1] * n; //TODO check units
-			  C2n = heat_conductions[cell_id2] * n;
-			  lam2_thermal = (n.transpose() * C2n).values[0]; // scalar lambda
-			  gam2_thermal = C2n - lam2 * n; // bold lambda
-		  }
+			if constexpr (MODE == THERMOPOROELASTIC) {
+				C1n = heat_conductions[cell_id1] * n; //TODO check units
+				C2n = heat_conductions[cell_id2] * n;
+				lam2_thermal = (n.transpose() * C2n).values[0]; // scalar lambda
+				gam2_thermal = C2n - lam2 * n; // bold lambda
+			}
 
-		  mat_diff1.values = std::valarray<value_t>((conn.c - c1).values.data(), ND);      // x_beta - x_1
-		  mat_diff2.values = std::valarray<value_t>(conn.c.values.data(), ND) - y2.values; // x_beta - y_2 (this vector lies on the interface plane)
-		  
-		  const auto& g1 = p_grads[cell_id1];
-		  Matrix grad_mult_p(ND, ND);
-		  Matrix grad_term_p(ND, g1.stencil.size());// grad_term for all neighbours, pressure part
-		  // B1n <*> (x_beta - x_1)^T - B2n <*> ( x_beta - y_2 - d2*(K1n-kappa2)^T/kappa2 )
-		  grad_mult_p = outer_product(B1n, mat_diff1) - outer_product(B2n, mat_diff2 + r2 / lam2 * (gam2 - K1n).transpose());
-		  grad_term_p = grad_mult_p * g1.a; // g1.a is grad(p)
+			mat_diff1.values = std::valarray<value_t>((conn.c - c1).values.data(), ND);      // x_beta - x_1
+			mat_diff2.values = std::valarray<value_t>(conn.c.values.data(), ND) - y2.values; // x_beta - y_2 (this vector lies on the interface plane)
 
-		  // pressure and thermal have the same stencil
-		  Matrix grad_mult_t(ND, ND);
-		  Matrix grad_term_t(ND, g1.stencil.size());// grad_term for all neighbours, thermal part
-		  if constexpr (MODE == THERMOPOROELASTIC) {
-			  const auto& g1_thermal = t_grads[cell_id1];
-			  grad_mult_t = outer_product(A1n, mat_diff1) - outer_product(A2n, mat_diff2 + r2 / lam2_thermal * (gam2_thermal - C1n).transpose());
-			  grad_term_t = grad_mult_t * g1_thermal.a;
-		  }
+			const auto& g1 = p_grads[cell_id1];
+			Matrix grad_mult_p(ND, ND);
+			Matrix grad_term_p(ND, g1.stencil.size());// grad_term for all neighbours, pressure part
+			// B1n <*> (x_beta - x_1)^T - B2n <*> ( x_beta - y_2 - d2*(K1n-kappa2)^T/kappa2 )
+			grad_mult_p = outer_product(B1n, mat_diff1) - outer_product(B2n, mat_diff2 + r2 / lam2 * (gam2 - K1n).transpose());
+			grad_term_p = grad_mult_p * g1.a; // g1.a is grad(p)
 
-		  for (index_t k = 0; k < g1.stencil.size(); k++) // grad(p) = sum_i(a_i * p_i) + b
-		  {
-			// add grad_term matrix to rhs_mult matrix. These matrices have different stencils.
-			// Find a column index in rhs_mult where to add. If there is no such index, add 
-			cur_cell_id = g1.stencil[k]; 
-			res1 = findInVector(st, cur_cell_id);
-			if (res1.first) { id1 = res1.second; }
-			else { id1 = st.size(); st.push_back(cur_cell_id); }
+			// pressure and thermal have the same stencil
+			Matrix grad_mult_t(ND, ND);
+			Matrix grad_term_t(ND, g1.stencil.size());// grad_term for all neighbours, thermal part
+			if constexpr (MODE == THERMOPOROELASTIC) {
+				const auto& g1_thermal = t_grads[cell_id1];
+				grad_mult_t = outer_product(A1n, mat_diff1) - outer_product(A2n, mat_diff2 + r2 / lam2_thermal * (gam2_thermal - C1n).transpose());
+				grad_term_t = grad_mult_t * g1_thermal.a;
+			}
 
-			// extract a column from grad_term
-			Matrix grad_term_p_block(grad_term_p(k, { ND, 1 }, { (size_t)grad_term_p.N, 1 }), ND, 1); 
-			Matrix grad_term_t_block(grad_term_t(k, { ND, 1 }, { (size_t)grad_term_t.N, 1 }), ND, 1);
+			for (index_t k = 0; k < g1.stencil.size(); k++) // grad(p) = sum_i(a_i * p_i) + b
+			{
+				// add grad_term matrix to rhs_mult matrix. These matrices have different stencils.
+				// Find a column index in rhs_mult where to add. If there is no such index, add 
+				cur_cell_id = g1.stencil[k];
+				res1 = findInVector(st, cur_cell_id);
+				if (res1.first) { id1 = res1.second; }
+				else { id1 = st.size(); st.push_back(cur_cell_id); }
 
-			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * grad_term_p_block.values;
+				// extract a column from grad_term
+				Matrix grad_term_p_block(grad_term_p(k, { ND, 1 }, { (size_t)grad_term_p.N, 1 }), ND, 1);
+				Matrix grad_term_t_block(grad_term_t(k, { ND, 1 }, { (size_t)grad_term_t.N, 1 }), ND, 1);
+
+				rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * grad_term_p_block.values;
+
+				if constexpr (MODE == THERMOPOROELASTIC)
+				{
+					// each 'column' actually contains n_unknowns columns (ux, uy, uz, p, ..)
+					//TODO: define T_VAR = ND + 1;
+					rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * grad_term_t_block.values;
+				}
+			}
+			rest(ND * face_id, { ND }, { 1 }) += r2 * (grad_mult_p * g1.rhs + r2 / lam2 * (grav_vec * (K2n - K1n)).values[0] * B2n).values;
+
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
 
 			if constexpr (MODE == THERMOPOROELASTIC)
 			{
-				// each 'column' actually contains n_unknowns columns (ux, uy, uz, p, ..)
-				//TODO: define T_VAR = ND + 1;
-				rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * grad_term_t_block.values;
+				rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * A2n.values;
 			}
-		  }
-		  rest(ND * face_id, { ND }, { 1 }) += r2 * (grad_mult_p * g1.rhs + r2 / lam2 * (grav_vec * (K2n - K1n)).values[0] * B2n).values;
-
-		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * B2n.values;
-		
-		  if constexpr (MODE == THERMOPOROELASTIC)
-		  {
-			  rhs_mult(ND* face_id* rhs_mult.N + n_unknowns * id2 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) -= r2 * A2n.values;
-		  }
+		}
 
 		face_id++;
 	  }
