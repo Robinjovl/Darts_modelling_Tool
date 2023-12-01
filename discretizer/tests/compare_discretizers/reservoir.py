@@ -21,7 +21,7 @@ import scipy
 from scipy.special import erfc as erfc
 
 import darts.discretizer as dis
-from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
+from darts.discretizer import Mesh, Elem, poro_mech_discretizer, thermoporo_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 # Definitions for the unstructured reservoir class:
@@ -145,7 +145,10 @@ class UnstructReservoir:
             self.boundary_conditions[996]['heat'] = NO_FLOW
 
         # initialize poromechanics discretizer
-        self.discr = poro_mech_discretizer()
+        if self.thermal:
+            self.discr = thermoporo_mech_discretizer()
+        else:
+            self.discr = poro_mech_discretizer()
         self.discr.grav_vec = matrix(list(self.gravity), 1, 3)  # 0.0??
         self.tags = np.array(self.discr_mesh.tags, copy=False)
         self.discr.set_mesh(self.discr_mesh)
@@ -165,9 +168,10 @@ class UnstructReservoir:
             self.discr.biots.append(disc_matrix33(self.biot))
             self.discr.stfs.append(disc_stiffness(self.stf))
             x = np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.)
-            if self.thermal:
-                x = np.append(x, 0.)
             self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = self.ref1(x)
+            if self.thermal:
+                self.discr.heat_conductions.append(disc_matrix33(self.conduction))
+                self.discr.thermal_expansions.append(disc_matrix33(self.therm_expn))
 
         ap = np.ones(self.n_bounds)
         bp = np.zeros(self.n_bounds)
@@ -185,8 +189,6 @@ class UnstructReservoir:
             c = np.array(self.discr_mesh.centroids[bound_id].values, copy=False)
             #bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
             x = np.append(c, 0.0)
-            if self.thermal:
-                x = np.append(x, 0.0)
             self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(x)
             #
         # specify boundary conditions, loop over tags for speedup
@@ -221,7 +223,10 @@ class UnstructReservoir:
         self.cpp_flow.b_p = value_vector(bp)
 
         # gradient reconstruction
-        self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
+        if self.thermal:
+            self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow)
+        else:
+            self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_mpfa_mpsa_transmissibilities()
 
@@ -418,11 +423,11 @@ class UnstructReservoir:
                           [11, 12, 13, 14],
                           [16, 17, 18, 19]])
         else:
-            A = np.array([[1,   2,  3,  4,  5],
-                          [7,   8,  9, 10, 11],
-                          [13, 14, 15, 16, 17],
-                          [19, 20, 21, 22, 23],
-                          [25, 26, 27, 28, 29]])
+            A = np.array([[1,   2,  3,  4],
+                          [6,   7,  8,  9],
+                          [11, 12, 13, 14],
+                          [16, 17, 18, 19],
+                          [21, 22, 23, 24]])
         return A
 
     def nabla_ref1_b(self):
