@@ -341,6 +341,7 @@ public:
   std::vector<value_t> biot_tran, biot_rhs;
   std::vector<value_t> darcy_tran, darcy_rhs;
   std::vector<value_t> vol_strain_tran, vol_strain_rhs;
+  std::vector<value_t> fourier_tran;
 
   // adjoint method
   std::vector <index_t> cell_m_one_way;
