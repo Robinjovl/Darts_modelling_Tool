@@ -9,12 +9,14 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=
 
     # # check gradients
     for i in range(pm_reservoir.unstr_discr.mat_cells_tot):
-        old_grad = pm_reservoir.get_gradients_pm_discretizer(i)
         new_grad = new_reservoir.get_gradients_new_discretizer(i)
         x = np.append(np.array(new_reservoir.discr_mesh.centroids[i].values, copy=False), 0.0)
         true_grad = new_reservoir.nabla_ref1(x)[:,:n_dim].flatten()
-        assert np.isclose(old_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
         assert np.isclose(new_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
+        if not thermal:
+            old_grad = pm_reservoir.get_gradients_pm_discretizer(i)
+            assert np.isclose(old_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
+
 
     print('OK: gradients, ' + mesh)
 

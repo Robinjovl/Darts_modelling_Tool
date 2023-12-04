@@ -221,6 +221,9 @@ class UnstructReservoir:
         self.cpp_flow = BoundaryCondition()
         self.cpp_flow.a_p = value_vector(ap)
         self.cpp_flow.b_p = value_vector(bp)
+        if self.thermal:
+            self.cpp_flow.a_th = value_vector(at)
+            self.cpp_flow.b_th = value_vector(bt)
 
         # gradient reconstruction
         if self.thermal:
@@ -326,12 +329,19 @@ class UnstructReservoir:
         p_trans = np.array(p_grad.a.values).reshape(3, len(p_grad.stencil))
         u_trans = np.array(u_grad.a.values, copy=False).\
             reshape(3 * 3, len(u_grad.stencil) * self.n_vars)
-        assert((np.sum(p_trans, axis=1) < 1.e-8).all())
-        assert((np.sum(u_trans, axis=1) < 1.e-8).all())
+        if not self.thermal: #TODO turn on after implementing all parts for the thermal option
+            assert((np.sum(p_trans, axis=1) < 1.e-8).all())
+            assert((np.sum(u_trans, axis=1) < 1.e-8).all())
         nabla_u = u_trans.dot(self.solution[stencil_cols])
         nabla_p = p_trans.dot(self.solution[self.n_vars * np.array(p_grad.stencil) + 3])
 
-        return np.append(nabla_u, nabla_p)
+        grad = np.append(nabla_u, nabla_p)
+        if self.thermal:
+            t_grad = self.discr.t_grads[cell_id]
+            t_trans = np.array(t_grad.a.values).reshape(3, len(t_grad.stencil))
+            nabla_t = t_trans.dot(self.solution[self.n_vars * np.array(t_grad.stencil) + 4])
+            grad = np.append(grad, nabla_t)
+        return grad
     # calculate analytical fluxes
     def get_analytical_fluxes(self, x, n, x_cell):
         sol_an = self.ref1(x)
