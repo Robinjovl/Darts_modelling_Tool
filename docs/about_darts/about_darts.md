@@ -70,7 +70,7 @@ The energy accumulation term contains the internal energy of fluid and rock,
     \end{aligned}
 \end{equation}
 
-where {math}`U_j` is phase internal energy {math}`[\mathrm{kJ}]` and {math}`U_r` is rock internal energy {math}`[\mathrm{kJ}]`.
+where {math}`U_j` is phase internal energy {math}`[\mathrm{kJ/kmol}]` and {math}`U_r` is rock internal energy {math}`[\mathrm{kJ/m^3}]`.
 The rock is assumed compressible and represented by the change of porosity through:
 
 \begin{equation}

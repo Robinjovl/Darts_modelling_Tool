@@ -28,7 +28,8 @@ class SinglePhase(Flash):
         super().__init__(nph=1, nc=nc)
 
     def evaluate(self, pressure, temperature, zc):
-        return np.array([1.]), np.array([zc])
+        self.nu, self.x = np.array([1.]), np.array([zc])
+        return 0
 
 
 class ConstantK(Flash):

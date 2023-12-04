@@ -18,7 +18,7 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.7"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['matplotlib', 'numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'pyevtk', 'opmcpg', 'openpyxl']
+dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'pyevtk', 'opmcpg', 'openpyxl', 'matplotlib', 'pyvista']
 
 license = {text = "LICENSE.md"}
 

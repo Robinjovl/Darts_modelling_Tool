@@ -5,8 +5,13 @@ Breaking changes:
         Before: from darts.models.reservoirs.struct_reservoir import StructReservoir
         Now:    from darts.reservoirs.struct_reservoir import StructReservoir
     Changes in base darts model:  
-        Before: self.reservoir.mesh
-        Now:    self.mesh
+        Before: self.mesh
+        Now:    self.reservoir.mesh
+	Changes in add_perforation() function of reservoir classes:
+		Before: three arguments: i, j, k
+        Now:    tuple of IJK indices: (i,j,k) as one argument
+		Before: default values: well_index=-1, well_indexD=-1
+        Now:    default values: well_index=None, well_indexD=None
 
 **1.0.4 [11-09-2023]**
 Small fixes.

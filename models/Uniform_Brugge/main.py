@@ -39,7 +39,7 @@ if __name__ == '__main__':
     nc = n.physics.nc
     nb = n.reservoir.mesh.n_res_blocks
     # Allocate and store the properties in an array:
-    property_array = np.empty((nb, 2))
-    property_array[:, 0] = Xn[0:nb*nc:nc]
-    property_array[:, 1] = Xn[1:nb*nc:nc]
+    property_array = np.empty((2, nb))
+    property_array[0, :] = Xn[0:nb*nc:nc]
+    property_array[1, :] = Xn[1:nb*nc:nc]
     n.reservoir.discretizer.write_to_vtk('output_directory', property_array, ('p', 'z'), 0)

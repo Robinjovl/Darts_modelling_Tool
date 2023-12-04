@@ -16,6 +16,7 @@ const value_t engine_pm_cpu::BAR_DAY2_TO_PA_S2 = 86400.0 * 86400.0 * 1.E+5;
 engine_pm_cpu::engine_pm_cpu()
 {
   engine_name = "Single phase " + std::to_string(NC_) + "-component isothermal poromechanics CPU engine";
+  t_dim = m_dim = x_dim = p_dim = 1.0;
 }
 
 engine_pm_cpu::~engine_pm_cpu()
@@ -1634,7 +1635,7 @@ int engine_pm_cpu::solve_linear_equation()
 
 	/*if (1) //changed this to write jacobian to file!
 	{
-		static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter++) + ".csr").c_str());
+		static_cast<csr_matrix<N_VARS>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter++) + ".csr").c_str());
 		write_vector_to_file("jac_nc_dar.rhs", RHS);
 		write_vector_to_file("jac_nc_dar.sol", dX);
 	//apply_newton_update(deltat);
@@ -1679,9 +1680,9 @@ int engine_pm_cpu::solve_linear_equation()
 	if (PRINT_LINEAR_SYSTEM) // changed this to write jacobian to file!
 	{
             #ifndef OPENDARTS_LINEAR_SOLVERS
-	    static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+	    static_cast<csr_matrix<N_VARS>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
             #endif  // OPENDARTS_LINEAR_SOLVERS
-		//Jacobian->write_matrix_to_file(("jac_dar_" + std::to_string(output_counter) + ".csr").c_str());
+		Jacobian->write_matrix_to_file(("jac_dar_" + std::to_string(output_counter) + ".csr").c_str());
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
 		output_counter++;
@@ -1695,6 +1696,9 @@ int engine_pm_cpu::solve_linear_equation()
 		//exit(0);
 		//return 0;
 	}
+
+	if (SCALE_DIMLESS)
+	  dimensionalize_unknowns();
 
 	/*if (SCALE_DIMLESS)
 	{
@@ -2013,17 +2017,16 @@ void engine_pm_cpu::make_dimensionless()
   index_t csr_idx_start, csr_idx_end;
 
   const value_t mom_dim = p_dim / x_dim;
-  const value_t mass_dim_base = p_dim * t_dim * t_dim * x_dim;
-  const value_t mass_dim_geom = p_dim * x_dim * x_dim * x_dim;
-  value_t mass_dim;
+  value_t mass_dim = m_dim;
+
+  value_t max_jacobian = 0.0, max_residual = 0.0;
+  // value_t min_ratio = std::numeric_limits<value_t>::infinity();
+  value_t row_max_jacobian[N_VARS];
 
   // matrix + fractures
   for (index_t i = 0; i < n_res_blocks; i++)
   {
-	if (geomechanics_mode[i])
-	  mass_dim = mass_dim_geom;
-	else
-	  mass_dim = mass_dim_base;
+	// std::fill_n(row_max_jacobian, N_VARS, 0.0);
 
 	csr_idx_start = rows[i];
 	csr_idx_end = rows[i + 1];
@@ -2034,27 +2037,40 @@ void engine_pm_cpu::make_dimensionless()
 	  {
 		for (uint8_t v = U_VAR; v < U_VAR + ND_; v++)
 		{
-		  Jac[j * N_VARS_SQ + c * N_VARS + v] /= (mom_dim);
+		  Jac[j * N_VARS_SQ + c * N_VARS + v] /= (mom_dim / x_dim);
+		  row_max_jacobian[c] = std::max(row_max_jacobian[c], fabs(Jac[j * N_VARS_SQ + c * N_VARS + v]));
 		}
-		Jac[j * N_VARS_SQ + c * N_VARS + P_VAR] /= (mom_dim);
+		Jac[j * N_VARS_SQ + c * N_VARS + P_VAR] /= (mom_dim / p_dim);
+		row_max_jacobian[c] = std::max(row_max_jacobian[c], fabs(Jac[j * N_VARS_SQ + c * N_VARS + P_VAR]));
 	  }
 	  // jacobian (fluid mass)
 	  for (uint8_t v = U_VAR; v < U_VAR + ND_; v++)
 	  {
-		Jac[j * N_VARS_SQ + P_VAR * N_VARS + v] /= (mass_dim);
+		Jac[j * N_VARS_SQ + P_VAR * N_VARS + v] /= (mass_dim / x_dim);
+		row_max_jacobian[P_VAR] = std::max(row_max_jacobian[P_VAR], fabs(Jac[j * N_VARS_SQ + P_VAR * N_VARS + v]));
 	  }
-	  Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR] /= (mass_dim);
+	  Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR] /= (mass_dim / p_dim);
+	  row_max_jacobian[P_VAR] = std::max(row_max_jacobian[P_VAR], fabs(Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR]));
 	}
 	// residual
 	for (uint8_t c = U_VAR; c < U_VAR + ND_; c++)
 	{
 	  RHS[i * N_VARS + c] /= (mom_dim);
+	  max_jacobian = std::max(max_jacobian, row_max_jacobian[c]);
+	  max_residual = std::max(max_residual, fabs(RHS[i * N_VARS + c]));
+	  //if (fabs(RHS[i * N_VARS + c]) > EQUALITY_TOLERANCE)
+		//min_ratio = std::min(min_ratio, fabs(RHS[i * N_VARS + c] / row_max_jacobian[c]));
+
 	}
 	RHS[i * N_VARS + P_VAR] /= (mass_dim);
+	max_jacobian = std::max(max_jacobian, row_max_jacobian[P_VAR]);
+	max_residual = std::max(max_residual, fabs(RHS[i * N_VARS + P_VAR]));
+	//if (fabs(RHS[i * N_VARS + P_VAR]) > EQUALITY_TOLERANCE)
+	//  min_ratio = std::min(min_ratio, fabs(RHS[i * N_VARS + P_VAR] / row_max_jacobian[P_VAR]));
   }
 
-  // wells
-  for (ms_well* w : wells)
+  // wells: TODO: add the scaling of well equations
+  /*for (ms_well* w : wells)
   {
 	if (geomechanics_mode[w->well_body_idx])
 	  mass_dim = mass_dim_geom;
@@ -2070,14 +2086,38 @@ void engine_pm_cpu::make_dimensionless()
 	  // jacobian (fluid mass)
 	  for (uint8_t v = U_VAR; v < U_VAR + ND_; v++)
 	  {
-		Jac[j * N_VARS_SQ + P_VAR * N_VARS + v] /= (mass_dim);
+		Jac[j * N_VARS_SQ + P_VAR * N_VARS + v] /= (mass_dim / x_dim);
 	  }
-	  Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR] /= (mass_dim);
+	  Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR] /= (mass_dim / p_dim);
 	}
 	// residual
 	RHS[w->well_body_idx * N_VARS + P_VAR] /= (mass_dim);
-  }
+  }*/
+
+  printf("max(residual)/max(jacobian) = %e\n", max_residual / max_jacobian);
+  //printf("row-wise residual/max(jacobian) = %e\n", min_ratio);
+  fflush(stdout);
 }
+
+
+void engine_pm_cpu::dimensionalize_unknowns()
+{
+  const index_t n_blocks = mesh->n_blocks;
+  const index_t n_res_blocks = mesh->n_res_blocks;
+
+  // matrix + fractures
+  for (index_t i = 0; i < n_res_blocks; i++)
+  {
+	for (uint8_t c = 0; c < ND_; c++)
+	{
+	  dX[i * N_VARS + c] *= x_dim;
+	}
+	dX[i * N_VARS + P_VAR] *= p_dim;
+  }
+
+  // TODO: add well equations
+}
+
 
 int engine_pm_cpu::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {

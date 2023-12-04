@@ -116,8 +116,6 @@ public:
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
-
-
   std::vector<linsolv_iface*> linear_solvers;
   std::vector<linear_solver_params> ls_params;
   index_t active_linear_solver_id;
@@ -126,9 +124,10 @@ public:
   bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
   
-  value_t t_dim, x_dim, p_dim;
+  value_t t_dim, x_dim, p_dim, m_dim;
 protected:
   void scale_rows();
   void make_dimensionless();
+  void dimensionalize_unknowns();
 };
 #endif /* CPU_SIMULATOR_PM_HPP */

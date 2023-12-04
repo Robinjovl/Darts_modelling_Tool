@@ -142,9 +142,9 @@ class Model(CICDModel):
 
     def run_custom(self, export_to_vtk=False):
         if export_to_vtk:
-            X = np.array(self.physics.engine.X, copy=False)
-            for ith_prop in range(len(self.physics.vars)):
-                self.property_array[:, ith_prop] = X[ith_prop::self.n_vars]
+            X = np.array(self.engine.X, copy=False)
+            for ith_prop in range(self.physics.n_vars):
+                self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
 
         time_step = self.report_step
         even_end = int(self.T / time_step) * time_step
@@ -167,10 +167,10 @@ class Model(CICDModel):
 
             if export_to_vtk:
                 X = np.array(self.engine.X, copy=False)
-                for ith_prop in range(len(self.physics.vars)):
-                    self.property_array[:, ith_prop] = X[ith_prop::self.physics.n_vars]
+                for ith_prop in range(self.physics.n_vars):
+                    self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
 
-                self.property_array[:, -1] = _Backward1_T_Ph_vec(X[0::self.physics.n_vars] / 10,
+                self.property_array[-1, :] = _Backward1_T_Ph_vec(X[0::self.physics.n_vars] / 10,
                                                                  X[1::self.physics.n_vars] / 18.015)  # calc temperature
                 self.reservoir.unstr_discr.write_to_vtk('vtk_data', self.property_array,
                                                         ['pressure', 'enthalpy', 'temperature'], ith_step + 1)

@@ -30,6 +30,7 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("t_dim", &engine_pm_cpu::t_dim) \
 		.def_readwrite("x_dim", &engine_pm_cpu::x_dim) \
 		.def_readwrite("p_dim", &engine_pm_cpu::p_dim) \
+		.def_readwrite("m_dim", &engine_pm_cpu::m_dim) \
 		.def_readwrite("dev_u", &engine_pm_cpu::dev_u) \
 		.def_readwrite("dev_p", &engine_pm_cpu::dev_p) \
 		.def_readwrite("dev_g", &engine_pm_cpu::dev_g) \

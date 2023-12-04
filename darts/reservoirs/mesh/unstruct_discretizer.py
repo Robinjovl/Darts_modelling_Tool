@@ -11,6 +11,7 @@ from .transcalc import TransCalculations
 import copy
 import os
 import pickle
+import warnings
 from typing import List
 
 """"
@@ -40,8 +41,8 @@ from typing import List
 
 # Definitions for the unstructured discretization class:
 class UnstructDiscretizer:
-    def __init__(self, permx, permy, permz, frac_aper, mesh_file: str, poro=0.2, num_matrix_cells=0,
-                 num_fracture_cells=0, num_well_cells=0, verbose=False):
+    def __init__(self, permx, permy, permz, frac_aper, mesh_file: str, physical_tags: dict = None, poro=0.2,
+                 num_matrix_cells=0, num_fracture_cells=0, num_well_cells=0, verbose=False):
         """
         Class constructor method
 
@@ -68,6 +69,7 @@ class UnstructDiscretizer:
         self.bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node
         self.well_cells_to_node = {}
         self.geometries_in_mesh_file = []  # List with geometries found in mesh file
+        self.mat_geometries_in_file = []  # List with matrix geometries found in mesh file
         self.frac_geometries_in_file = []  # List with fracture geometries found in mesh file
         self.well_geometries_in_file = []
         self.matrix_cell_count = 0  # Number of matrix cells found when calc. matrix cell information
@@ -98,8 +100,11 @@ class UnstructDiscretizer:
         self.n_dim = 0 # Mesh dimension (2 for 2D, 3 for 3D)
         self.mpfa_connections_num = 0 # Number of MPFA connections
         self.mpsa_connections_num = 0 # Number of MPSA connections
-        self.boundary_conditions = {}
-        self.physical_tags = {}
+
+        self.physical_tags = physical_tags if physical_tags is not None else {'matrix': [], 'boundary': []}
+        self.boundary_conditions = {tag: {'cells': []} for tag in self.physical_tags['boundary']}
+        # self.physical_tags = physical_tags
+        # self.boundary_conditions = {tag: {'cells': []} for tag in physical_tags['boundary']}
         self.disp_gradients = {}    # Displacement gradient & corresponding stencil for every matrix cell
         self.ith_iter = 0
         self.Ft_prev = {}
@@ -138,6 +143,7 @@ class UnstructDiscretizer:
             self.nu[id] = prop['nu']
             self.stiffness[id] = self.get_isotropic_stiffness(prop['E'], prop['nu'])
             self.stf[id] = self.get_stiffness_submatrices(self.stiffness[id])
+
     def init_matrix_stiffness_by_value(self, props):
         self.stiffness = {}
         self.stf = {}
@@ -206,6 +212,8 @@ class UnstructDiscretizer:
             for ith_geometry in self.mesh_data.cells_dict:
                 self.geometries_in_mesh_file.append(ith_geometry)
 
+                if ith_geometry in self.available_matrix_geometries:
+                    self.mat_geometries_in_file.append(ith_geometry)
                 if ith_geometry in self.available_fracture_geometries:
                     self.frac_geometries_in_file.append(ith_geometry)
 
@@ -397,6 +405,22 @@ class UnstructDiscretizer:
         if self.verbose:
             print('Start loading mesh...')
         self.mesh_data = meshio.read(self.mesh_file)
+
+        # Store all available geometries of the objects found by meshio in a list:
+        for ith_geometry in self.mesh_data.cells_dict:
+            # self.geometries_in_mesh_file.append(ith_geometry)
+
+            if ith_geometry in self.available_matrix_geometries:
+                self.mat_geometries_in_file.append(ith_geometry)
+            if ith_geometry in self.available_fracture_geometries:
+                self.frac_geometries_in_file.append(ith_geometry)
+
+        # Create default dictionary entry:
+        for geometry in self.mat_geometries_in_file:
+            self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
+
+        for geometry in self.frac_geometries_in_file:
+            self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
 
         # Count all the cells, boundary cells and fractures by their types
         self.mat_cells_tot = self.bound_cells_tot = self.frac_cells_tot = 0
@@ -942,36 +966,40 @@ class UnstructDiscretizer:
         # Allocate empty new cell_data_dict dictionary:
         cell_data_dict = dict()
 
-        for ith_prop in range(len(cell_property)):
-            cell_data_dict[cell_property[ith_prop]] = []
+        for ith_prop, prop in enumerate(cell_property):
+            cell_data_dict[prop] = []
             left_bound = 0
             right_bound = 0
-            for ith_geometry in self.mesh_data.cells_dict:
+            # for ith_geometry in self.mesh_data.cells_dict:
+            for ith_geometry in self.mat_geometries_in_file:
                 left_bound = right_bound
                 right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data_dict[cell_property[ith_prop]].append(list(property_array[left_bound:right_bound, ith_prop]))
+                cell_data_dict[prop] += [list(property_array[ith_prop, left_bound:right_bound])]
 
         cell_data_dict['matrix_cell_bool'] = []
         left_bound = 0
         right_bound = 0
-        for ith_geometry in self.mesh_data.cells_dict:
+        for ith_geometry in self.mat_geometries_in_file:
+            # for ith_geometry in self.mesh_data.cells_dict:
             left_bound = right_bound
             right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
 
             if (ith_geometry in self.available_fracture_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.zeros(((right_bound - left_bound),))))
+                cell_data_dict['matrix_cell_bool'] += [list(np.zeros(((right_bound - left_bound),)))]
 
             elif (ith_geometry in self.available_matrix_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.ones(((right_bound - left_bound),))))
+                cell_data_dict['matrix_cell_bool'] += [list(np.ones(((right_bound - left_bound),)))]
 
         # Temporarily store mesh_data in copy:
         # Mesh = meshio.read(self.mesh_file)
+        reporting_cells = {geometry: self.mesh_data.cells_dict[geometry] for geometry in self.mat_geometries_in_file}
+        # cells = self.mesh_data.cells_dict['wedge']
 
         mesh = meshio.Mesh(
             # Mesh.points,
             # Mesh.cells_dict.items(),
             self.mesh_data.points,  # list of point coordinates
-            self.mesh_data.cells_dict.items(),  # list of
+            reporting_cells,  # list of
             # Each item in cell data must match the cells array
             cell_data=cell_data_dict)
 
@@ -1063,7 +1091,7 @@ class UnstructDiscretizer:
         self.centroid_all_cells = np.array(list(self.centroid_all_cells.values()))
         return 0
 
-    def store_depth_all_cells(self):
+    def store_depth_all_cells(self, boundary_cells: bool = True):
         """
         Class method which loops over all the cells and stores the depth in single array (first frac, then mat)
         :return:
@@ -1077,9 +1105,10 @@ class UnstructDiscretizer:
             self.depth_all_cells[tot_cell_count] = self.mat_cell_info_dict[ith_cell].depth
             tot_cell_count += 1
 
-        for ith_cell in self.bound_cell_info_dict:
-            self.depth_all_cells[tot_cell_count] = self.bound_cell_info_dict[ith_cell].depth
-            tot_cell_count += 1
+        if boundary_cells:
+            for ith_cell in self.bound_cell_info_dict:
+                self.depth_all_cells[tot_cell_count] = self.bound_cell_info_dict[ith_cell].depth
+                tot_cell_count += 1
 
         self.depth_all_cells = np.array(list(self.depth_all_cells.values()))
         return 0
@@ -1292,6 +1321,28 @@ class UnstructDiscretizer:
         right_boundary_cells = np.array(list(right_boundary_cells.values()), dtype=int) + \
                                self.fracture_cell_count
         return left_boundary_cells, right_boundary_cells
+
+    def find_cells(self, tag: int, type: str = 'face'):
+        """
+        Function to find cells that share geometrical element with physically tagged geometry
+        :param tag: Tag of physical geometry
+        :param type: Type of geometry [node, edge, face]
+        """
+        cell_idxs = []
+
+        if type not in ['node', 'edge', 'face']:
+            warnings.warn("Invalid type of physical geometry provided: " + str(type))
+
+        for element in self.boundary_conditions[tag]['cells']:
+            nodes_to_geometry = self.bound_cell_info_dict[element].nodes_to_cell
+
+            for ith_cell, cell in self.mat_cell_info_dict.items():
+                if ith_cell not in cell_idxs:
+                    if nodes_to_geometry[0] in cell.nodes_to_cell:
+                        if all(ele in cell.nodes_to_cell for ele in nodes_to_geometry):
+                            cell_idxs.append(ith_cell)
+
+        return cell_idxs
 
     # Two-Point Flux Approximation (TPFA)
     def calc_connections_all_cells(self, cache=0):
