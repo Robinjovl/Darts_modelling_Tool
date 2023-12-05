@@ -137,12 +137,12 @@ class UnstructReservoir:
         self.boundary_conditions[996] = { 'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]) }
 
         if self.thermal: # no heat flux boundary condition
-            self.boundary_conditions[991]['heat'] = NO_FLOW
-            self.boundary_conditions[992]['heat'] = NO_FLOW
-            self.boundary_conditions[993]['heat'] = NO_FLOW
-            self.boundary_conditions[994]['heat'] = NO_FLOW
-            self.boundary_conditions[995]['heat'] = NO_FLOW
-            self.boundary_conditions[996]['heat'] = NO_FLOW
+            self.boundary_conditions[991]['heat'] = AQUIFER(0)
+            self.boundary_conditions[992]['heat'] = AQUIFER(0)
+            self.boundary_conditions[993]['heat'] = AQUIFER(0)
+            self.boundary_conditions[994]['heat'] = AQUIFER(0)
+            self.boundary_conditions[995]['heat'] = AQUIFER(0)
+            self.boundary_conditions[996]['heat'] = AQUIFER(0)
 
         # initialize poromechanics discretizer
         if self.thermal:
@@ -190,7 +190,7 @@ class UnstructReservoir:
             #bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
             x = np.append(c, 0.0)
             self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(x)
-            #
+
         # specify boundary conditions, loop over tags for speedup
         for tag in domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]

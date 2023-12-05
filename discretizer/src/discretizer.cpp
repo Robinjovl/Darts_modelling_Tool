@@ -844,7 +844,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  A_th(counter, 2) = scale_boundary * (alpha_th * (conn.c.z - x1.z) + temp.z);
 
 		  // update the row on matrix R
-		  R_th(counter, R_p.N - 1) = -scale_boundary * alpha_th;
+		  R_th(counter, R_th.N - 1) = -scale_boundary * alpha_th;
 		  R_th(counter, counter) = scale_boundary;
 
 		  temp_stencil[counter++] = el_id2;
