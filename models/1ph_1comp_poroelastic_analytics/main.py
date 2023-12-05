@@ -22,7 +22,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
 
     mult_dt = m.params.mult_ts
     max_dt = m.params.max_ts
-    m.e = m.physics.engine
+    m.e = m.engine
 
     # get current engine time
     t = m.e.t
@@ -51,7 +51,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             if m.case == 'mandel':
                 m.reservoir.update_mandel_boundary(dt=dt, time=new_time, physics=m.physics)
             # update transient boundaries or sources / sinks
-            m.reservoir.update_trans(dt, m.physics.engine.X)
+            m.reservoir.update_trans(dt, m.engine.X)
             m.timer.node["update"].stop()
 
         converged = run_timestep_python(m, dt, t)
@@ -85,7 +85,7 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].start()
     for i in range(max_newt + 1):
         self.e.run_single_newton_iteration(dt)
-        res = self.e.calc_newton_dev()
+        res = self.e.calc_newton_residual()
         self.e.dev_p = res[0]
         self.e.dev_u = res[1]
         if len(res) > 2 and res[2] == res[2]:       self.e.dev_g = res[2]
@@ -197,7 +197,7 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     redirect_darts_output('log.txt')
     output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
-    m.physics.engine.find_equilibrium = False
+    # m.physics.engine.find_equilibrium = False
 
     # for rectangular grid
     nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
@@ -309,6 +309,37 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         A[:, :, 0] = data['time'][:, np.newaxis]
         A[:, :, 1] = data['x'][np.newaxis, :]
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
+def run(case='mandel', mesh='rect'):
+    nt = 60
+    max_dt = 30  # sec
+    t = np.logspace(-3, np.log10(max_dt), nt)
+
+    m = Model(case=case, mesh=mesh)
+    m.init()
+
+    redirect_darts_output('log.txt')
+    m.output_directory = 'solution'
+    ith_step = 0
+    m.timer.node["update"] = timer_node()
+    # set equilibrium (including boundary conditions)
+    # m.reservoir.set_equilibrium()
+    # m.physics.engine.find_equilibrium = True
+    # m.params.first_ts = 1
+    # run_python(m, 1.0)
+    # m.reinit_reference(output_directory)
+    # m.physics.engine.find_equilibrium = False
+
+    m.reservoir.write_to_vtk(m.output_directory, 0, m.engine)
+
+    time = 0.0
+    for ith_step, dt in enumerate(t):
+        time += dt
+        m.params.first_ts = dt
+        m.params.max_ts = dt
+        run_python(m, dt)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
+
+    m.print_timers()
 
 def run_test(args: list = []):
     if len(args) > 3:
@@ -317,70 +348,5 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-def test_discretizer(case='mandel', scheme='non_stabilized'):
-    print('Old discretizer: ')
-    old_model = Model(case=case, scheme=scheme, discretizer='pm_discretizer')
-    print('New discretizer: ')
-    new_model = Model(case=case, scheme=scheme, discretizer='new_discretizer')
-
-    for i in range(old_model.reservoir.unstr_discr.mat_cells_tot):
-        # check if cells are the same
-        c_new = np.array(new_model.reservoir.discr_mesh.centroids[i].values, copy=False)
-        c_old = np.array(old_model.reservoir.pm.cell_centers[i].values, copy=False)
-        assert(np.linalg.norm(c_new - c_old) < 1.e-5)
-
-        # extract gradients
-        new_p_grad = new_model.reservoir.discr.p_grads[i]
-        new_u_grad = new_model.reservoir.discr.u_grads[i]
-        old_grad = old_model.reservoir.pm.get_gradient(i)
-
-        # check stencils
-        new_p_stencil = np.array(new_p_grad.stencil, copy=False)
-        new_u_stencil = np.array(new_p_grad.stencil, copy=False)
-        old_stencil = np.array(old_grad[0], copy=False)
-        assert(set(new_u_stencil) == set(old_stencil))
-
-        # check values
-        n_vars = old_model.reservoir.n_vars
-        new_p_vals = np.array(new_p_grad.a.values, copy=False).reshape(3, new_p_stencil.size)
-        new_u_vals = np.array(new_u_grad.a.values, copy=False)\
-            .reshape(3 * 3, new_u_stencil.size * n_vars)
-        old_vals = np.array(old_grad[1], copy=False)\
-            .reshape(3 * n_vars, old_stencil.size * n_vars)
-        old_stencil_ids = np.argsort(old_stencil)
-        old_stencil_cols = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in old_stencil_ids])
-        old_stencil_zero_cols = np.concatenate([np.arange(i * n_vars, i * n_vars + (n_vars - 1)) for i in old_stencil_ids])
-
-        dp_grad = np.fabs(old_vals[9:, n_vars * old_stencil_ids + 3] - new_p_vals)
-        assert((dp_grad < 1.e-3 * np.fabs(old_vals[9:, n_vars * old_stencil_ids + 3])).all())
-        old_p_du_grad = np.fabs(old_vals[9:, old_stencil_zero_cols])
-        assert((old_p_du_grad < 1.e-6).all())
-        du_grad = np.fabs(old_vals[:9, old_stencil_cols] - new_u_vals)
-        assert((du_grad < 1.e-3 * np.fabs(old_vals[:9, old_stencil_cols])).all())
-
-# test_args = [
-#     [['terzaghi', 'non_stabilized', 'rect'],
-#      ['terzaghi', 'non_stabilized', 'wedge'],
-#      ['terzaghi', 'non_stabilized', 'hex'],
-#      ['terzaghi', 'stabilized', 'rect'],
-#      ['terzaghi', 'stabilized', 'wedge'],
-#      ['terzaghi', 'stabilized', 'hex'],
-#      ['mandel', 'non_stabilized', 'rect'],
-#      ['mandel', 'non_stabilized', 'wedge'],
-#      ['mandel', 'non_stabilized', 'hex'],
-#      ['mandel', 'stabilized', 'rect'],
-#      ['mandel', 'stabilized', 'wedge'],
-#      ['mandel', 'stabilized', 'hex'],
-#      ['terzaghi_two_layers', 'non_stabilized', 'rect'],
-#      ['terzaghi_two_layers', 'non_stabilized', 'wedge']]
-# ]
-
-# for arg in test_args[0]:
-#     run_test(arg)
-
-#test(case='terzaghi', scheme='stabilized', mesh='rect')
-
-run_and_plot(case='mandel', scheme='non_stabilized')#, mesh='rect')
-# test_discretizer(case='mandel', scheme='non_stabilized')#, mesh='rect')
-#test(case='mandel', scheme='stabilized', mesh='rect')
+run(case='mandel', mesh='rect')
 

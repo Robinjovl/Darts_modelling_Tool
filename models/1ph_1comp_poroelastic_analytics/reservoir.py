@@ -96,7 +96,7 @@ class UnstructReservoir:
             self.poro[self.n_matrix:] = 1
             volumes = np.array(self.discr_mesh.volumes, copy=False)
             self.volume[:self.n_matrix] = volumes[:self.n_matrix]
-            self.bc_prev[:] = self.bc_prev_rhs
+            self.bc_prev[:] = self.bc_rhs_prev
             self.bc[:] = self.bc_rhs
             # self.biot_arr[:] = np.tile([0,0,0,
             #                             0,0,0,
@@ -133,9 +133,6 @@ class UnstructReservoir:
             self.f[:] = self.unstr_discr.f
 
         self.wells = []
-        if not os.path.exists('sol_poromechanics'):
-            os.makedirs('sol_poromechanics')
-        self.time_file = open('sol_poromechanics/time.txt', 'w')
     def update_mandel_boundary(self, dt, time, physics):
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
@@ -147,37 +144,35 @@ class UnstructReservoir:
 
         v_north = self.get_vertical_displacement_north_mandel(time)
 
-        mech_xm = ROLLER
-        mech_xp = FREE
-        mech_ym = ROLLER
-        mech_yp = STUCK_ROLLER(v_north)
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
+        self.boundary_conditions = {}
+        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
+        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(0.0)}
+        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
+            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+            bc = self.boundary_conditions[tag]
+            # flow
+            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
 
-        self.pm.bc.clear()
-        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
-            n = self.get_normal_to_bound_face(bound_id)
-            P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
-            self.pm.bc.append(matrix(bc, len(bc), 1))
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
+            for id in ids:
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                self.bc_rhs[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -187,7 +182,7 @@ class UnstructReservoir:
         #                  self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_cells_tot, 0)
 
         # update transient sources / sinks
-        self.f[:] = self.unstr_discr.f
+        # self.f[:] = self.unstr_discr.f
         # update boundaries at n+1 / n timesteps
         self.bc[:] = self.bc_rhs
         self.bc_prev[:] = self.bc_rhs_prev
@@ -196,7 +191,6 @@ class UnstructReservoir:
         # update local array
         #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc
 
     # new discretizer
     def mandel_north_dirichlet(self, scheme='non_stabilized', mesh='rect'):
@@ -209,11 +203,11 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
-        domain_tags = dict()
-        domain_tags[elem_loc.MATRIX] = set([99991])
-        domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
-        domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()  # is this for poromechanics??
+        self.domain_tags = dict()
+        self.domain_tags[elem_loc.MATRIX] = set([99991])
+        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
+        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
+        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()  # is this for poromechanics??
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -239,32 +233,18 @@ class UnstructReservoir:
         LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
         STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
-        mech_xm = ROLLER
-        mech_xp = FREE
-        mech_ym = ROLLER
-        mech_yp = STUCK_ROLLER(0.0)
-        mech_zm = ROLLER
-        mech_zp = ROLLER
-
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
-
         self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm}
-        self.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp}
-        self.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym}
-        self.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp}
-        self.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm}
-        self.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp}
+        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
+        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(0.0)}
+        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
         self.discr_mesh = Mesh()
 
         # init poromechanics discretizer
-        self.discr_mesh.gmsh_mesh_processing(mesh_file, domain_tags)
+        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
 
         self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
         self.F = -100.0 * self.a # bar * m
@@ -304,17 +284,17 @@ class UnstructReservoir:
         bt = np.ones(boundary_range[1] - boundary_range[0])
         self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
                                                 self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
-        self.bc_prev_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+        self.bc_rhs_prev = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
                                                 self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
 
         # mapping boundary connections
         adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
         adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
         id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
-        id_boundary_conns = adj_matrix[id_sorted]
-        conns = np.array(self.discr_mesh.conns, copy=False)
+        self.id_boundary_conns = adj_matrix[id_sorted]
+        self.conns = np.array(self.discr_mesh.conns, copy=False)
 
-        for tag in domain_tags[elem_loc.BOUNDARY]:
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
             ap[ids] = bc['flow']['a']
@@ -325,16 +305,16 @@ class UnstructReservoir:
             bt[ids] = bc['mech']['bt']
             # flow
             self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_prev_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
             self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_prev_rhs[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
 
             for id in ids:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
-                conn = conns[id_boundary_conns[id]]
+                conn = self.conns[self.id_boundary_conns[id]]
                 n = np.array(conn.n.values, copy=False)
                 self.bc_rhs[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
-                self.bc_prev_rhs[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs_prev[self.n_vars * id:self.n_vars * id + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -1077,7 +1057,7 @@ class UnstructReservoir:
             #     #sum_no_bound = np.sum(all_trans[st < self.unstr_discr.mat_cells_tot], axis=0)
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
-    def write_to_vtk(self, output_directory, ith_step, physics):
+    def write_to_vtk(self, output_directory, ith_step, engine):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -1091,24 +1071,24 @@ class UnstructReservoir:
             os.makedirs(output_directory)
 
         # Temporarily store mesh_data in copy:
-        Mesh = meshio.read(self.unstr_discr.mesh_file)
+        Mesh = meshio.read(self.file_path)
 
         # Allocate empty new cell_data dictionary:
         cell_property = ['u_x', 'u_y', 'u_z', 'p']
         props_num = len(cell_property)
-        property_array = np.array(physics.engine.X, copy=False)
+        property_array = np.array(engine.X, copy=False)
         available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
         available_fracture_geometries = ['quad', 'triangle']
 
         # if ith_step != 0:
-        fluxes = np.array(physics.engine.fluxes, copy=False)
-        # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
-        fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
-        #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
-        self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
-        self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
-                                          self.mesh.bc, physics.engine.op_vals_arr)
+        # fluxes = np.array(physics.engine.fluxes, copy=False)
+        # # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
+        # fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
+        # #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
+        # #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
+        # self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
+        # self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
+        #                                   self.mesh.bc, physics.engine.op_vals_arr)
         # else:
         #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
         #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
@@ -1117,13 +1097,13 @@ class UnstructReservoir:
         geom_id = 0
         Mesh.cells = []
         cell_data = {}
-        for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
+        for ith_geometry in self.mesh_data.cells_dict.keys():
             if ith_geometry in available_matrix_geometries:
-                Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
+                Mesh.cells.append(self.mesh_data.cells[geom_id])
                 # Add matrix data to dictionary:
                 for i in range(props_num):
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                    cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
+                    cell_data[cell_property[i]].append(property_array[i:props_num * self.n_matrix:props_num])
 
                 #if 'velocity' not in cell_data: cell_data['velocity'] = []
                 #cell_data['velocity'].append(vels)
@@ -1133,24 +1113,24 @@ class UnstructReservoir:
                 #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
                 #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
                 #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
-                if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
-                if 'porosity' not in cell_data: cell_data['porosity'] = []
-                if 'stress' not in cell_data: cell_data['stress'] = []
-                if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
+                # if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
+                # if 'porosity' not in cell_data: cell_data['porosity'] = []
+                # if 'stress' not in cell_data: cell_data['stress'] = []
+                # if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
+                #
+                # cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
+                # cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
+                # cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+                # cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
 
-                cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
-                cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
-                cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
-                cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+                # stress = np.array(self.mech_operators.stresses, copy=False)
+                # total_stress = np.array(self.mech_operators.total_stresses, copy=False)
+                # for i in range(6):
+                #     cell_data['stress'][-1][:, i] = stress[i::6]
+                #     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
 
-                stress = np.array(self.mech_operators.stresses, copy=False)
-                total_stress = np.array(self.mech_operators.total_stresses, copy=False)
-                for i in range(6):
-                    cell_data['stress'][-1][:, i] = stress[i::6]
-                    cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
-
-                if 'cell_id' not in cell_data: cell_data['cell_id'] = []
-                cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
+                # if 'cell_id' not in cell_data: cell_data['cell_id'] = []
+                # cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
                 # if ith_step == 0:
                 #     cell_data[ith_geometry]['permx'] = self.permx[:]
                 #     cell_data[ith_geometry]['permy'] = self.permy[:]
@@ -1164,216 +1144,8 @@ class UnstructReservoir:
             cell_data=cell_data)
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
 
-        # time-dependent boundaries
-        if ith_step == 0:
-            self.time_file.write(str(0.0) + '\n')
-        else:
-            self.time_file.write(str(physics.engine.t * 86400.0) + '\n')
-        self.time_file.flush()
-
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
-    def write_to_vtk_with_faces(self, output_directory, ith_step, physics):
-        """
-        Class method which writes output of unstructured grid to VTK format
-        :param output_directory: directory of output files
-        :param property_array: np.array containing all cell properties (N_cells x N_prop)
-        :param cell_property: list with property names (visible in ParaView (format strings)
-        :param ith_step: integer containing the output step
-        :return:
-        """
-        # First check if output directory already exists:
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-
-        # Temporarily store mesh_data in copy:
-        Mesh = meshio.read(self.unstr_discr.mesh_file)
-
-        # Allocate empty new cell_data dictionary:
-        cell_property = ['u_x', 'u_y', 'u_z', 'p']
-        props_num = len(cell_property)
-        property_array = np.array(physics.engine.X, copy=False)
-        available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
-        available_fracture_geometries = ['quad', 'triangle']
-
-        # if ith_step != 0:
-        fluxes = np.array(physics.engine.fluxes, copy=False)
-        # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
-        fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        # vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
-        #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
-        self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
-        self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
-                                          self.mesh.bc, physics.engine.op_vals_arr)
-        # else:
-        #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
-        #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
-
-        # Matrix
-        geom_id = 0
-        Mesh.cells = []
-        cell_data = {}
-        for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
-            if ith_geometry in available_matrix_geometries:
-                Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
-                # Add matrix data to dictionary:
-                for i in range(props_num):
-                    if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                    cell_data[cell_property[i]].append(
-                        property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
-
-                # if 'velocity' not in cell_data: cell_data['velocity'] = []
-                # cell_data['velocity'].append(vels)
-                # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
-                #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
-                #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
-                #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
-                if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
-                if 'porosity' not in cell_data: cell_data['porosity'] = []
-                if 'stress' not in cell_data: cell_data['stress'] = []
-                if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
-
-                cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
-                cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
-                cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
-                cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
-
-                stress = np.array(self.mech_operators.stresses, copy=False)
-                total_stress = np.array(self.mech_operators.total_stresses, copy=False)
-                for i in range(6):
-                    cell_data['stress'][-1][:, i] = stress[i::6]
-                    cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
-
-                if 'cell_id' not in cell_data: cell_data['cell_id'] = []
-                cell_data['cell_id'].append(np.array(
-                    [cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if
-                     cell.geometry_type == ith_geometry], dtype=np.int64))
-                # if ith_step == 0:
-                #     cell_data[ith_geometry]['permx'] = self.permx[:]
-                #     cell_data[ith_geometry]['permy'] = self.permy[:]
-                #     cell_data[ith_geometry]['permz'] = self.permz[:]
-            geom_id += 1
-
-        # Store solution for each time-step:
-        mesh = meshio.Mesh(
-            Mesh.points,
-            Mesh.cells,
-            cell_data=cell_data)
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
-
-        # Fractures
-        if self.unstr_discr.frac_cells_tot > 0:
-            geom_id = 0
-            Mesh.cells = []
-            cell_data = {}
-            for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
-                if ith_geometry in available_fracture_geometries:
-                    frac_ids = np.argwhere(np.in1d(self.unstr_discr.mesh_data.cell_data['gmsh:physical'][geom_id],
-                                                   self.unstr_discr.physical_tags['fracture']))[:, 0]
-                    if len(frac_ids):
-                        Mesh.cells.append(meshio.CellBlock(ith_geometry,
-                                                           data=self.unstr_discr.mesh_data.cells[geom_id].data[
-                                                               frac_ids]))
-                        data = property_array[4 * self.unstr_discr.mat_cells_tot:4 * (
-                                self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)].reshape(
-                            self.unstr_discr.frac_cells_tot, 4)
-                        for i in range(props_num):
-                            if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                            cell_data[cell_property[i]].append(data[:, i])
-                geom_id += 1
-
-            # self.write_fault_props(output_directory, property_array, ith_step, physics)
-            frac_data = self.get_fault_props(property_array, ith_step, physics)
-            for key, val in frac_data.items():
-                if key not in cell_data: cell_data[key] = []
-                cell_data[key].append(val)
-
-            # Store solution for each time-step:
-            mesh = meshio.Mesh(
-                Mesh.points,
-                Mesh.cells,
-                cell_data=cell_data)
-            meshio.write("{:s}/solution_fault{:d}.vtk".format(output_directory, ith_step), mesh)
-
-        # Faces
-        Mesh.cells = []
-        cell_data = {}
-        self.face_cells = {'quad': [], 'triangle': []}
-        self.faces_conn_ids = {'quad': [], 'triangle': []}
-        self.faces_flux_mults = {'quad': [], 'triangle': []}
-        conn_id = 0
-        for cell_m in range(self.unstr_discr.mat_cells_tot):
-            face_id = 0
-            while conn_id < len(self.mesh.block_m) and self.mesh.block_m[conn_id] == cell_m:
-                cell_p = self.mesh.block_p[conn_id]
-                # avoid connections to wells
-                if cell_p >= self.mesh.n_res_blocks and cell_p < self.mesh.n_blocks:
-                    conn_id += 1
-                    continue
-
-                face = self.unstr_discr.faces[cell_m][face_id]
-                assert(face.cell_id2 == cell_p or face.face_id2 + self.mesh.n_blocks == cell_p)
-
-                if face.n_pts == 4:
-                    tag = 'quad'
-                elif face.n_pts == 3:
-                    tag = 'triangle'
-                else:
-                    tag = 'none'
-
-                self.face_cells[tag].append(face.pts_id)
-                self.faces_conn_ids[tag].append(conn_id)
-                self.faces_flux_mults[tag].append(face.area)
-                face_id += 1
-                conn_id += 1
-
-        for geom in available_fracture_geometries:
-            self.faces_conn_ids[geom] = np.array(self.faces_conn_ids[geom], dtype=np.intp)
-            self.faces_flux_mults[geom] = np.array(self.faces_flux_mults[geom])
-
-
-        n_fluxes = 4
-        nd = 3
-        for geom in available_fracture_geometries:
-            if len(self.face_cells[geom]):
-                Mesh.cells.append(meshio.CellBlock(geom, data=np.array(self.face_cells[geom])))
-
-                if 'effective_traction' not in cell_data: cell_data['effective_traction'] = []
-                if 'total_traction' not in cell_data: cell_data['total_traction'] = []
-                if 'flux' not in cell_data: cell_data['flux'] = []
-
-                fluxes = np.array(physics.engine.fluxes, copy=False)
-                fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-
-                cell_data['total_traction'].append(np.zeros((len(self.face_cells[geom]), nd)))
-                cell_data['effective_traction'].append(np.zeros((len(self.face_cells[geom]), nd)))
-
-                cell_data['total_traction'][-1][:,0] = (fluxes[n_fluxes * self.faces_conn_ids[geom]] +
-                                                        fluxes_biot[n_fluxes * self.faces_conn_ids[geom]]) / self.faces_flux_mults[geom]
-                cell_data['total_traction'][-1][:,1] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 1] +
-                                                        fluxes_biot[n_fluxes * self.faces_conn_ids[geom] + 1]) / self.faces_flux_mults[geom]
-                cell_data['total_traction'][-1][:,2] = (fluxes[n_fluxes * self.faces_conn_ids[geom] + 2] +
-                                                        fluxes_biot[n_fluxes * self.faces_conn_ids[geom] + 2]) / self.faces_flux_mults[geom]
-
-                cell_data['effective_traction'][-1][:,0] = fluxes[n_fluxes * self.faces_conn_ids[geom]] / self.faces_flux_mults[geom]
-                cell_data['effective_traction'][-1][:,1] = fluxes[n_fluxes * self.faces_conn_ids[geom] + 1] / self.faces_flux_mults[geom]
-                cell_data['effective_traction'][-1][:,2] = fluxes[n_fluxes * self.faces_conn_ids[geom] + 2] / self.faces_flux_mults[geom]
-
-                cell_data['flux'].append(fluxes[n_fluxes * self.faces_conn_ids[geom] + n_fluxes - 1] / self.faces_flux_mults[geom])
-
-
-
-        mesh = meshio.Mesh(
-            Mesh.points,
-            Mesh.cells,
-            cell_data=cell_data)
-        meshio.write("{:s}/solution_faces{:d}.vtk".format(output_directory, ith_step), mesh)
-
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
-        return 0
-
     # Analytics
     def get_vertical_displacement_north_mandel(self, t):
         # Parameters
@@ -1383,11 +1155,11 @@ class UnstructReservoir:
         nu_s = self.nu
         nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
         mu_s = self.mu
-        mu_f = self.pm.visc
+        mu_f = self.fluid_viscosity
         k_s = self.permx / self.fluid_viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
-        a = np.max(self.unstr_discr.mesh_data.points[:, 0])
-        b = np.max(self.unstr_discr.mesh_data.points[:, 1])
+        a = np.max(self.mesh_data.points, axis=0)[0]
+        b = np.max(self.mesh_data.points, axis=0)[1]
 
         # Calculate constants
         aa_n = self.approximate_roots()[:, np.newaxis]

@@ -1339,9 +1339,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time)
+int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	int converged = 0;
 	char buffer[1024];
 	double well_tolerance_coefficient = 1e2;
 
@@ -1363,7 +1362,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 	}
 	else
 	{
-		converged = 1;
+		converged *= 1;
 	}
 
 	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
@@ -1967,9 +1966,3 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //	}
 //	return residual;
 //}
-
-//template class engine_super_elastic_cpu<2, 2, 0>;
-//template class engine_super_elastic_cpu<2, 2, 1>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 1>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 2>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 3>;

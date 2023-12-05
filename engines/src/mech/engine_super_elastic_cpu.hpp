@@ -54,8 +54,8 @@ public:
   // dimension of state space
   const static uint8_t N_STATE = NC_ + THERMAL;
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity, NP saturations
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*saturations*/ + 1;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -118,7 +118,7 @@ public:
   int solve_linear_equation();
   //void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
   int run_single_newton_iteration(value_t deltat);
-  int post_newtonloop(value_t deltat, value_t time);
+  int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
   /// @brief vector of variables in the current timestep provided for operator evaluation
   std::vector<value_t> Xop;
