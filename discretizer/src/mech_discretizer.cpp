@@ -102,10 +102,14 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   Matrix C1(ND * ND, ND * ND), C2(ND * ND, ND * ND), T1(ND, ND), G1(ND, ND * ND), mat_diff1(1, ND), mat_diff2(1, ND);
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
   Matrix mult_p(ND, 1), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND), An(ND, ND), At(ND, ND), L(ND, ND), y1(ND, 1), c1_mat(ND, 1);
+  Matrix mult_thermal(ND, 1);
+  value_t A_thermal;
+  Matrix tmp_thermal(ND, 1);
   Matrix to_invert(ND * ND, ND * ND);
   value_t buf1, buf2, Ap, gamma, r1, lam1, lam2;
   value_t lam1_thermal, lam2_thermal;
   index_t n_cur_faces, loop_face_id, face_id, conn_id, id1, id2, cur_cell_id;
+  LinearApproximation<Tvar>* g1_thermal;
   bool res;
 
   // allocate memory for arrays
@@ -348,7 +352,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 		const auto& ap = bc_thm.flow.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
-
+		const auto& a_thermal = bc_thm.thermal.a[conn.elem_id2 - mesh->n_cells];
+		const auto& b_thermal = bc_thm.thermal.b[conn.elem_id2 - mesh->n_cells];
 		
 		// Skip if pure neumann
 		if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
@@ -378,6 +383,14 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		lam1 = (n.transpose() * K1n).values[0];
 		gam1 = K1n - lam1 * n;
 
+		if constexpr (MODE == THERMOPOROELASTIC)
+		{
+			A1n = th_exps[cell_id1] * n;
+			C1n = heat_conductions[cell_id1] * n; //TODO check units
+			lam1_thermal = (n.transpose() * C1n).values[0]; // scalar lambda
+			gam1_thermal = C1n - lam1_thermal * n; // bold lambda
+		}
+
 		// Stiffness decomposition
 		C1 = W * stfs[cell_id1] * W.transpose();
 		nblock = make_block_diagonal(n, ND);
@@ -401,6 +414,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		gamma_nnt_mult = gamma_nnt * (bn * I3 - bt * L);
 		mult_p = (bt * I3 + gamma_nnt_mult) * B1n;
 
+		if constexpr (MODE == THERMOPOROELASTIC)
+		{
+			mult_thermal = (bt * I3 + gamma_nnt_mult) * A1n;
+			A_thermal = 1.0 / (a_thermal + b_thermal / r1 * lam1_thermal);
+		}
+
 		// filling matrix
 		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (at * make_block_diagonal((conn_c - c1_mat).transpose(), ND) +
 			bt * nblock_t * C1 + gamma_nnt_mult * (G1 + T1 / r1 * make_block_diagonal((y1 - conn_c).transpose(), ND))).values;
@@ -410,8 +429,10 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		if (res1.first) { id1 = res1.second; }
 		else { id1 = st.size(); st.push_back(cell_id1); }
 
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += (gamma_nnt_mult * T1 / r1 - at * I3).values;
-		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (Ap * bp * lam1 / r1 * mult_p).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1, { ND, ND }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt_mult * T1 / r1 - at * I3).values;
+		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (Ap * bp * lam1 / r1 * mult_p).values;
+		if constexpr (MODE == THERMOPOROELASTIC)
+			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (A_thermal * b_thermal * lam1_thermal / r1 * mult_thermal).values;
 
 		res2 = findInVector(st, cell_id2);
 		if (res2.first) { id2 = res2.second; }
@@ -419,10 +440,16 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) = (gamma_nnt + (I3 - gamma_nnt * L) * P).values;
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_p * Ap).values;
-
+		if constexpr (MODE == THERMOPOROELASTIC)
+		  rhs_mult(ND* face_id* rhs_mult.N + n_unknowns * id2 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) = (mult_thermal * A_thermal).values;
 		// pressure gradient
 		tmp.values = ((-Ap * bp) * (lam1 / r1 * (y1 - conn_c) + gam1).transpose() * P).values;
 		const auto& g1 = p_grads[cell_id1];
+
+		if constexpr (MODE == THERMOPOROELASTIC) {
+			tmp_thermal.values = ((-A_thermal * b_thermal) * (lam1_thermal / r1 * (y1 - conn_c) + gam1_thermal).transpose() * P).values;
+			g1_thermal = &t_grads[cell_id1];
+		}
 		for (index_t k = 0; k < g1.stencil.size(); k++)
 		{
 		  cur_cell_id = g1.stencil[k];
@@ -433,11 +460,24 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 				  tmp.values[1] * g1.a(1, k) +
 					tmp.values[2] * g1.a(2, k);
 		  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (buf1 * mult_p).values;
+		  if constexpr (MODE == THERMOPOROELASTIC) {
+			  buf2 = tmp_thermal.values[0] * g1_thermal->a(0, k) +
+				  tmp_thermal.values[1] * g1_thermal->a(1, k) +
+				  tmp_thermal.values[2] * g1_thermal->a(2, k);
+			  rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += (buf2 * mult_thermal).values;
+		  }
 		}
 		buf1 = tmp.values[0] * g1.rhs(0, 0) +
 				tmp.values[1] * g1.rhs(1, 0) +
 				  tmp.values[2] * g1.rhs(2, 0);
 		rest(ND * face_id, { ND }, { 1 }) += (buf1 * mult_p).values;
+
+		if constexpr (MODE == THERMOPOROELASTIC) {
+			buf2 = tmp_thermal.values[0] * g1_thermal->rhs(0, 0) +
+				tmp_thermal.values[1] * g1_thermal->rhs(1, 0) +
+				tmp_thermal.values[2] * g1_thermal->rhs(2, 0);
+			rest(ND * face_id, { ND }, { 1 }) += (buf2 * mult_thermal).values;
+		}
 
 		rest(ND * face_id, { ND }, { 1 }) = (mult_p * Ap * bp * (grav_vec * K1n).values[0]).values;
 
