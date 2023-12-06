@@ -288,7 +288,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 				C1n = heat_conductions[cell_id1] * n; //TODO check units
 				C2n = heat_conductions[cell_id2] * n;
 				lam2_thermal = (n.transpose() * C2n).values[0]; // scalar lambda
-				gam2_thermal = C2n - lam2 * n; // bold lambda
+				gam2_thermal = C2n - lam2_thermal * n; // bold lambda
 			}
 
 			mat_diff1.values = std::valarray<value_t>((conn.c - c1).values.data(), ND);      // x_beta - x_1
