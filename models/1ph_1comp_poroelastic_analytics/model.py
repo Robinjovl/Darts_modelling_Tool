@@ -10,17 +10,19 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 
 class Model(DartsModel):
-    def __init__(self, n_points=64, case='mandel', scheme='non_stabilized', discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, n_points=64, case='mandel', discretizer='new_discretizer', mesh='rect'):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
         self.physics_type = 'poromechanics'
         self.case = case
 
-        self.reservoir = UnstructReservoir(timer=self.timer, case=case, scheme=scheme, discretizer=discretizer, mesh=mesh)
+        self.reservoir = UnstructReservoir(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
-        self.reservoir.P_VAR = self.engine.P_VAR # TODO
+        self.reservoir.P_VAR = self.engine.P_VAR
+        self.reservoir.U_VAR = self.engine.U_VAR
+        self.reservoir.T_VAR = self.engine.T_VAR
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.tolerance_linear = 1e-10 # Tolerance for linear solver ||Ax - b||<tol_linslv
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)

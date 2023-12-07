@@ -355,5 +355,5 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-run(case='mandel', mesh='rect')
+run(case='terzaghi', mesh='rect')
 
