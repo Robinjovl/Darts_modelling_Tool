@@ -2,12 +2,15 @@ from reservoir import UnstructReservoir
 import numpy as np
 import os
 
-def compare(x, y, name, rel_tol=1e-8, abs_tol=1e-8):
-    close = np.isclose(x, y, rtol=rel_tol, atol=abs_tol).all()
+def compare(x_1, x_2, name_1, name_2, rel_tol=1e-8, abs_tol=1e-8):
+    eps = 1e-12
+    close = np.isclose(x_1, x_2, rtol=rel_tol, atol=abs_tol).all()
     if not close:
-        print('Arrays ', name, ' differs! ')
-        print('    1:', x[:5])
-        print('    2:', y[:5])
+        print('Arrays ', name_1, ' and ', name_2, ' differ! ')
+        print('   ', name_1, ': ', x_1)
+        print('   ', name_2, ': ', x_2)
+        print('    abs.diff:', np.fabs(x_1 - x_2))
+        print('    rel.diff:', np.fabs((x_1 - x_2) / (np.maximum(x_1, x_2) + eps)))
         return 1
     return 0
 
@@ -16,20 +19,26 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=
     pm_reservoir = UnstructReservoir(discretizer='pm_discretizer', mesh=mesh)
     new_reservoir = UnstructReservoir(discretizer='new_discretizer', mesh=mesh, thermal=thermal)
 
-    # # check gradients
+    # check gradients
+    diff_grad_flag = 0
     for i in range(pm_reservoir.unstr_discr.mat_cells_tot):
         new_grad = new_reservoir.get_gradients_new_discretizer(i)
         x = np.append(np.array(new_reservoir.discr_mesh.centroids[i].values, copy=False), 0.0)
         true_grad = new_reservoir.nabla_ref1(x)[:,:n_dim].flatten()
-        assert np.isclose(new_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
+        diff_grad_flag += compare(new_grad, true_grad, 'new_grad', 'true_grad')
         if not thermal:
             old_grad = pm_reservoir.get_gradients_pm_discretizer(i)
-            assert np.isclose(old_grad, true_grad, rtol=rel_tol, atol=abs_tol).all()
+            diff_grad_flag += compare(old_grad, true_grad, 'old_grad', 'true_grad')
+        if diff_grad_flag:
+            return 1
 
+    if not diff_grad_flag:
+        print('OK: gradients, ' + mesh)
+    else:
+        print('ERR: gradients, ' + mesh)
 
-    print('OK: gradients, ' + mesh)
-
-    # # check fluxes
+    # check fluxes
+    diff_fluxes_flag = 0
     # old approximations
     old_cell_m = np.array(pm_reservoir.pm.cell_m, copy=False)
     old_cell_p = np.array(pm_reservoir.pm.cell_p, copy=False)
@@ -69,29 +78,38 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=
         else:
             hooke_new, biot_new, darcy_new, vol_strain_new = new_fluxes
         # check Hooke's (effective) traction
-        assert np.isclose(hooke_old, hooke_an, rtol=rel_tol, atol=abs_tol).all()
-        assert np.isclose(hooke_new, hooke_an, rtol=rel_tol, atol=abs_tol).all()
+        diff_fluxes_flag += compare(hooke_old, hooke_an, 'hooke_old', 'hooke_an')
+        diff_fluxes_flag += compare(hooke_new, hooke_an, 'hooke_new', 'hooke_an')
         # check Biot's term in traction
-        assert np.isclose(biot_old, biot_an, rtol=rel_tol, atol=abs_tol).all()
-        assert np.isclose(biot_new, biot_an, rtol=rel_tol, atol=abs_tol).all()
+        diff_fluxes_flag += compare(biot_old, biot_an, 'biot_old', 'biot_an')
+        diff_fluxes_flag += compare(biot_new, biot_an, 'biot_new', 'biot_an')
         # check Darcy fluxes
-        assert np.isclose(darcy_old, darcy_an, rtol=rel_tol, atol=abs_tol).all()
-        assert np.isclose(darcy_new, darcy_an, rtol=rel_tol, atol=abs_tol).all()
+        diff_fluxes_flag += compare(darcy_old, darcy_an, 'darcy_old', 'darcy_an')
+        diff_fluxes_flag += compare(darcy_new, darcy_an, 'darcy_new', 'darcy_an')
         # check Biot's term (~ volumetric strains) in fluid fluxes
-        assert np.isclose(vol_strain_old, vol_strain_an, rtol=rel_tol, atol=abs_tol).all()
-        assert np.isclose(vol_strain_new, vol_strain_an, rtol=rel_tol, atol=abs_tol).all()
+        diff_fluxes_flag += compare(vol_strain_old, vol_strain_an, 'vol_strain_old', 'vol_strain_an')
+        diff_fluxes_flag += compare(vol_strain_new, vol_strain_an, 'vol_strain_new', 'vol_strain_an')
         #TODO check Fick's term
-
         # check Fourier's term (only with analytic)
-        assert np.isclose(fourier_new, fourier_an, rtol=rel_tol, atol=abs_tol).all()
+        diff_fluxes_flag += compare(fourier_new, fourier_an, 'fourier_new', 'fourier_an')
         # check Thermal term (only with analytic)
-        assert np.isclose(thermal_new, thermal_an, rtol=rel_tol, atol=abs_tol).all()
-    
-    print('OK: fluxes, ' + mesh)
+        diff_fluxes_flag += compare(thermal_new, thermal_an, 'thermal_new', 'thermal_an')
+        if diff_fluxes_flag:
+            return 1
 
+    if not diff_fluxes_flag:
+        print('OK: fluxes, ' + mesh)
+    else:
+        print('ERR: fluxes, ' + mesh)
+
+    if diff_grad_flag or diff_fluxes_flag:
+        return 1
+    return 0
 
 #test_compare_discretizers(mesh='rect', abs_tol=1e-8, rel_tol=1e-8)
 #test_compare_discretizers(mesh='tetra', abs_tol=1e-8, rel_tol=1e-8)
+r = 0
+r += test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
+r += test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)
 
-test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
-test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)
+exit(r)
