@@ -295,9 +295,14 @@ namespace dis
 	void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
 	  
 	/**
-	  * @brief Calculates the approximations of tractions at all interfaces in computational grid
+	  * @brief Calculates the approximations of fluxes at all interfaces in computational grid
 	  */
-	void calc_mpfa_mpsa_transmissibilities();
+	void calc_interface_approximations();
+	
+	/**
+	  * @brief Calculates the approximations of stress tensor at cells' centers
+	*/
+	void calc_cell_centered_stress_approximations();
   };
 }
 

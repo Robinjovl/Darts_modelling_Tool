@@ -479,7 +479,7 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
+void MechDiscretizer<MODE>::calc_interface_approximations()
 {
   // clear previous approximations
   cell_m.clear();				cell_p.clear();
@@ -804,6 +804,12 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   flux.biot_traction.a(id2, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (Ap * coef * mult_p).values;
   flux.vol_strain.a(n_unknowns * id2, { ND }, { 1 }) += (mult_p.transpose() * At * (gamma_nnt + (I3 - gamma_nnt * L) * P)).values;
   flux.vol_strain.a(0, n_unknowns * id2 + ND) += Ap * (mult_p.transpose() * (mult_u * mult_p)).values[0];
+}
+
+template <MechDiscretizerMode MODE>
+void MechDiscretizer<MODE>::calc_cell_centered_stress_approximations()
+{
+
 }
 
 template class MechDiscretizer<POROELASTIC>;

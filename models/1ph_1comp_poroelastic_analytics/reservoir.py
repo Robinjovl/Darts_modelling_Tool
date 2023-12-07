@@ -335,7 +335,7 @@ class UnstructReservoir:
         self.timer.node["discretization"].start()
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_mpfa_mpsa_transmissibilities()
+        self.discr.calc_interface_approximations()
         self.timer.node["discretization"].stop()
 
         MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3

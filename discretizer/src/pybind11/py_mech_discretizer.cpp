@@ -41,7 +41,8 @@ struct mech_discretizer_exposer
 	  .def_readwrite("neumann_boundaries_grad_reconstruction", &MechDiscretizer<MODE>::NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION)
 	  .def_readwrite("gradients_extended_stencil", &MechDiscretizer<MODE>::GRADIENTS_EXTENDED_STENCIL)
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
-	  .def("calc_mpfa_mpsa_transmissibilities", &MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities)
+	  .def("calc_interface_approximations", &MechDiscretizer<MODE>::calc_interface_approximations)
+	  .def("calc_cell_centered_stress_approximations", &MechDiscretizer<MODE>::calc_cell_centered_stress_approximations)
 	  ;
   }
 };

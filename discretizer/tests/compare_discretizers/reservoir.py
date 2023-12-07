@@ -187,7 +187,7 @@ class UnstructReservoir:
         # gradient reconstruction
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_mpfa_mpsa_transmissibilities()
+        self.discr.calc_interface_approximations()
 
     # old discretizer
     def unit_cube_pm_discretizer(self):
