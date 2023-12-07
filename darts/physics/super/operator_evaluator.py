@@ -193,7 +193,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         ne = nc + self.thermal
 
         #       al + bt        + gm + dlt + chi     + rock_temp por    + gr/cap  + por
-        total = ne + ne * nph + nph + ne + ne * nph + 3 + 3 * nph + 1
+        total = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
 
         for i in range(total):
             values[i] = 0
@@ -202,7 +202,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         self.ph, self.sat, self.x, rho, self.rho_m, self.mu, self.kr, pc, mass_source = self.property.evaluate(
             state)
 
-        self.compr = self.property.rock_compr_ev.evaluate(pressure)
+        # self.compr = self.property.rock_compr_ev.evaluate(pressure)
 
         density_tot = np.sum(self.sat * self.rho_m)
         zc = np.append(vec_state_as_np[1:nc], 1 - np.sum(vec_state_as_np[1:nc]))
@@ -212,7 +212,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
         """ Alpha operator represents accumulation term """
         for i in range(nc_fl):
-            values[i] = self.compr * density_tot * zc[i]
+            values[i] = density_tot * zc[i]
 
         """ and alpha for mineral components """
         for i in range(nm):
@@ -227,7 +227,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         shift = ne + ne * nph
         for j in self.ph:
-            values[shift + j] = self.compr * self.sat[j]
+            values[shift + j] = self.sat[j]
 
         """ Chi operator for diffusion """
         shift += nph
@@ -251,11 +251,6 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
             values[shift + 3 + nph + i] = pc[i]
         # E5_> porosity
         values[shift + 3 + 2 * nph] = phi
-
-        shift += 4 + 2 * nph
-        # saturations
-        for j in self.ph:
-            values[shift + j] = self.sat[j]
 
         # print(state, values)
         # self.print_operators(state, values)

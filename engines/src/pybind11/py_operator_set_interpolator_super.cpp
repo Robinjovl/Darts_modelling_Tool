@@ -54,10 +54,10 @@ void pybind_operator_set_interpolator_super(py::module &m)
     ABPair<4, 4>,     // geothermal problem, three phases
 
     /*  engine_super_elastic_*
-        N_OPS = NC * (2 * NP + 2) + 4 * NP + 4
+        N_OPS = NC * (2 * NP + 2) + 3 * NP + 4
     */
 
-    // NP = 1: A =  4, B =  8 (th)
+    // NP = 1: A =  4, B =  7 (th)
     ABPair<4, 8>     // isothermal poroelasticity, single-phase
   >(m);
 }
