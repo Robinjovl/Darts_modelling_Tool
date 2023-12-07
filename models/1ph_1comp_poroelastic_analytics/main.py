@@ -103,14 +103,21 @@ def run_timestep_python(m, dt, t):
            and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
               or self.e.n_newton_last_dt == self.params.max_i_newton):
             if (i > 0):  # min_i_newton
+                if i < max_newt:
+                    converged = 1
+                else:
+                    converged = 0
                 break
 
         r_code = self.e.solve_linear_equation()
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
+        if i < max_newt:
+            converged = 1
+
     # End of newton loop
-    converged = self.e.post_newtonloop(dt, t, 1)
+    converged = self.e.post_newtonloop(dt, t, converged)
     self.timer.node['simulation'].stop()
     return converged
 def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):

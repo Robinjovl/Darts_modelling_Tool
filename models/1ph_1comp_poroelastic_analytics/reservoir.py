@@ -157,7 +157,7 @@ class UnstructReservoir:
         self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
         self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
         self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(0.0)}
+        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(v_north)}
         self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
         self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
