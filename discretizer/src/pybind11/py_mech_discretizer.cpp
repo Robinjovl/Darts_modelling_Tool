@@ -6,7 +6,6 @@ using dis::Matrix33;
 using dis::Discretizer;
 using dis::MechDiscretizer;
 using dis::MechDiscretizerMode;
-using dis::GenericBoundaryCondition;
 using dis::THMBoundaryCondition;
 using dis::Stiffness;
 
@@ -101,21 +100,11 @@ void pybind_mech_discretizer(py::module& m)
 		return p;
 	  }));
 
-  // expose the rest
-
-	py::class_<GenericBoundaryCondition>(m, "GenericBoundaryCondition", py::module_local())
-		.def(py::init<>())
-
-		.def_readwrite("a", &GenericBoundaryCondition::a)
-		.def_readwrite("b", &GenericBoundaryCondition::b)
-		;
-
   py::class_<THMBoundaryCondition>(m, "THMBoundaryCondition", py::module_local())
 	.def(py::init<>())
-
 	.def_readwrite("mech_normal", &THMBoundaryCondition::mech_normal)
 	.def_readwrite("mech_tangen", &THMBoundaryCondition::mech_tangen)
-  .def_readwrite("flow", &THMBoundaryCondition::flow)
+	.def_readwrite("flow", &THMBoundaryCondition::flow)
 	.def_readwrite("thermal", &THMBoundaryCondition::thermal)
 	;
 

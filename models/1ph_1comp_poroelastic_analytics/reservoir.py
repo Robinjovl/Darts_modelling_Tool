@@ -327,8 +327,8 @@ class UnstructReservoir:
         # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
         # which doesn't know the new THMBoundaryCondition class yet
         self.cpp_flow = BoundaryCondition()
-        self.cpp_flow.a_p = value_vector(ap)
-        self.cpp_flow.b_p = value_vector(bp)
+        self.cpp_flow.a = value_vector(ap)
+        self.cpp_flow.b = value_vector(bp)
 
         # Discretization
         self.timer.node["discretization"] = timer_node()

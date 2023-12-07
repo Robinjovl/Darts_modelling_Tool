@@ -181,8 +181,8 @@ class UnstructReservoir:
         self.cpp_bc.mech_tangen.b = value_vector(bt)
 
         self.cpp_flow = BoundaryCondition()
-        self.cpp_flow.a_p = value_vector(ap)
-        self.cpp_flow.b_p = value_vector(bp)
+        self.cpp_flow.a = value_vector(ap)
+        self.cpp_flow.b = value_vector(bp)
 
         # gradient reconstruction
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)

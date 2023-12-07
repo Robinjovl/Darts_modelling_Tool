@@ -286,7 +286,7 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags& tags)
 #endif //DEBUG_TRANS
 }
 
-void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryCondition& bc)
+void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryCondition& _bc)
 {
 	// allocate memory for arrays
 	p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
@@ -294,7 +294,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 	steady_clock::time_point t1, t2;
 	t1 = steady_clock::now();
 
-	bc_flow = bc;
+	bc_flow = _bc;
 
 	// viscosity should be provided from outside
 	const value_t mu = 1.0;
@@ -390,8 +390,8 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					//TODO Implement other BC
 
 					// Coefficients that define boundary condition
-					const auto& alpha = bc.a_p[conn.elem_id2 - mesh->n_cells];
-					const auto& beta = bc.b_p[conn.elem_id2 - mesh->n_cells];
+					const auto& alpha = bc_flow.a[conn.elem_id2 - mesh->n_cells];
+					const auto& beta = bc_flow.b[conn.elem_id2 - mesh->n_cells];
 
 					temp = beta / mu * matrix_vector_product(perms[i], n);
 
@@ -651,7 +651,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 	cout << "Reconstruction of gradients:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
 
-void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& bc)
+void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& _bc_flow, const BoundaryCondition& _bc_heat)
 {
   // allocate memory for arrays
   p_grads.resize(mesh->n_cells, LinearApproximation<Pvar>(ND, MAX_STENCIL));
@@ -660,7 +660,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
   steady_clock::time_point t1, t2;
   t1 = steady_clock::now();
 
-  bc_flow = bc;
+  bc_flow = _bc_flow;
+  bc_heat = _bc_heat;
 
   // viscosity should be provided from outside
   const value_t mu = 1.0;
@@ -787,8 +788,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 
 		  //// fluid flux constraint
 		  // Coefficients that define pressure boundary condition
-		  const auto& alpha_p = bc.a_p[conn.elem_id2 - mesh->n_cells];
-		  const auto& beta_p = bc.b_p[conn.elem_id2 - mesh->n_cells];
+		  const auto& alpha_p = bc_flow.a[conn.elem_id2 - mesh->n_cells];
+		  const auto& beta_p = bc_flow.b[conn.elem_id2 - mesh->n_cells];
 
 		  temp = beta_p / mu * matrix_vector_product(perms[i], n);
 
@@ -820,8 +821,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 
 		  //// heat conduction flux constraint
 		  // Coefficients that define pressure boundary condition
-		  const auto& alpha_th = bc.a_th[conn.elem_id2 - mesh->n_cells];
-		  const auto& beta_th = bc.b_th[conn.elem_id2 - mesh->n_cells];
+		  const auto& alpha_th = bc_heat.a[conn.elem_id2 - mesh->n_cells];
+		  const auto& beta_th = bc_heat.b[conn.elem_id2 - mesh->n_cells];
 
 		  temp = beta_th * matrix_vector_product(heat_conductions[i], n);
 
@@ -1659,8 +1660,8 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	if (dot(conn.c - x1, conn.n) < 0.0) n.values *= -1.0;
 
 	// boundary conditions: a*p + b*f = r 
-	const auto& a = bc_flow.a_p[conn.elem_id2 - mesh->n_cells];
-	const auto& b = bc_flow.b_p[conn.elem_id2 - mesh->n_cells];
+	const auto& a = bc_flow.a[conn.elem_id2 - mesh->n_cells];
+	const auto& b = bc_flow.b[conn.elem_id2 - mesh->n_cells];
 
 	// co-normal decomposition
 	lam1 = (n.transpose() * DARCY_CONSTANT * perms[conn.elem_id1] * n).values[0];
@@ -1699,8 +1700,8 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	if (with_thermal)
 	{
 	  // boundary conditions: a*p + b*f = r 
-	  const auto& a = bc_flow.a_th[conn.elem_id2 - mesh->n_cells];
-	  const auto& b = bc_flow.b_th[conn.elem_id2 - mesh->n_cells];
+	  const auto& a = bc_heat.a[conn.elem_id2 - mesh->n_cells];
+	  const auto& b = bc_heat.b[conn.elem_id2 - mesh->n_cells];
 	  
 	  // co-normal decomposition
 	  lam1 = (n.transpose() * heat_conductions[conn.elem_id1] * n).values[0];
