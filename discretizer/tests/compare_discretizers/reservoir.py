@@ -74,11 +74,13 @@ class UnstructReservoir:
             self.biot_vol_strain_rhs = np.array(self.discr.biot_vol_strain_rhs, copy=False)
             self.darcy_trans = np.array(self.discr.darcy, copy=False)
             self.darcy_rhs = np.array(self.discr.darcy_rhs, copy=False)
-            self.fick_trans = np.array(self.discr.fick, copy=False)
-            self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
-            #if self.thermal:
-            #    self.fick_trans = np.array(self.discr.fick, copy=False)
-            #    self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
+            if self.thermal:
+                self.thermal_traction_trans = np.array(self.discr.thermal_traction, copy=False)
+                self.thermal_traction_rhs = np.array(self.discr.thermal_traction_rhs, copy=False)
+                self.fourier_trans = np.array(self.discr.fourier, copy=False)
+                self.fourier_rhs = np.array(self.discr.fourier_rhs, copy=False)
+                self.fick_trans = np.array(self.discr.fick, copy=False)
+                self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
 
         elif discretizer == 'pm_discretizer':
             self.unit_cube_pm_discretizer()
@@ -353,10 +355,16 @@ class UnstructReservoir:
             dot(grad_an[:self.n_dim, :self.n_dim].flatten()).\
             reshape(self.n_dim, self.n_dim)
         hooke_traction = -hooke_stress.dot(n)
-        biot_traction = sol_an[3] * biot.dot(n)
+        biot_traction = sol_an[3] * biot.dot(n) # sol_an[3] - pressure at the interface
         darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim] - self.fluid_density * self.gravity)
         vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - self.ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
-        return hooke_traction, biot_traction, darcy, vol_strain
+        result = [hooke_traction, biot_traction, darcy, vol_strain]
+        if self.thermal:
+            conduction = np.array(self.conduction).reshape(3, 3)
+            thermal_traction = sol_an[4] * conduction.dot(n) # sol_an[4] - temperature at the interface
+            fourier = -conduction.dot(n).dot(grad_an[self.n_dim + 1, :self.n_dim])
+            result += [thermal_traction, fourier]
+        return result
     # calculate fluxes, old discretizer
     def get_fluxes_pm_discretizer(self, flux_id):
         n_block = 4
@@ -422,10 +430,24 @@ class UnstructReservoir:
         vol_strain_rhs = self.biot_vol_strain_rhs[flux_id]
         vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols])[0] + self.fluid_density * vol_strain_rhs
 
-        return hooke, biot, darcy, vol_strain
+        result = [hooke, biot, darcy, vol_strain]
+        if self.thermal:
+            # thermal_traction
+            thermal_coefs = self.thermal_traction_trans[n_biot * self.offset[flux_id]:
+                            n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
+            thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
+            thermal_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 3]) #+ self.fluid_density * thermal_rhs
+            # Fourier
+            fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
+            fourier_coefs = np.transpose(fourier_coefs, (1, 0, 2)).reshape(1, stencil.size)
+            fourier_rhs = self.fourier_rhs[flux_id]
+            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 3])[0] #+ self.fluid_density * fourier_rhs
+            result += [thermal_traction, fourier]
+        return result
 
 # reference solution
-
+# a linear function of (x,y,z) and time
     def nabla_ref1(self, x):
         if not self.thermal:
             A = np.array([[1, 2, 3, 4],
@@ -433,11 +455,11 @@ class UnstructReservoir:
                           [11, 12, 13, 14],
                           [16, 17, 18, 19]])
         else:
-            A = np.array([[1,   2,  3,  4],
-                          [6,   7,  8,  9],
-                          [11, 12, 13, 14],
-                          [16, 17, 18, 19],
-                          [21, 22, 23, 24]])
+            A = np.array([[1,   2,  3,  4],   # ux
+                          [6,   7,  8,  9],   # uy
+                          [11, 12, 13, 14],   # uz
+                          [16, 17, 18, 19],   # p
+                          [21, 22, 23, 24]])  # temperature
         return A
 
     def nabla_ref1_b(self):

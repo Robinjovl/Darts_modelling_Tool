@@ -41,17 +41,26 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=
         dx = np.array(conn.c.values) - np.array(new_reservoir.discr_mesh.centroids[new_cell_m[id_new]].values)
         sign = 1.0 if dx.dot(n) > 0 else -1.0
         x = np.append(np.array(conn.c.values), 0.0) # coordinates + time
-        x_cell1 = np.append(np.array(new_reservoir.discr_mesh.centroids[new_cell_m[id_new]].values), 0.0) # coordinates + time
+        x_cell1 = np.append(np.array(new_reservoir.discr_mesh.centroids[new_cell_m[id_new]].values), 0.0)  # coordinates + time
         # analytical fluxes
-        hooke_an, biot_an, darcy_an, vol_strain_an = new_reservoir.get_analytical_fluxes(x, sign * n, x_cell1)
+        analytical_fluxes = new_reservoir.get_analytical_fluxes(x, sign * n, x_cell1)
+        if new_reservoir.thermal:
+            hooke_an, biot_an, darcy_an, vol_strain_an, thermal_an, fourier_an = analytical_fluxes
+        else:
+            hooke_an, biot_an, darcy_an, vol_strain_an = analytical_fluxes
         # old fluxes
-        hooke_old, biot_old, darcy_old, vol_strain_old = pm_reservoir.get_fluxes_pm_discretizer(id_old)
-        hooke_old, biot_old, darcy_old, vol_strain_old = hooke_old / conn.area, biot_old / conn.area, \
-                                                         darcy_old / conn.area, vol_strain_old / conn.area
+        old_fluxes = pm_reservoir.get_fluxes_pm_discretizer(id_old)
+        for of in old_fluxes:
+            of /= conn.area
+        hooke_old, biot_old, darcy_old, vol_strain_old = old_fluxes
         # new fluxes
-        hooke_new, biot_new, darcy_new, vol_strain_new = new_reservoir.get_fluxes_new_discretizer(id_new)
-        hooke_new, biot_new, darcy_new, vol_strain_new = hooke_new / conn.area, biot_new / conn.area, \
-                                                         darcy_new / conn.area, vol_strain_new / conn.area
+        new_fluxes = new_reservoir.get_fluxes_new_discretizer(id_new)
+        for nf in new_fluxes:
+            nf /= conn.area
+        if new_reservoir.thermal:
+            hooke_new, biot_new, darcy_new, vol_strain_new, fourier_new, thermal_new = new_fluxes
+        else:
+            hooke_new, biot_new, darcy_new, vol_strain_new = new_fluxes
         # check Hooke's (effective) traction
         assert np.isclose(hooke_old, hooke_an, rtol=rel_tol, atol=abs_tol).all()
         assert np.isclose(hooke_new, hooke_an, rtol=rel_tol, atol=abs_tol).all()
@@ -61,12 +70,16 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=
         # check Darcy fluxes
         assert np.isclose(darcy_old, darcy_an, rtol=rel_tol, atol=abs_tol).all()
         assert np.isclose(darcy_new, darcy_an, rtol=rel_tol, atol=abs_tol).all()
-        # check Biot's term (~ volumentric strains) in fluid fluxes
+        # check Biot's term (~ volumetric strains) in fluid fluxes
         assert np.isclose(vol_strain_old, vol_strain_an, rtol=rel_tol, atol=abs_tol).all()
         assert np.isclose(vol_strain_new, vol_strain_an, rtol=rel_tol, atol=abs_tol).all()
-        # check Fick's term
-        # check Fourier's term
+        #TODO check Fick's term
 
+        # check Fourier's term (only with analytic)
+        assert np.isclose(fourier_new, fourier_an, rtol=rel_tol, atol=abs_tol).all()
+        # check Thermal term (only with analytic)
+        assert np.isclose(thermal_new, thermal_an, rtol=rel_tol, atol=abs_tol).all()
+    
     print('OK: fluxes, ' + mesh)
 
 
