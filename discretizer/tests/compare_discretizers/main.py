@@ -2,7 +2,16 @@ from reservoir import UnstructReservoir
 import numpy as np
 import os
 
-def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=1e-4):
+def compare(x, y, name, rel_tol=1e-8, abs_tol=1e-8):
+    close = np.isclose(x, y, rtol=rel_tol, atol=abs_tol).all()
+    if not close:
+        print('Arrays ', name, ' differs! ')
+        print('    1:', x[:5])
+        print('    2:', y[:5])
+        return 1
+    return 0
+
+def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=1e-8):
     n_dim = 3
     pm_reservoir = UnstructReservoir(discretizer='pm_discretizer', mesh=mesh)
     new_reservoir = UnstructReservoir(discretizer='new_discretizer', mesh=mesh, thermal=thermal)
@@ -49,16 +58,14 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-2, rel_tol=
         else:
             hooke_an, biot_an, darcy_an, vol_strain_an = analytical_fluxes
         # old fluxes
-        old_fluxes = pm_reservoir.get_fluxes_pm_discretizer(id_old)
-        for of in old_fluxes:
-            of /= conn.area
+        old_fluxes_1 = pm_reservoir.get_fluxes_pm_discretizer(id_old)
+        old_fluxes = list(map(lambda xi: xi / conn.area, old_fluxes_1))
         hooke_old, biot_old, darcy_old, vol_strain_old = old_fluxes
         # new fluxes
-        new_fluxes = new_reservoir.get_fluxes_new_discretizer(id_new)
-        for nf in new_fluxes:
-            nf /= conn.area
+        new_fluxes_1 = new_reservoir.get_fluxes_new_discretizer(id_new)
+        new_fluxes = list(map(lambda xi: xi / conn.area, new_fluxes_1))
         if new_reservoir.thermal:
-            hooke_new, biot_new, darcy_new, vol_strain_new, fourier_new, thermal_new = new_fluxes
+            hooke_new, biot_new, darcy_new, vol_strain_new, thermal_new, fourier_new = new_fluxes
         else:
             hooke_new, biot_new, darcy_new, vol_strain_new = new_fluxes
         # check Hooke's (effective) traction

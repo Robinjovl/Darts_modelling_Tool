@@ -437,12 +437,12 @@ class UnstructReservoir:
                             n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
             thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
             thermal_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
-            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 3]) #+ self.fluid_density * thermal_rhs
+            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 3])
             # Fourier
             fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
             fourier_coefs = np.transpose(fourier_coefs, (1, 0, 2)).reshape(1, stencil.size)
             fourier_rhs = self.fourier_rhs[flux_id]
-            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 3])[0] #+ self.fluid_density * fourier_rhs
+            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 3])[0]
             result += [thermal_traction, fourier]
         return result
 
