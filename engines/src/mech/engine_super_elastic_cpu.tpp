@@ -45,6 +45,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   std::fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
   output_counter = 0;
   FIND_EQUILIBRIUM = false;
+  PRINT_LINEAR_SYSTEM = false;
   contact_solver = pm::RETURN_MAPPING;
   geomechanics_mode.resize(mesh_->n_blocks, 0);
 
@@ -871,10 +872,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  value_t grav_pc_der_j[N_VARS - ND];
 			  r_ind = (i * N_OPS + GRAV_OP + p) * N_STATE;
 			  r_ind1 = (j * N_OPS + GRAV_OP + p) * N_STATE;
+			  r_ind2 = (i * N_OPS + PC_OP + p) * N_STATE;
+			  r_ind3 = (j * N_OPS + PC_OP + p) * N_STATE;
 			  for (v = 0; v < NE; v++)
 			  {
-				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * darcy_rhs[conn_id] / 2 - op_ders_arr[r_ind + v];
-				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * darcy_rhs[conn_id] / 2 + op_ders_arr[r_ind1 + v];
+				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * darcy_rhs[conn_id] / 2 - op_ders_arr[r_ind2 + v];
+				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * darcy_rhs[conn_id] / 2 + op_ders_arr[r_ind3 + v];
 			  }
 
 			  for (c = 0; c < NE; c++)
@@ -1301,12 +1304,13 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 	r_code = linear_solver->solve(&RHS[0], &dX[0]);
 	timer->node["linear solver solve"].stop();
 
-	/*if (1) //changed this to write jacobian to file!
+	if (PRINT_LINEAR_SYSTEM) //changed this to write jacobian to file!
 	{
 		static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter++) + ".csr").c_str());
-		//Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter++) + ".csr").c_str());
-		write_vector_to_file("jac_nc_dar.rhs", RHS);
-		write_vector_to_file("jac_nc_dar.sol", dX);
+		//Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+		output_counter++;
 		//apply_newton_update(deltat);
 		//write_vector_to_file("X_nc_dar", X);
 		//write_vector_to_file("Xn_nc_dar", Xn);
@@ -1316,7 +1320,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 		//write_vector_to_file("diff", buf);
 		//exit(0);
 		//return 0;
-	}*/
+	}
 
 	if (r_code)
 	{

@@ -141,7 +141,7 @@ public:
 
   std::vector<value_t> fluxes, fluxes_n, fluxes_biot, fluxes_biot_n, fluxes_ref, fluxes_biot_ref, fluxes_ref_n, fluxes_biot_ref_n;
   std::vector<value_t> Xref, Xn_ref;
-  bool FIND_EQUILIBRIUM;
+  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM;
   std::vector<pm::contact> contacts;
   pm::ContactSolver contact_solver;
   std::vector<index_t> geomechanics_mode;
