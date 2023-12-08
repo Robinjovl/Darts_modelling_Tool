@@ -648,7 +648,7 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities(const bool with_th
 		// assemble approximations
 		auto& flux = mech_fluxes[0];
 		calc_matrix_boundary_mech(conn, flux, conn_id);
-		calc_matrix_boundary(conn, flux.flow, false);
+		calc_matrix_boundary(conn, flux.flow, with_thermal);
 
 		// multiply matrix by area
 		flux.hooke.a.values *= conn.area;
@@ -656,12 +656,16 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities(const bool with_th
 		flux.vol_strain.a.values *= conn.area;
 		flux.flow.darcy.a.values *= sign * conn.area;
 		flux.flow.fick.a.values *= sign * conn.area;
+		flux.flow.fourier.a.values *= sign * conn.area;
+		flux.thermal_traction.a.values *= conn.area;
 		// multiply rhs by area
 		flux.hooke.rhs.values *= conn.area;
 		flux.biot_traction.rhs.values *= conn.area;
 		flux.vol_strain.rhs.values *= conn.area;
 		flux.flow.darcy.rhs.values *= sign * conn.area;
 		flux.flow.fick.rhs.values *= sign * conn.area;
+		flux.flow.fourier.rhs.values *= sign * conn.area;
+		flux.thermal_traction.rhs.values *= conn.area;
 
 		cell_m.push_back(cell_id1);
 		cell_p.push_back(cell_id2);
@@ -812,7 +816,7 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
   Matrix grad_coef(ND, ND * ND), biot_grad_coef(ND, ND);
   Matrix vol_strain_u_grad_coef(1, ND * ND), vol_strain_p_grad_coef(1, ND);
-  Matrix A1n(ND, 1), gam1_thermal(ND, 1), mult_thermal(ND, 1), thermal_grad_coef(ND, ND);
+  Matrix A1n(ND, 1), C1n(ND, 1), gam1_thermal(ND, 1), mult_thermal(ND, 1), thermal_grad_coef(ND, ND);
   value_t lam1_thermal, A_thermal;
   value_t r1, lam1, Ap, gamma;
   index_t id1, id2;
@@ -897,10 +901,10 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   //thermal_traction and fourier
   if constexpr (MODE == THERMOPOROELASTIC)
   {
-	  // Thermal expansion decomposition
-	  A1n = th_exps[cell_id1] * n;
-	  lam1_thermal = (n.transpose() * A1n)(0, 0);
-	  gam1_thermal = A1n - lam1_thermal * n;
+	  // Heat conduction decomposition
+	  C1n = heat_conductions[cell_id1] * n;
+	  lam1_thermal = (n.transpose() * C1n)(0, 0);
+	  gam1_thermal = C1n - lam1_thermal * n;
 	  // Extra 'boundary' stuff
 	  A_thermal = 1.0 / (a_thermal + b_thermal / r1 * lam1_thermal);
 	  mult_thermal = th_exps[cell_id1] * n;

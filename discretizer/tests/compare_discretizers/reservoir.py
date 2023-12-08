@@ -360,8 +360,9 @@ class UnstructReservoir:
         vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - self.ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
         result = [hooke_traction, biot_traction, darcy, vol_strain]
         if self.thermal:
+            therm_expn = np.array(self.therm_expn).reshape(3, 3)
             conduction = np.array(self.conduction).reshape(3, 3)
-            thermal_traction = sol_an[4] * conduction.dot(n) # sol_an[4] - temperature at the interface
+            thermal_traction = sol_an[4] * therm_expn.dot(n) # sol_an[4] - temperature at the interface
             fourier = -conduction.dot(n).dot(grad_an[self.n_dim + 1, :self.n_dim])
             result += [thermal_traction, fourier]
         return result
@@ -436,7 +437,7 @@ class UnstructReservoir:
             thermal_coefs = self.thermal_traction_trans[n_biot * self.offset[flux_id]:
                             n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
             thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
-            thermal_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+            thermal_rhs = self.thermal_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
             thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 4])
             # Fourier
             fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
