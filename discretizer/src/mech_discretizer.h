@@ -235,7 +235,7 @@ namespace dis
 
 	  void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
 
-	  void calc_mpfa_mpsa_transmissibilities();
+	  void calc_mpfa_mpsa_transmissibilities(const bool with_thermal = false);
 
 	  THMBoundaryCondition bc_thm;
     };

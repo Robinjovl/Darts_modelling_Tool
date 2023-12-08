@@ -233,7 +233,7 @@ class UnstructReservoir:
         else:
             self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_mpfa_mpsa_transmissibilities()
+        self.discr.calc_mpfa_mpsa_transmissibilities(self.thermal)
 
     # old discretizer
     def unit_cube_pm_discretizer(self):
@@ -437,12 +437,12 @@ class UnstructReservoir:
                             n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
             thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
             thermal_rhs = self.biot_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
-            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 3])
+            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 4])
             # Fourier
             fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
             fourier_coefs = np.transpose(fourier_coefs, (1, 0, 2)).reshape(1, stencil.size)
             fourier_rhs = self.fourier_rhs[flux_id]
-            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 3])[0]
+            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 4])[0]
             result += [thermal_traction, fourier]
         return result
 

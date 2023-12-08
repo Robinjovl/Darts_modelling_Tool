@@ -553,7 +553,7 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
+void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities(const bool with_thermal)
 {
   // clear previous approximations
   cell_m.clear();				cell_p.clear();
@@ -617,7 +617,7 @@ void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities()
 		// assemble approximations
 		auto& flux = mech_fluxes[0];
 		calc_matrix_matrix_mech(conn, flux, cell_id1, conn_id); //!
-		calc_matrix_matrix(conn, flux.flow, false);
+		calc_matrix_matrix(conn, flux.flow, with_thermal);
 
 		// multiply matrix by area
 		flux.hooke.a.values *= conn.area;		  
