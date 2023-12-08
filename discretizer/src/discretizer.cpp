@@ -845,7 +845,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  A_th(counter, 2) = scale_boundary * (alpha_th * (conn.c.z - x1.z) + temp.z);
 
 		  // update the row on matrix R
-		  R_th(counter, R_p.N - 1) = -scale_boundary * alpha_th;
+		  R_th(counter, R_th.N - 1) = -scale_boundary * alpha_th;
 		  R_th(counter, counter) = scale_boundary;
 
 		  temp_stencil[counter++] = el_id2;
@@ -1649,7 +1649,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 {
 	uint8_t id1, id2;
 	value_t lam1, d1, T1, T;
-	Matrix gam1(ND, 1), y1(ND, 1), grad_coef, n(ND, 1), c2(ND, 1);
+	Matrix K1n(ND, 1), gam1(ND, 1), y1(ND, 1), grad_coef, n(ND, 1), c2(ND, 1);
 	const auto& x1 = mesh->centroids[conn.elem_id1];
 	const auto& x2 = mesh->centroids[conn.elem_id2];
 	const value_t mu = 1.0;
@@ -1664,8 +1664,9 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	const auto& b = bc_flow.b[conn.elem_id2 - mesh->n_cells];
 
 	// co-normal decomposition
-	lam1 = (n.transpose() * DARCY_CONSTANT * perms[conn.elem_id1] * n).values[0];
-	gam1 = DARCY_CONSTANT * perms[conn.elem_id1] * n - lam1 * n;
+	K1n.values = DARCY_CONSTANT * (perms[conn.elem_id1] * n).values;
+	lam1 = (n.transpose() * K1n).values[0];
+	gam1 = K1n - lam1 * n;
 
 	d1 = fabs(dot(conn.c - x1, n));
 	y1.values = { x1.values[0], x1.values[1], x1.values[2] };	y1 += d1 * n;
@@ -1678,7 +1679,7 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 	grad_coef = -mult / mu * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
 	flux.darcy.a = grad_coef * g1.a;
 	flux.darcy.rhs = grad_coef * g1.rhs;
-	flux.darcy.rhs += mult / mu * a * grav_vec * DARCY_CONSTANT * perms[conn.elem_id1] * n;
+	flux.darcy.rhs += mult / mu * a * grav_vec * K1n;
 	flux.darcy.stencil = g1.stencil;
 
 	const auto it1 = std::find(flux.darcy.stencil.begin(), flux.darcy.stencil.end(), conn.elem_id1);
@@ -1699,21 +1700,26 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 
 	if (with_thermal)
 	{
+	  Matrix C1n(ND, 1);
 	  // boundary conditions: a*p + b*f = r 
 	  const auto& a = bc_heat.a[conn.elem_id2 - mesh->n_cells];
 	  const auto& b = bc_heat.b[conn.elem_id2 - mesh->n_cells];
 	  
 	  // co-normal decomposition
-	  lam1 = (n.transpose() * heat_conductions[conn.elem_id1] * n).values[0];
-	  gam1 = heat_conductions[conn.elem_id1] * n - lam1 * n;
+	  C1n.values = (heat_conductions[conn.elem_id1] * n).values;
+	  lam1 = (n.transpose() * C1n).values[0];
+	  gam1 = C1n - lam1 * n;
 
 	  const auto& g1 = t_grads[conn.elem_id1]; 
 
 	  // flux approximation
-	  mult = 1.0 / (a + b * lam1 / mu / d1);
-	  grad_coef = -mult / mu * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
+	  mult = 1.0 / (a + b * lam1 / d1);
+	  grad_coef = -mult * a * (lam1 / d1 * (y1 - c2).transpose() + gam1.transpose());
 	  flux.fourier.a = grad_coef * g1.a;
 	  flux.fourier.stencil = g1.stencil;
+
+	  flux.fourier.a(0, id1) += lam1 / d1 * mult * a;
+	  flux.fourier.a(0, id2) += -lam1 / d1 * mult;
 	}
 }
 

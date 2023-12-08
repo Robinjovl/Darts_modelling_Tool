@@ -21,18 +21,21 @@ import scipy
 from scipy.special import erfc as erfc
 
 import darts.discretizer as dis
-from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
+from darts.discretizer import Mesh, Elem, poro_mech_discretizer, thermoporo_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoir:
-    def __init__(self, discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, discretizer='new_discretizer', mesh='rect', thermal=False):
         self.discretizer_name = discretizer
-        self.n_vars = 4
         self.n_dim = 3
         self.fluid_density = 1000.0
         self.gravity = np.array([0.0, 0.0, -9.81])
-
+        self.thermal = thermal
+        if not self.thermal:
+            self.n_vars = 4
+        else:
+            self.n_vars = 5
         if mesh == 'rect':
             self.mesh_path = 'meshes/unit_trans.msh'
         elif mesh == 'tetra':
@@ -43,6 +46,12 @@ class UnstructReservoir:
                 2,     42,     7,
                 39,    7,      100]
         self.biot = [1,     6,      5,
+                6,     67,     27,
+                5,     27,     76]
+        self.conduction = [25,    2,      39,
+                2,     42,     7,
+                39,    7,      100]
+        self.therm_expn = [1,     6,      5,
                 6,     67,     27,
                 5,     27,     76]
         self.stf =  [93,     46,     22,     13,     72,     35,
@@ -65,8 +74,13 @@ class UnstructReservoir:
             self.biot_vol_strain_rhs = np.array(self.discr.biot_vol_strain_rhs, copy=False)
             self.darcy_trans = np.array(self.discr.darcy, copy=False)
             self.darcy_rhs = np.array(self.discr.darcy_rhs, copy=False)
-            self.fick_trans = np.array(self.discr.fick, copy=False)
-            self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
+            if self.thermal:
+                self.thermal_traction_trans = np.array(self.discr.thermal_traction, copy=False)
+                self.thermal_traction_rhs = np.array(self.discr.thermal_traction_rhs, copy=False)
+                self.fourier_trans = np.array(self.discr.fourier, copy=False)
+                self.fourier_rhs = np.array(self.discr.fourier_rhs, copy=False)
+                self.fick_trans = np.array(self.discr.fick, copy=False)
+                self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
 
         elif discretizer == 'pm_discretizer':
             self.unit_cube_pm_discretizer()
@@ -124,8 +138,19 @@ class UnstructReservoir:
         self.boundary_conditions[995] = { 'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]) }
         self.boundary_conditions[996] = { 'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]) }
 
+        if self.thermal: # no heat flux boundary condition
+            self.boundary_conditions[991]['heat'] = AQUIFER(0)
+            self.boundary_conditions[992]['heat'] = AQUIFER(0)
+            self.boundary_conditions[993]['heat'] = AQUIFER(0)
+            self.boundary_conditions[994]['heat'] = AQUIFER(0)
+            self.boundary_conditions[995]['heat'] = AQUIFER(0)
+            self.boundary_conditions[996]['heat'] = AQUIFER(0)
+
         # initialize poromechanics discretizer
-        self.discr = poro_mech_discretizer()
+        if self.thermal:
+            self.discr = thermoporo_mech_discretizer()
+        else:
+            self.discr = poro_mech_discretizer()
         self.discr.grav_vec = matrix(list(self.gravity), 1, 3)  # 0.0??
         self.tags = np.array(self.discr_mesh.tags, copy=False)
         self.discr.set_mesh(self.discr_mesh)
@@ -144,50 +169,72 @@ class UnstructReservoir:
             self.discr.perms.append(disc_matrix33(self.perm))
             self.discr.biots.append(disc_matrix33(self.biot))
             self.discr.stfs.append(disc_stiffness(self.stf))
-            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = \
-                ref1(np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.0))
+            x = np.append(np.array(self.discr_mesh.centroids[cell_id].values), 0.)
+            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = self.ref1(x)
+            if self.thermal:
+                self.discr.heat_conductions.append(disc_matrix33(self.conduction))
+                self.discr.thermal_expansions.append(disc_matrix33(self.therm_expn))
 
         ap = np.ones(self.n_bounds)
         bp = np.zeros(self.n_bounds)
-        an = np.ones(self.n_bounds)
-        bn = np.zeros(self.n_bounds)
-        at = np.ones(self.n_bounds)
-        bt = np.zeros(self.n_bounds)
+        amn = np.ones(self.n_bounds)
+        bmn = np.zeros(self.n_bounds)
+        amt = np.ones(self.n_bounds)
+        bmt = np.zeros(self.n_bounds)
+        if self.thermal:
+            at = np.ones(self.n_bounds)
+            bt = np.zeros(self.n_bounds)
 
         # right-hand side of boundary conditions
         for i, bound_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0],
                                            self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1])):
             c = np.array(self.discr_mesh.centroids[bound_id].values, copy=False)
-            bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
-            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = ref1(np.append(c, 0.0))
+            #bc = self.boundary_conditions[self.discr_mesh.tags[bound_id]]
+            x = np.append(c, 0.0)
+            self.solution[self.n_vars * bound_id: self.n_vars * (bound_id + 1)] = self.ref1(x)
+
         # specify boundary conditions, loop over tags for speedup
         for tag in domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
             ap[ids] = bc['flow']['a']
             bp[ids] = bc['flow']['b']
-            an[ids] = bc['mech']['an']
-            bn[ids] = bc['mech']['bn']
-            at[ids] = bc['mech']['at']
-            bt[ids] = bc['mech']['bt']
+            amn[ids] = bc['mech']['an']
+            bmn[ids] = bc['mech']['bn']
+            amt[ids] = bc['mech']['at']
+            bmt[ids] = bc['mech']['bt']
+            if self.thermal:
+                at[ids] = bc['heat']['a']
+                bt[ids] = bc['heat']['b']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
         self.cpp_bc.flow.b = value_vector(bp)
 
-        self.cpp_bc.mech_normal.a = value_vector(an)
-        self.cpp_bc.mech_normal.b = value_vector(bn)
-        self.cpp_bc.mech_tangen.a = value_vector(at)
-        self.cpp_bc.mech_tangen.b = value_vector(bt)
+        if self.thermal:
+            self.cpp_bc.thermal.a = value_vector(at)
+            self.cpp_bc.thermal.b = value_vector(bt)
+
+        self.cpp_bc.mech_normal.a = value_vector(amn)
+        self.cpp_bc.mech_normal.b = value_vector(bmn)
+        self.cpp_bc.mech_tangen.a = value_vector(amt)
+        self.cpp_bc.mech_tangen.b = value_vector(bmt)
 
         self.cpp_flow = BoundaryCondition()
         self.cpp_flow.a = value_vector(ap)
         self.cpp_flow.b = value_vector(bp)
+        if self.thermal:
+            self.cpp_heat = BoundaryCondition()
+            self.cpp_heat.a = value_vector(at)
+            self.cpp_heat.b = value_vector(bt)
 
         # gradient reconstruction
-        self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
+        if self.thermal:
+            self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
+        else:
+            self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_interface_approximations()
+        self.discr.calc_interface_approximations(self.thermal)
 
     # old discretizer
     def unit_cube_pm_discretizer(self):
@@ -241,7 +288,7 @@ class UnstructReservoir:
             self.pm.perms.append(engine_matrix33(self.perm))
             self.pm.biots.append(engine_matrix33(self.biot))
             self.pm.stfs.append(engine_stiffness(self.stf))
-            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = ref1(np.append(cell.centroid, 0.0))
+            self.solution[self.n_vars * cell_id : self.n_vars * (cell_id + 1)] = self.ref1(np.append(cell.centroid, 0.0))
 
         for bound_id in range(self.unstr_discr.bound_cells_tot):
             b_cell = self.unstr_discr.bound_cell_info_dict[bound_id]
@@ -250,7 +297,7 @@ class UnstructReservoir:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
             cell_id = self.unstr_discr.mat_cells_tot + bound_id
-            sol = ref1(np.append(b_cell.centroid, 0.0))
+            sol = self.ref1(np.append(b_cell.centroid, 0.0))
             self.solution[self.n_vars * cell_id:self.n_vars * (cell_id + 1)] = sol
 
     def get_normal_to_bound_face(self, b_id):
@@ -290,11 +337,18 @@ class UnstructReservoir:
         nabla_u = u_trans.dot(self.solution[stencil_cols])
         nabla_p = p_trans.dot(self.solution[self.n_vars * np.array(p_grad.stencil) + 3])
 
-        return np.append(nabla_u, nabla_p)
+        grad = np.append(nabla_u, nabla_p)
+        if self.thermal:
+            t_grad = self.discr.t_grads[cell_id]
+            t_trans = np.array(t_grad.a.values).reshape(3, len(t_grad.stencil))
+            assert ((np.sum(t_trans, axis=1) < 1.e-8).all())
+            nabla_t = t_trans.dot(self.solution[self.n_vars * np.array(t_grad.stencil) + 4])
+            grad = np.append(grad, nabla_t)
+        return grad
     # calculate analytical fluxes
     def get_analytical_fluxes(self, x, n, x_cell):
-        sol_an = ref1(x)
-        grad_an = nabla_ref1(x)
+        sol_an = self.ref1(x)
+        grad_an = self.nabla_ref1(x)
         stf = np.array(self.stf).reshape(6, 6)
         biot = np.array(self.biot).reshape(3, 3)
         perm = TC.darcy_constant * np.array(self.perm).reshape(3, 3)
@@ -302,10 +356,17 @@ class UnstructReservoir:
             dot(grad_an[:self.n_dim, :self.n_dim].flatten()).\
             reshape(self.n_dim, self.n_dim)
         hooke_traction = -hooke_stress.dot(n)
-        biot_traction = sol_an[3] * biot.dot(n)
+        biot_traction = sol_an[3] * biot.dot(n) # sol_an[3] - pressure at the interface
         darcy = -perm.dot(n).dot(grad_an[self.n_dim, :self.n_dim] - self.fluid_density * self.gravity)
-        vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
-        return hooke_traction, biot_traction, darcy, vol_strain
+        vol_strain = (sol_an[:self.n_dim]).dot(biot.dot(n))# - self.ref1(x_cell)[:self.n_dim]).dot(biot.dot(n))
+        result = [hooke_traction, biot_traction, darcy, vol_strain]
+        if self.thermal:
+            therm_expn = np.array(self.therm_expn).reshape(3, 3)
+            conduction = np.array(self.conduction).reshape(3, 3)
+            thermal_traction = sol_an[4] * therm_expn.dot(n) # sol_an[4] - temperature at the interface
+            fourier = -conduction.dot(n).dot(grad_an[self.n_dim + 1, :self.n_dim])
+            result += [thermal_traction, fourier]
+        return result
     # calculate fluxes, old discretizer
     def get_fluxes_pm_discretizer(self, flux_id):
         n_block = 4
@@ -371,23 +432,56 @@ class UnstructReservoir:
         vol_strain_rhs = self.biot_vol_strain_rhs[flux_id]
         vol_strain = vol_strain_coefs.dot(self.solution[stencil_cols])[0] + self.fluid_density * vol_strain_rhs
 
-        return hooke, biot, darcy, vol_strain
+        result = [hooke, biot, darcy, vol_strain]
+        if self.thermal:
+            # thermal_traction
+            thermal_coefs = self.thermal_traction_trans[n_biot * self.offset[flux_id]:
+                            n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
+            thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
+            thermal_rhs = self.thermal_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
+            thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 4])
+            # Fourier
+            fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
+            fourier_coefs = np.transpose(fourier_coefs, (1, 0, 2)).reshape(1, stencil.size)
+            fourier_rhs = self.fourier_rhs[flux_id]
+            fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 4])[0]
+            result += [thermal_traction, fourier]
+        return result
 
 # reference solution
-def ref1(x):
-    A = np.array([[1, 2, 3, 4],
-                  [6, 7, 8, 9],
-                  [11, 12, 13, 14],
-                  [16, 17, 18, 19]])
-    b = np.array([5, 10, 15, 20])
-    if len(x.shape) == 1:
-        return A.dot(x) + b
-    else:
-        return A.dot(x) + b[:,np.newaxis]
+# a linear function of (x,y,z) and time
+    def nabla_ref1(self, x):
+        if not self.thermal:
+            A = np.array([[1, 2, 3, 4],
+                          [6, 7, 8, 9],
+                          [11, 12, 13, 14],
+                          [16, 17, 18, 19]])
+        else:
+            A = np.array([[1,   2,  3,  4],   # ux
+                          [6,   7,  8,  9],   # uy
+                          [11, 12, 13, 14],   # uz
+                          [16, 17, 18, 19],   # p
+                          [21, 22, 23, 24]])  # temperature
+        return A
 
-def nabla_ref1(x):
-    A = np.array([[1, 2, 3, 4],
-                  [6, 7, 8, 9],
-                  [11, 12, 13, 14],
-                  [16, 17, 18, 19]])
-    return A
+    def nabla_ref1_b(self):
+        if not self.thermal:
+            return np.array([5, 10, 15, 20])
+        else:
+            return np.array([5, 10, 15, 20, 25])
+    def ref1(self, x):
+        '''
+        :param x:
+        :return: A*x +b
+        '''
+        A = self.nabla_ref1(x)
+        b = self.nabla_ref1_b()
+        if len(x.shape) == 1:
+            return A.dot(x) + b
+        else:
+            return A.dot(x) + b[:,np.newaxis]
+
+
+
+
+

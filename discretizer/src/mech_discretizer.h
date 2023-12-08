@@ -12,26 +12,26 @@ namespace dis
 	* including flow, thermal, and mechanical (both normal and tangential).
 	*/
   struct THMBoundaryCondition
-  {
+	{
 	BoundaryCondition flow;        ///< Flow boundary conditions.
 	BoundaryCondition thermal;     ///< Thermal boundary conditions.
 	BoundaryCondition mech_normal; ///< Mechanical normal boundary conditions.
 	BoundaryCondition mech_tangen; ///< Mechanical tangential boundary conditions.
-  };
+	};
 
   /**
 	* @brief Represents a 6x6 stiffness matrix, typically used in mechanical simulations.
 	*/
-  class Stiffness : public Matrix
-  {
-  public:
+	class Stiffness : public Matrix
+	{
+	public:
 	static const index_t N = 6; ///< Dimension of the stiffness matrix.
 	typedef Matrix Base; ///< Base class alias.
 
 	/**
 	  * @brief Default constructor for Stiffness, initializes a 6x6 matrix.
 	  */
-	Stiffness() : Base(6, 6) {};
+	  Stiffness() : Base(6, 6) {};
 
 	/**
 	  * @brief Constructs a stiffness matrix from Lame coefficients.
@@ -39,21 +39,21 @@ namespace dis
 	  * @param lambda First Lame coefficient.
 	  * @param mu Second Lame coefficient.
 	  */
-	Stiffness(value_t lambda, value_t mu) : Base(6, 6)
-	{
-	  (*this)(0, 0) = (*this)(1, 1) = (*this)(2, 2) = lambda + 2 * mu;
-	  (*this)(3, 3) = (*this)(4, 4) = (*this)(5, 5) = mu;
-	  (*this)(0, 1) = (*this)(0, 2) = (*this)(1, 2) = lambda;
-	  (*this)(1, 0) = (*this)(2, 0) = (*this)(2, 1) = lambda;
-	};
+	  Stiffness(value_t lambda, value_t mu) : Base(6, 6)
+	  {
+		(*this)(0, 0) = (*this)(1, 1) = (*this)(2, 2) = lambda + 2 * mu;
+		(*this)(3, 3) = (*this)(4, 4) = (*this)(5, 5) = mu;
+		(*this)(0, 1) = (*this)(0, 2) = (*this)(1, 2) = lambda;
+		(*this)(1, 0) = (*this)(2, 0) = (*this)(2, 1) = lambda;
+	  };
 
 	/**
 	  * @brief Constructs a stiffness matrix from a given array of values.
 	  *
 	  * @param _c Array of values to initialize the matrix.
 	  */
-	Stiffness(std::valarray<value_t> _c) : Base(_c, 6, 6) {}
-  };
+	  Stiffness(std::valarray<value_t> _c) : Base(_c, 6, 6) {}
+	};
 
   /**
 	* @brief Enumeration of modes for the mechanical discretizer.
@@ -82,8 +82,8 @@ namespace dis
 	*
 	* @tparam MODE The discretizer mode to determine the approximation type.
 	*/
-  template <MechDiscretizerMode MODE>
-  using ApproximationType = typename std::conditional<MODE == THERMOPOROELASTIC,
+	template <MechDiscretizerMode MODE>
+	using ApproximationType = typename std::conditional<MODE == THERMOPOROELASTIC,
 	LinearApproximation<Uvar, Pvar, Tvar>, // Approximation for thermoporoelastic mode.
 	LinearApproximation<Uvar, Pvar>>::type; // Approximation for poroelastic mode.
 
@@ -92,59 +92,61 @@ namespace dis
 	*
 	* @tparam MODE The discretization mode.
 	*/
-  template <MechDiscretizerMode MODE>
-  struct MechApproximation
-  {
+	template <MechDiscretizerMode MODE>
+	struct MechApproximation
+	{
 	/**
 	  * @brief Default constructor for MechApproximation.
 	  */
-	MechApproximation() {};
+	  MechApproximation() {};
 
 	/**
 	  * @brief Constructs a MechApproximation with a specified stencil size.
 	  *
 	  * @param stencil_size The size of the stencil to be used in approximations.
 	  */
-	MechApproximation(index_t stencil_size)
-	{
-	  hooke = ApproximationType<MODE>(ND, stencil_size);
-	  biot_traction = LinearApproximation<Pvar>(ND, stencil_size);
-	  vol_strain = ApproximationType<MODE>(1, stencil_size);
-	  flow = FlowHeatApproximation(stencil_size);
-	};
+	  MechApproximation(index_t stencil_size)
+	  {
+		hooke = ApproximationType<MODE>(ND, stencil_size);
+		biot_traction = LinearApproximation<Pvar>(ND, stencil_size);
+		vol_strain = ApproximationType<MODE>(1, stencil_size);
+		flow = FlowHeatApproximation(stencil_size);
+		thermal_traction = LinearApproximation<Tvar>(ND, stencil_size);
+	  };
 
 	ApproximationType<MODE> hooke; ///< Approximation for Hooke's law.
 	LinearApproximation<Pvar> biot_traction; ///< Approximation for Biot's traction.
 	ApproximationType<MODE> vol_strain; ///< Approximation for Biot's * volumetric strain.
 	FlowHeatApproximation flow; ///< Approximation for combined fluid flow and heat condution fluxes.
+	  LinearApproximation<Tvar> thermal_traction;
 
 	bool is_same_stencil = true; ///< Flag indicating if the same stencil is used for all approximations.
-  };
+	};
 
   /**
 	* @brief A mechanical discretizer.
 	*
 	* @tparam MODE The discretization mode.
 	*/
-  template <MechDiscretizerMode MODE>
-  class MechDiscretizer : public Discretizer
-  {
-  protected:
+	template <MechDiscretizerMode MODE>
+	class MechDiscretizer : public Discretizer
+	{
+	protected:
 
 	static const uint8_t n_unknowns; ///< The number of variables per cell.
 
 	/**
 	  * @brief Cached matrices structure holding terms for co-normal decomposition
 	  */
-	struct InnerMatrices
-	{
+	  struct InnerMatrices
+	  {
 	  Matrix T1, T2;  ///< 3x3 matrices, conormal stiffness.
 	  Matrix G1, G2;  ///< 3x9 matrices, transversal stiffness.
 	  Matrix R1, R2;  ///< 3x1 vectors, free terms in traction balance.
 	  Matrix y1, y2;  ///< 3x1 vectors, tangential components of vectors between cell and interface centers.
 	  value_t r1, r2; ///< Distances from cell centers to the interface.
-	};
-
+	  };
+	  
 	std::vector<std::map<index_t, InnerMatrices>> inner; ///< Cached matrices for matrix-matrix connections.
 
 	std::unordered_map<index_t, Matrix> pre_grad_A_u; ///< Pre-allocated matrices for gradient reconstruction.
@@ -166,17 +168,17 @@ namespace dis
 	  * @return std::pair<bool, size_t> A pair where the first element is true if found,
 	  *         false otherwise, and the second element is the position in the vector.
 	  */
-	inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
-	{
-	  for (size_t i = 0; i < vec.size(); ++i)
+	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
 	  {
+	  for (size_t i = 0; i < vec.size(); ++i)
+		{
 		if (vec[i] == element)
 		{
 		  return { true, i };
 		}
 	  }
 	  return { false, static_cast<size_t>(-1) };
-	};
+	  };
 
 	/**
 	  * @brief Calculates approximation of tractions for matrix-matrix connections.
@@ -186,7 +188,7 @@ namespace dis
 	  * @param cell_id The ID of the cell.
 	  * @param conn_id The ID of the connection.
 	  */
-	void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t cell_id, index_t conn_id);
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t cell_id, index_t conn_id);
 
 	/**
 	  * @brief Calculates approximation of tractions for matrix-boundary connections.
@@ -195,73 +197,89 @@ namespace dis
 	  * @param flux The flux to store approximation.
 	  * @param conn_id The ID of the connection.
 	  */
-	void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
+	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
 	/**
 	  * @brief Writes mechanical transmissibilities.
 	  *
 	  * @param flux The approximation of the fluxes to be written in plain arrays.
 	  */
-	inline void write_trans_mech(const MechApproximation<MODE>& flux)
-	{
-	  assert(flux.is_same_stencil);
-	  value_t coef_darcy, coef_fick, coef_fourier;
-	  assert(flux.hooke.stencil == flux.flow.darcy.stencil);
-
-	  // stencil & transmissibilities
-	  for (index_t st_id = 0; st_id < flux.hooke.stencil.size(); st_id++)
+	// convert approximation (matrix, stencil and free term) to 1-d arrays
+	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
-		auto block_hooke = flux.hooke.a(flux.hooke.n_block * st_id, { (size_t)flux.hooke.a.M, (size_t)flux.hooke.n_block }, { (size_t)flux.hooke.a.N, 1 });
-		auto block_biot = flux.biot_traction.a(flux.biot_traction.n_block * st_id, { (size_t)flux.biot_traction.a.M, (size_t)flux.biot_traction.n_block }, { (size_t)flux.biot_traction.a.N, 1 });
-		auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.n_block }, { 1 });
-		coef_darcy = flux.flow.darcy.a.values[st_id];
-		coef_fick = flux.flow.fick.a.values[st_id];
-		// eliminate numerical noise: TODO: formalize
-		// block_hooke[abs(block_hooke) < EQUALITY_TOLERANCE] = 0.0;
-		// block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;
-		// block_vol_strain[abs(block_vol_strain) < EQUALITY_TOLERANCE] = 0.0;
-		// add transmissibilities
-		if (abs(block_hooke).max() > EQUALITY_TOLERANCE ||
-		  abs(block_biot).max() > EQUALITY_TOLERANCE ||
-		  abs(block_vol_strain).max() > EQUALITY_TOLERANCE ||
-		  abs(coef_darcy) > EQUALITY_TOLERANCE)
+		assert(flux.is_same_stencil);
+		value_t coef_darcy, coef_fick, coef_fourier;
+		assert(flux.hooke.stencil == flux.flow.darcy.stencil);
+
+		// stencil & transmissibilities
+		for (index_t st_id = 0; st_id < flux.hooke.stencil.size(); st_id++)
 		{
-		  // stencil
-		  flux_stencil.push_back(flux.hooke.stencil[st_id]);
-		  // Hooke's law
-		  hooke.insert(std::end(hooke), std::begin(block_hooke), std::end(block_hooke));
-		  // Biot's term in traction
-		  biot_traction.insert(std::end(biot_traction), std::begin(block_biot), std::end(block_biot));
-		  // Biot's term in fluid flow
-		  biot_vol_strain.insert(std::end(biot_vol_strain), std::begin(block_vol_strain), std::end(block_vol_strain));
-		  // Darcy's flow
-		  darcy.push_back(coef_darcy);
-		  fick.push_back(coef_fick);
+		  auto block_hooke = flux.hooke.a(flux.hooke.n_block * st_id, { (size_t)flux.hooke.a.M, (size_t)flux.hooke.n_block }, { (size_t)flux.hooke.a.N, 1 });
+		  auto block_biot = flux.biot_traction.a(flux.biot_traction.n_block * st_id, { (size_t)flux.biot_traction.a.M, (size_t)flux.biot_traction.n_block }, { (size_t)flux.biot_traction.a.N, 1 });
+		  auto block_vol_strain = flux.vol_strain.a(flux.vol_strain.n_block * st_id, { (size_t)flux.vol_strain.n_block }, { 1 });
+		  coef_darcy = flux.flow.darcy.a.values[st_id];
+		  coef_fick = flux.flow.fick.a.values[st_id];
+		  std::valarray<value_t> block_thermal;
+		  if constexpr (MODE == THERMOPOROELASTIC) {
+			  block_thermal = flux.thermal_traction.a(flux.thermal_traction.n_block * st_id, { (size_t)flux.thermal_traction.a.M, (size_t)flux.thermal_traction.n_block }, { (size_t)flux.thermal_traction.a.N, 1 });
+			  coef_fourier = flux.flow.fourier.a.values[st_id];
+		  }
+		  // eliminate numerical noise: TODO: formalize
+		  // block_hooke[abs(block_hooke) < EQUALITY_TOLERANCE] = 0.0;
+		  // block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;
+		  // block_vol_strain[abs(block_vol_strain) < EQUALITY_TOLERANCE] = 0.0;
+		  // add transmissibilities
+		  if (abs(block_hooke).max() > EQUALITY_TOLERANCE || 
+			  abs(block_biot).max() > EQUALITY_TOLERANCE ||
+			  abs(block_vol_strain).max() > EQUALITY_TOLERANCE ||
+			  abs(coef_darcy) > EQUALITY_TOLERANCE)
+		  {
+			// stencil
+			flux_stencil.push_back(flux.hooke.stencil[st_id]);
+			// Hooke's law
+			hooke.insert(std::end(hooke), std::begin(block_hooke), std::end(block_hooke));
+			// Biot's term in traction
+			biot_traction.insert(std::end(biot_traction), std::begin(block_biot), std::end(block_biot));
+			// Biot's term in fluid flow
+			biot_vol_strain.insert(std::end(biot_vol_strain), std::begin(block_vol_strain), std::end(block_vol_strain));
+			// Darcy's flow
+			darcy.push_back(coef_darcy);
+			fick.push_back(coef_fick);
+			if constexpr (MODE == THERMOPOROELASTIC) {
+				// Fourier's law
+				fourier.push_back(coef_fourier);
+				// Thermal term in traction
+				thermal_traction.insert(std::end(thermal_traction), std::begin(block_thermal), std::end(block_thermal));
+			}
+		  }
 		}
-	  }
-	  // free terms
-	  hooke_rhs.insert(std::end(hooke_rhs), std::begin(flux.hooke.rhs.values), std::end(flux.hooke.rhs.values));
-	  biot_traction_rhs.insert(std::end(biot_traction_rhs), std::begin(flux.biot_traction.rhs.values), std::end(flux.biot_traction.rhs.values));
-	  biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
-	  darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
-	  fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
-	};
+		// free terms
+		hooke_rhs.insert(std::end(hooke_rhs), std::begin(flux.hooke.rhs.values), std::end(flux.hooke.rhs.values));
+		biot_traction_rhs.insert(std::end(biot_traction_rhs), std::begin(flux.biot_traction.rhs.values), std::end(flux.biot_traction.rhs.values));
+		biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
+		darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
+		fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
+		if constexpr (MODE == THERMOPOROELASTIC) {
+			fourier_rhs.push_back(flux.flow.fourier.rhs.values[0]);
+			thermal_traction_rhs.insert(std::end(thermal_traction_rhs), std::begin(flux.thermal_traction.rhs.values), std::end(flux.thermal_traction.rhs.values));
+		}
+	  };
 
 	/**
 	  * @brief Maintains the same stencil between pressure/temperature and displacement gradients.
 	  */
-	void keep_same_stencil_gradients();
-  public:
+	  void keep_same_stencil_gradients();
+	public:
 
 	/**
 	  * @brief Constructor for MechDiscretizer.
 	  */
-	MechDiscretizer();
+	  MechDiscretizer();
 
 	/**
 	  * @brief Destructor for MechDiscretizer.
 	  */
-	~MechDiscretizer();
+	  ~MechDiscretizer();
 
 	/**
 	  * @brief Initializes the discretizer.
@@ -280,6 +298,7 @@ namespace dis
 	std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs; ///< Biot's term in fluid flow and its RHS
 	std::vector<value_t> fick, fick_rhs; ///< Fick's law approximations and their RHS
 	std::vector<value_t> fourier, fourier_rhs; ///< Fourier's law approximations and their RHS
+	std::vector<value_t> thermal_traction, thermal_traction_rhs; ///< Thermal term in traction and its RHS
 
 	bool USE_CONNECTION_BASED_GRADIENTS; ///< Flag for using connection-based gradients
 	bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION; ///< Flag for using Neumann boundaries in gradient reconstruction
@@ -292,18 +311,18 @@ namespace dis
 	  *
 	  * @param bc_mech The array of THM boundary conditions.
 	  */
-	void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
-	  
+	  void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
+
 	/**
 	  * @brief Calculates the approximations of fluxes at all interfaces in computational grid
 	  */
-	void calc_interface_approximations();
-	
+	void calc_interface_approximations(const bool with_thermal=false);
+
 	/**
 	  * @brief Calculates the approximations of stress tensor at cells' centers
 	*/
 	void calc_cell_centered_stress_approximations();
-  };
+    };
 }
 
 #endif /* MECH_DISCRETIZER_H_ */
