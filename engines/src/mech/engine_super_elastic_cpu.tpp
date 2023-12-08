@@ -1306,7 +1306,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 
 	if (PRINT_LINEAR_SYSTEM) //changed this to write jacobian to file!
 	{
-		static_cast<csr_matrix<4>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter++) + ".csr").c_str());
+		const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		static_cast<csr_matrix<N_VARS>*>(Jacobian)->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+		static_cast<csr_matrix<N_VARS>*>(Jacobian)->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
 		//Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
 		write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
