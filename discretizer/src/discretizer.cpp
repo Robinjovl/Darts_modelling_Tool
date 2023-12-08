@@ -1699,14 +1699,15 @@ void Discretizer::calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApp
 
 	if (with_thermal)
 	{
+	  Matrix C1n(ND, 1);
 	  // boundary conditions: a*p + b*f = r 
 	  const auto& a = bc_flow.a_th[conn.elem_id2 - mesh->n_cells];
 	  const auto& b = bc_flow.b_th[conn.elem_id2 - mesh->n_cells];
 	  
 	  // co-normal decomposition
-	  K1n.values = (heat_conductions[conn.elem_id1] * n).values;
-	  lam1 = (n.transpose() * K1n).values[0];
-	  gam1 = K1n - lam1 * n;
+	  C1n.values = (heat_conductions[conn.elem_id1] * n).values;
+	  lam1 = (n.transpose() * C1n).values[0];
+	  gam1 = C1n - lam1 * n;
 
 	  const auto& g1 = t_grads[conn.elem_id1]; 
 
