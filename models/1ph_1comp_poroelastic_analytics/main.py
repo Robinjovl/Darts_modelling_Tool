@@ -182,7 +182,7 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
         return (failed > 0), data[-1]['simulation time']
     else:
         return False, -1.0
-def run_and_plot(case='mandel', scheme='non_stabilized'):
+def run_and_plot(case='mandel', discretizer='mech_discretizer'):
     ## only with rectangular mesh
     nt = 60
     max_dt = 30  # sec
@@ -199,23 +199,34 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
     # t = np.append(t, 86400 * np.ones(int((17280000-86400) / 86400)) / 86400)
     # nt = t.size
 
-    m = Model(case=case, scheme=scheme)
+    m = Model(case=case, discretizer=discretizer)
     m.init()
     redirect_darts_output('log.txt')
-    output_directory = 'sol_{:s}'.format(m.physics_type)
+    m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
     # for rectangular grid
-    nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
-    ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
-    x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
+    if discretizer == 'pm_discretizer':
+        nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
+        ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
+        x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
+        xc = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid for i in range(nx)])
+    elif discretizer == 'mech_discretizer':
+        xc = np.array([np.array(c.values) for c in m.reservoir.discr_mesh.centroids[:m.reservoir.n_matrix]])
+        nx = np.unique(np.round(xc[:,0], decimals=6)).size
+        ny = int(m.reservoir.n_matrix / nx)
+        x = xc[::ny, 0]
+        xc = xc[::ny]
     pres = { 'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
     disp = { 'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
     if case == 'mandel':
         pres['analytics'][0] = m.reservoir.mandel_exact_pressure(t=0.0, xc=x)
+        p,ux,uy = m.reservoir.mandel_exact_displacements(t=0.0, xc=xc)
+        disp['analytics'][0] = ux
     elif case == 'terzaghi':
         pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(t=0.0, xc=x)
+        disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(t=0.0, xc=x)
     elif case == 'terzaghi_two_layers':
         pres['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_pressure(t=0, xc=x)
         disp['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_displacement(t=0, xc=x)
@@ -228,13 +239,16 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         run_python(m, dt)
 
         # save pressure
-        X = np.array(m.physics.engine.X, copy=False)
-        pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][::ny] # for rectangular grid
-        disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::m.physics.engine.N_VARS][::ny] # for rectangular grid
+        X = np.array(m.engine.X, copy=False)
+        pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny] # for rectangular grid
+        disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny] # for rectangular grid
         if case == 'mandel':
             pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
+            p,ux,uy = m.reservoir.mandel_exact_displacements(t=time, xc=xc)
+            disp['analytics'][ith_step + 1] = ux
         elif case == 'terzaghi':
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(t=time, xc=x)
+            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(t=time, xc=x)
         elif case == 'terzaghi_two_layers':
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_pressure(t=time, xc=x)
             disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_displacement(t=time, xc=x)
@@ -242,16 +256,18 @@ def run_and_plot(case='mandel', scheme='non_stabilized'):
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
         # write a vtk snapshot
-        m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
+        if discretizer == 'mech_discretizer':
+            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.engine)
+        elif discretizer == 'pm_discretizer':
+            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.engine)
     m.print_timers()
 
     if case != 'terzaghi_two_layers_no_analytics':
         save_data = True
-        plot_comparison(m, pres, scheme, case, save_data=save_data)
-        if case == 'terzaghi_two_layers':
-            plot_comparison(m, disp, scheme, case, save_data=save_data)
-def plot_comparison(m, data, scheme, case, save_data=False):
-    prefix = 'sol_poromechanics/'
+        plot_comparison(m, pres, discretizer, case, save_data=save_data)
+        plot_comparison(m, disp, discretizer, case, save_data=save_data)
+def plot_comparison(m, data, discretizer, case, save_data=False):
+    prefix = m.output_directory
     tD, dataD = m.reservoir.tD, m.reservoir.pD
     name = data['name']
     if name == 'u':
@@ -262,7 +278,7 @@ def plot_comparison(m, data, scheme, case, save_data=False):
     # initial pressure increase
     ax[0].axhline(y=data['analytics'][1,0] / dataD, linestyle='--', color='k')
 
-    darts_name = 'DARTS ' + scheme
+    darts_name = 'DARTS ' + discretizer
     an_linestyle = '-'
     darts_linestyle = '--'
     colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
@@ -271,10 +287,10 @@ def plot_comparison(m, data, scheme, case, save_data=False):
     ax[0].semilogx(data['time'][1:] / tD, data['darts'][1:,0] / dataD, color='b', linewidth=1, linestyle=darts_linestyle, label=darts_name)
 
     # pressure over domain
-    n_snaps = 4
     nt = data['time'].size
-    for i in range(n_snaps):
-        t_id = 1 + int(nt / 5) * i
+    id_snaps = [1, int(nt / 2) + 1, int(0.8 * nt)]
+    for i in range(len(id_snaps)):
+        t_id = id_snaps[i]
         if name == 'p':
             ax[1].plot(data['x'], np.fabs(data['analytics'][t_id]) / dataD, color=colors[i], linestyle=an_linestyle, label=r'Analytics: $t = $' + '{:.2e}'.format(data['time'][t_id] / tD) + r' $t_D$')
         elif name == 'u':
@@ -299,19 +315,19 @@ def plot_comparison(m, data, scheme, case, save_data=False):
     ax[1].set_ylabel(y_label, fontsize=20)
     ax[1].set_xlabel(r'$x$', fontsize=20)
     ax[1].grid(True)
-    ax[1].legend(loc='lower left', prop={'size': 10 }, framealpha=0.5)
+    ax[1].legend(loc='lower left', prop={'size': 14 }, framealpha=0.5)
 
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     fig.tight_layout()
     if name == 'p':
-        plt.savefig(prefix + 'pressure_' + scheme + '_' + case + '.png')
+        plt.savefig(prefix + '/' + 'pressure_' + discretizer + '_' + case + '.png')
     elif name == 'u':
-        plt.savefig(prefix + 'displacement_' + scheme + '_' + case + '.png')
+        plt.savefig(prefix + '/' + 'displacement_' + discretizer + '_' + case + '.png')
     # plt.show()
 
     if save_data:
-        filename = prefix + name + '_data.txt'
+        filename = prefix + '/' + name + '_data.txt'
         A = np.zeros((data['time'].shape[0], data['x'].shape[0], 2))
         A[:, :, 0] = data['time'][:, np.newaxis]
         A[:, :, 1] = data['x'][np.newaxis, :]
@@ -325,7 +341,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     m.init()
 
     redirect_darts_output('log.txt')
-    m.output_directory = 'solution'
+    m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
     ith_step = 0
     m.timer.node["update"] = timer_node()
     # set equilibrium (including boundary conditions)
@@ -360,5 +376,6 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-run(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
-
+# run_and_plot(case='mandel', discretizer='mech_discretizer')
+# run_and_plot(case='terzaghi', discretizer='pm_discretizer')
+run(case='mandel', discretizer='pm_discretizer', mesh='wedge')

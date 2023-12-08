@@ -36,12 +36,12 @@ class UnstructReservoir:
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             if discretizer == 'mech_discretizer':
-                self.mandel_north_dirichlet(mesh)
+                self.mandel_north_dirichlet_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(mesh)
         elif case == 'terzaghi':
             if discretizer == 'mech_discretizer':
-                self.terzaghi(mesh)
+                self.terzaghi_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers':
@@ -136,48 +136,6 @@ class UnstructReservoir:
             self.f[:] = self.unstr_discr.f
 
         self.wells = []
-    def update_mandel_boundary(self, dt, time, physics):
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
-        v_north = self.get_vertical_displacement_north_mandel(time)
-
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
-        self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
-        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(v_north)}
-        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
-
-        p_var = 0
-        u_var = 1
-        for tag in self.domain_tags[elem_loc.BOUNDARY]:
-            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-            bc = self.boundary_conditions[tag]
-            # flow
-            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
-            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
-
-            for id in ids:
-                conn = self.conns[self.id_boundary_conns[id]]
-                n = np.array(conn.n.values, copy=False)
-                self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
-
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -197,8 +155,8 @@ class UnstructReservoir:
         #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
 
-    # new discretizer
-    def mandel_north_dirichlet(self, mesh='rect'):
+    # Mandel
+    def mandel_north_dirichlet_mech_discretizer(self, mesh='rect'):
         if mesh == 'rect':
             mesh_file = 'meshes/transfinite.msh'
         elif mesh == 'wedge':
@@ -252,6 +210,7 @@ class UnstructReservoir:
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
 
         self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
+        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
         self.F = -100.0 * self.a # bar * m
 
         self.discr = poro_mech_discretizer()
@@ -353,7 +312,248 @@ class UnstructReservoir:
 
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
-    def terzaghi(self, mesh='rect'):
+    def mandel_north_dirichlet_pm_discretizer(self, mesh='rect'):
+        self.u_init = [0.0, 0.0, 0.0]
+        self.p_init = 0.0
+        self.porosity = 0.375
+        self.permx = self.permy = self.permz = 10.0 / 9.81
+        if mesh == 'rect':
+            mesh_file = 'meshes/transfinite.msh'
+        elif mesh == 'wedge':
+            mesh_file = 'meshes/wedge.msh'
+        elif mesh == 'hex':
+            mesh_file = 'meshes/hexahedron.msh'
+        self.file_path = mesh_file
+        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
+                                               mesh_file=mesh_file)
+        self.unstr_discr.eps_t = 1.E+0
+        self.unstr_discr.eps_n = 1.E+0
+        self.unstr_discr.mu = 3.2
+        self.unstr_discr.P12 = 0
+        self.unstr_discr.Prol = 1
+        self.unstr_discr.n_dim = 3
+        self.unstr_discr.bcf_num = 3
+        self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
+        self.unstr_discr.physical_tags['matrix'] = [99991]
+        # lam = 1.0 * 10000  # in bar
+        # mu = 1.0 * 10000
+        # nu = lam / 2 / (lam + mu)
+        # E = lam * (1 + nu) * (1 - 2 * nu) / nu
+
+        self.E = 10000  # in bars
+        self.nu = 0.25
+        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
+        self.mu = self.E / 2 / (1 + self.nu)
+        self.biot = 0.9
+        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
+        self.fluid_compressibility = 1.e-5
+        self.fluid_viscosity = 1.0
+        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
+                        self.porosity * self.fluid_compressibility)
+
+        self.unstr_discr.init_matrix_stiffness({99991: {'E': self.E, 'nu': self.nu}})
+        self.unstr_discr.physical_tags['fracture'] = [9991]
+        self.unstr_discr.physical_tags['fracture_shape'] = []
+        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0,
+                                   'rt': np.array([0.0, 0.0, 0.0])}
+
+        mech_xm = ROLLER
+        mech_xp = FREE
+        mech_ym = ROLLER
+        mech_yp = STUCK_ROLLER(0.0)
+        mech_zm = ROLLER
+        mech_zp = ROLLER
+
+        flow_xm = NO_FLOW
+        flow_xp = AQUIFER(self.p_init)
+        flow_ym = NO_FLOW
+        flow_yp = NO_FLOW
+        flow_zm = NO_FLOW
+        flow_zp = NO_FLOW
+
+        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.load_mesh_with_bounds()
+        self.unstr_discr.calc_cell_neighbours()
+
+        self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
+        self.b = np.max(self.unstr_discr.mesh_data.points[:, 1])
+        self.F = -100.0 * self.a  # bar * m
+
+        # init poromechanics discretizer
+        self.pm = pm_discretizer()
+        scheme = 'non_stabilized'
+        if scheme == 'stabilized':
+            self.pm.scheme = scheme_type.apply_eigen_splitting_new
+            self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
+        self.pm.neumann_boundaries_grad_reconstruction = True
+        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.pm.visc = 1  # 9.81e-2
+        self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+        for cell_id in range(self.unstr_discr.mat_cells_tot):
+            faces = self.unstr_discr.faces[cell_id]
+            fs = face_vector()
+            for face_id in range(len(faces)):
+                face = faces[face_id]
+                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
+                               face.face_id1, face.face_id2,
+                               face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
+            self.pm.faces.append(fs)
+
+            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
+            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
+            self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
+            self.pm.biots.append(engine_matrix33(self.biot))
+            self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
+            self.biot_mean[9 * cell_id] = self.biot
+            self.biot_mean[9 * cell_id + 4] = self.biot
+            self.biot_mean[9 * cell_id + 8] = self.biot
+
+        self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
+        self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
+        self.unstr_discr.pz_bounds = self.p_init
+        self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
+        self.unstr_discr.p_ref[:] = self.p_init
+        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+            n = self.get_normal_to_bound_face(bound_id)
+            P = np.identity(3) - np.outer(n, n)
+            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
+            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
+            # if flow['a'] == 1.0:
+            #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
+            #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
+            #    else: bc.extend([0.0, 1.0, 0.0])
+            # else:
+            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            self.pm.bc.append(matrix(bc, len(bc), 1))
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
+            self.bc_rhs[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+        # self.bc_rhs_prev = np.copy(self.bc_rhs)
+        self.pm.bc_prev = self.pm.bc
+        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+        self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
+
+        MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
+        K_dr = self.E / (3 * (1 - 2 * self.nu))
+        self.K_nu = (K_dr + (4 / 3) * self.mu)
+        Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
+        self.tD = self.a ** 2 / Cv / 86400
+        self.pD = abs(self.F / self.a) / 2
+    def update_mandel_boundary(self, dt, time, physics):
+        if self.discretizer_name == 'mech_discretizer':
+            self.update_mandel_boundary_mech_discretizer(dt, time, physics)
+        elif self.discretizer_name == 'pm_discretizer':
+            self.update_mandel_boundary_pm_discretizer(dt, time, physics)
+    def update_mandel_boundary_mech_discretizer(self, dt, time, physics):
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+
+        v_north = self.get_vertical_displacement_north_mandel(time)
+
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+
+        self.boundary_conditions = {}
+        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
+        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(v_north)}
+        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
+
+        p_var = 0
+        u_var = 1
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
+            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+            bc = self.boundary_conditions[tag]
+            # flow
+            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
+
+            for id in ids:
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+    def update_mandel_boundary_pm_discretizer(self, dt, time, physics):
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+
+        v_north = self.get_vertical_displacement_north_mandel(time)
+
+        mech_xm = ROLLER
+        mech_xp = FREE
+        mech_ym = ROLLER
+        mech_yp = STUCK_ROLLER(v_north)
+        mech_zm = ROLLER
+        mech_zp = ROLLER
+
+        flow_xm = NO_FLOW
+        flow_xp = AQUIFER(self.p_init)
+        flow_ym = NO_FLOW
+        flow_yp = NO_FLOW
+        flow_zm = NO_FLOW
+        flow_zp = NO_FLOW
+
+        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+
+        self.pm.bc.clear()
+        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+            n = self.get_normal_to_bound_face(bound_id)
+            P = np.identity(3) - np.outer(n, n)
+            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
+            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
+            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            self.pm.bc.append(matrix(bc, len(bc), 1))
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
+            self.bc_rhs[4 * bound_id + 3] = flow['r']
+    # Terzaghi
+    def terzaghi_mech_discretizer(self, mesh='rect'):
         if mesh == 'rect':
             mesh_file = 'meshes/transfinite.msh'
         elif mesh == 'wedge':
@@ -658,6 +858,7 @@ class UnstructReservoir:
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = np.fabs(self.F)
+    # Two-layer Terzaghi
     def terzaghi_two_layers(self, mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -977,157 +1178,6 @@ class UnstructReservoir:
         self.pD = 1.0
 
     # old discretizer
-    def mandel_north_dirichlet_pm_discretizer(self, mesh='rect'):
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
-        self.porosity = 0.375
-        self.permx = self.permy = self.permz = 10.0 / 9.81
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
-        self.file_path = mesh_file
-        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
-                                               mesh_file=mesh_file)
-        self.unstr_discr.eps_t = 1.E+0
-        self.unstr_discr.eps_n = 1.E+0
-        self.unstr_discr.mu = 3.2
-        self.unstr_discr.P12 = 0
-        self.unstr_discr.Prol = 1
-        self.unstr_discr.n_dim = 3
-        self.unstr_discr.bcf_num = 3
-        self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-        self.unstr_discr.physical_tags['matrix'] = [99991]
-        # lam = 1.0 * 10000  # in bar
-        # mu = 1.0 * 10000
-        # nu = lam / 2 / (lam + mu)
-        # E = lam * (1 + nu) * (1 - 2 * nu) / nu
-
-        self.E = 10000  # in bars
-        self.nu = 0.25
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
-        self.biot = 0.9
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                        self.porosity * self.fluid_compressibility)
-
-        self.unstr_discr.init_matrix_stiffness({99991: {'E': self.E, 'nu': self.nu}})
-        self.unstr_discr.physical_tags['fracture'] = [9991]
-        self.unstr_discr.physical_tags['fracture_shape'] = []
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0,
-                                   'rt': np.array([0.0, 0.0, 0.0])}
-
-        mech_xm = ROLLER
-        mech_xp = FREE
-        mech_ym = ROLLER
-        mech_yp = STUCK_ROLLER(0.0)
-        mech_zm = ROLLER
-        mech_zp = ROLLER
-
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
-
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
-        self.unstr_discr.load_mesh_with_bounds()
-        self.unstr_discr.calc_cell_neighbours()
-
-        self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
-        self.F = -100.0 * self.a  # bar * m
-
-        # init poromechanics discretizer
-        self.pm = pm_discretizer()
-        scheme = 'non_stabilized'
-        if scheme == 'stabilized':
-            self.pm.scheme = scheme_type.apply_eigen_splitting_new
-            self.pm.min_alpha_stabilization = 0.5
-        elif scheme == 'non_stabilized':
-            pass
-        else:
-            print('Error: unsupported scheme', scheme)
-            exit(1)
-        self.pm.neumann_boundaries_grad_reconstruction = True
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
-        self.pm.visc = 1  # 9.81e-2
-        self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-        for cell_id in range(self.unstr_discr.mat_cells_tot):
-            faces = self.unstr_discr.faces[cell_id]
-            fs = face_vector()
-            for face_id in range(len(faces)):
-                face = faces[face_id]
-                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                               face.face_id1, face.face_id2,
-                               face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
-            self.pm.faces.append(fs)
-
-            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
-            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-            self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
-            self.pm.biots.append(engine_matrix33(self.biot))
-            self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
-            self.biot_mean[9 * cell_id] = self.biot
-            self.biot_mean[9 * cell_id + 4] = self.biot
-            self.biot_mean[9 * cell_id + 8] = self.biot
-
-        self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
-        self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
-        self.unstr_discr.pz_bounds = self.p_init
-        self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
-        self.unstr_discr.p_ref[:] = self.p_init
-        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
-            n = self.get_normal_to_bound_face(bound_id)
-            P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            # if flow['a'] == 1.0:
-            #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
-            #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
-            #    else: bc.extend([0.0, 1.0, 0.0])
-            # else:
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
-            self.pm.bc.append(matrix(bc, len(bc), 1))
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
-            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
-            self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
-        # self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc
-        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-        self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
-
-        MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
-        K_dr = self.E / (3 * (1 - 2 * self.nu))
-        self.K_nu = (K_dr + (4 / 3) * self.mu)
-        Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
-        self.tD = self.a ** 2 / Cv / 86400
-        self.pD = abs(self.F / self.a) / 2
 
     def add_well(self, name, depth):
         """
@@ -1403,7 +1453,7 @@ class UnstructReservoir:
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
-    # Analytics
+    # Mandel analytics
     def get_vertical_displacement_north_mandel(self, t):
         # Parameters
         F = np.fabs(self.F)
@@ -1415,23 +1465,21 @@ class UnstructReservoir:
         mu_f = self.fluid_viscosity
         k_s = self.permx / self.fluid_viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
-        a = np.max(self.mesh_data.points, axis=0)[0]
-        b = np.max(self.mesh_data.points, axis=0)[1]
 
         # Calculate constants
         aa_n = self.approximate_roots()[:, np.newaxis]
 
-        cy0 = (-F * (1 - nu_s)) / (2 * mu_s * a)
-        cy1 = F * (1 - nu_u) / (mu_s * a)
+        cy0 = (-F * (1 - nu_s)) / (2 * mu_s * self.a)
+        cy1 = F * (1 - nu_u) / (mu_s * self.a)
 
         # Calculate exact north boundary condition
         uy_sum = np.sum(
             ((np.sin(aa_n) * np.cos(aa_n)) / (aa_n - np.sin(aa_n) * np.cos(aa_n)))
-            * np.exp((-(aa_n**2) * c_f * t) / (a**2)),
+            * np.exp((-(aa_n**2) * c_f * t) / (self.a**2)),
             axis=0,
         )
 
-        north_bc = (cy0 + cy1 * uy_sum) * b
+        north_bc = (cy0 + cy1 * uy_sum) * self.b
         return north_bc
     def approximate_roots(self) -> np.ndarray:
         """
@@ -1472,28 +1520,84 @@ class UnstructReservoir:
         nu_s = self.nu
         nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
         mu_s = self.mu
-        mu_f = self.pm.visc
+        mu_f = self.fluid_viscosity
         k_s = self.permx / self.fluid_viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
-        a = np.max(self.unstr_discr.mesh_data.points[:, 0])
 
         if t == 0.0:  # initial condition has its own expression
-            p = ((F * skempton * (1 + nu_u)) / (3 * a)) * np.ones(xc.size)
+            p = ((F * skempton * (1 + nu_u)) / (3 * self.a)) * np.ones(xc.size)
         else:
             # Retrieve approximated roots
             aa_n = self.approximate_roots()[:, np.newaxis]
             # Exact p
-            c0 = (2 * F * skempton * (1 + nu_u)) / (3 * a)
+            c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
             p_sum_0 = np.sum(
                 ((np.sin(aa_n)) / (aa_n - (np.sin(aa_n) * np.cos(aa_n))))
-                * (np.cos((aa_n * xc) / a) - np.cos(aa_n))
-                * np.exp((-(aa_n**2) * c_f * t) / (a**2)),
+                * (np.cos((aa_n * xc) / self.a) - np.cos(aa_n))
+                * np.exp((-(aa_n**2) * c_f * t) / (self.a**2)),
                 axis=0,
             )
             p = c0 * p_sum_0
 
         return p
-    # Terzaghi
+    def mandel_exact_displacements(self, t, xc) -> np.ndarray:
+        """
+        Exact pressure solution for a given time `t`.
+
+        Args:
+            t: Time in seconds.
+
+        Returns:
+            p (sd.num_cells, ): Exact pressure solution.
+
+        """
+
+        # Retrieve physical data
+        F = np.fabs(self.F)
+        K_s = self.lam + 2 * self.mu / 3
+        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
+        nu_s = self.nu
+        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
+        mu_s = self.mu
+        mu_f = self.fluid_viscosity
+        k_s = self.permx / self.fluid_viscosity
+        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
+
+        # -----> Compute exact fluid pressure
+
+        if t == 0.0:  # initial condition has its own expression
+            p = ((F * skempton * (1 + nu_u)) / (3 * self.a)) * np.ones(xc.shape[0])
+            ux = F / self.mu / self.a * nu_u * xc[:, 0] / 2
+            uy = F / self.mu / self.a * (nu_u - 1) * xc[:, 1] / 2
+        else:
+            # Retrieve approximated roots
+            aa_n = self.approximate_roots()[:, np.newaxis]
+            # Exact p
+            c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
+            p_sum_0 = np.sum(
+                ((np.sin(aa_n)) / (aa_n - (np.sin(aa_n) * np.cos(aa_n))))
+                * (np.cos((aa_n * xc[:,0]) / self.a) - np.cos(aa_n))
+                * np.exp((-(aa_n**2) * c_f * t) / (self.a**2)),
+                axis=0,
+            )
+            p = c0 * p_sum_0
+            # Exact ux
+            ux_sum_0 = np.sum(
+                ( (self.a * np.sin((aa_n * xc[:,0]) / self.a) - nu_u * xc[:,0] * np.sin(aa_n)) * np.cos(aa_n) /
+                  (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
+                axis=0,
+            )
+            ux = F / self.mu / self.a * (self.nu * xc[:,0] / 2 + ux_sum_0)
+            # Exact uy
+            uy_sum_0 = np.sum(
+                ( np.sin(aa_n) * np.cos(aa_n) /
+                  (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
+                axis=0,
+            )
+            uy = F / self.mu / self.a * ((self.nu - 1) * xc[:,1] / 2 - (nu_u - 1) * xc[:,1] * uy_sum_0)
+
+        return p, ux, uy
+    # Terzaghi analytics
     def terzaghi_exact_pressure0(self, t, xc) -> np.ndarray:
         h = self.a
         vertical_load = self.F
@@ -1537,7 +1641,42 @@ class UnstructReservoir:
         else:
             p = p0
         return p
-    # Two-layer Terzaghi
+    def terzaghi_exact_displacements(self, t, xc) -> np.ndarray:
+        """Compute exact pressure.
+        Args:
+            t: Time in seconds.
+        Returns:
+            Exact pressure for the given time `t`.
+        """
+        # Retrieve physical data
+        K_s = self.lam + 2 * self.mu / 3
+        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
+        nu_s = self.nu
+        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
+        mu_s = self.mu
+        k_s = self.permx / self.fluid_viscosity
+        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * (1 - nu_u) * (nu_u - nu_s) )
+
+        h = self.a
+        vertical_load = np.fabs(self.F)
+        dimless_t = t# / self.tD
+
+        n = 1000
+
+        u0 = -xc * vertical_load * (1  - 2 * self.nu) / 2 / self.mu / (1 - self.nu)
+        c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / self.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
+        coef = 4 * vertical_load * h * (nu_u - self.nu) / np.pi ** 2 / self.mu / (1 - self.nu) / (1 - nu_u)
+
+        if dimless_t > 0:
+            sum_series = np.zeros_like(xc)
+            for m in range(0, n):
+                sum_series += np.exp(-(2 * m + 1) ** 2 * np.pi ** 2 * c * dimless_t / 4 / h ** 2) * \
+                              np.cos((2 * m + 1) * np.pi * (xc + h) / 2 / h) / (2 * m + 1) ** 2
+            u = u0 - coef * sum_series
+        else:
+            u = u0
+        return u
+    # Two-layer Terzaghi analytics
     def approximate_roots_two_layers_terzaghi(self) -> np.ndarray:
         # Retrieve physical data
         p1 = self.props[99991]
