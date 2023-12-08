@@ -26,7 +26,7 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoir:
-    def __init__(self, timer, case='mandel', discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, timer, case='mandel', discretizer='mech_discretizer', mesh='rect'):
         self.timer = timer
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
@@ -35,12 +35,12 @@ class UnstructReservoir:
 
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
-            if discretizer == 'new_discretizer':
+            if discretizer == 'mech_discretizer':
                 self.mandel_north_dirichlet(mesh)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(mesh)
         elif case == 'terzaghi':
-            if discretizer == 'new_discretizer':
+            if discretizer == 'mech_discretizer':
                 self.terzaghi(mesh)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
@@ -50,7 +50,7 @@ class UnstructReservoir:
             self.terzaghi_two_layers_no_analytics(mesh)
 
         dt = 0.0
-        if discretizer == 'new_discretizer':
+        if discretizer == 'mech_discretizer':
             self.mesh.init_pm_new(self.discr.cell_m, self.discr.cell_p,
                               self.discr.flux_stencil, self.discr.flux_offset,
                               self.discr.hooke, self.discr.hooke_rhs,
@@ -86,7 +86,7 @@ class UnstructReservoir:
         self.bc = np.array(self.mesh.bc, copy=False)
         self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
         self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
-        if discretizer == 'new_discretizer':
+        if discretizer == 'mech_discretizer':
             self.mesh.f.resize(4 * (self.n_fracs + self.n_matrix))
             self.f = np.array(self.mesh.f, copy=False)
             self.biot_arr = np.array(self.mesh.biot, copy=False)
@@ -613,9 +613,9 @@ class UnstructReservoir:
 
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-            self.pm.perms.append(matrix33(self.permx, self.permy, self.permz))
-            self.pm.biots.append(matrix33(self.biot))
-            self.pm.stfs.append(Stiffness(self.lam, self.mu))
+            self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
+            self.pm.biots.append(engine_matrix33(self.biot))
+            self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
             self.biot_mean[9 * cell_id] = self.biot
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
@@ -1179,7 +1179,10 @@ class UnstructReservoir:
         #
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
-        self.mesh.reverse_and_sort_pm_mech_discretizer()
+        if self.discretizer_name == 'mech_discretizer':
+            self.mesh.reverse_and_sort_pm_mech_discretizer()
+        elif self.discretizer_name == 'pm_discretizer':
+            self.mesh.reverse_and_sort_pm()
         #self.mesh.init_grav_coef()
         return 0
     def get_normal_to_bound_face(self, b_id):
@@ -1222,7 +1225,7 @@ class UnstructReservoir:
             #     #sum_no_bound = np.sum(all_trans[st < self.unstr_discr.mat_cells_tot], axis=0)
             #     assert((abs(sum[:3,:3]) < 1.E-10).all())
         f.close()
-    def write_to_vtk(self, output_directory, ith_step, engine):
+    def write_to_vtk_mech_discretizer(self, output_directory, ith_step, engine):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -1296,6 +1299,95 @@ class UnstructReservoir:
 
                 # if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 # cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
+                # if ith_step == 0:
+                #     cell_data[ith_geometry]['permx'] = self.permx[:]
+                #     cell_data[ith_geometry]['permy'] = self.permy[:]
+                #     cell_data[ith_geometry]['permz'] = self.permz[:]
+            geom_id += 1
+
+        # Store solution for each time-step:
+        mesh = meshio.Mesh(
+            Mesh.points,
+            Mesh.cells,
+            cell_data=cell_data)
+        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+
+        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        return 0
+    def write_to_vtk_pm_discretizer(self, output_directory, ith_step, engine):
+        """
+        Class method which writes output of unstructured grid to VTK format
+        :param output_directory: directory of output files
+        :param property_array: np.array containing all cell properties (N_cells x N_prop)
+        :param cell_property: list with property names (visible in ParaView (format strings)
+        :param ith_step: integer containing the output step
+        :return:
+        """
+        # First check if output directory already exists:
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+
+        # Temporarily store mesh_data in copy:
+        Mesh = meshio.read(self.unstr_discr.mesh_file)
+
+        # Allocate empty new cell_data dictionary:
+        cell_property = ['u_x', 'u_y', 'u_z', 'p']
+        props_num = len(cell_property)
+        property_array = np.array(engine.X, copy=False)
+        available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
+        available_fracture_geometries = ['quad', 'triangle']
+
+        # if ith_step != 0:
+        fluxes = np.array(engine.fluxes, copy=False)
+        # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
+        fluxes_biot = np.array(engine.fluxes_biot, copy=False)
+        #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
+        #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
+        self.mech_operators.eval_porosities(engine.X, self.mesh.bc)
+        self.mech_operators.eval_stresses(engine.fluxes, engine.fluxes_biot, engine.X,
+                                          self.mesh.bc, engine.op_vals_arr)
+        # else:
+        #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
+        #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
+
+        # Matrix
+        geom_id = 0
+        Mesh.cells = []
+        cell_data = {}
+        for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
+            if ith_geometry in available_matrix_geometries:
+                Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
+                # Add matrix data to dictionary:
+                for i in range(props_num):
+                    if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
+                    cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
+
+                #if 'velocity' not in cell_data: cell_data['velocity'] = []
+                #cell_data['velocity'].append(vels)
+                # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
+                #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
+                #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
+                #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
+                #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
+                #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
+                if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
+                if 'porosity' not in cell_data: cell_data['porosity'] = []
+                if 'stress' not in cell_data: cell_data['stress'] = []
+                if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
+
+                cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
+                cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
+                cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+                cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+
+                stress = np.array(self.mech_operators.stresses, copy=False)
+                total_stress = np.array(self.mech_operators.total_stresses, copy=False)
+                for i in range(6):
+                    cell_data['stress'][-1][:, i] = stress[i::6]
+                    cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
+
+                if 'cell_id' not in cell_data: cell_data['cell_id'] = []
+                cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
                 # if ith_step == 0:
                 #     cell_data[ith_geometry]['permx'] = self.permx[:]
                 #     cell_data[ith_geometry]['permy'] = self.permy[:]

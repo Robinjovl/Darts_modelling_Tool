@@ -30,7 +30,7 @@ struct engine_super_elastic_exposer
 			.def(py::init<>()) \
 			.def("init", (int (engine_super_elastic_cpu<NC, NP, THERMAL>::*)
 			(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>())
-			.def("calc_newton_residual", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
+			.def("calc_newton_dev", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
 			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
 			.def_readwrite("find_equilibrium", &engine_super_elastic_cpu<NC, NP, THERMAL>::FIND_EQUILIBRIUM) \

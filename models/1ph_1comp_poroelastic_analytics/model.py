@@ -1,5 +1,5 @@
 from darts.models.darts_model import DartsModel
-from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress
+from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
 from reservoir import UnstructReservoir
 import numpy as np
 from darts.mesh.transcalc import TransCalculations as TC
@@ -10,29 +10,35 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 
 class Model(DartsModel):
-    def __init__(self, n_points=64, case='mandel', discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, n_points=64, case='mandel', discretizer='mech_discretizer', mesh='rect'):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
         self.physics_type = 'poromechanics'
         self.case = case
+        self.discretizer_name = discretizer
 
         self.reservoir = UnstructReservoir(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
         self.reservoir.P_VAR = self.engine.P_VAR
         self.reservoir.U_VAR = self.engine.U_VAR
-        self.reservoir.T_VAR = self.engine.T_VAR
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.tolerance_linear = 1e-10 # Tolerance for linear solver ||Ax - b||<tol_linslv
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.linear_type = sim_params.cpu_superlu#cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
-        self.params.max_i_newton = 10
-        self.params.max_i_linear = 5000
 
-        #self.add_wells()
-        #self.add_wells_frac()
+        self.params.max_i_newton = 10
+
+        if self.discretizer_name == 'mech_discretizer':
+            self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
+            self.params.linear_type = sim_params.cpu_superlu  # cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
+            self.params.max_i_linear = 5000
+        elif self.discretizer_name == 'pm_discretizer':
+            ls1 = linear_solver_params()
+            ls1.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr
+            ls1.tolerance_linear = 1.e-12
+            ls1.max_i_linear = 500
+            self.engine.ls_params.append(ls1)
 
         self.timer.node["initialization"].stop()
     def set_physics(self):
@@ -55,13 +61,23 @@ class Model(DartsModel):
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # create physics
-        physics = Poroelasticity(components, phases, self.timer,
-                                n_points=200, min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10)
-        physics.add_property_region(property_container)
+        self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                      min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+                                      discretizer = self.discretizer_name)
+        self.physics.add_property_region(property_container)
 
-        return super().set_physics(physics=physics, discr_type='mech_discretizer')
+        self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
+        return
 
     def init(self):
+        if self.discretizer_name == 'pm_discretizer':
+            self.reservoir.mech_operators = mech_operators()
+            self.reservoir.mech_operators.init(self.reservoir.mesh, self.reservoir.pm,
+                                     self.engine.P_VAR, self.engine.Z_VAR, self.engine.U_VAR,
+                                     self.engine.N_VARS, self.engine.N_OPS, self.engine.NC,
+                                     self.engine.ACC_OP, self.engine.FLUX_OP, self.engine.GRAV_OP)
+            self.reservoir.mech_operators.prepare()
+
         self.set_boundary_conditions()
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells, self.engine)

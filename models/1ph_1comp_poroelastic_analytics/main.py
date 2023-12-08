@@ -85,7 +85,7 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].start()
     for i in range(max_newt + 1):
         self.e.run_single_newton_iteration(dt)
-        res = self.e.calc_newton_residual()
+        res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
         self.e.dev_p = res[0]
         self.e.dev_u = res[1]
         if len(res) > 2 and res[2] == res[2]:       self.e.dev_g = res[2]
@@ -316,12 +316,12 @@ def plot_comparison(m, data, scheme, case, save_data=False):
         A[:, :, 0] = data['time'][:, np.newaxis]
         A[:, :, 1] = data['x'][np.newaxis, :]
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
-def run(case='mandel', mesh='rect'):
+def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     nt = 60
     max_dt = 30  # sec
     t = np.logspace(-3, np.log10(max_dt), nt)
 
-    m = Model(case=case, mesh=mesh)
+    m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
 
     redirect_darts_output('log.txt')
@@ -336,15 +336,20 @@ def run(case='mandel', mesh='rect'):
     # m.reinit_reference(output_directory)
     # m.physics.engine.find_equilibrium = False
 
-    m.reservoir.write_to_vtk(m.output_directory, 0, m.engine)
-
+    if discretizer == 'mech_discretizer':
+        m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, 0, m.engine)
+    elif discretizer == 'pm_discretizer':
+        m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, 0, m.engine)
     time = 0.0
     for ith_step, dt in enumerate(t):
         time += dt
         m.params.first_ts = dt
         m.params.max_ts = dt
         run_python(m, dt)
-        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
+        if discretizer == 'mech_discretizer':
+            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.engine)
+        elif discretizer == 'pm_discretizer':
+            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.engine)
 
     m.print_timers()
 
@@ -355,5 +360,5 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-run(case='terzaghi', mesh='rect')
+run(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
 

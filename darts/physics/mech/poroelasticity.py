@@ -1,6 +1,6 @@
 from darts.engines import *
 from darts.physics.physics_base import PhysicsBase
-from darts.physics.super.operator_evaluator import GeomechanicsReservoirOperators, RateOperators
+from darts.physics.super.operator_evaluator import *
 import numpy as np
 
 class Poroelasticity(PhysicsBase):
@@ -15,7 +15,7 @@ class Poroelasticity(PhysicsBase):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False):
+                 thermal: bool = False, cache: bool = False, discretizer: str = 'mech_discretizer'):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -39,14 +39,17 @@ class Poroelasticity(PhysicsBase):
         :type thermal: bool
         :param cache: Switch to cache operator values
         :type cache: bool
+        :param discretizer: Name of discretizer
+        :type discretizer: str
         """
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
         self.thermal = thermal
         self.n_dim = 3
+        self.discretizer_name = discretizer
 
-        # Define variables and OBL axes: pressure, nc-1 components and possibly temperature
+        # Define STATE(!) variables and OBL axes: pressure, nc-1 components and possibly temperature
         variables = ['pressure'] + components[:-1]
         if self.thermal:
             variables += ['temperature']
@@ -57,7 +60,12 @@ class Poroelasticity(PhysicsBase):
             axes_max = value_vector([max_p] + [max_z] * (nc - 1))
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1
+
+        if self.discretizer_name == 'mech_discretizer':
+            n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1
+        elif self.discretizer_name == 'pm_discretizer':
+            n_ops = 2 * n_vars
+            assert(self.thermal == False)
 
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
@@ -107,7 +115,6 @@ class Poroelasticity(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        self.discretizer_name = discretizer
         if discretizer == 'mech_discretizer':
             if self.thermal:
                 engine = eval("engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph))()
@@ -146,9 +153,14 @@ class Poroelasticity(PhysicsBase):
                 self.reservoir_operators[region] = ReservoirThermalOperators(prop_container)
             self.wellbore_operators = ReservoirThermalOperators(self.property_containers[regions[0]])
         else:
-            for region, prop_container in self.property_containers.items():
-                self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container)
-            self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[regions[0]])
+            if self.discretizer_name == 'pm_discretizer':
+                for region, prop_container in self.property_containers.items():
+                    self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container)
+                self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[regions[0]])
+            elif self.discretizer_name == 'mech_discretizer':
+                for region, prop_container in self.property_containers.items():
+                    self.reservoir_operators[region] = CompositionalGeomechanicsReservoirOperators(prop_container)
+                self.wellbore_operators = CompositionalGeomechanicsReservoirOperators(self.property_containers[regions[0]])
 
         self.rate_operators = RateOperators(self.property_containers[regions[0]])
 
