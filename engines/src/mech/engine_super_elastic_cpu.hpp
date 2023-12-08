@@ -45,10 +45,9 @@ public:
   const static uint8_t P_VAR = 0;
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
-  const static uint8_t U_VAR = NC + THERMAL;
+  const static uint8_t U_VAR = NE;
   // size of transmissibility block
-  const static uint8_t NT = 4;
-  const static uint8_t NT_SQ = NT * NT;
+  const static uint8_t NT = ND + 1 + THERMAL;
   // order of variables in transmissibility block
   const static uint8_t U_VAR_T = 0;
   const static uint8_t P_VAR_T = 3;
@@ -73,7 +72,11 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + 1;
+  const static uint8_t SAT_OP = UPSAT_OP;
+  // mapping 
+  // from transmissibility order of unknowns 
+  // to the order of unknowns in simulation
+  const static uint8_t T2U[5];
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -115,7 +118,7 @@ public:
   int solve_linear_equation();
   //void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
   int run_single_newton_iteration(value_t deltat);
-  int post_newtonloop(value_t deltat, value_t time);
+  int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
   /// @brief vector of variables in the current timestep provided for operator evaluation
   std::vector<value_t> Xop;

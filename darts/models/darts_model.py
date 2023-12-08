@@ -104,8 +104,8 @@ class DartsModel:
         :param verbose: Set verbose level
         :type verbose: bool
         """
-        self.reservoir.set_wells()
-        self.wells = self.reservoir.init_wells(self.reservoir.mesh, verbose=verbose)
+        self.reservoir.set_wells(verbose=verbose)
+        self.wells = self.reservoir.init_wells(verbose=verbose)
         return
 
     def set_physics(self, physics: PhysicsBase, discr_type: str = 'tpfa', platform: str = 'cpu',
@@ -195,7 +195,7 @@ class DartsModel:
         Operator list is in order [acc_flux_itor[0], ..., acc_flux_itor[n-1], acc_flux_w_itor]
         """
         if type(self.physics.acc_flux_itor) == dict:
-            self.op_list = [acc_flux_itor for acc_flux_itor in self.physics.acc_flux_itor.values()] + [self.physics.acc_flux_w_itor]
+            self.op_list = list(self.physics.acc_flux_itor.values()) + [self.physics.acc_flux_w_itor]
             self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
             self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
         else: # for backward compatibility
@@ -287,7 +287,7 @@ class DartsModel:
             else:
                 dt /= mult_dt
                 print("Cut timestep to %2.3f" % dt)
-                if dt < 1e-8:
+                if dt < 1e-12:
                     break
         # update current engine time
         self.engine.t = runtime
@@ -296,16 +296,32 @@ class DartsModel:
                                                          self.engine.stat.n_newton_total, self.engine.stat.n_newton_wasted,
                                                          self.engine.stat.n_linear_total, self.engine.stat.n_linear_wasted))
 
+    def set_rhs_flux(self) -> np.ndarray:
+        """
+        Function to specify modifications to RHS vector. User can implement his own boundary conditions here.
+
+        This function is empty in DartsModel, needs to be overloaded in child Model.
+
+        :return: Vector of modification to RHS vector
+        :rtype: np.ndarray
+        """
+        pass
+
     def apply_rhs_flux(self, dt: float):
-        '''
-        if self.rhs_flux is defined and it is not None, add its values to rhs
+        """
+        Function to apply modifications to RHS vector.
+
+        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs
+
         :param dt: timestep [days]
-        '''
-        if not hasattr(self, 'rhs_flux') or self.rhs_flux is None:
+        :type dt: float
+        """
+        if type(self).set_rhs_flux is DartsModel.set_rhs_flux:
+            # If the function has not been overloaded, pass
             return
         rhs = np.array(self.engine.RHS, copy=False)
         n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.rhs_flux * dt
+        rhs[:n_res] += self.set_rhs_flux() * dt
         return
 
     def run_timestep_python(self, dt, t):
@@ -358,25 +374,22 @@ class DartsModel:
         n_props = self.physics.n_props
         tot_props = n_vars + n_props
         nb = self.reservoir.mesh.n_res_blocks
-        property_array = np.zeros((nb, tot_props))
+        property_array = np.zeros((tot_props, nb))
 
         # Obtain primary variables from engine
         for j in range(n_vars):
-            property_array[:, j] = self.engine.X[j:nb * n_vars:n_vars]
+            property_array[j, :] = self.engine.X[j:nb * n_vars:n_vars]
 
         # If it has been defined, interpolate secondary variables in property_itor,
         if self.physics.property_operators is not None:
             values = value_vector(np.zeros(self.physics.n_ops))
 
             for i in range(nb):
-                state = []
-                for j in range(n_vars):
-                    state.append(property_array[i, j])
-                state = value_vector(np.asarray(state))
+                state = value_vector(property_array[0:n_vars, i])
                 self.physics.property_itor.evaluate(state, values)
 
                 for j in range(n_props):
-                    property_array[i, j + n_vars] = values[j]
+                    property_array[j + n_vars, i] = values[j]
 
         return property_array
 

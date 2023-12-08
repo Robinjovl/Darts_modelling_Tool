@@ -26,9 +26,10 @@ class Model(CICDModel):
 
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
 
-        if self.mode == 'rhs':
-            # add outflux to the middle cell
-            self.set_rhs_flux(inflow_cells=np.array([self.reservoir.nx // 2]), inflow_var_idx=0, outflow=outflow)
+        # add outflux to the middle cell
+        self.inflow_cells = np.array([self.reservoir.nx // 2])
+        self.inflow_var_idx = 0
+        self.outflow = outflow if mode == 'rhs' else 0
 
         self.timer.node["initialization"].stop()
 
@@ -93,7 +94,7 @@ class Model(CICDModel):
             else:
                 w.control = self.physics.new_rate_prod(self.well_rate, iph=0)
 
-    def set_rhs_flux(self, inflow_cells: np.array, inflow_var_idx: int, outflow: float):
+    def set_rhs_flux(self):
         '''
         function to specify the inflow or outflow to the cells
         it sets up self.rhs_flux vector on nvar * ncells size
@@ -105,11 +106,14 @@ class Model(CICDModel):
         '''
         nv = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
-        self.rhs_flux = np.zeros(nb * nv)
+        rhs_flux = np.zeros(nb * nv)
+
         # extract pointer to values corresponding to var_idx
-        rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
+        rhs_flux_var = rhs_flux[self.inflow_var_idx::nv]
         # set values for the cells defined in inflow_cells
-        rhs_flux_var[inflow_cells] = outflow
+        rhs_flux_var[self.inflow_cells] = self.outflow
+
+        return rhs_flux
 
     # overload base darts run function, because run does not apply_rhs_flux.
     # in CI/CD only run() is called

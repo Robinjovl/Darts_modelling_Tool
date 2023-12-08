@@ -156,10 +156,10 @@ class Geothermal(PhysicsBase):
         depth = np.array(mesh.depth, copy=True)
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = depth / 1000 * pressure_grad + 1
+        pressure[:] = depth[:pressure.size] / 1000 * pressure_grad + 1
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
-        temperature = depth / 1000 * temperature_grad + 293.15
+        temperature = depth[:pressure.size] / 1000 * temperature_grad + 293.15
 
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])

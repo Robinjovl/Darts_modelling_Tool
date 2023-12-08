@@ -637,11 +637,11 @@ Mesh::calc_cell_center(const int i, const int j, const int k) const
 }
 
 //
-void Mesh::construct_local_global()
+void Mesh::construct_local_global(std::vector<index_t> & global_cell)
 {
   index_t n_all = get_n_cells_total();
 
-	local_to_global.resize(n_cells);
+	local_to_global.reserve(n_cells);
 	global_to_local.resize(n_all);
 #if 0
 	index_t j = 0;
@@ -651,16 +651,29 @@ void Mesh::construct_local_global()
 			{
 				index_t i = get_global_index(i1, j1, k1);
 #else
-	for (index_t i = 0, j = 0; i < n_all; i++) {
+	index_t gidx = 0, lidx = 0;
+	for (auto gi : global_cell) {
 #endif
-		if (actnum[i] > 0) {
-			local_to_global[j] = i;
-			global_to_local[i] = j;
-			j++;
+		if (gidx && gi == 0) {// gi=0 means we run out active cells, but for the first cell zero index is OK
+			while (gidx < n_all) {
+				global_to_local[gidx++] = -1; // fill the rest array (inactive cells)
+			}
+			break;
 		}
-		else {
-			global_to_local[i] = -1;
+
+		// local_to_global is the same as global_cell except size (it doesn't contain zeros in the end)
+		local_to_global.push_back(gi);
+
+		while (gidx < n_all) { // infinite loop, added condition just in case
+			if (gi == gidx) {
+				global_to_local[gidx++] = lidx;
+				break;
+			}
+			else { // store -1 for inactive cells
+				global_to_local[gidx++] = -1;
+			}
 		}
+		lidx++;
 	}
 }
 
@@ -770,6 +783,37 @@ Mesh::get_centers() const
 	return centers_vec;
 }
 
+// compute node coords for vtk output
+std::vector<value_t>
+Mesh::get_nodes_array() const
+{
+	std::array<double, 8> X;
+	std::array<double, 8> Y;
+	std::array<double, 8> Z;
+
+	std::vector<value_t> nodes_array;
+	nodes_array.resize(8 * 3 * n_cells); // 8 nodes per cell, 3 coordinates (x,y,z) per node
+
+	int idx_cell = 0, idx = 0;
+	std::array<int, 8> permute = { 0,4,5,1,2,6,7,3 }; // need this order for vtk
+	for (int k = 0; k < nz; k++)
+		for (int j = 0; j < ny; j++)
+			for (int i = 0; i < nx; i++) {
+				if (global_to_local[idx_cell++] < 0) // cell is inactive => skip
+					continue;
+				calc_cell_nodes(i, j, k, X, Y, Z);
+
+				index_t start = idx * 8 * 3;
+				for (int ii = 0; ii < 8; ii++) {
+					index_t jj = permute[ii];
+					nodes_array[start + ii * 3 + 0] = X[jj];
+					nodes_array[start + ii * 3 + 1] = Y[jj];
+					nodes_array[start + ii * 3 + 2] = Z[jj];
+				}
+				idx++;
+			}
+	return nodes_array;
+}
 
 std::vector<int>
 Mesh::cpg_elems_nodes(

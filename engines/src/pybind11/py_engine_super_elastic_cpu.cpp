@@ -25,7 +25,7 @@ struct engine_super_elastic_exposer
 		{
 		    long_name = "Isothermal ";
 		}
-		long_name += "CPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases with momentum balance, diffusion and kinetic reaction";
+		long_name += "CPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases fluid in poroelastic matrix, diffusion and kinetic reaction";
 		py::class_<engine_super_elastic_cpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())   \
 			.def(py::init<>()) \
 			.def("init", (int (engine_super_elastic_cpu<NC, NP, THERMAL>::*)
@@ -67,28 +67,34 @@ struct engine_super_elastic_exposer
 			.def_property_readonly_static("NC", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::NC_; }) \
 			.def_property_readonly_static("ACC_OP", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::ACC_OP; }) \
 			.def_property_readonly_static("FLUX_OP", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::FLUX_OP; }) \
-			.def_property_readonly_static("GRAV_OP", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::GRAV_OP; })
+			.def_property_readonly_static("GRAV_OP", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::GRAV_OP; }) \
 			.def_property_readonly_static("SAT_OP", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::SAT_OP; });
 	}
 };
 
 void pybind_engine_super_elastic_cpu(py::module &m)
 {
+  // single-phase isothermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, false> re;
   re.expose(m);
-
+  
+  // two-phase isothermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, false> re1;
   re1.expose(m);
 
+  // three-phase isothermal
   //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, false> re2;
   //re2.expose(m);
 
+  // single-phase thermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, true> re3;
   re3.expose(m);
 
+  // two-phase thermal
   recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, true> re4;
   re4.expose(m);
 
+  // three-phase thermal
   //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, true> re5;
   //re5.expose(m);
 }

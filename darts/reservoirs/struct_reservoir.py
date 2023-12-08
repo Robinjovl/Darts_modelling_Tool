@@ -76,7 +76,7 @@ class StructReservoir(ReservoirBase):
         self.connected_well_segments = {}
         self.wells = []
 
-    def discretize(self):
+    def discretize(self, verbose: bool = False):
         self.discretizer = StructDiscretizer(nx=self.nx, ny=self.ny, nz=self.nz, global_data=self.global_data,
                                              global_to_local=self.global_to_local, coord=self.coord, zcorn=self.zcorn,
                                              is_cpg=self.is_cpg)
@@ -99,6 +99,9 @@ class StructReservoir(ReservoirBase):
                                                                                               tran, tran_thermal, arrs)
         poro, rcond, hcap, depth, volume, op_num = arrs_local
         self.global_data['global_to_local'] = self.discretizer.global_to_local
+
+        # Assign layer properties
+        self.set_layer_properties()
 
         # Initialize mesh using built connection list
         self.mesh = conn_mesh()
@@ -156,6 +159,9 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
             well_block = len(well.perforations)
@@ -211,10 +217,10 @@ class StructReservoir(ReservoirBase):
                 idx = j
         return idx
 
-    def init_wells(self, mesh, verbose: bool = False) -> ms_well_vector:
+    def init_wells(self, verbose: bool = False) -> ms_well_vector:
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
-        mesh.add_wells(ms_well_vector(self.wells))
+        self.mesh.add_wells(ms_well_vector(self.wells))
 
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
@@ -223,10 +229,10 @@ class StructReservoir(ReservoirBase):
             well_1 = self.get_well(well_pair[0])
             well_2 = self.get_well(well_pair[1])
             for perf_pair in self.connected_well_segments[well_pair]:
-                mesh.connect_segments(well_1, well_2, perf_pair[0], perf_pair[1], 1)
+                self.mesh.connect_segments(well_1, well_2, perf_pair[0], perf_pair[1], 1)
 
-        mesh.reverse_and_sort()
-        mesh.init_grav_coef()
+        self.mesh.reverse_and_sort()
+        self.mesh.init_grav_coef()
 
         return self.wells
 

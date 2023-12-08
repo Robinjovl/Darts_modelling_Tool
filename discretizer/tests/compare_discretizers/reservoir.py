@@ -221,19 +221,20 @@ class UnstructReservoir:
         self.cpp_bc.mech_tangen.b = value_vector(bmt)
 
         self.cpp_flow = BoundaryCondition()
-        self.cpp_flow.a_p = value_vector(ap)
-        self.cpp_flow.b_p = value_vector(bp)
+        self.cpp_flow.a = value_vector(ap)
+        self.cpp_flow.b = value_vector(bp)
         if self.thermal:
-            self.cpp_flow.a_th = value_vector(at)
-            self.cpp_flow.b_th = value_vector(bt)
+            self.cpp_heat = BoundaryCondition()
+            self.cpp_heat.a = value_vector(at)
+            self.cpp_heat.b = value_vector(bt)
 
         # gradient reconstruction
         if self.thermal:
-            self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow)
+            self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
         else:
             self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_mpfa_mpsa_transmissibilities(self.thermal)
+        self.discr.calc_interface_approximations(self.thermal)
 
     # old discretizer
     def unit_cube_pm_discretizer(self):

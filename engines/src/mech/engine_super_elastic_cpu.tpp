@@ -31,6 +31,10 @@ using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+const uint8_t engine_super_elastic_cpu<NC, NP, THERMAL>::T2U[5] = {U_VAR, U_VAR + 1, U_VAR + 2, P_VAR, T_VAR};
+
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
@@ -487,40 +491,49 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_jacobian_structure_pme(csr_m
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
+  // sizes
   index_t n_blocks = mesh->n_blocks;
   index_t n_matrix = mesh->n_matrix;
   index_t n_res_blocks = mesh->n_res_blocks;
   index_t n_bounds = mesh->n_bounds;
   index_t n_conns = mesh->n_conns;
-
+  // connections
   const index_t *block_m = mesh->block_m.data();
   const index_t *block_p = mesh->block_p.data();
   const index_t *stencil = mesh->stencil.data();
   const index_t *offset = mesh->offset.data();
-  const value_t *tran = mesh->tran.data();
-  const value_t *tran_biot = mesh->tran_biot.data();
-  const value_t *tran_th_expn = mesh->tran_th_expn.data();
+  // approximations
+  const value_t *darcy_tran = mesh->darcy_tran.data();
+  const value_t *darcy_rhs = mesh->darcy_rhs.data();
+  const value_t *hooke_tran = mesh->hooke_tran.data();
+  const value_t *hooke_rhs = mesh->hooke_rhs.data();
+  const value_t *biot_tran = mesh->biot_tran.data();
+  const value_t *biot_rhs = mesh->biot_rhs.data();
+  const value_t *biot_vol_strain_tran = mesh->vol_strain_tran.data();
+  const value_t *biot_vol_strain_rhs = mesh->vol_strain_rhs.data();
+  const value_t *fourier_tran = mesh->fourier_tran.data();
+  // approximation blocks
+  const uint8_t N_DARCY = 1;
+  const uint8_t N_HOOKE = ND * NT;
+  const uint8_t N_BIOT = ND;
+  const uint8_t N_BIOT_STRAIN = NT;
+  // boundary rhs values
   value_t *bc = mesh->bc.data();
   value_t *bc_prev = mesh->bc_n.data();
   value_t *bc_ref = mesh->bc_ref.data();
-  const value_t *rhs = mesh->rhs.data();
-  const value_t *rhs_biot = mesh->rhs_biot.data();
+  value_t* pz_bounds = mesh->pz_bounds.data(); // hyperbolic influx variables over boundaries
+  // free term
   const value_t *f = mesh->f.data();
+  // other properties
   const value_t *V = mesh->volume.data();
   const value_t *kd = mesh->drained_compressibility.data();
-  const value_t *th_poro = mesh->th_poro.data();
   const value_t *biot = mesh->biot.data();
   const value_t *poro = mesh->poro.data();
-  value_t *pz_bounds = mesh->pz_bounds.data();
   const value_t *p_ref = mesh->ref_pressure.data();
   value_t *t_ref = mesh->ref_temperature.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
-
-  const value_t *tranD = mesh->tranD.data();
   const value_t *hcap = mesh->heat_capacity.data();
-  const value_t *kin_fac = mesh->kin_factor.data(); // default value of 1
-  const value_t *grav_coef = mesh->grav_coef.data();
-
+  // Jacobian as a BCSR matrix
   value_t *Jac = jacobian->get_values();
   index_t *diag_ind = jacobian->get_diag_ind();
   index_t *rows = jacobian->get_rows_ptr();
@@ -544,23 +557,23 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
 #endif //_OPENMP
 
-	std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
-	std::fill(RHS.begin(), RHS.end(), 0.0);
-	std::fill(fluxes.begin(), fluxes.end(), 0.0);
-	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
+  std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
+  std::fill(RHS.begin(), RHS.end(), 0.0);
+  std::fill(fluxes.begin(), fluxes.end(), 0.0);
+  std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
 
-	index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
-		csr_idx_start, csr_idx_end;
-	index_t l_ind, r_ind, l_ind1, r_ind1;
-	value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
-	uint8_t d, v, c, p;
-	value_t gamma_p_diff, p_diff, phase_p_diff[NP], t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
-    value_t CFL_in[NC], CFL_out[NC];
-    value_t CFL_max_local = 0;
-	value_t avg_density, eff_density;
-	const value_t rho_s = 2650.0;
+  index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
+	  csr_idx_start, csr_idx_end;
+  index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5;
+  value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
+  uint8_t d, v, c, p;
+  value_t gamma_p_diff, p_diff, phase_p_diff[NP], t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
+  value_t CFL_in[NC], CFL_out[NC];
+  value_t CFL_max_local = 0;
+  value_t avg_density, avg_weigthed_density, avg_weigthed_density_n, eff_density;
+  const value_t rho_s = 2650.0;
 
-    int connected_with_well;
+  int connected_with_well;
 
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
@@ -628,6 +641,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  nebr_jac_idx = csr_idx_end;
 		  // [1] fluid flux evaluation q = -Kn * \nabla p & biot flux qb = u * n
 		  p_diff = t_diff = 0.0;
+		  l_ind = N_VARS * conn_id + P_VAR;
 		  conn_st_id = offset[conn_id];
 		  for (st_id = csr_idx_start; conn_st_id < offset[conn_id + 1]; st_id++)
 		  {
@@ -649,30 +663,26 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  buf = &bc[r_ind];
 				  buf_prev = &bc_prev[r_ind];
 			  }
-			  // displacement contribution
-			  r_ind = conn_st_id * NT_SQ + P_VAR_T * NT + U_VAR_T;
-			  for (d = 0; d < ND; d++)
+
+			  // biot * vol_strains
+			  r_ind = conn_st_id * N_BIOT_STRAIN;
+			  for (d = 0; d < NT; d++)
 			  {
-				  // fluid flux
-				  p_diff += tran[r_ind + d] * buf[U_VAR + d];
-				  // flux of displacements (u * n)
-				  biot_mult += tran_biot[r_ind + d] * buf[U_VAR + d];
-				  // time derivative of the last flux = flux of matrix mass due to structure movement
-				  fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[r_ind + d] * 
-					  (buf[U_VAR + d] - buf_prev[U_VAR + d]) / dt;
+				// flux of displacements (u * n)
+				biot_mult += biot_vol_strain_tran[r_ind + d] * buf[T2U[d]];
+				// time derivative of the last flux = flux of matrix mass due to structure movement
+				fluxes_biot[l_ind] += biot_vol_strain_tran[r_ind + d] * (buf[T2U[d]] - buf_prev[T2U[d]]) / dt;
 			  }
-			  // pressure contribution
-			  r_ind = conn_st_id * NT_SQ + P_VAR_T * NT + P_VAR_T;
-			  p_diff += tran[r_ind] * buf[P_VAR];
-			  biot_mult += tran_biot[r_ind] * buf[P_VAR];
-			  fluxes_biot[N_VARS * conn_id + P_VAR] += tran_biot[r_ind] * 
-				  (buf[P_VAR] - buf_prev[P_VAR]) / dt;
+			  // darcy
+			  p_diff += darcy_tran[conn_st_id] * buf[P_VAR];
+
 			  // heat conduction
 			  if (THERMAL)
-				t_diff -= tranD[conn_st_id] * buf[T_VAR];
+				t_diff -= fourier_tran[conn_st_id] * buf[T_VAR];
 
 			  conn_st_id++;
 		  }
+
 		  // [2] phase fluxes & upwind direction
 		  for (p = 0; p < NP; p++)
 		  {
@@ -680,8 +690,16 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
 
 			  // sum up gravity and cappillary terms
-			  phase_p_diff[p] = p_diff + avg_density * rhs[NT * conn_id + P_VAR_T] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
-			  //?????//phase_biot_mult += avg_density * rhs_biot[NT * conn_id + P_VAR];
+			  phase_p_diff[p] = p_diff + avg_density * darcy_rhs[conn_id] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
+
+			  avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
+									  op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+			  avg_weigthed_density_n = (op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p] +
+										op_vals_arr_n[j * N_OPS + SAT_OP + p] * op_vals_arr_n[j * N_OPS + GRAV_OP + p]) / 2;
+
+			  // sum up gravity for Biot volumetric strain
+			  biot_mult += avg_weigthed_density * biot_vol_strain_rhs[conn_id];
+			  fluxes_biot[N_VARS * conn_id + P_VAR] += biot_vol_strain_rhs[conn_id] * (avg_weigthed_density - avg_weigthed_density_n) / dt;
 
 			  // identify upwind direction
 			  if (phase_p_diff[p] >= 0)
@@ -719,93 +737,72 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  r_ind = stencil[conn_st_id] * N_VARS;
 				  for (d = 0; d < ND; d++)
 				  {
-					  // displacements contribution
-					  l_ind1 = st_id * N_VARS_SQ + (U_VAR + d) * N_VARS;
-					  r_ind1 = conn_st_id * NT_SQ + (U_VAR_T + d) * NT + U_VAR_T;
-					  for (v = 0; v < ND; v++)
-					  {
-						  fluxes[l_ind + d] += tran[r_ind1 + v] * X[r_ind + U_VAR + v];
-						  fluxes_biot[l_ind + d] += tran_biot[r_ind1 + v] * X[r_ind + U_VAR + v];
-						  Jac[l_ind1 + U_VAR + v] += tran[r_ind1 + v];
-						  Jac[l_ind1 + U_VAR + v] += tran_biot[r_ind1 + v];
-					  }
-					  // pressure contribution
-					  r_ind1 = conn_st_id * NT_SQ + (U_VAR_T + d) * NT + P_VAR_T;
-					  fluxes[l_ind + d] += tran[r_ind1] * X[r_ind + P_VAR];
-					  fluxes_biot[l_ind + d] += tran_biot[r_ind1] * X[r_ind + P_VAR];
-					  Jac[l_ind1 + P_VAR] += tran[r_ind1];
-					  Jac[l_ind1 + P_VAR] += tran_biot[r_ind1];
-					  // subtract reference pressure (when stress = 0)
-					  fluxes[l_ind + d] += -tran[r_ind1] * p_ref_cur;
-					  fluxes_biot[l_ind + d] += -tran_biot[r_ind1] * p_ref_cur;
+					l_ind1 = st_id * N_VARS_SQ + (U_VAR + d) * N_VARS;
+					r_ind1 = conn_st_id * N_HOOKE + d * NT;
+					for (v = 0; v < NT; v++)
+					{
+					  // Hooke's term 
+					  fluxes[l_ind + d] += hooke_tran[r_ind1 + v] * X[r_ind + T2U[v]];
+					  Jac[l_ind1 + T2U[v]] += hooke_tran[r_ind1 + v];
+					}
+
+					// Biot's traction term
+					fluxes_biot[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * X[r_ind + P_VAR];
+					Jac[l_ind1 + P_VAR] += biot_tran[conn_st_id * N_BIOT + d];
+
+					// subtract reference pressure (when stress = 0)
+					// fluxes[l_ind + d] += -tran[r_ind1] * p_ref_cur;
 				  }
 				  //// mass fluxes
 				  r_ind = stencil[conn_st_id] * N_VARS;
-				  r_ind1 = conn_st_id * NT_SQ + P_VAR_T * NT;
+				  r_ind1 = conn_st_id * N_DARCY;
 				  for (p = 0; p < NP; p++)
 				  {
 					  // NE equations
 					  for (c = 0; c < NE; c++)
 					  {
-						  l_ind1 = st_id * N_VARS_SQ + (P_VAR + c) * N_VARS;
-						  // displacements contribution to flux
-						  for (v = 0; v < ND; v++)
-						  {
-							  Jac[l_ind1 + U_VAR + v] += dt * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] * tran[r_ind1 + U_VAR_T + v];
-						  }
-						  // pressure contribution to flux
-						  Jac[l_ind1 + P_VAR] += dt * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] * tran[r_ind1 + P_VAR_T];
+						  Jac[st_id * N_VARS_SQ + (P_VAR + c) * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c] * darcy_tran[r_ind1];
 					  }
 				  }
 				  // biot term in accumulation
+				  r_ind1 = conn_st_id * N_BIOT_STRAIN;
 				  for (c = 0; c < NE; c++)
 				  {
+					  l_ind = i * N_VARS + P_VAR + c;
 					  l_ind1 = st_id * N_VARS_SQ + (c + P_VAR) * N_VARS;
-					  // displacements contribution to flux
-					  for (v = 0; v < ND; v++)
+					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[i * N_VARS + P_VAR + c] += tran_biot[r_ind1 + U_VAR_T + v] *
-							  (op_vals_arr[i * N_OPS + ACC_OP + c] * X[r_ind + U_VAR + v] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * Xn[r_ind + U_VAR + v]);
-						  Jac[l_ind1 + U_VAR + v] += op_vals_arr[i * N_OPS + ACC_OP + c] * tran_biot[r_ind1 + U_VAR_T + v];
+						  RHS[l_ind] += biot_vol_strain_tran[r_ind1 + v] *
+							  (op_vals_arr[i * N_OPS + ACC_OP + c] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * Xn[r_ind + T2U[v]]);
+						  Jac[l_ind1 + T2U[v]] += op_vals_arr[i * N_OPS + ACC_OP + c] * biot_vol_strain_tran[r_ind1 + v];
 					  }
-					  // pressure contribution to flux
-					  RHS[i * N_VARS + P_VAR + c] += tran_biot[r_ind1 + P_VAR_T] *
-						  (op_vals_arr[i * N_OPS + ACC_OP + c] * X[r_ind + P_VAR] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * Xn[r_ind + P_VAR]);
-					  Jac[l_ind1 + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP + c] * tran_biot[r_ind1 + P_VAR_T];
 				  }
 				  // biot term in porosity in gravitational forces
 				  for (d = 0; d < ND; d++)
 				  {
+					  l_ind = i * N_VARS + U_VAR + d;
 					  l_ind1 = st_id * N_VARS_SQ + (U_VAR + d) * N_VARS;
-					  // displacements contribution to flux
-					  for (v = 0; v < ND; v++)
+					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind1 + U_VAR_T + v] * X[r_ind + U_VAR + v];
-						  Jac[l_ind1 + U_VAR + v] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind1 + U_VAR_T + v];
+						  RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind1 + v] * X[r_ind + T2U[v]];
+						  Jac[l_ind1 + T2U[v]] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind1 + v];
 					  }
-					  // pressure contribution to flux
-					  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind1 + P_VAR_T] * X[r_ind + P_VAR];
-					  Jac[l_ind1 + P_VAR] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind1 + P_VAR_T];
 				  }
 				  //// heat fluxes
 				  if (THERMAL)
 				  {
 					  // rock energy
+					  l_ind = i * N_VARS + T_VAR;
 					  l_ind1 = st_id * N_VARS_SQ + T_VAR * N_VARS;
-					  // displacements contribution to flux
-					  for (v = 0; v < ND; v++)
+					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[i * N_VARS + T_VAR] -= hcap[i] * tran_biot[r_ind1 + U_VAR_T + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * X[r_ind + U_VAR + v] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * Xn[r_ind + U_VAR + v]);
-						  Jac[l_ind1 + U_VAR + v] -= hcap[i] * tran_biot[r_ind1 + U_VAR_T + v] * op_vals_arr[i * N_OPS + RE_INTER_OP];
+						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] *
+							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * Xn[r_ind + T2U[v]]);
+						  Jac[l_ind1 + T2U[v]] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] * op_vals_arr[i * N_OPS + RE_INTER_OP];
 					  }
-					  // pressure contribution to flux
-					  RHS[i * N_VARS + T_VAR] -= hcap[i] * tran_biot[r_ind1 + P_VAR_T] *
-						  (op_vals_arr[i * N_OPS + RE_INTER_OP] * X[r_ind + P_VAR] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * Xn[r_ind + P_VAR]);
-					  Jac[l_ind1 + P_VAR] -= hcap[i] * tran_biot[r_ind1 + P_VAR_T] * op_vals_arr[i * N_OPS + RE_INTER_OP];
 
 					  // heat conduction
-					  Jac[l_ind1 + T_VAR] -= dt * tranD[conn_st_id];
+					  Jac[l_ind1 + T_VAR] -= dt * fourier_tran[conn_st_id];
 				  }
 
 				  conn_st_id++;
@@ -824,56 +821,45 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  l_ind = N_VARS * conn_id + U_VAR;
 				  for (d = 0; d < ND; d++)
 				  {
-					  // displacement contribution
-					  r_ind = conn_st_id * NT_SQ + (U_VAR_T + d) * NT;
-					  for (v = 0; v < ND; v++)
+					  // Hooke's term 
+					  r_ind = conn_st_id * N_HOOKE + d * NT;
+					  for (v = 0; v < NT; v++)
 					  {
-						  fluxes[l_ind + d] += tran[r_ind + U_VAR_T + v] * (cur_bc[U_VAR + v] - ref_bc[U_VAR + v]);
-						  fluxes_biot[l_ind + d] += tran_biot[r_ind + U_VAR_T + v] * (cur_bc[U_VAR + v] - ref_bc[U_VAR + v]);
+						  fluxes[l_ind + d] += hooke_tran[r_ind + v] * (cur_bc[T2U[v]] - ref_bc[T2U[v]]);
 					  }
-					  // pressure contribution
-					  fluxes[l_ind + d] += tran[r_ind + P_VAR_T] * (cur_bc[P_VAR] - ref_bc[P_VAR]);
-					  fluxes_biot[l_ind + d] += tran_biot[r_ind + P_VAR_T] * (cur_bc[P_VAR] - ref_bc[P_VAR]);
+					  // Biot's traction term
+					  fluxes_biot[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * (cur_bc[P_VAR] - ref_bc[P_VAR]);
 				  }
 				  // mass balance
 				  // biot term in accumulation
-				  r_ind = conn_st_id * NT_SQ + P_VAR_T * NT;
+				  r_ind = conn_st_id * N_BIOT_STRAIN;
 				  for (c = 0; c < NE; c++)
 				  {
-					  // displacement contribution
-					  for (v = 0; v < ND; v++)
+					  l_ind = i * N_VARS + P_VAR + c;
+					  for (v = 0; v < NT; v++)
 					  {
-						  // biot
-						  RHS[i * N_VARS + P_VAR + c] += tran_biot[r_ind + U_VAR_T + v] *
-							  (op_vals_arr[i * N_OPS + ACC_OP + c] * cur_bc[U_VAR + v] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * cur_bc_prev[U_VAR + v]);
+						  RHS[l_ind] += biot_vol_strain_tran[r_ind + v] *
+							  (op_vals_arr[i * N_OPS + ACC_OP + c] * cur_bc[T2U[v]] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * cur_bc_prev[T2U[v]]);
 					  }
-					  // pressure contribution
-					  RHS[i * N_VARS + P_VAR + c] += tran_biot[r_ind + P_VAR_T] *
-						  (op_vals_arr[i * N_OPS + ACC_OP + c] * cur_bc[P_VAR] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * cur_bc_prev[P_VAR]);
 				  }
 				  // biot term in porosity in gravitational forces
 				  for (d = 0; d < ND; d++)
 				  {
-					  // displacements contribution to flux
-					  for (v = 0; v < ND; v++)
+					  l_ind = i * N_VARS + U_VAR + d;
+					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind + U_VAR_T + v] * cur_bc[U_VAR + v];
+						  RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind + v] * cur_bc[T2U[v]];
 					  }
-					  // pressure contribution to flux
-					  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * eff_density * tran_biot[r_ind + P_VAR_T] * cur_bc[P_VAR];
 				  }
 				  // rock energy
 				  if (THERMAL)
 				  {
-					  // displacements contribution to flux
-					  for (v = 0; v < ND; v++)
+					  l_ind = i * N_VARS + T_VAR;
+					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[i * N_VARS + T_VAR] -= hcap[i] * tran_biot[r_ind + U_VAR_T + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[U_VAR + v] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[U_VAR + v]);
+						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind + v] *
+							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[T2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[T2U[v]]);
 					  }
-					  // pressure contribution to flux
-					  RHS[i * N_VARS + T_VAR] -= hcap[i] * tran_biot[r_ind + P_VAR_T] *
-						  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[P_VAR] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[P_VAR]);
 				  }
 			  }
 		  }
@@ -885,10 +871,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  value_t grav_pc_der_j[N_VARS - ND];
 			  r_ind = (i * N_OPS + GRAV_OP + p) * N_STATE;
 			  r_ind1 = (j * N_OPS + GRAV_OP + p) * N_STATE;
-			  for (v = 0; v < N_VARS - ND; v++)
+			  for (v = 0; v < NE; v++)
 			  {
-				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * rhs[NT * conn_id + P_VAR_T] / 2 - op_ders_arr[r_ind + v];
-				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * rhs[NT * conn_id + P_VAR_T] / 2 + op_ders_arr[r_ind1 + v];
+				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * darcy_rhs[conn_id] / 2 - op_ders_arr[r_ind + v];
+				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * darcy_rhs[conn_id] / 2 + op_ders_arr[r_ind1 + v];
 			  }
 
 			  for (c = 0; c < NE; c++)
@@ -897,17 +883,55 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  l_ind1 = nebr_jac_idx * N_VARS_SQ + (P_VAR + c) * N_VARS;
 				  r_ind = upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c;
 				  r_ind1 = (upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c) * N_STATE;
+				  l_ind2 = i * N_VARS + P_VAR + c;
+				  r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;
+				  r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
+				  r_ind4 = (j * N_OPS + GRAV_OP + p) * N_STATE;
+				  r_ind5 = (j * N_OPS + SAT_OP + p) * N_STATE;
+				  
+				  avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
+					op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+				  RHS[l_ind2] += avg_weigthed_density * biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c];
 				  for (v = 0; v < NE; v++)
 				  {
-					  if (upwd_jac_idx[p] < csr_idx_end)
+					  // 1. mobility derivative
+					  if (upwd_jac_idx[p] < csr_idx_end) // mobility derivatives
 					  {
 						  Jac[upwd_jac_idx[p] * N_VARS_SQ + (P_VAR + c) * N_VARS + v] += dt * phase_p_diff[p] * op_ders_arr[r_ind1 + v];
 					  }
-					  // gravity
-					  Jac[l_ind + v] += dt * rhs[conn_id * NT + P_VAR_T] * op_vals_arr[r_ind] * grav_pc_der_i[v];
+					  // 2. derivatives of 'avg_density' coming with (gravitational) free term
+					  Jac[l_ind + v] += dt * op_vals_arr[r_ind] * grav_pc_der_i[v];
+					  // 3. derivatives of 'avg_weigthed_density' coming with (gravitational) free term
+					  Jac[l_ind + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+						(op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]) / 2;
 					  if (nebr_jac_idx < csr_idx_end)
-						  Jac[l_ind1 + v] += dt * rhs[conn_id * NT + P_VAR_T] * op_vals_arr[r_ind] * grav_pc_der_j[v];
+					  {
+						// 2. .. with respect to neighbour j
+						Jac[l_ind1 + v] += dt * op_vals_arr[r_ind] * grav_pc_der_j[v]; // 1.
+						// 3. .. with respect to neighbour j
+						Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+						  (op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+					  } 
 				  }
+			  }
+			  // 4. derivatives of density coming with (gravitational) free term to porosity in gravitational forces
+			  // note that gravitational free term is from Darcy fluxes, gravitational forces are in momentum balance
+			  // for clarity: 
+			  // biot * vol_strain * \rho_{total} + (1 - biot * vol_strain) * \rho_{sk} = (\sum_{stencil, vars} (biot_vol_strain_tran * X) + rho_{total} * biot_vol_strain_rhs) * eff_density +
+			  // + \rho_{sk}
+			  for (d = 0; d < ND; d++)
+			  {
+				l_ind = i * N_VARS + U_VAR + d;
+				RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_rhs[conn_id] * 
+							  op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				l_ind1 = diag_idx + (U_VAR + d) * N_VARS;
+				r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;
+				r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
+				for (v = 0; v < NE; v++)
+				{
+				  Jac[l_ind1 + v] += V[i] * f[l_ind] * eff_density * biot_vol_strain_rhs[conn_id] *
+							  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
+				}
 			  }
 		  }
 		  // [?] extra loop for gravity in biot for flux
@@ -928,14 +952,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  ref_bc = &pz_bounds[r_ind + T_VAR];// &t_ref[upwd_idx[0]];
 			  }
 			  // thermal induced stresses
-			  for (d = 0; d < ND; d++)
+			  /*for (d = 0; d < ND; d++)
 			  {
 				  fluxes[l_ind + d] += tran_th_expn[conn_id * ND + d] * (cur_bc[0] - ref_bc[0]);
 				  if (upwd_jac_idx[0] < csr_idx_end)
 					  Jac[l_ind1 + (U_VAR + d) * N_VARS] += tran_th_expn[conn_id * ND + d];
 				  //fluxes[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs[N_VARS * conn_id + U_VAR + d];
 				  //fluxes_biot[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs_biot[N_VARS * conn_id + U_VAR + d];
-			  }
+			  }*/
 		  // [7] add heat conduction
 		  /*if (THERMAL)
 		  {
@@ -985,12 +1009,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  {
 			  RHS[i * N_VARS + U_VAR + d] += fluxes[N_VARS * conn_id + U_VAR + d];
 			  RHS[i * N_VARS + U_VAR + d] += fluxes_biot[N_VARS * conn_id + U_VAR + d];
-			  //Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += (rhs[NT * conn_id + U_VAR_T + d] + rhs_biot[NT * conn_id + U_VAR_T + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * N_STATE];
 		  }
 	  }
 
 	  // [9] accumulation for mass balance
-	  // porosity
+	  // [9.1] porosity
 
 	  phi = poro[i];
 	  phi_n = poro[i];
@@ -1010,11 +1033,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
 			  phi += comp_mult * (X[i * N_VARS + P_VAR] - p_ref[i]) - eps_vol_ref[i];
 			  phi_n += comp_mult * (Xn[i * N_VARS + P_VAR] - p_ref[i]) - eps_vol_ref[i];
-			  if (THERMAL)
+			  /*if (THERMAL)
 			  {
 				  phi -= th_poro[i] * (X[i * N_VARS + T_VAR] - t_ref[i]);
 				  phi_n -= th_poro[i] * (Xn[i * N_VARS + T_VAR] - t_ref[i]);
-			  }
+			  }*/
 		  }
 		  else
 		  {
@@ -1036,12 +1059,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  {
 				  Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] += V[i] * phi * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v];
 			  }
-			  if (!geomechanics_mode[i] && THERMAL)
-				Jac[diag_idx + (P_VAR + c) * N_VARS + T_VAR] -= V[i] * th_poro[i] * op_vals_arr[i * N_OPS + ACC_OP + c];
+			  //if (!geomechanics_mode[i] && THERMAL)
+			  //	Jac[diag_idx + (P_VAR + c) * N_VARS + T_VAR] -= V[i] * th_poro[i] * op_vals_arr[i * N_OPS + ACC_OP + c];
 		  }
 	  //}
 
-      // [9] finally add rock energy
+      // [9.2] add rock energy
       // + rock energy (no rock compressibility included in these computations)
       if (THERMAL && !FIND_EQUILIBRIUM)
       {
@@ -1053,7 +1076,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
         } // end of fill offdiagonal part + contribute to diagonal
 
 		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
-		Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
+		//Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
       }
 
       // calc CFL for reservoir cells, not connected with wells
@@ -1069,7 +1092,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
         }
       }
 
-	  // gravitational forces
+	  // [9.3] gravitational forces
 	  if (i < n_res_blocks)
 	  {
 		  for (c = 0; c < NE; c++)
@@ -1091,6 +1114,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  }
 			  RHS[i * N_VARS + U_VAR + d] += (1 - phi) * V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
 			  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] -= comp_mult * V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
+			  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
 		  }
 	  }
     } // end of loop over grid blocks
@@ -1128,7 +1152,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   }
 
   return 0;
-};
+}
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t deltat)
@@ -1315,9 +1339,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time)
+int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	int converged = 0;
 	char buffer[1024];
 	double well_tolerance_coefficient = 1e2;
 
@@ -1339,7 +1362,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 	}
 	else
 	{
-		converged = 1;
+		converged *= 1;
 	}
 
 	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
@@ -1943,9 +1966,3 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //	}
 //	return residual;
 //}
-
-template class engine_super_elastic_cpu<2, 2, 0>;
-template class engine_super_elastic_cpu<2, 2, 1>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 1>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 2>;
-//template struct recursive_instantiator_nc_np<engine_super_elastic_cpu, 2, MAX_NC, 3>;

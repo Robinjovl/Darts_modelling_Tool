@@ -1,13 +1,10 @@
-from .shapes import *
+from darts.reservoirs.mesh.geometry.shapes import *
 
 
 class FluidFlower(Shape):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, lc: list):
+        self.lc = lc
 
-        self.connect_points()
-
-    def define_shapes(self):
         """Define points, curves, surfaces, volumes"""
         self.points = [Point(1, [0.0, 0.0, 0.0]),
                        Point(2, [0.31133, 0.0, 0.0]),
@@ -244,17 +241,19 @@ class FluidFlower(Shape):
                          Surface(31, points=[195, 194, 193, 192, 191, 190, 189, 188, 187, 186, 185, 184, 183, 182, 181, 180, 196, 197, 195])
                          ]
 
+        self.connect_points()
+
         self.volumes = []
 
         """Define Physical Points, Curves, Surfaces, Volumes"""
-        self.physical_points = []
+        self.physical_points = {}
 
-        self.physical_curves = [# Physical('top', idxs=[1]),
-                                ]
+        self.physical_curves = {#'top': [1],
+                                }
 
-        self.physical_surfaces = []
+        self.physical_surfaces = {}
 
-        self.physical_volumes = []
+        self.physical_volumes = {}
 
     def plot_shape_2D(self):
         """

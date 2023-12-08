@@ -51,7 +51,7 @@ class Model(DartsModel):
         """Physical properties"""
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
-        phases = ["V", "Aq"]
+        phases = ["Aq", "V"]
         nc = len(components)
         comp_data = CompData(components, setprops=True)
 
@@ -64,7 +64,7 @@ class Model(DartsModel):
         # EoS-related parameters
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
-        flash_params.eos_used = ["PR", "AQ"]
+        flash_params.eos_used = ["AQ", "PR"]
 
         flash_params.split_initial_guesses = [InitialGuess.Henry_AV]
 
@@ -97,7 +97,7 @@ class Model(DartsModel):
         physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
                                 max_z=1-zero/10, min_t=273.15, max_t=373.15, thermal=thermal, cache=False)
         physics.add_property_region(property_container)
-        props = [('satA', 'sat', 1), ('satV', 'sat', 0), ('xCO2', 'x', (1, 1)), ('yH2O', 'x', (0, 0))]
+        props = [('satA', 'sat', 0), ('satV', 'sat', 1), ('xCO2', 'x', (0, 1)), ('yH2O', 'x', (1, 0))]
         physics.add_property_operators(PropertyOperators(props, property_container))
 
         return super().set_physics(physics)

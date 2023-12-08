@@ -26,6 +26,7 @@ class UnstructReservoir(ReservoirBase):
     :param cache: Switch to load/save cache of discretization
     :type cache: bool
     """
+    physical_tags = {'matrix': [], 'boundary': [], 'fracture': [], 'fracture_shape': [], 'output': []}
 
     def __init__(self, timer: timer_node, mesh_file: str, permx, permy, permz, poro, rcond=0, hcap=0,
                  frac_aper=0, op_num=0, cache: bool = False):
@@ -45,10 +46,11 @@ class UnstructReservoir(ReservoirBase):
         # Create empty list of wells:
         self.wells = []
 
-    def discretize(self):
+    def discretize(self, verbose: bool = False) -> None:
         # Construct instance of Unstructured Discretization class:
-        self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, permx=self.permx, permy=self.permy,
-                                               permz=self.permz, frac_aper=self.frac_aper)
+        self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=self.physical_tags,
+                                               permx=self.permx, permy=self.permy, permz=self.permz,
+                                               frac_aper=self.frac_aper, verbose=verbose)
 
         # Use class method load_mesh to load the GMSH file specified above:
         self.discretizer.load_mesh()
@@ -60,6 +62,9 @@ class UnstructReservoir(ReservoirBase):
         self.discretizer.store_volume_all_cells()
         self.discretizer.store_depth_all_cells()
         self.discretizer.store_centroid_all_cells()
+
+        # Assign layer properties
+        self.set_layer_properties()
 
         # Perform discretization:
         cell_m, cell_p, tran, tran_thermal = self.discretizer.calc_connections_all_cells()
@@ -192,16 +197,17 @@ class UnstructReservoir(ReservoirBase):
             print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
             exit()
 
-        # calculate well index and get local index of reservoir block
-        wi, wid = self.discretizer.calc_equivalent_well_index(cell_index, well_radius, skin)
         # well.well_head_depth = np.array(self.mesh.depth, copy=False)[cell_index]
         # well.well_body_depth = well.well_head_depth
 
-        if well_index is None:
-            well_index = wi
+        if well_index is None or well_indexD is None:
+            # calculate well index and get local index of reservoir block
+            wi, wid = self.discretizer.calc_equivalent_well_index(cell_index, well_radius, skin)
+            well_index = wi if well_index is None else well_index
+            well_indexD = wid if well_indexD is None else well_indexD
 
-        if well_indexD is None:
-            well_indexD = wid
+        assert well_index >= 0
+        assert well_indexD >= 0
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:

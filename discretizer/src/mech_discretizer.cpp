@@ -553,7 +553,7 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_mpfa_mpsa_transmissibilities(const bool with_thermal)
+void MechDiscretizer<MODE>::calc_interface_approximations(const bool with_thermal)
 {
   // clear previous approximations
   cell_m.clear();				cell_p.clear();
@@ -937,6 +937,12 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   {
 	  flux.thermal_traction.a(id2, { ND, 1 }, { (size_t)flux.thermal_traction.a.N, 1 }) += (A_thermal * coef * mult_thermal).values;
   }
+}
+
+template <MechDiscretizerMode MODE>
+void MechDiscretizer<MODE>::calc_cell_centered_stress_approximations()
+{
+
 }
 
 template class MechDiscretizer<POROELASTIC>;

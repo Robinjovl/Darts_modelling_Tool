@@ -9,28 +9,25 @@ from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 
-
 class Model(DartsModel):
-    def __init__(self, n_points=64, case='mandel', scheme='non_stabilized', discretizer='new_discretizer', mesh='rect'):
+    def __init__(self, n_points=64, case='mandel', discretizer='new_discretizer', mesh='rect'):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
         self.physics_type = 'poromechanics'
         self.case = case
 
-        self.reservoir = UnstructReservoir(timer=self.timer, case=case, scheme=scheme, discretizer=discretizer, mesh=mesh)
+        self.reservoir = UnstructReservoir(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
-        self.reservoir.P_VAR = self.engine.P_VAR # TODO
-        self.params.first_ts = 1e-5  # Size of the first time-step [days]
-        self.params.mult_ts = 1.5  # Time-step multiplier if newton is converged (i.e. dt_new = dt_old * mult_ts)
-        self.params.max_ts = 0.1  # Max size of the time-step [days]
+        self.reservoir.P_VAR = self.engine.P_VAR
+        self.reservoir.U_VAR = self.engine.U_VAR
+        self.reservoir.T_VAR = self.engine.T_VAR
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.tolerance_linear = 1e-10 # Tolerance for linear solver ||Ax - b||<tol_linslv
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         self.params.linear_type = sim_params.cpu_superlu#cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
-        self.runtime = 2 # Total simulations time [days], this parameters is overwritten in main.py!
         self.params.max_i_newton = 10
         self.params.max_i_linear = 5000
 
@@ -56,7 +53,7 @@ class Model(DartsModel):
                                                                    dens0=self.reservoir.fluid_density0))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
 
-        # self.property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("single", 0.0, 0.0))])
+        property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # create physics
         physics = Poroelasticity(components, phases, self.timer,
                                 n_points=200, min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10)
@@ -73,13 +70,6 @@ class Model(DartsModel):
         self.set_op_list()
         self.reset()
 
-        self.reservoir.mech_operators = mech_operators()
-        self.reservoir.mech_operators.init(self.reservoir.mesh, self.reservoir.pm,
-                                 self.physics.engine.P_VAR, self.physics.engine.Z_VAR,self.physics.engine.U_VAR,
-                                 self.physics.engine.N_VARS, self.physics.engine.N_OPS, self.physics.engine.NC,
-                                 self.physics.engine.ACC_OP, self.physics.engine.FLUX_OP, self.physics.engine.GRAV_OP)
-        self.reservoir.mech_operators.prepare()
-        self.init_contacts()
     def reinit_reference(self, physics, output_directory):
         self.reservoir.turn_off_equilibrium()
         self.reservoir.write_to_vtk(output_directory, 0, self.physics)
@@ -96,63 +86,10 @@ class Model(DartsModel):
 
         #X = np.array(physics.engine.X, copy=False).reshape(self.reservoir.mesh.n_blocks, 4)
         #self.reservoir.u_ref = X[:,:3].flatten()
+
     def reinit(self, output_directory):
         self.reservoir.turn_off_equilibrium()
         self.reservoir.write_to_vtk(output_directory, 0, self.physics)
-    def init_contacts(self):
-        if hasattr(self.reservoir, 'contacts'):
-            for contact in self.reservoir.contacts:
-                contact.N_VARS = self.physics.engine.N_VARS
-                contact.U_VAR = self.physics.engine.U_VAR
-                contact.P_VAR = self.physics.engine.P_VAR
-                contact.NT = self.physics.engine.N_VARS
-                contact.U_VAR_T = self.physics.engine.U_VAR
-                contact.P_VAR_T = self.physics.engine.P_VAR
-                contact.init_fault()
-            self.physics.engine.contacts = self.reservoir.contacts
-    def setup_contact_friction(self, contact_algorithm):
-        if hasattr(self.reservoir, 'contacts'):
-            for contact in self.physics.engine.contacts:
-                friction_model = friction.STATIC#friction.STATIC#friction.SLIP_DEPENDENT#friction.RSF
-
-                # allow to slip
-                contact.set_state(contact_state.SLIP)
-                # static friction coefficients
-                mu0 = 0.0000 * np.ones(len(contact.cell_ids))
-                contact.init_friction(value_vector(mu0))
-
-                # setup friction model
-                contact.friction_model = friction_model
-                # setup friction criterion
-                contact.friction_criterion = critical_stress.BIOT
-
-
-                # Slip dependent model
-                if (friction_model == friction.SLIP_DEPENDENT):
-                    prop = sd_props()
-                    prop.crit_distance = 0.05#0.02
-                    prop.mu_dyn = 0.4
-                    contact.sd_props = prop
-                # RSF model
-                if (friction_model == friction.RSF):
-                    prop = rsf_props()
-                    theta = 10.0 / 86400.0 * np.ones(len(contact.cell_ids))
-                    prop.theta_n = value_vector(theta)
-                    prop.theta = value_vector(theta)
-                    prop.a = 0.01#0.0008#0.0078
-                    prop.b = 0.02
-                    prop.crit_distance = 0.01 * 1.E-3
-                    prop.ref_velocity = 0.001 * 1.E-6 * 86400
-                    prop.law = state_law.MIXED
-                    contact.rsf = prop
-
-                # Damping term
-                for i in range(len(contact.eta)):
-                    contact.eta[i] *= 1.0
-
-                # init local solver in the case of local iterations
-                if contact_algorithm == contact_solver.local_iterations:
-                    contact.init_local_iterations()
 
     def add_wells(self):
         layers_num = 1
@@ -211,157 +148,6 @@ class Model(DartsModel):
         for kk in range(layers_num):
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
                                            well_index=self.reservoir.well_index)
-    def add_wells_frac(self):
-        layers_num = 1
-        is_center = False
-
-        if is_center:
-            # unstructured
-            dist = 1.E+10
-            mid = np.array([0, 0])#(np.min(self.reservoir.unstr_discr.mesh_data.points, axis=0) +
-                   #np.max(self.reservoir.unstr_discr.mesh_data.points, axis=0)) / 2
-            id = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + cell.centroid[2] ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id = cell_id
-
-            self.reservoir.add_well("PROD001", depth=0)
-            for kk in range(layers_num):
-                self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
-                                               well_index=self.reservoir.well_index)
-        else:
-            setback = 0
-
-            a = np.max(self.reservoir.unstr_discr.mesh_data.points[:, 0])
-            coords = self.reservoir.unstr_discr.mat_cell_info_dict[0].coord_nodes_to_cell
-            dx = np.max(coords[:,0]) - np.min(coords[:,0])
-            dy = np.max(coords[:,1]) - np.min(coords[:,1])
-
-            # find closest cells
-            dist = 1.E+10
-            pt1 = np.array([0.1 * a, 0.9 * a, 0])
-            id1 = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - pt1[0]) ** 2 + (cell.centroid[1] - pt1[1]) ** 2 + cell.centroid[2] ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id1 = cell_id
-            assert (id1 >= 0)
-
-            dist = 1.E+10
-            pt2 = np.array([0.9 * a, 0.1 * a, 0])
-            id2 = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - pt2[0]) ** 2 + (cell.centroid[1] - pt2[1]) ** 2 + cell.centroid[2] ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id2 = cell_id
-            assert(id2 >= 0)
-
-            self.reservoir.add_well("PROD001", depth=0)
-            for kk in range(layers_num):
-                self.reservoir.add_perforation(self.reservoir.wells[-1], int(id1 + kk),
-                                               well_index=self.reservoir.well_index)
-
-            self.reservoir.add_well("INJ001", depth=0)
-            for kk in range(layers_num):
-                self.reservoir.add_perforation(self.reservoir.wells[-1], int(id2 + kk),
-                                               well_index=self.reservoir.well_index)
-    def add_wells_groningen(self):
-        layers_num = 1
-        is_center = False
-
-        if is_center:
-            # unstructured
-            dist = 1.E+10
-            mid = np.array([0, 0])#(np.min(self.reservoir.unstr_discr.mesh_data.points, axis=0) +
-                   #np.max(self.reservoir.unstr_discr.mesh_data.points, axis=0)) / 2
-            id = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + cell.centroid[2] ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id = cell_id
-
-            self.reservoir.add_well("PROD001", depth=0)
-            for kk in range(layers_num):
-                self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
-                                               well_index=self.reservoir.well_index)
-        else:
-            setback = 0
-
-            # Reservoir
-            throw = 0
-            TopReservoir = -2830
-            BottomReservoir = -3045
-            CenterReservoir = (TopReservoir + BottomReservoir) / 2.
-            hRes = 215
-            GWC = -2995
-            BottomBoundary = -3500
-            h0 = BottomReservoir - BottomBoundary
-            h1 = h0 - throw
-            z1 = BottomBoundary + h0
-            z3 = BottomBoundary + h0 + hRes
-
-            # Calculate well_index (very primitive way....):
-            rw = 0.1
-            # WIx
-            wi_x = 0.0
-            # WIy
-            wi_y = 0.0
-
-            # find closest cells
-            dist = 1.E+10
-            pt1 = np.array([400, 500, (z1 + z3) / 2])
-            id1 = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - pt1[0]) ** 2 + (cell.centroid[1] - pt1[1]) ** 2 + (cell.centroid[2] - pt1[2]) ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id1 = cell_id
-            assert (id1 >= 0)
-
-            dist = 1.E+10
-            pt2 = np.array([1400, 500, (z1 + z3) / 2])
-            id2 = -1
-            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-                cur_dist = (cell.centroid[0] - pt2[0]) ** 2 + (cell.centroid[1] - pt2[1]) ** 2 + (cell.centroid[2] - pt2[2]) ** 2
-                if dist > cur_dist:
-                    dist = cur_dist
-                    id2 = cell_id
-            assert(id2 >= 0)
-
-            coords = self.reservoir.unstr_discr.mat_cell_info_dict[id1].coord_nodes_to_cell
-            dx = np.max(coords[:, 0]) - np.min(coords[:, 0])
-            dy = np.max(coords[:, 1]) - np.min(coords[:, 1])
-            dz = np.max(coords[:, 2]) - np.min(coords[:, 2])
-            hz = dz
-            rp_z = 0.28 * np.sqrt((self.reservoir.permy[id1] / self.reservoir.permx[id1]) ** 0.5 * dx ** 2 +
-                                  (self.reservoir.permx[id1] / self.reservoir.permy[id1]) ** 0.5 * dy ** 2) / \
-                   ((self.reservoir.permx[id1] / self.reservoir.permy[id1]) ** 0.25 + (self.reservoir.permy[id1] / self.reservoir.permx[id1]) ** 0.25)
-            wi_z = 2 * np.pi * np.sqrt(self.reservoir.permx[id1] * self.reservoir.permy[id1]) * hz / np.log(rp_z / rw)
-            well_index1 = TC.darcy_constant * np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
-
-            self.reservoir.add_well("PROD001", depth=0)
-            self.reservoir.add_perforation(self.reservoir.wells[-1], int(id1),
-                                               well_index=well_index1)
-
-            coords = self.reservoir.unstr_discr.mat_cell_info_dict[id2].coord_nodes_to_cell
-            dx = np.max(coords[:, 0]) - np.min(coords[:, 0])
-            dy = np.max(coords[:, 1]) - np.min(coords[:, 1])
-            dz = np.max(coords[:, 2]) - np.min(coords[:, 2])
-            hz = dz
-            rp_z = 0.28 * np.sqrt((self.reservoir.permy[id1] / self.reservoir.permx[id1]) ** 0.5 * dx ** 2 +
-                                  (self.reservoir.permx[id1] / self.reservoir.permy[id1]) ** 0.5 * dy ** 2) / \
-                   ((self.reservoir.permx[id1] / self.reservoir.permy[id1]) ** 0.25 + (self.reservoir.permy[id1] / self.reservoir.permx[id1]) ** 0.25)
-            wi_z = 2 * np.pi * np.sqrt(self.reservoir.permx[id1] * self.reservoir.permy[id1]) * hz / np.log(rp_z / rw)
-            well_index2 = TC.darcy_constant * np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
-
-            self.reservoir.add_well("INJ001", depth=0)
-            self.reservoir.add_perforation(self.reservoir.wells[-1], int(id2),
-                                               well_index=well_index2)
 
     def set_initial_conditions(self):
         #self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
@@ -371,6 +157,7 @@ class Model(DartsModel):
                                                     initial_pressure=self.reservoir.p_init,
                                                     initial_displacement=self.reservoir.u_init)
         return 0
+
     def set_boundary_conditions(self):
         """
         Class method called in the init() class method of parents class

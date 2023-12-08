@@ -2,7 +2,7 @@ import numpy as np
 import math
 import warnings
 import matplotlib.pyplot as plt
-from .geometry import Geometry
+from darts.reservoirs.mesh.geometry.geometry import Geometry
 
 import numba
 from numba import jit, njit
@@ -91,9 +91,6 @@ def _find_surface(xyz, ax1, ax2, points, curves, surfaces):
 
 
 class Structured(Geometry):
-    def __init__(self, dim, axs=[0, 1, 2]):
-        super().__init__(dim, axs)
-
     def generate_mesh2(self, nx=1, ny=1, nz=1):
         # Create lists of points, curves, surfaces
         points = np.asarray(self.points_list)

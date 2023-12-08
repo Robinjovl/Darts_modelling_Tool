@@ -1,13 +1,10 @@
 import numpy as np
 import math
-from .shapes import *
+from darts.reservoirs.mesh.geometry.shapes import *
 
 
 class Well(Shape):
-    def __init__(self):
-        self.curves_map = {}
-
-        super().__init__()
+    curves_map = {}
 
     def check_location(self, points, curves, surfaces, volumes):
         pass
@@ -15,69 +12,36 @@ class Well(Shape):
     def refine_location(self, points, curves):
         pass
 
-    def calc_radial_points(self, c, r, axs, angle):
-        point = c[:]
-        point[axs[0]] += np.round(r * np.sin(angle), 5)
-        point[axs[1]] += np.round(r * np.cos(angle), 5)
-
-        return point
-
 
 class WellCell(Well):
-    def __init__(self, center: list, lc: float, lc_well: int, axs: list, in_surfaces: list):
-        self.center = center
-        self.lc = lc
-        self.lc_well = lc_well
-        self.in_surfaces = in_surfaces
+    def __init__(self, center: list, lc: float, orientation: str, in_surfaces: list):
+        self.lc = [lc]
 
-        self.axs = axs
+        re = lc/np.sqrt(3) * 0.999  # The radius of the circumscribed circle is R = side/sqrt(3)
 
-        super().__init__()
-
-    def define_shapes(self):
-        re = self.lc/np.sqrt(3) * 0.999  # The radius of the circumscribed circle is R = side/sqrt(3)
-
-        point2 = self.calc_radial_points(self.center, re, self.axs, math.radians(60))
-        point3 = self.calc_radial_points(self.center, re, self.axs, math.radians(180))
-        point4 = self.calc_radial_points(self.center, re, self.axs, math.radians(300))
-
-        self.points = [Point(1, self.center),
-                       Point(2, point2, lc=self.lc_well, embed=self.in_surfaces),
-                       Point(3, point3, lc=self.lc_well, embed=self.in_surfaces),
-                       Point(4, point4, lc=self.lc_well, embed=self.in_surfaces),
+        self.points = [Point(1, center),
+                       Point(2, self.calc_radial_points(center, re, orientation, math.radians(60)), embed=in_surfaces),
+                       Point(3, self.calc_radial_points(center, re, orientation, math.radians(180)), embed=in_surfaces),
+                       Point(4, self.calc_radial_points(center, re, orientation, math.radians(300)), embed=in_surfaces),
                        ]
-        return
 
 
 class CircularWell(Well):
-    def __init__(self, center: list, re: float, lc_well: int, axs: list, in_surfaces: list):
-        self.center = center
-        self.re = re
-        self.lc_well = lc_well
-        self.in_surfaces = in_surfaces
+    def __init__(self, center: list, re: float, lc: float, orientation: str, in_surfaces: list):
+        self.lc = [lc]
 
-        # 2-D axes
-        self.axs = axs
-
-        super().__init__()
-
-    def define_shapes(self):
-        point2 = self.calc_radial_points(self.center, self.re, self.axs, math.radians(0))
-        point3 = self.calc_radial_points(self.center, self.re, self.axs, math.radians(120))
-        point4 = self.calc_radial_points(self.center, self.re, self.axs, math.radians(240))
-
-        self.points = [Point(1, self.center),
-                       Point(2, point2, lc=self.lc_well),
-                       Point(3, point3, lc=self.lc_well),
-                       Point(4, point4, lc=self.lc_well),
+        self.points = [Point(1, center),
+                       Point(2, self.calc_radial_points(center, re, orientation, math.radians(0))),
+                       Point(3, self.calc_radial_points(center, re, orientation, math.radians(120))),
+                       Point(4, self.calc_radial_points(center, re, orientation, math.radians(240))),
                        ]
 
-        self.curves = [Curve(1, curve_type='circle', points=[2, 1, 3], embed=self.in_surfaces),
-                       Curve(2, curve_type='circle', points=[3, 1, 4], embed=self.in_surfaces),
-                       Curve(3, curve_type='circle', points=[4, 1, 2], embed=self.in_surfaces),
+        self.curves = [Curve(1, curve_type='circle', points=[2, 1, 3], embed=in_surfaces),
+                       Curve(2, curve_type='circle', points=[3, 1, 4], embed=in_surfaces),
+                       Curve(3, curve_type='circle', points=[4, 1, 2], embed=in_surfaces),
                        ]
 
-        return
+        self.surfaces = [Surface(1, points=[2, 3, 4, 2], curves=[1, 2, 3])]
 
 
 # class Cylindrical2D(Well):

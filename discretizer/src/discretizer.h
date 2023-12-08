@@ -14,14 +14,15 @@ namespace dis
 	const uint8_t MAX_STENCIL = 30;
 	const uint8_t MAX_FLUXES_NUM = 8;
 
-	/* Boundary condition */
-	class BoundaryCondition
+	/**
+	 * @brief Represents a generic boundary condition.
+	 *
+	 * This structure holds data for boundary elements, supporting both Dirichlet and Neumann types.
+	 */
+	struct BoundaryCondition
 	{
-	public:
-		std::vector<value_t> a_p, b_p;
-		std::vector<value_t> a_th, b_th;
-		BoundaryCondition() {};
-		~BoundaryCondition() {};
+	  std::vector<value_t> a; ///< Dirichlet type boundary condition values.
+	  std::vector<value_t> b; ///< Neumann type boundary condition values.
 	};
 
 	/* Special class for 2nd rank 3x3 tensor */
@@ -163,8 +164,8 @@ namespace dis
 		// Two-Point Flux Approximation
 		void calc_tpfa_transmissibilities(const PhysicalTags& tags);
 		// Multi-Point Flux Approximation
-		void reconstruct_pressure_gradients_per_cell(const BoundaryCondition& bc);
-		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& bc);
+		void reconstruct_pressure_gradients_per_cell(const BoundaryCondition& _bc);
+		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& _bc_flow, const BoundaryCondition& _bc_heat);
 		// void reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc);
 		void calc_mpfa_transmissibilities(const bool with_thermal = false);
 
@@ -177,7 +178,7 @@ namespace dis
 		std::vector<value_t> get_fault_xyz() const;
 		void write_tran_list(std::string fname) const;
 
-		BoundaryCondition bc_flow;
+		BoundaryCondition bc_flow, bc_heat;
 
 		static const Matrix I3;
 		static const Matrix I4;

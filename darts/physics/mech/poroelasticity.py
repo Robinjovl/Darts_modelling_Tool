@@ -1,8 +1,9 @@
 from darts.engines import *
-from darts.physics.super.physics import Compositional
+from darts.physics.physics_base import PhysicsBase
+from darts.physics.super.operator_evaluator import GeomechanicsReservoirOperators, RateOperators
 import numpy as np
 
-class Poroelasticity(Compositional):
+class Poroelasticity(PhysicsBase):
     """
     This is the Physics class for compositional poroelastic simulation.
 
@@ -39,9 +40,28 @@ class Poroelasticity(Compositional):
         :param cache: Switch to cache operator values
         :type cache: bool
         """
+        # Define nc, nph and (iso)thermal
+        nc = len(components)
+        nph = len(phases)
+        self.thermal = thermal
         self.n_dim = 3
-        super().__init__(components, phases, timer, n_points,
-                 min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
+
+        # Define variables and OBL axes: pressure, nc-1 components and possibly temperature
+        variables = ['pressure'] + components[:-1]
+        if self.thermal:
+            variables += ['temperature']
+            axes_min = value_vector([min_p] + [min_z] * (nc - 1) + [min_t])
+            axes_max = value_vector([max_p] + [max_z] * (nc - 1) + [max_t])
+        else:
+            axes_min = value_vector([min_p] + [min_z] * (nc - 1))
+            axes_max = value_vector([max_p] + [max_z] * (nc - 1))
+
+        n_vars = len(variables)
+        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1
+
+        # Call PhysicsBase constructor
+        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+                         axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
 
     def init_physics(self, regions: list = None, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
@@ -77,7 +97,6 @@ class Poroelasticity(Compositional):
         self.define_well_controls()
         return engine
 
-
     def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):
         """
         Function to set :class:`engine_super` object.
@@ -111,6 +130,29 @@ class Poroelasticity(Compositional):
             # w.init_rate_parameters(self.n_components, self.rate_phases, self.rate_itor)
             w.init_mech_rate_parameters(engine.N_VARS, engine.P_VAR, self.n_components, self.rate_phases,
                                         self.rate_itor)
+
+    def set_operators(self, regions):
+        """
+        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
+        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
+        and a :class:`PropertyOperator` for the evaluation of properties.
+
+        :param regions: List of regions. It contains the keys of the `property_containers` and `reservoir_operators` dict
+        :type regions: list
+        :param output_properties: Output property operators object, default is None
+        """
+        if self.thermal:
+            for region, prop_container in self.property_containers.items():
+                self.reservoir_operators[region] = ReservoirThermalOperators(prop_container)
+            self.wellbore_operators = ReservoirThermalOperators(self.property_containers[regions[0]])
+        else:
+            for region, prop_container in self.property_containers.items():
+                self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container)
+            self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[regions[0]])
+
+        self.rate_operators = RateOperators(self.property_containers[regions[0]])
+
+        return
 
     # TODO: add composition
     def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list):

@@ -135,9 +135,7 @@ void pybind_discretizer(py::module &m)
 
 	py::class_<BoundaryCondition>(m, "BoundaryCondition", py::module_local())
 		.def(py::init<>())
-		.def_readwrite("a_p", &BoundaryCondition::a_p)
-		.def_readwrite("b_p", &BoundaryCondition::b_p)
-		.def_readwrite("a_th", &BoundaryCondition::a_th)
-		.def_readwrite("b_th", &BoundaryCondition::b_th)
+		.def_readwrite("a", &BoundaryCondition::a)
+		.def_readwrite("b", &BoundaryCondition::b)
 	  ;
 }

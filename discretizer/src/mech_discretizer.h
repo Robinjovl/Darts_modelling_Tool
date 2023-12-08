@@ -5,41 +5,40 @@
 
 namespace dis
 {
-	// Boundary condition 
-	class GenericBoundaryCondition
+  /**
+	* @brief Boundary condition structure for Thermo-Hydro-Mechanical (THM) coupled problems.
+	*
+	* This structure aggregates various types of boundary conditions relevant for THM analysis,
+	* including flow, thermal, and mechanical (both normal and tangential).
+	*/
+  struct THMBoundaryCondition
 	{
-	public:
-		// length = number of boundary elements
-		// Dirichle type
-	  std::vector<value_t> a; 
-		// Neumann type
-		std::vector<value_t> b; 
-		GenericBoundaryCondition() {};
-	  ~GenericBoundaryCondition() {};
+	BoundaryCondition flow;        ///< Flow boundary conditions.
+	BoundaryCondition thermal;     ///< Thermal boundary conditions.
+	BoundaryCondition mech_normal; ///< Mechanical normal boundary conditions.
+	BoundaryCondition mech_tangen; ///< Mechanical tangential boundary conditions.
 	};
 
-	/* Boundary condition for Thermo-Hydro-Mechanical coupled problem */
-	class THMBoundaryCondition
-	{
-
-	public:
-		GenericBoundaryCondition flow;
-		GenericBoundaryCondition thermal;
-		GenericBoundaryCondition mech_normal;
-		GenericBoundaryCondition mech_tangen;
-		THMBoundaryCondition() {};
-		~THMBoundaryCondition() {};
-	};
-
-	/* 6x6 stiffness matrix */
+  /**
+	* @brief Represents a 6x6 stiffness matrix, typically used in mechanical simulations.
+	*/
 	class Stiffness : public Matrix
 	{
 	public:
-	  static const index_t N = 6;
-	  typedef Matrix Base;
+	static const index_t N = 6; ///< Dimension of the stiffness matrix.
+	typedef Matrix Base; ///< Base class alias.
 
+	/**
+	  * @brief Default constructor for Stiffness, initializes a 6x6 matrix.
+	  */
 	  Stiffness() : Base(6, 6) {};
-		// Stiffness matrix from Lame coefficients 
+
+	/**
+	  * @brief Constructs a stiffness matrix from Lame coefficients.
+	  *
+	  * @param lambda First Lame coefficient.
+	  * @param mu Second Lame coefficient.
+	  */
 	  Stiffness(value_t lambda, value_t mu) : Base(6, 6)
 	  {
 		(*this)(0, 0) = (*this)(1, 1) = (*this)(2, 2) = lambda + 2 * mu;
@@ -47,23 +46,65 @@ namespace dis
 		(*this)(0, 1) = (*this)(0, 2) = (*this)(1, 2) = lambda;
 		(*this)(1, 0) = (*this)(2, 0) = (*this)(2, 1) = lambda;
 	  };
+
+	/**
+	  * @brief Constructs a stiffness matrix from a given array of values.
+	  *
+	  * @param _c Array of values to initialize the matrix.
+	  */
 	  Stiffness(std::valarray<value_t> _c) : Base(_c, 6, 6) {}
 	};
 
-	enum MechDiscretizerMode { POROELASTIC, THERMOPOROELASTIC };
+  /**
+	* @brief Enumeration of modes for the mechanical discretizer.
+	*/
+  enum MechDiscretizerMode {
+	POROELASTIC,         ///< Represents the poroelastic discretization mode.
+	THERMOPOROELASTIC    ///< Represents the thermoporoelastic discretization mode.
+  };
 
-	const std::unordered_map<MechDiscretizerMode, uint8_t> N_UNKNOWNS = { { POROELASTIC, ND + 1 }, { THERMOPOROELASTIC, ND + 2 } };
+  /**
+	* @brief Maps discretizer modes to the number of unknowns in each mode.
+	*
+	* This map associates each MechDiscretizerMode with the count of unknowns
+	* needed for that particular mode. ND represents the spatial dimensions.
+	*/
+  const std::unordered_map<MechDiscretizerMode, uint8_t> N_UNKNOWNS = {
+	  { POROELASTIC, ND + 1 },         ///< ND + 1 unknowns for poroelastic mode.
+	  { THERMOPOROELASTIC, ND + 2 }    ///< ND + 2 unknowns for thermoporoelastic mode.
+  };
 
+  /**
+	* @brief Template alias for defining approximation types based on the discretizer mode.
+	*
+	* For THERMOPOROELASTIC mode, it resolves to LinearApproximation with Uvar, Pvar, and Tvar variables.
+	* For POROELASTIC mode, it resolves to LinearApproximation with Uvar and Pvar variables.
+	*
+	* @tparam MODE The discretizer mode to determine the approximation type.
+	*/
 	template <MechDiscretizerMode MODE>
 	using ApproximationType = typename std::conditional<MODE == THERMOPOROELASTIC,
-	  LinearApproximation<Uvar, Pvar, Tvar>,
-	  LinearApproximation<Uvar, Pvar>>::type;
+	LinearApproximation<Uvar, Pvar, Tvar>, // Approximation for thermoporoelastic mode.
+	LinearApproximation<Uvar, Pvar>>::type; // Approximation for poroelastic mode.
 
+  /**
+	* @brief Represents a structure for the approximation of fluxes in THM modeling.
+	*
+	* @tparam MODE The discretization mode.
+	*/
 	template <MechDiscretizerMode MODE>
 	struct MechApproximation
 	{
-	public:
+	/**
+	  * @brief Default constructor for MechApproximation.
+	  */
 	  MechApproximation() {};
+
+	/**
+	  * @brief Constructs a MechApproximation with a specified stencil size.
+	  *
+	  * @param stencil_size The size of the stencil to be used in approximations.
+	  */
 	  MechApproximation(index_t stencil_size)
 	  {
 		hooke = ApproximationType<MODE>(ND, stencil_size);
@@ -73,61 +114,96 @@ namespace dis
 		thermal_traction = LinearApproximation<Tvar>(ND, stencil_size);
 	  };
 
-	  ApproximationType<MODE> hooke;
-	  LinearApproximation<Pvar> biot_traction;
-	  ApproximationType<MODE> vol_strain;
-	  FlowHeatApproximation flow;
+	ApproximationType<MODE> hooke; ///< Approximation for Hooke's law.
+	LinearApproximation<Pvar> biot_traction; ///< Approximation for Biot's traction.
+	ApproximationType<MODE> vol_strain; ///< Approximation for Biot's * volumetric strain.
+	FlowHeatApproximation flow; ///< Approximation for combined fluid flow and heat condution fluxes.
 	  LinearApproximation<Tvar> thermal_traction;
 
-	  bool is_same_stencil = true;
+	bool is_same_stencil = true; ///< Flag indicating if the same stencil is used for all approximations.
 	};
 
-	/* Discretiser */
+  /**
+	* @brief A mechanical discretizer.
+	*
+	* @tparam MODE The discretization mode.
+	*/
 	template <MechDiscretizerMode MODE>
 	class MechDiscretizer : public Discretizer
 	{
 	protected:
+
+	static const uint8_t n_unknowns; ///< The number of variables per cell.
+
+	/**
+	  * @brief Cached matrices structure holding terms for co-normal decomposition
+	  */
 	  struct InnerMatrices
 	  {
-		Matrix T1, T2;	// 3x3 matrices, conormal stiffness,
-		Matrix G1, G2;	// 3x9 matrices, transversal stiffness
-		Matrix R1, R2;	// 3x1 vectors, free terms in traction balance
-		Matrix y1, y2;	// 3x1 vectors, tangential components of vectors between cell and inteface centers
-		value_t r1, r2; // distances from cell centers to the interface
+	  Matrix T1, T2;  ///< 3x3 matrices, conormal stiffness.
+	  Matrix G1, G2;  ///< 3x9 matrices, transversal stiffness.
+	  Matrix R1, R2;  ///< 3x1 vectors, free terms in traction balance.
+	  Matrix y1, y2;  ///< 3x1 vectors, tangential components of vectors between cell and interface centers.
+	  value_t r1, r2; ///< Distances from cell centers to the interface.
 	  };
 	  
-	  std::unordered_map<index_t, Matrix> pre_grad_A_u, pre_grad_R_u, pre_grad_rhs_u;
-	  std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs;
-	  std::vector<MechApproximation<MODE>> mech_fluxes;
-	  Matrix W;
-	  // cache for the "inner" (matrix-matrix) connections to reduce computations, size n_cells
-	  std::vector<std::map<index_t, InnerMatrices>> inner;
-	  // the number of variables per cell
-	  static const uint8_t n_unknowns;
+	std::vector<std::map<index_t, InnerMatrices>> inner; ///< Cached matrices for matrix-matrix connections.
 
-	  std::pair<bool, size_t> res1, res2;
+	std::unordered_map<index_t, Matrix> pre_grad_A_u; ///< Pre-allocated matrices for gradient reconstruction.
+	std::unordered_map<index_t, Matrix> pre_grad_R_u; ///< Pre-allocated matrices for gradient reconstruction.
+	std::unordered_map<index_t, Matrix> pre_grad_rhs_u; ///< Pre-allocated matrices for gradient reconstruction.
+	std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs; ///< Pre-allocated matrices for gradient reconstruction.
+
+	std::vector<MechApproximation<MODE>> mech_fluxes; ///< Vector of mechanical flux approximations.
+
+	Matrix W; ///< W matrix.
+
+	std::pair<bool, size_t> res1, res2; ///< Result containers for internal use.
+
+	/**
+	  * @brief Finds an element in a given vector and returns its position.
+	  *
+	  * @param vec The vector to search in.
+	  * @param element The element to find.
+	  * @return std::pair<bool, size_t> A pair where the first element is true if found,
+	  *         false otherwise, and the second element is the position in the vector.
+	  */
 	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
 	  {
-		std::vector<index_t>::const_iterator it_find;
-		// Find given element in vector
-		it_find = std::find(vec.begin(), vec.end(), element);
-		if (it_find != vec.end())
+	  for (size_t i = 0; i < vec.size(); ++i)
 		{
-		  return { true, std::distance(vec.begin(), it_find) };
-		}
-		else
+		if (vec[i] == element)
 		{
-		  return { false, -1 };
+		  return { true, i };
 		}
+	  }
+	  return { false, static_cast<size_t>(-1) };
 	  };
 
+	/**
+	  * @brief Calculates approximation of tractions for matrix-matrix connections.
+	  *
+	  * @param conn The mesh connection to consider.
+	  * @param flux The flux to store approximation.
+	  * @param cell_id The ID of the cell.
+	  * @param conn_id The ID of the connection.
+	  */
 	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t cell_id, index_t conn_id);
 
+	/**
+	  * @brief Calculates approximation of tractions for matrix-boundary connections.
+	  *
+	  * @param conn The mesh connection to consider.
+	  * @param flux The flux to store approximation.
+	  * @param conn_id The ID of the connection.
+	  */
 	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
-	  //void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
-	  //void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
-
+	/**
+	  * @brief Writes mechanical transmissibilities.
+	  *
+	  * @param flux The approximation of the fluxes to be written in plain arrays.
+	  */
 	// convert approximation (matrix, stencil and free term) to 1-d arrays
 	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
@@ -189,55 +265,63 @@ namespace dis
 		}
 	  };
 
+	/**
+	  * @brief Maintains the same stencil between pressure/temperature and displacement gradients.
+	  */
 	  void keep_same_stencil_gradients();
-
 	public:
-	  void init() override;
 
+	/**
+	  * @brief Constructor for MechDiscretizer.
+	  */
 	  MechDiscretizer();
+
+	/**
+	  * @brief Destructor for MechDiscretizer.
+	  */
 	  ~MechDiscretizer();
 
-	  // all geomechanical properties such as  Biot, Stifffness, etc are for the drained conditions
+	/**
+	  * @brief Initializes the discretizer.
+	  */
+	void init() override;
 
-	  // 3x3 matrices of Biot coefficients for the each cell
-	  std::vector<Matrix33> biots;
-	  // 6x6 stiffness matrices for the each cell (tensor of rank 4)
-	  std::vector<Stiffness> stfs;
-	  // 3x3 matrices of thermal expansion coefficients for the each cell
-	  std::vector<Matrix33> th_exps;
+	std::vector<Matrix33> biots; ///< 3x3 matrices of Biot coefficients for each cell.
+	std::vector<Stiffness> stfs; ///< 6x6 stiffness matrices for each cell.
+	std::vector<Matrix33> th_exps; ///< 3x3 matrices of thermal expansion coefficients for each cell.
 
-	  /* MPFA */
-		// gradinents stored in 1-dimensional arrays with the stride=9
-		// 9 values for the each cell
-		// (u_x)'x   (u_x)'y   (u_x)'z
-		// (u_y)'x   (u_y)'y   (u_y)'z
-		// (u_z)'x   (u_z)'y   (u_z)'z
+	std::vector<ApproximationType<MODE>> u_grads; ///< The approximation of cell-wise displacement gradients.
 
+	std::vector<value_t> hooke, hooke_rhs; ///< Hooke's law approximations and their RHS
+	std::vector<value_t> biot_traction, biot_traction_rhs; ///< Biot's term in traction and its RHS
+	std::vector<value_t> darcy, darcy_rhs; ///< Darcy's flow approximations and their RHS
+	std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs; ///< Biot's term in fluid flow and its RHS
+	std::vector<value_t> fick, fick_rhs; ///< Fick's law approximations and their RHS
+	std::vector<value_t> fourier, fourier_rhs; ///< Fourier's law approximations and their RHS
+	std::vector<value_t> thermal_traction, thermal_traction_rhs; ///< Thermal term in traction and its RHS
 
-	  // pressure/heat gradient transmissibilities, flattened vector with 9*n_unknowns for the each cell 
-	  std::vector<ApproximationType<MODE>> u_grads;
+	bool USE_CONNECTION_BASED_GRADIENTS; ///< Flag for using connection-based gradients
+	bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION; ///< Flag for using Neumann boundaries in gradient reconstruction
+	bool GRADIENTS_EXTENDED_STENCIL; ///< Flag for using extended stencil in gradient reconstruction
 
-		// grad = sum(i=1..stencil) A_i * (u, p, temperature)_i + b
-		// fot THM: A - 9x5, b - 5x1, len{u_x, u_y, u_z, p, temperature}
+	THMBoundaryCondition bc_thm; ///< THM boundary condition
 
-	  // approximations 
-	  std::vector<value_t> hooke, hooke_rhs;
-	  std::vector<value_t> biot_traction, biot_traction_rhs;
-	  std::vector<value_t> darcy, darcy_rhs;
-	  std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs;
-	  std::vector<value_t> fick, fick_rhs;
-	  std::vector<value_t> fourier, fourier_rhs;
-	  std::vector<value_t> thermal_traction, thermal_traction_rhs;
-
-	  bool USE_CONNECTION_BASED_GRADIENTS;
-	  bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION;
-	  bool GRADIENTS_EXTENDED_STENCIL;
-
+	/**
+	  * @brief Reconstructs displacement gradients for each cell based on boundary conditions.
+	  *
+	  * @param bc_mech The array of THM boundary conditions.
+	  */
 	  void reconstruct_displacement_gradients_per_cell(const THMBoundaryCondition& bc_mech);
 
-	  void calc_mpfa_mpsa_transmissibilities(const bool with_thermal = false);
+	/**
+	  * @brief Calculates the approximations of fluxes at all interfaces in computational grid
+	  */
+	void calc_interface_approximations(const bool with_thermal=false);
 
-	  THMBoundaryCondition bc_thm;
+	/**
+	  * @brief Calculates the approximations of stress tensor at cells' centers
+	*/
+	void calc_cell_centered_stress_approximations();
     };
 }
 

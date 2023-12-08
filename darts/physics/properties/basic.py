@@ -3,7 +3,6 @@ import numpy as np
 
 class ConstFunc:
     def __init__(self, value):
-        super().__init__()
         self.value = value
 
     def evaluate(self, dummy1=0, dummy2=0, dummy3=0, dummy4=0):
@@ -58,14 +57,16 @@ class CapillaryPressure:
         :param sat: saturation
         :return: Pc
         '''
-        Se = (sat[1] - self.swc)/(1 - self.swc)
-        if Se < self.eps:
-            Se = self.eps
-        pc = self.p_entry * Se ** (-1/self.labda)
+        if self.nph > 1:
+            Se = (sat[1] - self.swc)/(1 - self.swc)
+            if Se < self.eps:
+                Se = self.eps
+            pc = self.p_entry * Se ** (-1/self.labda)
 
-        Pc = np.zeros(self.nph, dtype=object)
-        Pc[1] = pc
-
+            Pc = np.zeros(self.nph, dtype=object)
+            Pc[1] = pc
+        else:
+            Pc = [0.0]
         return Pc
 
 
