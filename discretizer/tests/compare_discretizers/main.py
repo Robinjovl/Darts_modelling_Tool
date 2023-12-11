@@ -109,6 +109,10 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=
 #test_compare_discretizers(mesh='rect', abs_tol=1e-8, rel_tol=1e-8)
 #test_compare_discretizers(mesh='tetra', abs_tol=1e-8, rel_tol=1e-8)
 r = 0
+print('Poroelasticity tests')
+r += test_compare_discretizers(mesh='rect',  thermal=False, abs_tol=1e-8, rel_tol=1e-8)
+r += test_compare_discretizers(mesh='tetra', thermal=False, abs_tol=1e-8, rel_tol=1e-8)
+print('Thermoporoelasticity tests')
 r += test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
 r += test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)
 

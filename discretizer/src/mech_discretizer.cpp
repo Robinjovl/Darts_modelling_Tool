@@ -116,6 +116,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   value_t lam1_thermal, lam2_thermal;
   index_t n_cur_faces, loop_face_id, face_id, conn_id, id1, id2, cur_cell_id;
   LinearApproximation<Tvar>* g1_thermal;
+  value_t a_thermal, b_thermal;
   bool res;
 
   // allocate memory for arrays
@@ -358,9 +359,12 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 		const auto& ap = bc_thm.flow.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
-		const auto& a_thermal = bc_thm.thermal.a[conn.elem_id2 - mesh->n_cells];
-		const auto& b_thermal = bc_thm.thermal.b[conn.elem_id2 - mesh->n_cells];
-		
+		if constexpr (MODE == THERMOPOROELASTIC)
+		{
+		  a_thermal = bc_thm.thermal.a[conn.elem_id2 - mesh->n_cells];
+		  b_thermal = bc_thm.thermal.b[conn.elem_id2 - mesh->n_cells];
+		}
+
 		// Skip if pure neumann
 		if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
 
@@ -825,6 +829,7 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   Matrix A1n(ND, 1), C1n(ND, 1), gam1_thermal(ND, 1), mult_thermal(ND, 1), thermal_grad_coef(ND, ND);
   value_t lam1_thermal, A_thermal;
   value_t r1, lam1, Ap, gamma;
+  value_t a_thermal, b_thermal;
   index_t id1, id2;
   bool res;
   std::pair<bool, size_t> res1, res2;
@@ -834,8 +839,11 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
   const auto& ap = bc_thm.flow.a[conn.elem_id2 - mesh->n_cells];
   const auto& bp = bc_thm.flow.b[conn.elem_id2 - mesh->n_cells];
-  const auto& a_thermal = bc_thm.thermal.a[conn.elem_id2 - mesh->n_cells];
-  const auto& b_thermal = bc_thm.thermal.b[conn.elem_id2 - mesh->n_cells];
+  if constexpr (MODE == THERMOPOROELASTIC)
+  {
+	a_thermal = bc_thm.thermal.a[conn.elem_id2 - mesh->n_cells];
+	b_thermal = bc_thm.thermal.b[conn.elem_id2 - mesh->n_cells];
+  }
 
   const index_t& cell_id1 = conn.elem_id1;
   const index_t& cell_id2 = conn.elem_id2;
