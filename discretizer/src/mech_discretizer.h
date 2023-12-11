@@ -330,7 +330,7 @@ namespace dis
 	/**
 	  * @brief Calculates the approximations of fluxes at all interfaces in computational grid
 	  */
-	void calc_interface_approximations(const bool with_thermal=false);
+	void calc_interface_approximations();
 
 	/**
 	  * @brief Calculates the approximations of stress tensor and Darcy velocities at cells' centers

@@ -563,8 +563,12 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_interface_approximations(const bool with_thermal)
+void MechDiscretizer<MODE>::calc_interface_approximations()
 {
+  bool with_thermal = false;
+  if constexpr (MODE == THERMOPOROELASTIC)
+	with_thermal = true;
+
   // clear previous approximations
   cell_m.clear();				cell_p.clear();
   flux_stencil.clear();			flux_offset.clear();
