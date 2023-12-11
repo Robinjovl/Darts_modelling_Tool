@@ -3,6 +3,15 @@
 
 #include "discretizer.h"
 
+/**
+ * @def SUM_N(N)
+ * @brief Computes the sum of the first N natural numbers using the arithmetic series formula.
+ *
+ * @param N The last number in the series to sum up to.
+ * @return The sum of the arithmetic series from 1 to N.
+ */
+#define SUM_N(N) ((N + 1) / 2 * N)
+
 namespace dis
 {
   /**
@@ -153,6 +162,8 @@ namespace dis
 	std::unordered_map<index_t, Matrix> pre_grad_R_u; ///< Pre-allocated matrices for gradient reconstruction.
 	std::unordered_map<index_t, Matrix> pre_grad_rhs_u; ///< Pre-allocated matrices for gradient reconstruction.
 	std::map<index_t, std::map<index_t, Matrix>> pre_cur_rhs; ///< Pre-allocated matrices for gradient reconstruction.
+	std::unordered_map<index_t, Matrix> pre_N, pre_R, pre_Nflux; ///< Pre-allocated matrices for reconstruction of cell-centered stresses / velocities.
+	std::unordered_map<index_t, Matrix> pre_stress_approx, pre_vel_approx; ///< Pre-allocated matrices for reconstruction of cell-centered stresses / velocities.
 
 	std::vector<MechApproximation<MODE>> mech_fluxes; ///< Vector of mechanical flux approximations.
 
@@ -300,6 +311,9 @@ namespace dis
 	std::vector<value_t> fourier, fourier_rhs; ///< Fourier's law approximations and their RHS
 	std::vector<value_t> thermal_traction, thermal_traction_rhs; ///< Thermal term in traction and its RHS
 
+	std::vector<value_t> stress_approx; ///< Approximation of cell-centered stress tensor over tractions
+	std::vector<value_t> velocity_approx; ///< Approximation of cell-centered velocity over fluid fluxed
+
 	bool USE_CONNECTION_BASED_GRADIENTS; ///< Flag for using connection-based gradients
 	bool NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION; ///< Flag for using Neumann boundaries in gradient reconstruction
 	bool GRADIENTS_EXTENDED_STENCIL; ///< Flag for using extended stencil in gradient reconstruction
@@ -319,9 +333,9 @@ namespace dis
 	void calc_interface_approximations(const bool with_thermal=false);
 
 	/**
-	  * @brief Calculates the approximations of stress tensor at cells' centers
+	  * @brief Calculates the approximations of stress tensor and Darcy velocities at cells' centers
 	*/
-	void calc_cell_centered_stress_approximations();
+	void calc_cell_centered_stress_velocity_approximations();
     };
 }
 

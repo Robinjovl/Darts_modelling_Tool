@@ -44,7 +44,7 @@ struct mech_discretizer_exposer
 	  .def_readwrite("gradients_extended_stencil", &MechDiscretizer<MODE>::GRADIENTS_EXTENDED_STENCIL)
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
 	  .def("calc_interface_approximations", &MechDiscretizer<MODE>::calc_interface_approximations)
-	  .def("calc_cell_centered_stress_approximations", &MechDiscretizer<MODE>::calc_cell_centered_stress_approximations)
+	  .def("calc_cell_centered_stress_velocity_approximations", &MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations)
 	  ;
   }
 };

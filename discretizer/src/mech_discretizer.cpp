@@ -77,6 +77,12 @@ void MechDiscretizer<MODE>::init()
 	{
 	  pre_cur_rhs[i][st_size] = Matrix(ND * i, n_unknowns * st_size);
 	}
+
+	pre_N[i] = Matrix(i * ND, SUM_N(ND));
+	pre_Nflux[i] = Matrix(i, ND);
+	pre_R[i] = Matrix(i * ND, SUM_N(ND));
+	pre_stress_approx[i] = Matrix(SUM_N(ND), i);
+	pre_vel_approx[i] = Matrix(ND, i);
   }
 
   mech_fluxes.resize(MAX_FLUXES_NUM, MechApproximation<MODE>(MAX_STENCIL));
@@ -940,9 +946,73 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_cell_centered_stress_approximations()
+void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 {
+  index_t loop_face_id, face_id, n_faces;
+  Matrix Ndelta(ND, SUM_N(ND)), Rdelta(ND, SUM_N(ND));
+  Matrix sq_mat_flux(ND, ND), sq_mat_stress(SUM_N(ND), SUM_N(ND));
+  Vector3 t_face;
+  bool res;
 
+  // loop through the adjacency matrix (matrix cells)
+  for (index_t i = 0; i < mesh->region_ranges.at(mesh::MATRIX).second; i++)
+  {
+	// count contributing connections
+	n_faces = 0;
+	for (loop_face_id = mesh->adj_matrix_offset[i]; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++)
+	{
+	  const auto& conn = mesh->conns[mesh->adj_matrix[loop_face_id]];
+	  if (conn.type != mesh::MAT_FRAC) { n_faces++; }
+	}
+
+	// choose suitable working matrices
+	auto& N = pre_N[n_faces];
+	auto& Nflux = pre_Nflux[n_faces];
+	auto& R = pre_R[n_faces];
+	auto& st_approx = pre_stress_approx[n_faces];
+	auto& vel_approx = pre_vel_approx[n_faces];
+	
+	// assemble matrices for approximation
+	for (loop_face_id = mesh->adj_matrix_offset[i], face_id = 0; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++)
+	{
+	  const auto& conn = mesh->conns[mesh->adj_matrix[loop_face_id]];
+	  if (conn.type == mesh::MAT_FRAC) { continue; }
+
+	  // vector connecting cell center to the center of interface
+	  t_face = conn.c - mesh->centroids[i];
+	  const auto& n = conn.n;
+
+	  // N-matrix
+	  Ndelta(0, 0) = n.x;					Ndelta(1, 1) = n.y;					  Ndelta(2, 2) = n.z;
+	  Ndelta(1, ND + 2) = n.x;				Ndelta(2, ND + 1) = n.x;
+	  Ndelta(0, ND + 2) = n.y;				Ndelta(2, ND) = n.y;
+	  Ndelta(1, ND) = n.z;					Ndelta(0, ND + 1) = n.z;
+	  N(face_id * Ndelta.values.size(), { ND, SUM_N(ND) }, { SUM_N(ND), 1 }) = (conn.area * Ndelta).values;
+	  // N-matrix for fluxes
+	  Nflux(face_id, 0) = conn.area * n.x;	Nflux(face_id, 1) = conn.area * n.y;  Nflux(face_id, 2) = conn.area * n.z;
+	  // R-matrix
+	  Rdelta(0, 0) = t_face.x;			  Rdelta(1, 1) = t_face.y;			  Rdelta(2, 2) = t_face.z;
+	  Rdelta(1, ND + 2) = t_face.x / 2;	  Rdelta(2, ND + 1) = t_face.x / 2;
+	  Rdelta(0, ND + 2) = t_face.y / 2;	  Rdelta(2, ND) = t_face.y / 2;
+	  Rdelta(1, ND) = t_face.z / 2;		  Rdelta(0, ND + 1) = t_face.z / 2;
+	  R(face_id * Rdelta.values.size(), { ND, SUM_N(ND) }, { SUM_N(ND), 1 }) = Rdelta.values;
+
+	  face_id++;
+	}
+
+	// stress reconstruction
+	sq_mat_stress = R.transpose() * N;
+	res = sq_mat_stress.inv();
+	if (!res) { std::cout << "Inversion failed!\n";	exit(-1); };
+	st_approx.values = (sq_mat_stress * R.transpose()).values;
+	stress_approx.insert(std::end(stress_approx), std::begin(st_approx.values), std::end(st_approx.values));
+	// fluid flux reconstruction
+	sq_mat_flux = Nflux.transpose() * Nflux;
+	res = sq_mat_flux.inv();
+	if (!res) { std::cout << "Inversion failed!\n";	exit(-1); };
+	vel_approx.values = (sq_mat_flux * Nflux.transpose()).values;
+	velocity_approx.insert(std::end(velocity_approx), std::begin(vel_approx.values), std::end(vel_approx.values));
+  }
 }
 
 template class MechDiscretizer<POROELASTIC>;
