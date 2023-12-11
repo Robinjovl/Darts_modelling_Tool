@@ -234,7 +234,7 @@ class UnstructReservoir:
         else:
             self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_interface_approximations(self.thermal)
+        self.discr.calc_interface_approximations()
 
     # old discretizer
     def unit_cube_pm_discretizer(self):
