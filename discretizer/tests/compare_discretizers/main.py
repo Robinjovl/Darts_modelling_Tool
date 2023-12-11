@@ -90,10 +90,11 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=
         diff_fluxes_flag += compare(vol_strain_old, vol_strain_an, 'vol_strain_old', 'vol_strain_an')
         diff_fluxes_flag += compare(vol_strain_new, vol_strain_an, 'vol_strain_new', 'vol_strain_an')
         #TODO check Fick's term
-        # check Fourier's term (only with analytic)
-        diff_fluxes_flag += compare(fourier_new, fourier_an, 'fourier_new', 'fourier_an')
-        # check Thermal term (only with analytic)
-        diff_fluxes_flag += compare(thermal_new, thermal_an, 'thermal_new', 'thermal_an')
+        if thermal:
+            # check Fourier's term (only with analytic)
+            diff_fluxes_flag += compare(fourier_new, fourier_an, 'fourier_new', 'fourier_an')
+            # check Thermal term (only with analytic)
+            diff_fluxes_flag += compare(thermal_new, thermal_an, 'thermal_new', 'thermal_an')
         if diff_fluxes_flag:
             return 1
 
