@@ -668,17 +668,17 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
 		flux.hooke.a.values *= conn.area;
 		flux.biot_traction.a.values *= conn.area;
 		flux.vol_strain.a.values *= conn.area;
-		flux.flow.darcy.a.values *= sign * conn.area;
-		flux.flow.fick.a.values *= sign * conn.area;
-		flux.flow.fourier.a.values *= sign * conn.area;
+		flux.flow.darcy.a.values *= conn.area;
+		flux.flow.fick.a.values *= conn.area;
+		flux.flow.fourier.a.values *= conn.area;
 		flux.thermal_traction.a.values *= conn.area;
 		// multiply rhs by area
 		flux.hooke.rhs.values *= conn.area;
 		flux.biot_traction.rhs.values *= conn.area;
 		flux.vol_strain.rhs.values *= conn.area;
-		flux.flow.darcy.rhs.values *= sign * conn.area;
-		flux.flow.fick.rhs.values *= sign * conn.area;
-		flux.flow.fourier.rhs.values *= sign * conn.area;
+		flux.flow.darcy.rhs.values *= conn.area;
+		flux.flow.fick.rhs.values *= conn.area;
+		flux.flow.fourier.rhs.values *= conn.area;
 		flux.thermal_traction.rhs.values *= conn.area;
 
 		cell_m.push_back(cell_id1);
