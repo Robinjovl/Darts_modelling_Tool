@@ -202,7 +202,7 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
     m = Model(case=case, discretizer=discretizer)
     m.init()
     redirect_darts_output('log.txt')
-    m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
+    m.output_directory = 'sol_' + case + '_' + discretizer + '_rect'
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
@@ -352,6 +352,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # m.reinit_reference(output_directory)
     # m.physics.engine.find_equilibrium = False
 
+    # m.engine.print_linear_system = True
     if discretizer == 'mech_discretizer':
         m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, 0, m.engine)
     elif discretizer == 'pm_discretizer':
@@ -376,6 +377,22 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-# run_and_plot(case='mandel', discretizer='mech_discretizer')
+
+
+# Rectangular grid, comparison to analytics
+# run_and_plot(case='terzaghi', discretizer='mech_discretizer')
 # run_and_plot(case='terzaghi', discretizer='pm_discretizer')
-run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
+# run_and_plot(case='mandel', discretizer='mech_discretizer')
+# run_and_plot(case='mandel', discretizer='pm_discretizer')
+
+# Wedge (triangular) grid
+run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
+# run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
+# run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
+# run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
+
+# Unstructured hexahedral grid
+# run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+# run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
+# run(case='mandel', discretizer='mech_discretizer', mesh='hex')
+# run(case='mandel', discretizer='pm_discretizer', mesh='hex')

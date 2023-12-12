@@ -257,6 +257,7 @@ class UnstructReservoir:
         id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
         self.id_boundary_conns = adj_matrix[id_sorted]
         self.conns = np.array(self.discr_mesh.conns, copy=False)
+        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
         u_var = 1
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
@@ -278,6 +279,9 @@ class UnstructReservoir:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
                 conn = self.conns[self.id_boundary_conns[id]]
                 n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
                 self.bc_rhs_prev[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
 
@@ -509,6 +513,9 @@ class UnstructReservoir:
             for id in ids:
                 conn = self.conns[self.id_boundary_conns[id]]
                 n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
     def update_mandel_boundary_pm_discretizer(self, dt, time, physics):
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
@@ -567,7 +574,7 @@ class UnstructReservoir:
         self.domain_tags[elem_loc.MATRIX] = set([99991])
         self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
         self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()  # is this for poromechanics??
+        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -653,6 +660,7 @@ class UnstructReservoir:
         id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
         self.id_boundary_conns = adj_matrix[id_sorted]
         self.conns = np.array(self.discr_mesh.conns, copy=False)
+        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
         u_var = 1
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
@@ -674,6 +682,9 @@ class UnstructReservoir:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
                 conn = self.conns[self.id_boundary_conns[id]]
                 n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
                 self.bc_rhs_prev[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
 
