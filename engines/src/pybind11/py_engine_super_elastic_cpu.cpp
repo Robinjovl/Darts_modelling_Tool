@@ -34,6 +34,7 @@ struct engine_super_elastic_exposer
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
 			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
 			.def_readwrite("find_equilibrium", &engine_super_elastic_cpu<NC, NP, THERMAL>::FIND_EQUILIBRIUM) \
+			.def_readwrite("print_linear_system", &engine_super_elastic_cpu<NC, NP, THERMAL>::PRINT_LINEAR_SYSTEM) \
 			.def_readwrite("geomechanics_mode", &engine_super_elastic_cpu<NC, NP, THERMAL>::geomechanics_mode) \
 			.def_readwrite("newton_update_coefficient", &engine_super_elastic_cpu<NC, NP, THERMAL>::newton_update_coefficient) \
 			.def_readwrite("dev_u", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_u) \
