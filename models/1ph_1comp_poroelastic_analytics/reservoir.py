@@ -21,7 +21,7 @@ import scipy
 from scipy.special import erfc as erfc
 
 import darts.discretizer as dis
-from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
+from darts.discretizer import Mesh, Elem, poro_mech_discretizer, thermoporo_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 # Definitions for the unstructured reservoir class:
@@ -31,23 +31,39 @@ class UnstructReservoir:
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
         self.discretizer_name = discretizer
-        self.n_vars = 4
+        self.n_dim = 3
+
+        if discretizer == 'mech_discretizer':
+            self.p_var = 0
+            self.u_var = 1
+        elif discretizer == 'pm_discretizer':
+            self.u_var = 0
+            self.p_var = self.n_dim
 
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
+            self.n_vars = 4
             if discretizer == 'mech_discretizer':
                 self.mandel_north_dirichlet_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(mesh)
         elif case == 'terzaghi':
+            self.n_vars = 4
             if discretizer == 'mech_discretizer':
                 self.terzaghi_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers':
+            self.n_vars = 4
             self.terzaghi_two_layers(mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
+            self.n_vars = 4
             self.terzaghi_two_layers_no_analytics(mesh)
+        elif case == 'bai':
+            self.n_vars = 5
+            self.t_var = 1
+            assert (discretizer == 'mech_discretizer')
+            self.bai_thermoporoelastic_consolidation(mesh)
 
         dt = 0.0
         if discretizer == 'mech_discretizer':
@@ -87,7 +103,7 @@ class UnstructReservoir:
         self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
         self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
         if discretizer == 'mech_discretizer':
-            self.mesh.f.resize(4 * (self.n_fracs + self.n_matrix))
+            self.mesh.f.resize(self.n_vars * (self.n_fracs + self.n_matrix))
             self.f = np.array(self.mesh.f, copy=False)
             self.biot_arr = np.array(self.mesh.biot, copy=False)
             self.kd = np.array(self.mesh.kd, copy=False)
@@ -205,8 +221,6 @@ class UnstructReservoir:
         self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
         self.discr_mesh = Mesh()
-
-        # init poromechanics discretizer
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
 
         self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
@@ -221,7 +235,8 @@ class UnstructReservoir:
 
         self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
                         self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs = 0 # self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
+        self.n_fracs = self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
+                       self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
         self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
                         self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
 
@@ -231,7 +246,6 @@ class UnstructReservoir:
 
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-
             self.discr.perms.append(disc_matrix33(self.permx, self.permy, self.permz))
             self.discr.biots.append(disc_matrix33(self.biot))
             self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
@@ -270,10 +284,8 @@ class UnstructReservoir:
             at[ids] = bc['mech']['at']
             bt[ids] = bc['mech']['bt']
             # flow
-            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
 
             for id in ids:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
@@ -282,8 +294,8 @@ class UnstructReservoir:
                 conn_c = np.array(conn.c.values, copy=False)
                 c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
-                self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
-                self.bc_rhs_prev[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -501,14 +513,11 @@ class UnstructReservoir:
         self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
         self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
-        p_var = 0
-        u_var = 1
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
             # flow
-            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
-            self.bc_rhs[self.n_vars * ids + p_var] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
 
             for id in ids:
                 conn = self.conns[self.id_boundary_conns[id]]
@@ -516,7 +525,7 @@ class UnstructReservoir:
                 conn_c = np.array(conn.c.values, copy=False)
                 c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
-                self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
     def update_mandel_boundary_pm_discretizer(self, dt, time, physics):
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
@@ -610,8 +619,6 @@ class UnstructReservoir:
         self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
 
         self.discr_mesh = Mesh()
-
-        # init poromechanics discretizer
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
 
         self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
@@ -661,7 +668,6 @@ class UnstructReservoir:
         self.id_boundary_conns = adj_matrix[id_sorted]
         self.conns = np.array(self.discr_mesh.conns, copy=False)
         self.centroids = np.array(self.discr_mesh.centroids, copy=False)
-        u_var = 1
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -673,10 +679,8 @@ class UnstructReservoir:
             at[ids] = bc['mech']['at']
             bt[ids] = bc['mech']['bt']
             # flow
-            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs[self.n_vars * ids + 3] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + 3] = bc['flow']['r']
+            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
 
             for id in ids:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
@@ -685,8 +689,8 @@ class UnstructReservoir:
                 conn_c = np.array(conn.c.values, copy=False)
                 c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
-                self.bc_rhs[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
-                self.bc_rhs_prev[self.n_vars * id + u_var:self.n_vars * id + u_var + 3] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -1187,8 +1191,168 @@ class UnstructReservoir:
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
         self.pD = 1.0
+    # Bai, 2005 (unidimensional thermoporoelastic consolidation)
+    def bai_thermoporoelastic_consolidation(self, mesh='rect'):
+        self.n_state = 2
 
-    # old discretizer
+        if mesh == 'rect':
+            mesh_file = 'meshes/transfinite.msh'
+        elif mesh == 'wedge':
+            mesh_file = 'meshes/wedge.msh'
+        elif mesh == 'hex':
+            mesh_file = 'meshes/hexahedron.msh'
+        self.file_path = mesh_file
+
+        self.mesh_data = meshio.read(mesh_file)
+        self.domain_tags = dict()
+        self.domain_tags[elem_loc.MATRIX] = set([99991])
+        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
+        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
+        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()
+
+        self.u_init = [0.0, 0.0, 0.0]
+        self.p_init = 0.0
+        self.t_init = 273.15
+        self.t_top = self.t_init + 50
+        self.p_top = self.p_init
+        self.porosity = 0.2
+        self.permx = self.permy = self.permz = 4.e+6 / 0.9869
+        self.E = 10000 # in bars
+        self.nu = 0.25
+        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
+        self.mu = self.E / 2 / (1 + self.nu)
+        self.biot = 0.9
+        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
+        self.fluid_compressibility = 1.e-5
+        self.fluid_viscosity = 1.0
+        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
+                            self.porosity * self.fluid_compressibility)
+        self.F = -1.e-5
+        self.biot = 1
+        self.th_expn = 0.0#9.0 * 1.E-7
+        self.th_conductivity = 0.836 * 86400.0
+
+        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
+        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
+        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+
+        self.boundary_conditions = {}
+        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+        self.boundary_conditions[992] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+        self.boundary_conditions[994] = {'flow': AQUIFER(self.p_init),  'mech': LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': AQUIFER(self.t_top) }
+        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+
+        self.discr_mesh = Mesh()
+        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
+        self.discr = thermoporo_mech_discretizer()
+        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
+        self.tags = np.array(self.discr_mesh.tags, copy=False)
+        self.discr.set_mesh(self.discr_mesh)
+        self.discr.init()
+
+        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
+        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
+        self.n_fracs =  self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
+        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+
+        self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
+
+        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
+                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
+            self.discr.perms.append(disc_matrix33(self.permx, self.permy, self.permz))
+            self.discr.biots.append(disc_matrix33(self.biot))
+            self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
+            self.discr.heat_conductions.append(disc_matrix33(self.th_conductivity))
+            self.discr.thermal_expansions.append(disc_matrix33(self.th_expn))
+            self.biot_mean[9 * cell_id] = self.biot
+            self.biot_mean[9 * cell_id + 4] = self.biot
+            self.biot_mean[9 * cell_id + 8] = self.biot
+
+        ap = np.ones(self.n_bounds)
+        bp = np.zeros(self.n_bounds)
+        amn = np.zeros(self.n_bounds)
+        bmn = np.zeros(self.n_bounds)
+        amt = np.zeros(self.n_bounds)
+        bmt = np.zeros(self.n_bounds)
+        at = np.zeros(self.n_bounds)
+        bt = np.zeros(self.n_bounds)
+        self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+        self.bc_rhs_prev = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+
+        # mapping boundary connections
+        adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
+        adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
+        id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
+        self.id_boundary_conns = adj_matrix[id_sorted]
+        self.conns = np.array(self.discr_mesh.conns, copy=False)
+        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        u_var = 1
+
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
+            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+            bc = self.boundary_conditions[tag]
+            ap[ids] = bc['flow']['a']
+            bp[ids] = bc['flow']['b']
+            amn[ids] = bc['mech']['an']
+            bmn[ids] = bc['mech']['bn']
+            amt[ids] = bc['mech']['at']
+            bmt[ids] = bc['mech']['bt']
+            at[ids] = bc['temp']['a']
+            bt[ids] = bc['temp']['b']
+            # flow
+            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
+            # energy
+            self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
+            self.bc_rhs_prev[self.n_vars * ids + self.t_var] = bc['temp']['r']
+
+            for id in ids:
+                assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+
+        self.cpp_bc = THMBoundaryCondition()
+        self.cpp_bc.flow.a = value_vector(ap)
+        self.cpp_bc.flow.b = value_vector(bp)
+        self.cpp_bc.mech_normal.a = value_vector(amn)
+        self.cpp_bc.mech_normal.b = value_vector(bmn)
+        self.cpp_bc.mech_tangen.a = value_vector(amt)
+        self.cpp_bc.mech_tangen.b = value_vector(bmt)
+        self.cpp_bc.thermal.a = value_vector(at)
+        self.cpp_bc.thermal.b = value_vector(bt)
+        # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
+        # which doesn't know the new THMBoundaryCondition class yet
+        self.cpp_flow = BoundaryCondition()
+        self.cpp_flow.a = value_vector(ap)
+        self.cpp_flow.b = value_vector(bp)
+        self.cpp_heat = BoundaryCondition()
+        self.cpp_heat.a = value_vector(at)
+        self.cpp_heat.b = value_vector(bt)
+
+        # Discretization
+        self.timer.node["discretization"] = timer_node()
+        self.timer.node["discretization"].start()
+        self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow,  self.cpp_heat)
+        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+        self.discr.calc_interface_approximations()
+        self.timer.node["discretization"].stop()
 
     def add_well(self, name, depth):
         """
