@@ -48,6 +48,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   PRINT_LINEAR_SYSTEM = false;
   contact_solver = pm::RETURN_MAPPING;
   geomechanics_mode.resize(mesh_->n_blocks, 0);
+  gravity = {0.0, 0.0, 0.0};
 
   init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
@@ -1095,29 +1096,35 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
         }
       }
 
-	  // [9.3] gravitational forces
+
 	  if (i < n_res_blocks)
 	  {
-		  for (c = 0; c < NE; c++)
-		  {
-			  RHS[i * N_VARS + P_VAR + c] += V[i] * dt * f[i * N_VARS + P_VAR + c];
-		  }
+		  // [9.3] gravitational forces
 		  for (d = 0; d < ND; d++)
 		  {
 			  for (p = 0; p < NP; p++)
 			  {
-				  RHS[i * N_VARS + U_VAR + d] += phi * V[i] * f[i * N_VARS + U_VAR + d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
-				  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * f[i * N_VARS + U_VAR + d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				  RHS[i * N_VARS + U_VAR + d] += phi * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
 				  for (v = 0; v < N_STATE; v++)
 				  {
-					  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR + v] += phi * V[i] * f[i * N_VARS + U_VAR + d] * 
+					  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR + v] += phi * V[i] * gravity[d] *
 						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_STATE + v] + 
 							  op_ders_arr[(i * N_OPS + SAT_OP + p) * N_STATE + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 				  }
 			  }
-			  RHS[i * N_VARS + U_VAR + d] += (1 - phi) * V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
-			  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] -= comp_mult * V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
-			  RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d] * rho_s;
+			  RHS[i * N_VARS + U_VAR + d] += (1 - phi) * V[i] * gravity[d] * rho_s;
+			  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] -= comp_mult * V[i] * gravity[d] * rho_s;
+			  RHS[i * N_VARS + U_VAR + d] += V[i] * gravity[d] * rho_s;
+		  }
+		  // [9.4] user-defined part
+		  for (c = 0; c < NE; c++)
+		  {
+			RHS[i * N_VARS + P_VAR + c] += V[i] * dt * f[i * N_VARS + P_VAR + c];
+		  }
+		  for (d = 0; d < ND; d++)
+		  {
+			RHS[i * N_VARS + U_VAR + d] += V[i] * f[i * N_VARS + U_VAR + d];
 		  }
 	  }
     } // end of loop over grid blocks

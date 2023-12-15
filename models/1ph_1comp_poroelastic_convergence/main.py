@@ -113,26 +113,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run_single_resolution(res_id=0, discretizer='pm_discretizer'):
-    print('Run model with resolution #' + str(res_id))
-    if res_id == 0:
-        t0 = 0.1
-        nt = 1
-        mesh_file = 'meshes/unit_trans_0.msh'
-    elif res_id == 1:
-        t0 = 0.05
-        nt = 2
-        mesh_file = 'meshes/unit_trans_1.msh'
-    elif res_id == 2:
-        t0 = 0.025
-        nt = 4
-        mesh_file = 'meshes/unit_trans_2.msh'
-    elif res_id == 3:
-        t0 = 0.0125
-        nt = 8
-        mesh_file = 'meshes/unit_trans_3.msh'
-
-    t = t0 * np.ones(nt)
+def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer'):
+    t = timestep * np.ones(n_steps)
     m = Model(discretizer=discretizer, mesh_file=mesh_file)
     m.init()
     redirect_darts_output('log.txt')
@@ -142,7 +124,6 @@ def run_single_resolution(res_id=0, discretizer='pm_discretizer'):
     ith_step = 0
     m.engine.t = 0.0
     time = 0
-
     for ith_step, dt in enumerate(t):
         time += dt
         m.params.first_ts = dt
@@ -154,19 +135,43 @@ def run_single_resolution(res_id=0, discretizer='pm_discretizer'):
         #m.reservoir.write_pm_conn_to_file(t_step=ith_step + 1)
     return m.reservoir.calc_deviations(m.engine)
 
-def run_convergence_study(n_res, discretizer):
+def run_convergence_study(n_res, discretizer, mesh='rect'):
+    max_t = 0.1
+    timesteps = np.array([0.1, 0.05, 0.025, 0.0125])
+    nt = np.array(max_t / timesteps, dtype=np.int32)
+    dx = 1.0 / np.array([4.0, 8.0, 16.0, 32.0])
+
+    if mesh == 'rect':
+        mesh_file_template = 'meshes/unit_trans_{}.msh'
+
     devs_u = []
     devs_p = []
-
     for i in range(n_res):
-        dev_u, dev_p = run_single_resolution(res_id=i, discretizer=discretizer)
+        print('Run model with resolution #' + str(i))
+
+        mesh_file = mesh_file_template.format(i)
+        dev_u, dev_p = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+                                             mesh_file=mesh_file, discretizer=discretizer)
         devs_u.append(dev_u)
         devs_p.append(dev_p)
 
-    print('dev_u')
-    print(dev_u)
-    print('dev_p')
-    print(dev_p)
+    devs_u = np.array(devs_u)
+    devs_p = np.array(devs_p)
 
-run_convergence_study(n_res=1, discretizer='pm_discretizer')
-#run_convergence_study(n_res=1, discretizer='mech_discretizer')
+    x = np.sqrt((timesteps * dx)[:n_res])
+    id = np.argsort(x)
+    print(id)
+    u_order = (np.diff(np.log(devs_u[id])) / np.diff(np.log(x[id])))[0]
+    p_order = (np.diff(np.log(devs_p[id])) / np.diff(np.log(x[id])))[0]
+
+    print('dev_u')
+    print(devs_u)
+    print('u_order = ' + str(u_order))
+    print('dev_p')
+    print(devs_p)
+    print('p_order = ' + str(p_order))
+
+    assert(u_order > 1.0 and p_order > 1.0)
+
+# run_convergence_study(n_res=1, discretizer='pm_discretizer')
+run_convergence_study(n_res=3, discretizer='mech_discretizer')

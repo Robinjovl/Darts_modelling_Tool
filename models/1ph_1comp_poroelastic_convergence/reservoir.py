@@ -2,8 +2,8 @@ from darts.engines import conn_mesh, ms_well, ms_well_vector, index_vector, valu
 from darts.engines import matrix33, matrix, pm_discretizer, Face, vector_face_vector, face_vector, vector_matrix33, Stiffness, stf_vector, critical_stress
 import numpy as np
 from math import inf, pi
-from darts.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.mesh.geometrymodule import FType
+from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
+from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
 import meshio
@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib import rcParams
 from t2 import Rhs
 from scipy.linalg import null_space
-from darts.mesh.transcalc import TransCalculations as TC
+from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 
 import darts.discretizer as dis
 from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
@@ -367,7 +367,6 @@ class UnstructReservoir:
                    (self.r.y, c.values[1]),
                    (self.r.z, c.values[2]),
                    (self.r.t, time)]).evalf())
-
     def convergence_study_setup_mech_discretizer(self):
         self.mesh_data = meshio.read(self.mesh_file)
         self.domain_tags = dict()

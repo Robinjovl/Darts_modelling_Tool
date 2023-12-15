@@ -1,6 +1,6 @@
 import numpy as np
 from sympy import *
-from darts.mesh.transcalc import TransCalculations as TC
+from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 #from sympy.vector import divergence, CoordSys3D
 
 class Rhs:

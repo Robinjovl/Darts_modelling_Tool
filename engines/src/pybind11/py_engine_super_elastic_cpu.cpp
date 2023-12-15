@@ -56,6 +56,7 @@ struct engine_super_elastic_exposer
 			.def_readwrite("contacts", &engine_super_elastic_cpu<NC, NP, THERMAL>::contacts) \
 			.def_readwrite("contact_solver", &engine_super_elastic_cpu<NC, NP, THERMAL>::contact_solver) \
 			.def_readwrite("eps_vol", &engine_super_elastic_cpu<NC, NP, THERMAL>::eps_vol) \
+			.def_readwrite("gravity", &engine_super_elastic_cpu<NC, NP, THERMAL>::gravity) \
 			.def_property_readonly_static("P_VAR", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::P_VAR; }) \
 			.def_property_readonly_static("Z_VAR", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::Z_VAR; }) \
 			.def_property_readonly_static("P_VAR_T", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::P_VAR_T; }) \

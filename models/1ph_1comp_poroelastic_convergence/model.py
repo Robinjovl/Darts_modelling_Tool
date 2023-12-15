@@ -2,7 +2,7 @@ from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
 from reservoir import UnstructReservoir
 import numpy as np
-from darts.mesh.transcalc import TransCalculations as TC
+from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase

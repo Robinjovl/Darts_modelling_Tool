@@ -145,6 +145,7 @@ public:
   std::vector<pm::contact> contacts;
   pm::ContactSolver contact_solver;
   std::vector<index_t> geomechanics_mode;
+  std::array<value_t, ND> gravity;
 
   void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
   void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
