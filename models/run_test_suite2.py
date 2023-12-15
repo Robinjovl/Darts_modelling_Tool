@@ -127,7 +127,7 @@ if __name__ == '__main__':
 
     # poromechanic tests
     n_total_mech = n_failed_mech = 0
-    # n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs, test_args, overwrite)
+    n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs, test_args, overwrite)
     n_failed += n_failed_mech
     n_total += n_total_mech
 

@@ -6,8 +6,8 @@ from darts.discretizer import Stiffness as disc_stiffness
 from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face_vector, vector_matrix33, stf_vector, critical_stress
 import numpy as np
 from math import inf, pi
-from darts.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.mesh.geometrymodule import FType
+from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
+from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
 import meshio
@@ -15,7 +15,7 @@ import os
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
 from scipy.linalg import null_space
-from darts.mesh.transcalc import TransCalculations as TC
+from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 import scipy.optimize as opt
 import scipy
 from scipy.special import erfc as erfc
