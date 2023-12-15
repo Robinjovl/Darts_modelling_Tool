@@ -167,20 +167,26 @@ class Poroelasticity(PhysicsBase):
         return
 
     # TODO: add composition
-    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list):
+    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list, uniform_temperature=273.15):
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
 
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
         pressure.fill(uniform_pressure)
+
+        # set initial temperature
+        if self.thermal:
+            temperature = np.array(mesh.temperature, copy=False)
+            temperature.fill(uniform_temperature)
+
         # set initial displacements
         displacement = np.array(mesh.displacement, copy=False)
         for i in range(self.n_dim):
             displacement[i::self.n_dim] = uniform_displacement[i]
 
     # TODO: add composition
-    def set_nonuniform_initial_conditions(self, mesh, initial_pressure, initial_displacement: list):
+    def set_nonuniform_initial_conditions(self, mesh, initial_pressure, initial_displacement: list, initial_temperature=273.15):
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
         n_res_blocks = mesh.n_res_blocks
@@ -188,6 +194,12 @@ class Poroelasticity(PhysicsBase):
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
         pressure[:n_res_blocks] = initial_pressure
+
+        # set initial temperature
+        if self.thermal:
+            temperature = np.array(mesh.temperature, copy=False)
+            temperature[:n_res_blocks] = initial_temperature
+
         # set initial displacements
         displacement = np.array(mesh.displacement, copy=False)
         for i in range(self.n_dim):

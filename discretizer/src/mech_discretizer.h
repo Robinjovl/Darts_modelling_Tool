@@ -270,10 +270,6 @@ namespace dis
 		biot_vol_strain_rhs.push_back(flux.vol_strain.rhs.values[0]);
 		darcy_rhs.push_back(flux.flow.darcy.rhs.values[0]);
 		fick_rhs.push_back(flux.flow.fick.rhs.values[0]);
-		if constexpr (MODE == THERMOPOROELASTIC) {
-			fourier_rhs.push_back(flux.flow.fourier.rhs.values[0]);
-			thermal_traction_rhs.insert(std::end(thermal_traction_rhs), std::begin(flux.thermal_traction.rhs.values), std::end(flux.thermal_traction.rhs.values));
-		}
 	  };
 
 	/**
@@ -308,8 +304,8 @@ namespace dis
 	std::vector<value_t> darcy, darcy_rhs; ///< Darcy's flow approximations and their RHS
 	std::vector<value_t> biot_vol_strain, biot_vol_strain_rhs; ///< Biot's term in fluid flow and its RHS
 	std::vector<value_t> fick, fick_rhs; ///< Fick's law approximations and their RHS
-	std::vector<value_t> fourier, fourier_rhs; ///< Fourier's law approximations and their RHS
-	std::vector<value_t> thermal_traction, thermal_traction_rhs; ///< Thermal term in traction and its RHS
+	std::vector<value_t> fourier; ///< Fourier's law approximations
+	std::vector<value_t> thermal_traction; ///< Thermal term in traction
 
 	std::vector<value_t> stress_approx; ///< Approximation of cell-centered stress tensor over tractions
 	std::vector<value_t> velocity_approx; ///< Approximation of cell-centered velocity over fluid fluxed

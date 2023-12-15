@@ -76,9 +76,7 @@ class UnstructReservoir:
             self.darcy_rhs = np.array(self.discr.darcy_rhs, copy=False)
             if self.thermal:
                 self.thermal_traction_trans = np.array(self.discr.thermal_traction, copy=False)
-                self.thermal_traction_rhs = np.array(self.discr.thermal_traction_rhs, copy=False)
                 self.fourier_trans = np.array(self.discr.fourier, copy=False)
-                self.fourier_rhs = np.array(self.discr.fourier_rhs, copy=False)
                 self.fick_trans = np.array(self.discr.fick, copy=False)
                 self.fick_rhs = np.array(self.discr.fick_rhs, copy=False)
 
@@ -438,12 +436,10 @@ class UnstructReservoir:
             thermal_coefs = self.thermal_traction_trans[n_biot * self.offset[flux_id]:
                             n_biot * self.offset[flux_id + 1]].reshape((stencil.size, self.n_dim, 1))
             thermal_coefs = np.transpose(thermal_coefs, (1, 0, 2)).reshape(self.n_dim, stencil.size)
-            thermal_rhs = self.thermal_traction_rhs[self.n_dim * flux_id:self.n_dim * (flux_id + 1)]
             thermal_traction = thermal_coefs.dot(self.solution[stencil * self.n_vars + 4])
             # Fourier
             fourier_coefs = self.fourier_trans[self.offset[flux_id]:self.offset[flux_id + 1]].reshape((stencil.size, 1, 1))
             fourier_coefs = np.transpose(fourier_coefs, (1, 0, 2)).reshape(1, stencil.size)
-            fourier_rhs = self.fourier_rhs[flux_id]
             fourier = fourier_coefs.dot(self.solution[stencil * self.n_vars + 4])[0]
             result += [thermal_traction, fourier]
         return result

@@ -8,6 +8,7 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
+from darts.physics.properties.enthalpy import EnthalpyBasic
 
 class Model(DartsModel):
     def __init__(self, n_points=64, case='mandel', discretizer='mech_discretizer', mesh='rect'):
@@ -23,6 +24,8 @@ class Model(DartsModel):
 
         self.reservoir.P_VAR = self.engine.P_VAR
         self.reservoir.U_VAR = self.engine.U_VAR
+        if self.case == 'bai':
+            self.reservoir.T_VAR = self.engine.T_VAR
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
@@ -49,6 +52,11 @@ class Model(DartsModel):
         thermal = 0
         Mw = [18.015]
 
+        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
+        rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
+        hcap.fill(2200)
+        rcond.fill(181.44)
+
         property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                Mw=Mw, min_z=zero / 10, temperature=1.)
 
@@ -61,9 +69,18 @@ class Model(DartsModel):
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # create physics
-        self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                      min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                      discretizer = self.discretizer_name)
+        if self.case == 'bai':
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
+            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+                                          thermal=True, min_t=270.0, max_t=370.0,
+                                          discretizer=self.discretizer_name)
+        else:
+            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+                                          discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
         self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
@@ -85,27 +102,6 @@ class Model(DartsModel):
         self.set_well_controls()
         self.set_op_list()
         self.reset()
-
-    def reinit_reference(self, physics, output_directory):
-        self.reservoir.turn_off_equilibrium()
-        self.reservoir.write_to_vtk(output_directory, 0, self.physics)
-        self.reservoir.eps_vol_ref = np.array(self.reservoir.mesh.ref_eps_vol, copy=False)
-        self.reservoir.eps_vol_ref[:] = self.reservoir.mech_operators.eps_vol[:]
-
-        # physics.engine.fluxes_ref = physics.engine.fluxes
-        # physics.engine.fluxes_biot_ref = physics.engine.fluxes_biot
-        # physics.engine.fluxes_ref_n = physics.engine.fluxes
-        # physics.engine.fluxes_biot_ref_n = physics.engine.fluxes_biot
-        # self.physics.engine.Xref = self.physics.engine.X
-        # self.physics.engine.Xn_ref = self.physics.engine.Xn
-        # self.reservoir.bc_ref = self.reservoir.bc
-
-        #X = np.array(physics.engine.X, copy=False).reshape(self.reservoir.mesh.n_blocks, 4)
-        #self.reservoir.u_ref = X[:,:3].flatten()
-
-    def reinit(self, output_directory):
-        self.reservoir.turn_off_equilibrium()
-        self.reservoir.write_to_vtk(output_directory, 0, self.physics)
 
     def add_wells(self):
         layers_num = 1
@@ -166,12 +162,15 @@ class Model(DartsModel):
                                            well_index=self.reservoir.well_index)
 
     def set_initial_conditions(self):
-        #self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-        #                                            uniform_pressure=self.reservoir.p_init,
-        #                                            uniform_displacement=self.reservoir.u_init)
-        self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                    initial_pressure=self.reservoir.p_init,
-                                                    initial_displacement=self.reservoir.u_init)
+        if self.case == 'bai':
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                            initial_pressure=self.reservoir.p_init,
+                                                            initial_temperature=self.reservoir.t_init,
+                                                            initial_displacement=[0.0, 0.0, 0.0])
+        else:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                            initial_pressure=self.reservoir.p_init,
+                                                            initial_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):

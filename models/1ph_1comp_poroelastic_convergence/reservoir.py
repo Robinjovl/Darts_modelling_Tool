@@ -65,7 +65,7 @@ class UnstructReservoir:
 
             self.unstr_discr.store_volume_all_cells()
         elif self.discretizer_name == 'mech_discretizer':
-            self.mesh.init_pm_new(self.discr.cell_m, self.discr.cell_p,
+            self.mesh.init_pm_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
                                   self.discr.flux_stencil, self.discr.flux_offset,
                                   self.discr.hooke, self.discr.hooke_rhs,
                                   self.discr.biot_traction, self.discr.biot_traction_rhs,

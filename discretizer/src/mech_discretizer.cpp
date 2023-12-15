@@ -577,8 +577,8 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
   biot_vol_strain.clear();		biot_vol_strain_rhs.clear();
   darcy.clear();				darcy_rhs.clear();
   fick.clear();					fick_rhs.clear();
-  fourier.clear();				fourier_rhs.clear();
-  thermal_traction.clear();		thermal_traction_rhs.clear();
+  fourier.clear();
+  thermal_traction.clear();
 
   // reserve memory
   cell_m.reserve(mesh->adj_matrix.size());
@@ -602,10 +602,8 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
   fick_rhs.reserve(mesh->adj_matrix.size());
 
   fourier.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
-  fourier_rhs.reserve(mesh->adj_matrix.size());
 
   thermal_traction.reserve(mesh->adj_matrix.size() * ND * MAX_STENCIL);
-  thermal_traction_rhs.reserve(mesh->adj_matrix.size() * ND);
 
   value_t sign;
   index_t cell_id1, cell_id2;

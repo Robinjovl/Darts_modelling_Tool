@@ -39,11 +39,15 @@ void pybind_mesh_conn(py::module &m)
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm)
 	  .def("init_pm", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm)
-	  .def("init_pm_new", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
+	  .def("init_pm_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
-		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm_new)
+		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm_mech_discretizer)
 	  .def("init_pme", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pme)
+	  .def("init_pme_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
+		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
+		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
+		index_t, index_t, index_t)) & conn_mesh::init_pme_mech_discretizer)
 	  .def("init_const_1d", &conn_mesh::init_const_1d)
 	  .def("add_conn", &conn_mesh::add_conn)
 	  //.def("add_conn_mpfa", &conn_mesh::add_conn_mpfa)
@@ -54,6 +58,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def("reverse_and_sort_pm", &conn_mesh::reverse_and_sort_pm)
 	  .def("reverse_and_sort_pme", &conn_mesh::reverse_and_sort_pme)
 	  .def("reverse_and_sort_pm_mech_discretizer", &conn_mesh::reverse_and_sort_pm_mech_discretizer)
+	  .def("reverse_and_sort_pme_mech_discretizer", &conn_mesh::reverse_and_sort_pme_mech_discretizer)
 	  .def("init_poro", &conn_mesh::init_poro)
 	  .def("add_wells", &conn_mesh::add_wells)
 	  .def("add_wells_mpfa", &conn_mesh::add_wells_mpfa)

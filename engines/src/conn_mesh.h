@@ -153,7 +153,7 @@ public:
 	  std::vector<value_t>& _tran_face,
 	  std::vector<value_t>& _rhs_face,
 	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
-  int init_pm_new(
+  int init_pm_mech_discretizer(
 	  std::vector<index_t>& block_m,
 	  std::vector<index_t>& block_p,
 	  std::vector<index_t>& _stencil,
@@ -174,6 +174,18 @@ public:
 	  std::vector<value_t>& _tran_thermal,
 	  std::vector<value_t>& _tran_thermal_expn,
 	  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
+  int init_pme_mech_discretizer(
+	std::vector<index_t>& block_m,
+	std::vector<index_t>& block_p,
+	std::vector<index_t>& _stencil,
+	std::vector<index_t>& _st_offset,
+	std::vector<value_t>& _hooke, std::vector<value_t>& _hooke_rhs,
+	std::vector<value_t>& _biot, std::vector<value_t>& _biot_rhs,
+	std::vector<value_t>& _darcy, std::vector<value_t>& _darcy_rhs,
+	std::vector<value_t>& _vol_strain, std::vector<value_t>& _vol_strain_rhs,
+	std::vector<value_t>& _thermal_traction,
+	std::vector<value_t>& _fourier,
+	index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
 
   /// @brief init mesh for 1D reservoir with 'nb' blocks
   int init_const_1d(double trans_const, index_t nb);     
@@ -194,6 +206,7 @@ public:
   int reverse_and_sort_pm();
   int reverse_and_sort_pme();
   int reverse_and_sort_pm_mech_discretizer();
+  int reverse_and_sort_pme_mech_discretizer();
 
   /// @brief discretize ms wells into reservoir
   int add_wells(std::vector<ms_well*> &wells);         
@@ -341,6 +354,7 @@ public:
   std::vector<value_t> biot_tran, biot_rhs;
   std::vector<value_t> darcy_tran, darcy_rhs;
   std::vector<value_t> vol_strain_tran, vol_strain_rhs;
+  std::vector<value_t> thermal_traction_tran;
   std::vector<value_t> fourier_tran;
 
   // adjoint method
@@ -371,6 +385,8 @@ private:
   std::vector<value_t> one_way_biot, one_way_biot_rhs;
   std::vector<value_t> one_way_darcy, one_way_darcy_rhs;
   std::vector<value_t> one_way_vol_strain, one_way_vol_strain_rhs;
+  std::vector<value_t> one_way_thermal_traction;
+  std::vector<value_t> one_way_fourier;
 
   index_t n_one_way_conns;
   index_t n_one_way_conns_res;

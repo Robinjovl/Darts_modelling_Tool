@@ -559,7 +559,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 }
 
 int
-conn_mesh::init_pm_new(
+conn_mesh::init_pm_mech_discretizer(
   std::vector<index_t>& block_m,
   std::vector<index_t>& block_p,
   std::vector<index_t>& _stencil,
@@ -682,6 +682,72 @@ conn_mesh::init_pme(std::vector<index_t>& block_m,
 }
 
 int
+conn_mesh::init_pme_mech_discretizer(
+  std::vector<index_t>& block_m,
+  std::vector<index_t>& block_p,
+  std::vector<index_t>& _stencil,
+  std::vector<index_t>& _st_offset,
+  std::vector<value_t>& _hooke, std::vector<value_t>& _hooke_rhs,
+  std::vector<value_t>& _biot, std::vector<value_t>& _biot_rhs,
+  std::vector<value_t>& _darcy, std::vector<value_t>& _darcy_rhs,
+  std::vector<value_t>& _vol_strain, std::vector<value_t>& _vol_strain_rhs,
+  std::vector<value_t>& _thermal_traction,
+  std::vector<value_t>& _fourier,
+  index_t _n_matrix, index_t _n_bounds, index_t _n_fracs)
+{
+  n_vars = 5;
+  n_dim = 3;
+  n_conns = block_m.size();
+
+  one_way_block_m = block_m;
+  one_way_block_p = block_p;
+  one_way_stencil = _stencil;
+  one_way_offset = _st_offset;
+
+  one_way_hooke = _hooke;
+  one_way_hooke_rhs = _hooke_rhs;
+  one_way_biot = _biot;
+  one_way_biot_rhs = _biot_rhs;
+  one_way_darcy = _darcy;
+  one_way_darcy_rhs = _darcy_rhs;
+  one_way_vol_strain = _vol_strain;
+  one_way_vol_strain_rhs = _vol_strain_rhs;
+  one_way_thermal_traction = _thermal_traction;
+  one_way_fourier = _fourier;
+
+  n_matrix = _n_matrix;
+  n_bounds = _n_bounds;
+  n_fracs = _n_fracs;
+  n_blocks = n_matrix + n_fracs;
+  n_res_blocks = n_matrix + n_fracs;
+  n_res_well_blocks = n_blocks;
+  n_one_way_conns = n_conns;
+  n_one_way_conns_res = n_conns;
+
+  poro.resize(n_blocks);
+  volume.resize(n_blocks);
+  pressure.resize(n_blocks);
+  ref_pressure.resize(n_blocks);
+  ref_eps_vol.resize(n_matrix);
+  composition.resize(n_blocks);
+  temperature.resize(n_blocks);
+  enthalpy.resize(n_blocks);
+  displacement.resize(3 * n_blocks);
+  op_num.assign(n_blocks, 0);
+  depth.assign(n_blocks + n_bounds, 0);
+  heat_capacity.assign(n_blocks, 0);
+  rock_cond.assign(n_blocks, 0);
+  biot.resize(9 * n_blocks);
+  drained_compressibility.resize(n_blocks);
+  bc.resize(n_vars * n_bounds);
+  bc_n.resize(n_vars * n_bounds);
+  bc_ref.resize(n_vars * n_bounds);
+  fault_conn_id.resize(n_fracs);
+
+  return 0;
+}
+
+int
 conn_mesh::add_conn (index_t block_m, index_t block_p, value_t trans, value_t transD)
 {
   one_way_block_m.push_back (block_m);
@@ -703,7 +769,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
   tblock_pos[P_VAR * n_vars + P_VAR] = trans;
   tblock_neg[P_VAR * n_vars + P_VAR] = -trans;
   // for mech_discretizer output
-  vector<value_t> hooke_zeros(n_dim * n_vars, 0.0), hooke_rhs(n_dim, 0.0);
+  vector<value_t> hooke_zeros(n_dim * n_vars, 0.0), vec3d_rhs(n_dim, 0.0);
 
   // m -> p
   one_way_block_m.push_back(block_m);
@@ -749,24 +815,37 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	one_way_darcy.push_back(-trans);
 	one_way_darcy.push_back(trans);
 	one_way_darcy_rhs.push_back(0.0);
-	// and all others
+	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), hooke_rhs.begin(), hooke_rhs.end());
-	one_way_biot.insert(one_way_biot.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_biot_rhs.insert(one_way_biot_rhs.end(), hooke_rhs.begin(), hooke_rhs.end());
+	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
+	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// biot traction
+	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// biot volumetric strain
 	one_way_vol_strain.push_back(0.0);
 	one_way_vol_strain.push_back(0.0);
 	one_way_vol_strain_rhs.push_back(0.0);
+  }
+  if (one_way_thermal_traction.size())
+  {
+	// thermal traction
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// Fourier (heat conduction)
+	one_way_fourier.push_back(0.0);
+	one_way_fourier.push_back(0.0);
   }
   n_conns++;
   n_links += 2;
   // p -> m
   one_way_block_m.push_back(block_p);
   one_way_block_p.push_back(block_m);
-
   one_way_stencil.push_back(block_m);
   one_way_stencil.push_back(block_p);
   one_way_offset.push_back(one_way_stencil.size());
+
   if (one_way_tran.size())
   {
 	one_way_tran.insert(one_way_tran.end(), tblock_neg.begin(), tblock_neg.end());
@@ -804,14 +883,27 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	one_way_darcy.push_back(-trans);
 	one_way_darcy.push_back(trans);
 	one_way_darcy_rhs.push_back(0.0);
-	// and all others
+	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), hooke_rhs.begin(), hooke_rhs.end());
-	one_way_biot.insert(one_way_biot.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_biot_rhs.insert(one_way_biot_rhs.end(), hooke_rhs.begin(), hooke_rhs.end());
+	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
+	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// biot traction
+	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// biot volumetric strain
 	one_way_vol_strain.push_back(0.0);
 	one_way_vol_strain.push_back(0.0);
 	one_way_vol_strain_rhs.push_back(0.0);
+  }
+  if (one_way_thermal_traction.size())
+  {
+	// thermal traction
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	// Fourier (heat conduction)
+	one_way_fourier.push_back(0.0);
+	one_way_fourier.push_back(0.0);
   }
 
   n_conns++;
@@ -1826,6 +1918,170 @@ conn_mesh::reverse_and_sort_pme()
 	}
 
 	return 0;
+}
+
+int
+conn_mesh::reverse_and_sort_pme_mech_discretizer()
+{
+  cout << "Processing mesh: " << n_blocks << " reservoir blocks including " << n_conns << " connections\n";
+
+  cell_stencil.resize(n_blocks);
+  struct ClosestCmp {
+	index_t second;
+	index_t conn_id;
+	bool operator()(const ClosestCmp& a, const ClosestCmp& b)
+	{
+	  return a.second < b.second;
+	}
+  };
+  /// [n_blocks] map of connections [block_p, conn_idx] per block
+  std::vector<std::vector<ClosestCmp>> t_idxs;
+  t_idxs.resize(n_blocks + n_bounds);
+  bool notBound;
+  index_t n_two_way_stencil = 0, k;
+  std::vector<index_t>::iterator it1;
+  for (index_t i = 0; i < n_conns; i++)
+  {
+	notBound = (one_way_block_m[i] < n_blocks);
+	if (notBound)
+	  n_two_way_stencil += one_way_offset[i + 1] - one_way_offset[i];
+
+	for (k = one_way_offset[i]; k < one_way_offset[i + 1]; k++)
+	{
+	  if (one_way_stencil[k] < n_blocks)
+	  {
+		if (notBound)
+		{
+		  auto& cell1 = cell_stencil[one_way_block_m[i]];
+		  it1 = find(cell1.begin(), cell1.end(), one_way_stencil[k]);
+		  if (it1 == cell1.end())
+			cell1.insert(lower_bound(cell1.begin(), cell1.end(), one_way_stencil[k]), one_way_stencil[k]);
+		}
+	  }
+	}
+	// save connection's id per cell
+	auto& t_m = t_idxs[one_way_block_m[i]];
+	ClosestCmp s_m = { one_way_block_p[i], i };
+	t_m.push_back(s_m);
+	//t_m.insert(lower_bound(t_m.begin(), t_m.end(), s_m, ClosestCmp()), s_m); // store in increasing order
+  }
+
+  // number of two-way connection (only from blocks)
+  index_t n_two_way_conns = 0;
+  // n_links is a number of non-zero elements in jacobian
+  n_links = 0;
+  for (index_t i = 0; i < n_blocks; ++i)
+  {
+	n_links += cell_stencil[i].size();
+	n_two_way_conns += t_idxs[i].size();
+  }
+
+  // save current conn ids
+  for (index_t i = n_matrix; i < n_res_blocks; i++)
+  {
+	const auto& face1 = t_idxs[i][t_idxs[i].size() - 1];
+	const auto& face2 = t_idxs[i][t_idxs[i].size() - 2];
+	contact_cell_ids.push_back({ face1.second, face2.second });
+  }
+  std::vector<std::pair<index_t, index_t>>::iterator it;
+
+  // store two-way sorted connections
+  grav_coef.assign(n_two_way_conns, 0);
+  block_m.resize(n_two_way_conns);
+  block_p.resize(n_two_way_conns);
+  size_t n_hooke = n_dim * n_vars, n_biot = n_dim, n_darcy = 1, n_vol_strain = n_vars, n_thermal = 1, n_fourier = 1;
+  hooke_tran.resize(n_two_way_stencil * n_hooke);
+  biot_tran.resize(n_two_way_stencil * n_biot);
+  darcy_tran.resize(n_two_way_stencil * n_darcy);
+  vol_strain_tran.resize(n_two_way_stencil * n_vol_strain);
+  thermal_traction_tran.resize(n_two_way_stencil * n_thermal);
+  fourier_tran.resize(n_two_way_stencil * n_fourier);
+  stencil.resize(n_two_way_stencil);
+  offset.resize(n_two_way_conns + 1);
+  sorted_conn_ids.resize(n_two_way_conns);
+  sorted_stencil_ids.reserve(n_two_way_stencil);
+  hooke_rhs = one_way_hooke_rhs;
+  biot_rhs = one_way_biot_rhs;
+  darcy_rhs = one_way_darcy_rhs;
+  vol_strain_rhs = one_way_vol_strain_rhs;
+
+  index_t f_acc = 0, s_acc = 0, conn_id, conn_counter = 0, size;
+  vector<index_t> ind;
+  for (index_t i = 0; i < n_blocks; i++)
+  {
+	const auto& cur_cell = t_idxs[i];
+	for (const auto& conn : cur_cell)
+	{
+	  block_m[conn_counter] = i;
+	  block_p[conn_counter] = conn.second;
+	  //for (uint8_t v = 0; v < n_vars; v++) { rhs[n_vars * i + v] += one_way_rhs[n_vars * conn_counter + v]; }
+	  offset[conn_counter] = s_acc;
+	  conn_id = conn.conn_id;
+
+	  size = one_way_offset[conn_id + 1] - one_way_offset[conn_id];
+	  ind.resize(size);
+	  iota(ind.begin(), ind.end(), one_way_offset[conn_id]);
+	  stable_sort(ind.begin(), ind.end(),
+		[this](index_t i1, index_t i2) {return one_way_stencil[i1] < one_way_stencil[i2]; });
+
+	  for (index_t j = 0; j < size; j++)
+	  {
+		stencil[j + s_acc] = one_way_stencil[ind[j]];
+		copy_n(one_way_hooke.begin() + n_hooke * ind[j], n_hooke, hooke_tran.begin() + (j + s_acc) * n_hooke);
+		copy_n(one_way_biot.begin() + n_biot * ind[j], n_biot, biot_tran.begin() + (j + s_acc) * n_biot);
+		copy_n(one_way_darcy.begin() + n_darcy * ind[j], n_darcy, darcy_tran.begin() + (j + s_acc) * n_darcy);
+		copy_n(one_way_vol_strain.begin() + n_vol_strain * ind[j], n_vol_strain, vol_strain_tran.begin() + (j + s_acc) * n_vol_strain);
+		copy_n(one_way_thermal_traction.begin() + n_thermal * ind[j], n_thermal, thermal_traction_tran.begin() + (j + s_acc) * n_thermal);
+		copy_n(one_way_fourier.begin() + n_fourier * ind[j], n_fourier, fourier_tran.begin() + (j + s_acc) * n_fourier);
+		sorted_stencil_ids.push_back(ind[j]);
+	  }
+	  s_acc += size;
+
+	  // store sorted conn ids
+	  it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(i, conn.second));
+	  if (it != contact_cell_ids.end())
+		fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
+	  it = std::find(contact_cell_ids.begin(), contact_cell_ids.end(), std::make_pair(conn.second, i));
+	  if (it != contact_cell_ids.end())
+		fault_conn_id[std::distance(contact_cell_ids.begin(), it)].push_back(conn_counter);
+
+	  sorted_conn_ids[conn_counter] = conn_id;
+	  conn_counter++;
+	}
+  }
+  offset.back() = s_acc;
+
+  assert(block_m == one_way_block_m);
+  assert(block_p == one_way_block_p);
+
+  n_conns = n_two_way_conns;
+
+  // take stencil for contact into account
+  index_t prev_num;
+  for (index_t i = 0; i < n_fracs; i++)
+  {
+	const index_t cell_ids[] = { i + n_matrix, contact_cell_ids[i].first, contact_cell_ids[i].second };
+	for (const auto& cell_id : cell_ids)
+	{
+	  auto& cell1 = cell_stencil[cell_id];
+	  prev_num = cell1.size();
+	  for (const index_t& conn_id : fault_conn_id[i])
+	  {
+		for (k = offset[conn_id]; k < offset[conn_id + 1]; k++)
+		{
+		  if (stencil[k] < n_blocks)
+		  {
+			it1 = find(cell1.begin(), cell1.end(), stencil[k]);
+			if (it1 == cell1.end())
+			  cell1.insert(lower_bound(cell1.begin(), cell1.end(), stencil[k]), stencil[k]);
+		  }
+		}
+	  }
+	  n_links += cell1.size() - prev_num;
+	}
+  }
+
+  return 0;
 }
 
 int

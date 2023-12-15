@@ -43,23 +43,28 @@ class UnstructReservoir:
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             self.n_vars = 4
+            self.n_state = 1
             if discretizer == 'mech_discretizer':
                 self.mandel_north_dirichlet_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(mesh)
         elif case == 'terzaghi':
             self.n_vars = 4
+            self.n_state = 1
             if discretizer == 'mech_discretizer':
                 self.terzaghi_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers':
             self.n_vars = 4
+            self.n_state = 1
             self.terzaghi_two_layers(mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
             self.n_vars = 4
+            self.n_state = 1
             self.terzaghi_two_layers_no_analytics(mesh)
         elif case == 'bai':
+            self.n_state = 2
             self.n_vars = 5
             self.t_var = 1
             assert (discretizer == 'mech_discretizer')
@@ -67,13 +72,23 @@ class UnstructReservoir:
 
         dt = 0.0
         if discretizer == 'mech_discretizer':
-            self.mesh.init_pm_new(self.discr.cell_m, self.discr.cell_p,
-                              self.discr.flux_stencil, self.discr.flux_offset,
-                              self.discr.hooke, self.discr.hooke_rhs,
-                              self.discr.biot_traction, self.discr.biot_traction_rhs,
-                              self.discr.darcy, self.discr.darcy_rhs,
-                              self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
-                              self.n_matrix, self.n_bounds, self.n_fracs)
+            if case == 'bai':
+                self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
+                                  self.discr.flux_stencil, self.discr.flux_offset,
+                                  self.discr.hooke, self.discr.hooke_rhs,
+                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
+                                  self.discr.darcy, self.discr.darcy_rhs,
+                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
+                                  self.discr.thermal_traction, self.discr.fourier,
+                                  self.n_matrix, self.n_bounds, self.n_fracs)
+            else:
+                self.mesh.init_pm_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
+                                  self.discr.flux_stencil, self.discr.flux_offset,
+                                  self.discr.hooke, self.discr.hooke_rhs,
+                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
+                                  self.discr.darcy, self.discr.darcy_rhs,
+                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
+                                  self.n_matrix, self.n_bounds, self.n_fracs)
         elif discretizer == 'pm_discretizer':
             self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
             self.unstr_discr.x_new[:, 0] = self.u_init[0]
@@ -102,17 +117,17 @@ class UnstructReservoir:
         self.bc = np.array(self.mesh.bc, copy=False)
         self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
         self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
-        if discretizer == 'mech_discretizer':
-            self.mesh.f.resize(self.n_vars * (self.n_fracs + self.n_matrix))
-            self.f = np.array(self.mesh.f, copy=False)
-            self.biot_arr = np.array(self.mesh.biot, copy=False)
-            self.kd = np.array(self.mesh.kd, copy=False)
-            self.mesh.pz_bounds.resize(self.n_bounds)
-            self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
-            self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
+        self.mesh.f.resize(self.n_vars * (self.n_fracs + self.n_matrix))
+        self.f = np.array(self.mesh.f, copy=False)
+        self.biot_arr = np.array(self.mesh.biot, copy=False)
+        self.kd = np.array(self.mesh.kd, copy=False)
+        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
+        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+        self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
+        self.poro[:self.n_matrix] = self.porosity
+        self.poro[self.n_matrix:] = 1
 
-            self.poro[:self.n_matrix] = self.porosity
-            self.poro[self.n_matrix:] = 1
+        if discretizer == 'mech_discretizer':
             volumes = np.array(self.discr_mesh.volumes, copy=False)
             self.volume[:self.n_matrix] = volumes[:self.n_matrix]
             self.bc_prev[:] = self.bc_rhs_prev
@@ -126,16 +141,6 @@ class UnstructReservoir:
             # self.p_ref[:] = self.p_ref
             # self.f[:] = self.f
         elif discretizer == 'pm_discretizer':
-            self.mesh.f.resize(4 * (self.unstr_discr.frac_cells_tot + self.unstr_discr.mat_cells_tot))
-            self.f = np.array(self.mesh.f, copy=False)
-            self.biot_arr = np.array(self.mesh.biot, copy=False)
-            self.kd = np.array(self.mesh.kd, copy=False)
-            self.mesh.pz_bounds.resize(self.unstr_discr.bound_cells_tot)
-            self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
-            self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
-
-            self.poro[:self.unstr_discr.mat_cells_tot] = self.porosity
-            self.poro[self.unstr_discr.mat_cells_tot:] = 1
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
             for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
                 self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
@@ -1193,8 +1198,6 @@ class UnstructReservoir:
         self.pD = 1.0
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, mesh='rect'):
-        self.n_state = 2
-
         if mesh == 'rect':
             mesh_file = 'meshes/transfinite.msh'
         elif mesh == 'wedge':
@@ -1405,7 +1408,10 @@ class UnstructReservoir:
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
         if self.discretizer_name == 'mech_discretizer':
-            self.mesh.reverse_and_sort_pm_mech_discretizer()
+            if self.n_vars == 4:
+                self.mesh.reverse_and_sort_pm_mech_discretizer()
+            elif self.n_vars == 5:
+                self.mesh.reverse_and_sort_pme_mech_discretizer()
         elif self.discretizer_name == 'pm_discretizer':
             self.mesh.reverse_and_sort_pm()
         #self.mesh.init_grav_coef()
