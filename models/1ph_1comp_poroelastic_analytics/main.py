@@ -120,7 +120,7 @@ def run_timestep_python(m, dt, t):
     converged = self.e.post_newtonloop(dt, t, converged)
     self.timer.node['simulation'].stop()
     return converged
-def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
+def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0'):
     '''
     :param case: mandel/terzaghi
     :param scheme: stabilized/non_stabilized
@@ -128,7 +128,7 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
     '''
-    print('case:' + case, 'scheme:' + scheme, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
+    print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
     import platform
 
     nt = 20
@@ -138,12 +138,12 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
     # max_t = 200
     # t = max_t / nt * np.ones(nt)
 
-    m = Model(case=case, scheme=scheme, mesh=mesh)
+    m = Model(case=case, discretizer=discr_name, mesh=mesh)
     m.init()
     # redirect_darts_output('log.txt')
     # output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
-    m.physics.engine.find_equilibrium = False
+    m.engine.find_equilibrium = False
 
     time = 0.0
     data = []
@@ -153,7 +153,7 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
     pkl_suffix = ''
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '0':
         pkl_suffix = '_iter'
-    file_name = os.path.join('ref', 'perf_' + case + '_' + scheme + '_' + mesh + '_' +
+    file_name = os.path.join('ref', 'perf_' + case + '_' + discr_name + '_' + mesh + '_' +
                              platform.system().lower()[:3] + pkl_suffix + '.pkl')
     failed = 0
 
@@ -171,8 +171,13 @@ def test(case='mandel', scheme='non_stabilized', mesh='rect', overwrite='0'):
         # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
         data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
         if is_plk_exist:
-            failed += check_performance_data(ref_data[ith_step], data[ith_step], failed,
-                                             png_suffix=case+'_'+scheme+'_'+mesh+'_'+str(ith_step))
+            # to compare with amalytic need only solution vector
+            ref_data = {'solution' : get_analytic_solution(m, discr_name, t=time)['solution']}
+            sol_data = {'solution' : get_solution_slice(m, discr_name, data[ith_step])['solution']}
+            for k in ['reservoir blocks', 'variables']:
+                ref_data[k] = sol_data[k] = data[ith_step][k]
+            failed += check_performance_data(ref_data, sol_data, failed,
+                                             png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
     if not is_plk_exist or overwrite == '1':
         m.save_performance_data(data=data, file_name=file_name)
         return False, 0.0
@@ -372,7 +377,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
 
 def run_test(args: list = []):
     if len(args) > 3:
-        return test(case=args[0], scheme=args[1], mesh=args[2], overwrite=args[3])
+        return test(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
     else:
         print('Not enough arguments provided')
         return 1, 0.0
@@ -386,7 +391,7 @@ def run_test(args: list = []):
 # run_and_plot(case='mandel', discretizer='pm_discretizer')
 
 # Wedge (triangular) grid
-run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
+# ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
@@ -396,3 +401,67 @@ run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
 # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
 # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
+
+def get_x(m, discr_name):
+    # for rectangular grid
+    if discr_name == 'pm_discretizer':
+        nx = np.unique(np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i].centroid[0] for i in range(m.reservoir.unstr_discr.mat_cells_tot)]).round(decimals=4)).size
+        ny = int(m.reservoir.unstr_discr.mat_cells_tot / nx)
+        x = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid[0] for i in range(nx)])
+        xc = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid for i in range(nx)])
+    elif discr_name == 'mech_discretizer':
+        xc = np.array([np.array(c.values) for c in m.reservoir.discr_mesh.centroids[:m.reservoir.n_matrix]])
+        nx = np.unique(np.round(xc[:,0], decimals=6)).size
+        ny = m.reservoir.n_matrix // nx
+        x = xc[::ny, 0]
+        xc = xc[::ny]
+    return nx, ny, x, xc
+
+def get_analytic_solution(m, discr_name, t):
+    '''
+    :param m: Model
+    :param discr_name: 'pm_discretizer' (poroelasticity) or 'mech_discretizer' (thermoporoelasticity)
+    :param t: time (double)
+    :return:
+    '''
+    # get analytic solution
+    ref_data = {}
+    ref_data['reservoir blocks'] = m.reservoir.mesh.n_blocks
+    ref_data['variables'] = ['ux', 'uy', 'uz']
+    ref_data['variables'].insert(m.reservoir.p_var, 'p')
+
+    nx, ny, x, xc = get_x(m, discr_name)
+
+    uy = uz = -999  # undefined
+    if case == 'mandel':
+        pressure = m.reservoir.mandel_exact_pressure(t=t, xc=x)
+        p,ux,uy = m.reservoir.mandel_exact_displacements(t=t, xc=xc)
+    elif case == 'terzaghi':
+        pressure = m.reservoir.terzaghi_exact_pressure(t=t, xc=x)
+        ux = m.reservoir.terzaghi_exact_displacements(t=t, xc=x)
+    elif case == 'terzaghi_two_layers':
+        pressure = m.reservoir.terzaghi_two_layers_exact_pressure(t=t, xc=x)
+        ux = m.reservoir.terzaghi_two_layers_exact_displacement(t=t, xc=x)
+
+    nvars = 4 # m.physics.n_vars #TODO why m.physics.n_vars == 1 ?
+    ref_data['solution'] = np.zeros(nvars * nx)
+    ref_data['solution'][m.reservoir.p_var::nvars] = pressure
+    ref_data['solution'][m.reservoir.u_var::nvars] = ux
+    ref_data['solution'][m.reservoir.u_var+1::nvars] = uy
+    ref_data['solution'][m.reservoir.u_var+2::nvars] = uz
+    return ref_data
+
+
+def get_solution_slice(m, discr_name, sol_data):# for rectangular grid
+    nx, ny, x, xc = get_x(m, discr_name)
+    sol_data_slice = sol_data.copy()
+    sol_data_slice['solution'] = sol_data['solution'][::ny]
+    return sol_data_slice
+
+for case in ['terzaghi', 'mandel']: #TODO, 'terzaghi_two_layers']:
+    for mesh in ['rect']:#, 'wedge', 'hex']
+        if case == 'terzaghi_two_layers' and mesh == 'hex':
+            continue
+    mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+    pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+
