@@ -67,8 +67,8 @@ class engine_base
 public:
 	engine_base()
 	{
-		linear_solver = 0;
-		Jacobian = 0;
+		linear_solver = nullptr;
+		Jacobian = nullptr;
 
 		//adjoint method
 		linear_solver_ad = 0;
@@ -82,8 +82,10 @@ public:
 
 	~engine_base()
 	{
-		delete linear_solver;
-		delete Jacobian;
+		if (linear_solver != nullptr)
+			delete linear_solver;
+		if (Jacobian != nullptr)
+			delete Jacobian;
 
 		//adjoint method
 		delete linear_solver_ad;

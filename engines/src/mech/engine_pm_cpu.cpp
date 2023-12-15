@@ -23,6 +23,7 @@ engine_pm_cpu::~engine_pm_cpu()
 {
   for (auto& ls : linear_solvers)
 	delete ls;
+  linear_solver = nullptr;
 }
 
 int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
