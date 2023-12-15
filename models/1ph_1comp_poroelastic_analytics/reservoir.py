@@ -110,7 +110,9 @@ class UnstructReservoir:
                               self.unstr_discr.bound_cells_tot,
                               self.unstr_discr.frac_cells_tot)
             self.unstr_discr.store_volume_all_cells()
-
+            self.n_fracs = self.unstr_discr.frac_cells_tot
+            self.n_matrix = self.unstr_discr.mat_cells_tot
+            self.n_bounds = self.unstr_discr.bound_cells_tot
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.poro = np.array(self.mesh.poro, copy=False)
         self.volume = np.array(self.mesh.volume, copy=False)
@@ -840,6 +842,9 @@ class UnstructReservoir:
             self.biot_mean[9 * cell_id + 4] = self.biot
             self.biot_mean[9 * cell_id + 8] = self.biot
 
+        self.n_fracs = self.unstr_discr.frac_cells_tot
+        self.n_matrix = self.unstr_discr.mat_cells_tot
+        self.n_bounds = self.unstr_discr.bound_cells_tot
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
@@ -1004,9 +1009,9 @@ class UnstructReservoir:
             poro = self.props[cell.prop_id]['poro']
             lam = E * nu / (1 + nu) / (1 - 2 * nu)
             mu = E / 2 / (1 + nu)
-            self.pm.stfs.append(Stiffness(lam, mu))
-            self.pm.perms.append(matrix33(k, k, k))
-            self.pm.biots.append(matrix33(biot))
+            self.pm.stfs.append(engine_stiffness(lam, mu))
+            self.pm.perms.append(engine_matrix33(k, k, k))
+            self.pm.biots.append(engine_matrix33(biot))
             self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
             self.biot_mean[9 * cell_id] = biot
             self.biot_mean[9 * cell_id + 4] = biot
