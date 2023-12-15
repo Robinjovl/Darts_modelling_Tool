@@ -73,10 +73,10 @@ class Model(DartsModel):
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+        self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                      min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
                                           thermal=True, min_t=270.0, max_t=370.0,
-                                          discretizer=self.discretizer_name)
+                                      discretizer = self.discretizer_name)
         else:
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
@@ -163,14 +163,14 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if self.case == 'bai':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                            initial_pressure=self.reservoir.p_init,
+        self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                    initial_pressure=self.reservoir.p_init,
                                                             initial_temperature=self.reservoir.t_init,
                                                             initial_displacement=[0.0, 0.0, 0.0])
         else:
             self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
                                                             initial_pressure=self.reservoir.p_init,
-                                                            initial_displacement=self.reservoir.u_init)
+                                                    initial_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):
@@ -201,19 +201,19 @@ class Model(DartsModel):
         Function to get the needed performance data
         """
         perf_data = dict()
-        perf_data['solution'] = np.copy(self.physics.engine.X)
+        perf_data['solution'] = np.copy(self.engine.X)
         perf_data['variables'] = ['ux', 'uy', 'uz', 'p']
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
             perf_data['OBL resolution'] = list(self.physics.n_axes_points)
             perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = self.physics.engine.stat.n_newton_wasted
-            perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
-            perf_data['wasted linear iterations'] = self.physics.engine.stat.n_linear_wasted
+            perf_data['timesteps'] = self.engine.stat.n_timesteps_total
+            perf_data['wasted timesteps'] = self.engine.stat.n_timesteps_wasted
+            perf_data['newton iterations'] = self.engine.stat.n_newton_total
+            perf_data['wasted newton iterations'] = self.engine.stat.n_newton_wasted
+            perf_data['linear iterations'] = self.engine.stat.n_linear_total
+            perf_data['wasted linear iterations'] = self.engine.stat.n_linear_wasted
 
             sim = self.timer.node['simulation']
             jac = sim.node['jacobian assembly']
