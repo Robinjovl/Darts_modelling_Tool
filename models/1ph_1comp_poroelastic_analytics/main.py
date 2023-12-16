@@ -140,6 +140,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     m = Model(case=case, discretizer=discr_name, mesh=mesh)
     m.init()
+    redirect_darts_output('log.txt')
     # redirect_darts_output('log.txt')
     # output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()

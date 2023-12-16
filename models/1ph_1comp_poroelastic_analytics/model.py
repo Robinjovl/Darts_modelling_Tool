@@ -73,10 +73,10 @@ class Model(DartsModel):
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-        self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                      min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                          thermal=True, min_t=270.0, max_t=370.0,
-                                      discretizer = self.discretizer_name)
+            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+                                              thermal=True, min_t=270.0, max_t=370.0,
+                                          discretizer = self.discretizer_name)
         else:
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
@@ -163,10 +163,10 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if self.case == 'bai':
-        self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                    initial_pressure=self.reservoir.p_init,
-                                                            initial_temperature=self.reservoir.t_init,
-                                                            initial_displacement=[0.0, 0.0, 0.0])
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                        initial_pressure=self.reservoir.p_init,
+                                                                initial_temperature=self.reservoir.t_init,
+                                                                initial_displacement=[0.0, 0.0, 0.0])
         else:
             self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
                                                             initial_pressure=self.reservoir.p_init,
