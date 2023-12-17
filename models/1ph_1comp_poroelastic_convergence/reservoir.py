@@ -337,17 +337,10 @@ class UnstructReservoir:
         sol = reference_solution(self.x_all[:, self.n_matrix + self.n_fracs:])
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-            bc = self.boundary_conditions[tag]
-
             for id in ids:
-                conn = self.conns[self.id_boundary_conns[id]]
-                n = np.array(conn.n.values, copy=False)
-                conn_c = np.array(conn.c.values, copy=False)
-                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
-                if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
                 self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
-        # RHS terms
+
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
             self.f_prep[self.n_vars * cell_id + self.u_var:
@@ -356,7 +349,7 @@ class UnstructReservoir:
                     (self.r.y, c.values[1]),
                     (self.r.z, c.values[2]),
                     (self.r.t, time)]).evalf())[:, 0]
-            self.f_prep[self.n_vars * cell_id + self.p_var] = -(self.c * self.porosity *
+            self.f_prep[self.n_vars * cell_id + self.p_var] = -self.fluid_density * (self.c * self.porosity *
                self.r.acc.subs([
                    (self.r.x, c.values[0]),
                    (self.r.y, c.values[1]),
@@ -390,7 +383,7 @@ class UnstructReservoir:
                 -0.08, 0.108, 0.146, -0.0127, 1.209, -0.326,
                 -0.239, 0.501, 0.182, -0.304, -0.326, 1.373]
         self.grav = 9.81e-2
-        self.rho_f = 978.0
+        self.fluid_density = 978.0
         self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1e-2
 
@@ -414,7 +407,7 @@ class UnstructReservoir:
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(self.mesh_file, self.domain_tags)
         self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)  # 0.0??
+        self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
         self.tags = np.array(self.discr_mesh.tags, copy=False)
         self.discr.set_mesh(self.discr_mesh)
         self.discr.init()
@@ -459,6 +452,7 @@ class UnstructReservoir:
         self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
 
+        sol = reference_solution(self.x_all[:, self.n_matrix + self.n_fracs:])
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
@@ -468,6 +462,10 @@ class UnstructReservoir:
             bmn[ids] = bc['mech']['bn']
             amt[ids] = bc['mech']['at']
             bmt[ids] = bc['mech']['bt']
+
+            for id in ids:
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
+                self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -489,7 +487,7 @@ class UnstructReservoir:
 
         # RHS term
         self.c = 1.4503768e-05
-        self.r = Rhs(stf, biot, perm, self.fluid_viscosity, self.grav, self.rho_f)
+        self.r = Rhs(stf, biot, perm, self.fluid_viscosity, self.grav, self.fluid_density)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
@@ -499,7 +497,7 @@ class UnstructReservoir:
                                                     (self.r.y, c.values[1]),
                                                     (self.r.z, c.values[2]),
                                                     (self.r.t, time)]).evalf())[:,0]
-            self.f_prep[self.n_vars * cell_id + self.p_var] = -(self.c * self.porosity *
+            self.f_prep[self.n_vars * cell_id + self.p_var] = -self.fluid_density * (self.c * self.porosity *
                                                     self.r.acc.subs([
                                                     (self.r.x, c.values[0]),
                                                     (self.r.y, c.values[1]),

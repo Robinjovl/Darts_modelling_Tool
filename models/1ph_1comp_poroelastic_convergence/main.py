@@ -160,7 +160,6 @@ def run_convergence_study(n_res, discretizer, mesh='rect'):
 
     x = np.sqrt((timesteps * dx)[:n_res])
     id = np.argsort(x)
-    print(id)
     u_order = (np.diff(np.log(devs_u[id])) / np.diff(np.log(x[id])))[0]
     p_order = (np.diff(np.log(devs_p[id])) / np.diff(np.log(x[id])))[0]
 

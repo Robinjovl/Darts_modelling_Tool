@@ -47,16 +47,15 @@ class Model(DartsModel):
         components = ['H2O']
         phases = ['wat']
         thermal = 0
-        Mw = [18.015]
+        Mw = [1.0]
 
         property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                Mw=Mw, min_z=zero / 10, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
-        self.reservoir.fluid_density0 = 1014.0
         property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
-                                                                   dens0=self.reservoir.fluid_density0))])
+                                                                   dens0=self.reservoir.fluid_density))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
