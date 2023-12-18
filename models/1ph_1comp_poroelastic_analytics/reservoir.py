@@ -1228,7 +1228,7 @@ class UnstructReservoir:
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
-        self.t_init = 273.15
+        self.t_init = 0.0#273.15
         self.t_top = self.t_init + 50
         self.p_top = self.p_init
         self.porosity = 0.2
@@ -1245,8 +1245,8 @@ class UnstructReservoir:
                             self.porosity * self.fluid_compressibility)
         self.F = -1.e-5
         self.th_expn_coef = 9.0 * 1.E-7
-        self.th_expn = 3 * self.th_expn_coef * self.kd_cur
-        self.th_conductivity = 0.836 * 86400.0
+        self.th_expn = self.th_expn_coef * self.kd_cur
+        self.th_conductivity = 0.836 * 86400.0 * 1000
 
         # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
         NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}

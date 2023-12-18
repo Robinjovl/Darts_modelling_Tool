@@ -1007,20 +1007,28 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  }
 			  }
 		  }*/
-		  // [8] residual
+		  // [8] fluxes to residual
+		  // mass (Darcy)
 		  l_ind = i * N_VARS + P_VAR;
 		  for (c = 0; c < NE; c++)
 		  {
 			  RHS[l_ind + c] += dt * darcy_component_fluxes[c];
 		  }
+		  // momentum (forces)
 		  l_ind = i * N_VARS + U_VAR;
 		  r_ind = ND * conn_id;
 		  for (d = 0; d < ND; d++)
 		  {
 			  RHS[l_ind + d] += hooke_forces[r_ind + d] + biot_forces[r_ind + d];
+			  if constexpr (THERMAL)
+				RHS[l_ind + d] += thermal_forces[r_ind + d];
 		  }
-		  l_ind = i * N_VARS + T_VAR;
-		  RHS[l_ind] += dt * fourier_fluxes[conn_id];
+		  // energy (heat conduction)
+		  if constexpr (THERMAL)
+		  {
+			l_ind = i * N_VARS + T_VAR;
+			RHS[l_ind] += dt * fourier_fluxes[conn_id];
+		  }
 	  }
 
 	  // [9] accumulation for mass balance

@@ -52,10 +52,9 @@ class Model(DartsModel):
         thermal = 0
         Mw = [18.015]
 
+        self.reservoir.heat_capacity = 167.2
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
-        hcap.fill(2200)
-        rcond.fill(181.44)
+        hcap.fill(self.reservoir.heat_capacity)
 
         property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                Mw=Mw, min_z=zero / 10, temperature=1.)
@@ -72,12 +71,12 @@ class Model(DartsModel):
         property_container.rock_compr_ev = ConstFunc(1.0)
         # create physics
         if self.case == 'bai':
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=self.reservoir.heat_capacity)
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                              thermal=True, min_t=270.0, max_t=370.0,
+                                              thermal=True, min_t=-10.0, max_t=100.0,
                                           discretizer = self.discretizer_name)
         else:
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,

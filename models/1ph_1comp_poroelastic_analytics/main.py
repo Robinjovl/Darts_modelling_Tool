@@ -340,11 +340,13 @@ def plot_comparison(m, data, discretizer, case, save_data=False):
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
 def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     if case == 'bai':
-        max_dt = 0.1
+        nt = 100
+        max_dt = 0.01
+        t = np.logspace(-7, np.log10(max_dt), nt)
     else:
+        nt = 60
         max_dt = 30
-    nt = 60
-    t = np.logspace(-3, np.log10(max_dt), nt)
+        t = np.logspace(-3, np.log10(max_dt), nt)
 
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
@@ -391,7 +393,7 @@ def run_test(args: list = []):
 # run_and_plot(case='terzaghi', discretizer='pm_discretizer')
 # run_and_plot(case='mandel', discretizer='mech_discretizer')
 # run_and_plot(case='mandel', discretizer='pm_discretizer')
-# run(case='bai', discretizer='mech_discretizer')
+run(case='bai', discretizer='mech_discretizer')
 
 # Wedge (triangular) grid
 # ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
@@ -460,10 +462,10 @@ def get_solution_slice(m, discr_name, sol_data):# for rectangular grid
     sol_data_slice['solution'] = sol_data['solution'][::ny]
     return sol_data_slice
 
-for case in ['terzaghi', 'mandel']: #TODO, 'terzaghi_two_layers']:
-    for mesh in ['rect']:#, 'wedge', 'hex']
-        if case == 'terzaghi_two_layers' and mesh == 'hex':
-            continue
-    mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
-    pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+# for case in ['terzaghi', 'mandel']: #TODO, 'terzaghi_two_layers']:
+#     for mesh in ['rect']:#, 'wedge', 'hex']
+#         if case == 'terzaghi_two_layers' and mesh == 'hex':
+#             continue
+#     mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+#     pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
 
