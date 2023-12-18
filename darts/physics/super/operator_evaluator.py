@@ -250,94 +250,6 @@ class ReservoirThermalOperators(ReservoirOperators):
 
         return 0
 
-class CompositionalGeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container, thermal=0):
-        super().__init__(property_container, thermal=0)
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
-
-        nc = self.property.nc
-        nph = self.property.nph
-        nm = self.property.nm
-        nc_fl = nc - nm
-        ne = nc + self.thermal
-
-        #       al + bt        + gm + dlt + chi     + rock_temp por    + gr/cap  + por
-        total = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
-
-        for i in range(total):
-            values[i] = 0
-
-        #  some arrays will be reused in thermal
-        self.ph, self.sat, self.x, rho, self.rho_m, self.mu, self.kr, pc, mass_source = self.property.evaluate(
-            state)
-
-        # self.compr = self.property.rock_compr_ev.evaluate(pressure)
-
-        density_tot = np.sum(self.sat * self.rho_m)
-        zc = np.append(vec_state_as_np[1:nc], 1 - np.sum(vec_state_as_np[1:nc]))
-        phi = 1 - np.sum(zc[nc_fl:nc])
-
-        """ CONSTRUCT OPERATORS HERE """
-
-        """ Alpha operator represents accumulation term """
-        for i in range(nc_fl):
-            values[i] = density_tot * zc[i]
-
-        """ and alpha for mineral components """
-        for i in range(nm):
-            values[i + nc_fl] = self.property.solid_dens[i] * zc[i + nc_fl]
-
-        """ Beta operator represents flux term: """
-        for j in self.ph:
-            shift = ne + ne * j
-            for i in range(nc_fl):
-                values[shift + i] = self.x[j][i] * self.rho_m[j] * self.kr[j] / self.mu[j]
-
-        """ Gamma operator for diffusion (same for thermal and isothermal) """
-        shift = ne + ne * nph
-        for j in self.ph:
-            values[shift + j] = self.sat[j]
-
-        """ Chi operator for diffusion """
-        shift += nph
-        for i in range(nc):
-            for j in self.ph:
-                values[shift + i * nph + j] = self.property.diff_coef * self.x[j][i] * self.rho_m[j]
-
-        """ Delta operator for reaction """
-        shift += nph * ne
-        for i in range(nc):
-            values[shift + i] = mass_source[i]
-
-        """ Gravity and Capillarity operators """
-        shift += ne
-        # E3-> gravity
-        for i in self.ph:
-            values[shift + 3 + i] = rho[i]
-
-        # E4-> capillarity
-        for i in self.ph:
-            values[shift + 3 + nph + i] = pc[i]
-        # E5_> porosity
-        values[shift + 3 + 2 * nph] = phi
-
-        # print(state, values)
-        # self.print_operators(state, values)
-
-        return 0
-
-    def print_operators(self, state, values):
-        super().print_operators(state, values)
-
 class GeomechanicsReservoirOperators(ReservoirOperators):
     def __init__(self, property_container, thermal=0):
         super().__init__(property_container, thermal=0)
@@ -358,7 +270,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
 class GeomechanicsWellOperators(WellOperators):
     def __init__(self, property_container, thermal=0):
-        super().__init__()  # Initialize base-class
+        super().__init__(property_container, thermal)  # Initialize base-class
 
     def evaluate(self, state, values):
         """

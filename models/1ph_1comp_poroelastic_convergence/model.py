@@ -59,6 +59,8 @@ class Model(DartsModel):
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
+        # rock compressibility is treated inside engine
+        property_container.rock_compr_ev = ConstFunc(1.0)
         # create physics
         self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                       min_p=-1000, max_p=1000, min_z=zero/10, max_z=1-zero/10,

@@ -156,11 +156,11 @@ class Poroelasticity(PhysicsBase):
             if self.discretizer_name == 'pm_discretizer':
                 for region, prop_container in self.property_containers.items():
                     self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container)
-                self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[regions[0]])
+                self.wellbore_operators = GeomechanicsWellOperators(self.property_containers[regions[0]])
             elif self.discretizer_name == 'mech_discretizer':
                 for region, prop_container in self.property_containers.items():
-                    self.reservoir_operators[region] = CompositionalGeomechanicsReservoirOperators(prop_container)
-                self.wellbore_operators = CompositionalGeomechanicsReservoirOperators(self.property_containers[regions[0]])
+                    self.reservoir_operators[region] = ReservoirOperators(prop_container)
+                self.wellbore_operators = WellOperators(self.property_containers[regions[0]])
 
         self.rate_operators = RateOperators(self.property_containers[regions[0]])
 

@@ -36,9 +36,11 @@ class UnstructReservoir:
         if discretizer == 'mech_discretizer':
             self.p_var = 0
             self.u_var = 1
+            self.cell_property = ['p', 'ux', 'uy', 'uz']
         elif discretizer == 'pm_discretizer':
             self.u_var = 0
             self.p_var = self.n_dim
+            self.cell_property = ['ux', 'uy', 'uz', 'p']
 
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
@@ -64,9 +66,11 @@ class UnstructReservoir:
             self.n_state = 1
             self.terzaghi_two_layers_no_analytics(mesh)
         elif case == 'bai':
+            self.cell_property = ['p', 't', 'ux', 'uy', 'uz']
             self.n_state = 2
             self.n_vars = 5
             self.t_var = 1
+            self.u_var = 2
             assert (discretizer == 'mech_discretizer')
             self.bai_thermoporoelastic_consolidation(mesh)
 
@@ -139,6 +143,9 @@ class UnstructReservoir:
             #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
+            self.pz_bounds[self.p_var::self.n_state] = self.p_init
+            if case == 'bai':
+                self.pz_bounds[self.t_var::self.n_state] = self.t_init
             # self.pz_bounds[:] = self.pz_bounds
             # self.p_ref[:] = self.p_ref
             # self.f[:] = self.f
@@ -1203,12 +1210,13 @@ class UnstructReservoir:
         self.pD = 1.0
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, mesh='rect'):
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
+        # if mesh == 'rect':
+        #     mesh_file = 'meshes/transfinite.msh'
+        # elif mesh == 'wedge':
+        #     mesh_file = 'meshes/wedge.msh'
+        # elif mesh == 'hex':
+        #     mesh_file = 'meshes/hexahedron.msh'
+        mesh_file = 'meshes/transfinite_bai.msh'
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
@@ -1225,19 +1233,19 @@ class UnstructReservoir:
         self.p_top = self.p_init
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 4.e+6 / 0.9869
-        self.E = 10000 # in bars
-        self.nu = 0.25
+        self.E = 0.06 # in bars
+        self.nu = 0.4
         self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
         self.mu = self.E / 2 / (1 + self.nu)
-        self.biot = 0.9
+        self.biot = 1.0
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
                             self.porosity * self.fluid_compressibility)
         self.F = -1.e-5
-        self.biot = 1
-        self.th_expn = 0.0#9.0 * 1.E-7
+        self.th_expn_coef = 9.0 * 1.E-7
+        self.th_expn = 3 * self.th_expn_coef * self.kd_cur
         self.th_conductivity = 0.836 * 86400.0
 
         # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
@@ -1294,10 +1302,8 @@ class UnstructReservoir:
         bmt = np.zeros(self.n_bounds)
         at = np.zeros(self.n_bounds)
         bt = np.zeros(self.n_bounds)
-        self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
-                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
-        self.bc_rhs_prev = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
-                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
 
         # mapping boundary connections
         adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
@@ -1306,7 +1312,6 @@ class UnstructReservoir:
         self.id_boundary_conns = adj_matrix[id_sorted]
         self.conns = np.array(self.discr_mesh.conns, copy=False)
         self.centroids = np.array(self.discr_mesh.centroids, copy=False)
-        u_var = 1
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -1321,11 +1326,9 @@ class UnstructReservoir:
             bt[ids] = bc['temp']['b']
             # flow
             self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
             # energy
             self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
-            self.bc_rhs_prev[self.n_vars * ids + self.t_var] = bc['temp']['r']
-
+            # mechanics
             for id in ids:
                 assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
                 conn = self.conns[self.id_boundary_conns[id]]
@@ -1334,7 +1337,6 @@ class UnstructReservoir:
                 c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
-                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -1478,8 +1480,6 @@ class UnstructReservoir:
         Mesh = meshio.read(self.file_path)
 
         # Allocate empty new cell_data dictionary:
-        cell_property = ['p', 'u_x', 'u_y', 'u_z']
-        props_num = len(cell_property)
         property_array = np.array(engine.X, copy=False)
         available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
         available_fracture_geometries = ['quad', 'triangle']
@@ -1505,9 +1505,9 @@ class UnstructReservoir:
             if ith_geometry in available_matrix_geometries:
                 Mesh.cells.append(self.mesh_data.cells[geom_id])
                 # Add matrix data to dictionary:
-                for i in range(props_num):
-                    if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                    cell_data[cell_property[i]].append(property_array[i:props_num * self.n_matrix:props_num])
+                for i in range(self.n_vars):
+                    if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
+                    cell_data[self.cell_property[i]].append(property_array[i:self.n_vars * self.n_matrix:self.n_vars])
 
                 #if 'velocity' not in cell_data: cell_data['velocity'] = []
                 #cell_data['velocity'].append(vels)

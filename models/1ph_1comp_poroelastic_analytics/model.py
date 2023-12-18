@@ -68,6 +68,8 @@ class Model(DartsModel):
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
+        # rock compressibility is treated inside engine
+        property_container.rock_compr_ev = ConstFunc(1.0)
         # create physics
         if self.case == 'bai':
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18))])
