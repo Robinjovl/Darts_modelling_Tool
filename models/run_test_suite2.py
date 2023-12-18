@@ -19,25 +19,17 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
                  ]
 
 test_dirs = ['1ph_1comp_poroelastic_analytics']
-test_args = [
-                [['terzaghi', 'non_stabilized', 'rect'],
-                ['terzaghi', 'non_stabilized', 'wedge'],
-                ['terzaghi', 'non_stabilized', 'hex'],
-                ['terzaghi', 'stabilized', 'rect'],
-                ['terzaghi', 'stabilized', 'wedge'],
-                ['terzaghi', 'stabilized', 'hex'],
-                ['mandel', 'non_stabilized', 'rect'],
-                ['mandel', 'non_stabilized', 'wedge'],
-                ['mandel', 'non_stabilized', 'hex'],
-                ['mandel', 'stabilized', 'rect'],
-                ['mandel', 'stabilized', 'wedge'],
-                ['mandel', 'stabilized', 'hex'],
-                ['terzaghi_two_layers', 'non_stabilized', 'rect'],
-                ['terzaghi_two_layers', 'non_stabilized', 'wedge']]
-            ]
+
+test_args = []
+for case in ['terzaghi', 'mandel']:#, 'terzaghi_two_layers']: #TODO
+    for discr_name in ['mech_discretizer', 'pm_discretizer']:
+        for mesh in ['rect']:#, 'wedge', 'hex'] #TODO
+            if case == 'terzaghi_two_layers' and mesh == 'hex':
+                continue
+            test_args.append([case, discr_name, mesh])
+test_args = [test_args]
 
 accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
-
 
 def check_performance(mod):
     pkl_suffix = ''

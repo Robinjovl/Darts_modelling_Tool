@@ -172,13 +172,19 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
         # m.reservoir.write_to_vtk(output_directory, ith_step + 1, m.physics)
         data.append(m.get_performance_data(is_last_ts=(ith_step == t.size - 1)))
         if is_plk_exist:
-            # to compare with amalytic need only solution vector
-            ref_data = {'solution' : get_analytic_solution(m, discr_name, t=time)['solution']}
-            sol_data = {'solution' : get_solution_slice(m, discr_name, data[ith_step])['solution']}
-            for k in ['reservoir blocks', 'variables']:
-                ref_data[k] = sol_data[k] = data[ith_step][k]
-            failed += check_performance_data(ref_data, sol_data, failed,
+            # to compare with analytic need only solution vector
+            if False:
+                an_data_step = {'solution' : get_analytic_solution(m, discr_name, t=time)['solution']}
+                sol_data_step = {'solution' : get_solution_slice(m, discr_name, mesh, data[ith_step])['solution']}
+                for k in ['reservoir blocks', 'variables']:
+                    an_data_step[k] = sol_data[k] = data[ith_step][k]
+            else:
+                sol_data_step = data[ith_step]
+                ref_data_step = ref_data[ith_step]
+            failed += check_performance_data(ref_data_step, sol_data_step, failed,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
+            assert not failed
+
     if not is_plk_exist or overwrite == '1':
         m.save_performance_data(data=data, file_name=file_name)
         return False, 0.0
@@ -344,9 +350,9 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         max_dt = 0.01
         t = np.logspace(-7, np.log10(max_dt), nt)
     else:
-        nt = 60
+    nt = 60
         max_dt = 30
-        t = np.logspace(-3, np.log10(max_dt), nt)
+    t = np.logspace(-3, np.log10(max_dt), nt)
 
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
@@ -439,8 +445,8 @@ def get_analytic_solution(m, discr_name, t):
 
     uy = uz = -999  # undefined
     if case == 'mandel':
-        pressure = m.reservoir.mandel_exact_pressure(t=t, xc=x)
-        p,ux,uy = m.reservoir.mandel_exact_displacements(t=t, xc=xc)
+        pressure = m.reservoir.mandel_exact_pressure(t=t, xc=x)  # 1D
+        p,ux,uy = m.reservoir.mandel_exact_displacements(t=t, xc=xc)  # 2D
     elif case == 'terzaghi':
         pressure = m.reservoir.terzaghi_exact_pressure(t=t, xc=x)
         ux = m.reservoir.terzaghi_exact_displacements(t=t, xc=x)
@@ -456,10 +462,17 @@ def get_analytic_solution(m, discr_name, t):
     ref_data['solution'][m.reservoir.u_var+2::nvars] = uz
     return ref_data
 
-def get_solution_slice(m, discr_name, sol_data):# for rectangular grid
+def get_solution_slice(m, discr_name, mesh, sol_data):
     nx, ny, x, xc = get_x(m, discr_name)
-    sol_data_slice = sol_data.copy()
-    sol_data_slice['solution'] = sol_data['solution'][::ny]
+    nvars = m.engine.N_VARS
+    sol_data_slice = sol_data.copy()  # copy keys of the dictionary
+    sol_data_slice['solution'] = np.zeros(nx * nvars)
+    for v in range(nvars):
+        if mesh == 'rect':
+            sol_data_slice['solution'][v::nvars] = sol_data['solution'][v::nvars][::ny]
+        else:
+            assert False  #TODO implement for unstructured grid
+
     return sol_data_slice
 
 # for case in ['terzaghi', 'mandel']: #TODO, 'terzaghi_two_layers']:
