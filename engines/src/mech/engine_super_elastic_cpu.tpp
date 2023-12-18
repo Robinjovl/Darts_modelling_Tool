@@ -692,7 +692,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 			  // heat conduction
 			  if constexpr (THERMAL)
-				t_diff -= fourier_tran[conn_st_id] * buf[T_VAR];
+				t_diff += fourier_tran[conn_st_id] * buf[T_VAR];
 
 			  conn_st_id++;
 		  }
@@ -771,15 +771,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					biot_forces[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * X[r_ind + P_VAR];
 					Jac[l_ind1 + P_VAR] += biot_tran[conn_st_id * N_BIOT + d];
 
-					// Thermal forces 
+					// Thermal forces 					
 					if constexpr (THERMAL)
 					{
 					  thermal_forces[l_ind + d] += thermal_traction_tran[conn_st_id * N_BIOT + d] * X[r_ind + T_VAR];
 					  Jac[l_ind1 + T_VAR] += thermal_traction_tran[conn_st_id * N_BIOT + d];
 					}
-
-					// subtract reference pressure (when stress = 0)
-					// fluxes[l_ind + d] += -tran[r_ind1] * p_ref_cur;
 				  }
 				  //// mass fluxes
 				  r_ind = stencil[conn_st_id] * N_VARS;
@@ -830,7 +827,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  }
 
 					  // heat conduction
-					  Jac[l_ind1 + T_VAR] -= dt * fourier_tran[conn_st_id];
+					  Jac[l_ind1 + T_VAR] += dt * fourier_tran[conn_st_id];
 				  }
 
 				  conn_st_id++;
@@ -970,30 +967,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  }
 		  // [?] extra loop for gravity in biot for flux
 		  // [6] (saturation ??? ) thermal expansion & fluid gravity for momentum balance
-		  if constexpr (THERMAL)
-		  {
-			  l_ind = N_VARS * conn_id + U_VAR;
-			  l_ind1 = upwd_jac_idx[0] * N_VARS_SQ + T_VAR;
-			  if (upwd_idx[0] < n_blocks)
-			  {
-				  cur_bc = &X[upwd_idx[0] * N_VARS + T_VAR];
-				  ref_bc = &t_ref[upwd_idx[0]];
-			  }
-			  else
-			  {
-				  r_ind = N_STATE * (upwd_idx[0] - n_blocks);
-				  cur_bc = &pz_bounds[r_ind + T_VAR];
-				  ref_bc = &pz_bounds[r_ind + T_VAR];// &t_ref[upwd_idx[0]];
-			  }
-			  // thermal induced stresses
-			  /*for (d = 0; d < ND; d++)
-			  {
-				  fluxes[l_ind + d] += tran_th_expn[conn_id * ND + d] * (cur_bc[0] - ref_bc[0]);
-				  if (upwd_jac_idx[0] < csr_idx_end)
-					  Jac[l_ind1 + (U_VAR + d) * N_VARS] += tran_th_expn[conn_id * ND + d];
-				  //fluxes[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs[N_VARS * conn_id + U_VAR + d];
-				  //fluxes_biot[N_VARS * conn_id + U_VAR + d] += op_vals_arr[i * N_OPS + GRAV_OP] * rhs_biot[N_VARS * conn_id + U_VAR + d];
-			  }*/
 		  // [7] add heat conduction
 		  /*if (THERMAL)
 		  {
@@ -1032,8 +1005,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  RHS[i * N_VARS + T_VAR] -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[j];
 					  Jac[diag_idx + NC * N_VARS + T_VAR] += tranD[conn_id] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[j];
 				  }
-			  }*/
-		  }
+			  }
+		  }*/
 		  // [8] residual
 		  l_ind = i * N_VARS + P_VAR;
 		  for (c = 0; c < NE; c++)
@@ -1046,6 +1019,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  {
 			  RHS[l_ind + d] += hooke_forces[r_ind + d] + biot_forces[r_ind + d];
 		  }
+		  l_ind = i * N_VARS + T_VAR;
+		  RHS[l_ind] += dt * fourier_fluxes[conn_id];
 	  }
 
 	  // [9] accumulation for mass balance
