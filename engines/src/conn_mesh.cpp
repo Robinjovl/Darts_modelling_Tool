@@ -1989,7 +1989,7 @@ conn_mesh::reverse_and_sort_pme_mech_discretizer()
   grav_coef.assign(n_two_way_conns, 0);
   block_m.resize(n_two_way_conns);
   block_p.resize(n_two_way_conns);
-  size_t n_hooke = n_dim * n_vars, n_biot = n_dim, n_darcy = 1, n_vol_strain = n_vars, n_thermal = 1, n_fourier = 1;
+  size_t n_hooke = n_dim * n_vars, n_biot = n_dim, n_darcy = 1, n_vol_strain = n_vars, n_thermal = n_dim, n_fourier = 1;
   hooke_tran.resize(n_two_way_stencil * n_hooke);
   biot_tran.resize(n_two_way_stencil * n_biot);
   darcy_tran.resize(n_two_way_stencil * n_darcy);
