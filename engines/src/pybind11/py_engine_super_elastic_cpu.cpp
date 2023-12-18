@@ -48,9 +48,16 @@ struct engine_super_elastic_exposer
 			.def_readwrite("dev_g_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_g_prev) \
 			//.def_readwrite("dev_z_prev", &engine_super_elastic_cpu<NC, NP, THERMAL>::dev_z_prev) 
 			.def_readwrite("well_residual_prev_dt", &engine_super_elastic_cpu<NC, NP, THERMAL>::well_residual_prev_dt) \
-			.def_readwrite("fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::fluxes) \
-			.def_readwrite("fluxes_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::fluxes_n) \
-			.def_readwrite("fluxes_biot", &engine_super_elastic_cpu<NC, NP, THERMAL>::fluxes_biot) \
+			.def_readwrite("darcy_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::darcy_fluxes) \
+			.def_readwrite("structural_movement_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::structural_movement_fluxes) \
+			.def_readwrite("fourier_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::fourier_fluxes) \
+			.def_readwrite("fick_fluxes", &engine_super_elastic_cpu<NC, NP, THERMAL>::fick_fluxes) \
+			.def_readwrite("hooke_forces", &engine_super_elastic_cpu<NC, NP, THERMAL>::hooke_forces) \
+			.def_readwrite("biot_forces", &engine_super_elastic_cpu<NC, NP, THERMAL>::biot_forces) \
+			.def_readwrite("thermal_forces", &engine_super_elastic_cpu<NC, NP, THERMAL>::thermal_forces) \
+			.def_readwrite("hooke_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::hooke_forces_n) \
+			.def_readwrite("biot_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::biot_forces_n) \
+			.def_readwrite("thermal_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::thermal_forces_n) \
 			.def_readwrite("dX", &engine_super_elastic_cpu<NC, NP, THERMAL>::dX) \
 			.def_readwrite("RHS", &engine_super_elastic_cpu<NC, NP, THERMAL>::RHS) \
 			.def_readwrite("contacts", &engine_super_elastic_cpu<NC, NP, THERMAL>::contacts) \

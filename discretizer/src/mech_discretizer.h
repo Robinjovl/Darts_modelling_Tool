@@ -211,11 +211,10 @@ namespace dis
 	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
 
 	/**
-	  * @brief Writes mechanical transmissibilities.
+	  * @brief Writes mechanical transmissibilities in plain arrays
 	  *
 	  * @param flux The approximation of the fluxes to be written in plain arrays.
 	  */
-	// convert approximation (matrix, stencil and free term) to 1-d arrays
 	  inline void write_trans_mech(const MechApproximation<MODE>& flux)
 	  {
 		assert(flux.is_same_stencil);

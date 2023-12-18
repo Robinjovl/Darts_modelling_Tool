@@ -137,9 +137,30 @@ public:
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
 public:
+
   std::vector<value_t> eps_vol;
 
-  std::vector<value_t> fluxes, fluxes_n, fluxes_biot, fluxes_biot_n, fluxes_ref, fluxes_biot_ref, fluxes_ref_n, fluxes_biot_ref_n;
+  /// @brief Vector storing Darcy fluxes.
+  std::vector<value_t> darcy_fluxes;
+
+  /// @brief Vector storing fluid fluxes caused by matrix movement.
+  std::vector<value_t> structural_movement_fluxes;
+
+  /// @brief Vector storing heat conduction fluxes.
+  std::vector<value_t> fourier_fluxes;
+
+  /// @brief Vector storing molecular diffusion fluxes.
+  std::vector<value_t> fick_fluxes;
+
+  /// @brief Vector storing pure elastic forces at this and previous time steps.
+  std::vector<value_t> hooke_forces, hooke_forces_n;
+
+  /// @brief Vector storing pore pressure-induced forces at this and previous time steps.
+  std::vector<value_t> biot_forces, biot_forces_n;
+
+  /// @brief Vector storing thermally-induced forces at this and previous time steps.
+  std::vector<value_t> thermal_forces, thermal_forces_n;
+  
   std::vector<value_t> Xref, Xn_ref;
   bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM;
   std::vector<pm::contact> contacts;
