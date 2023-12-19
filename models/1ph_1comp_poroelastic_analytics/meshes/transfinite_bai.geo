@@ -5,7 +5,7 @@ lc_frac = 600;
 l = 100;
 phi = Pi / 4;
 h = 1;
-Nx_pt = 3 + 1;
+Nx_pt = 2 + 1;
 Ny_pt = 210 + 1;
 Nz = 1;
 

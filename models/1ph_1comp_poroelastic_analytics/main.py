@@ -4,6 +4,7 @@ import numpy as np
 import meshio
 from math import fabs
 import os
+from scipy.interpolate import interp1d
 
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
@@ -195,13 +196,14 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     else:
         return False, -1.0
 def run_and_plot(case='mandel', discretizer='mech_discretizer'):
-    ## only with rectangular mesh
-    nt = 60
-    max_dt = 30  # sec
-    t = np.logspace(-3, np.log10(max_dt), nt)
-    # nt = 200
-    # max_t = 200
-    # t = max_t / nt * np.ones(nt)
+    if case == 'bai':
+        nt = 60
+        max_dt = 0.1
+        t = np.logspace(-7, np.log10(max_dt), nt)
+    else:
+        nt = 60
+        max_dt = 30
+        t = np.logspace(-3, np.log10(max_dt), nt)
 
     # GeosX
     # t = np.empty(shape=(0,), dtype=np.float64)
@@ -226,20 +228,64 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
         xc = np.array([m.reservoir.unstr_discr.mat_cell_info_dict[i * ny].centroid for i in range(nx)])
     elif discretizer == 'mech_discretizer':
         xc = np.array([np.array(c.values) for c in m.reservoir.discr_mesh.centroids[:m.reservoir.n_matrix]])
-        nx = np.unique(np.round(xc[:,0], decimals=6)).size
-        ny = int(m.reservoir.n_matrix / nx)
-        x = xc[::ny, 0]
-        xc = xc[::ny]
-    pres = { 'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
-    disp = { 'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)), 'time': np.zeros(nt + 1), 'x': x }
+        if case == 'bai':
+            y_loc = np.array([0.0, 1.4, 4.2, 5.6, 7.0])
+            ny = y_loc.size
+            y_num, id_num = np.unique(np.round(xc[:,1], decimals=6), return_index=True)
+
+            # pressure
+            pres = {'name': 'p', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
+                    'analytics': {}, 'x' : [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1) }
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_0m.csv', delimiter=',')
+            pres['analytics'][0.0] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_4p2m.csv', delimiter=',')
+            pres['analytics'][4.2] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_5p6m.csv', delimiter=',')
+            pres['analytics'][5.6] = an_data
+            # temperature
+            temp = {'name': 't', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
+                    'analytics': {}, 'x': [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1)}
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_0m.csv', delimiter=',')
+            temp['analytics'][0.0] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_4p2m.csv', delimiter=',')
+            temp['analytics'][4.2] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
+            temp['analytics'][5.6] = an_data
+            # vertical displacements
+            disp = {'name': 'uy', 'darts': {1.4: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 7.0: np.zeros(nt + 1) },
+                  'analytics': {}, 'x': [1.4, 4.2, 7.0], 'time': np.zeros(nt + 1)}
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
+            disp['analytics'][1.4] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
+            disp['analytics'][4.2] = an_data
+            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
+            disp['analytics'][7.0] = an_data
+        else:
+            nx = np.unique(np.round(xc[:,0], decimals=6)).size
+            ny = int(m.reservoir.n_matrix / nx)
+            x = xc[::ny, 0]
+            xc = xc[::ny]
+
     if case == 'mandel':
+        pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
+        disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
         pres['analytics'][0] = m.reservoir.mandel_exact_pressure(t=0.0, xc=x)
         p,ux,uy = m.reservoir.mandel_exact_displacements(t=0.0, xc=xc)
         disp['analytics'][0] = ux
     elif case == 'terzaghi':
+        pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
+        disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
         pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(t=0.0, xc=x)
         disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(t=0.0, xc=x)
     elif case == 'terzaghi_two_layers':
+        pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
+        disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
+                'time': np.zeros(nt + 1), 'x': x}
         pres['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_pressure(t=0, xc=x)
         disp['analytics'][0] = m.reservoir.terzaghi_two_layers_exact_displacement(t=0, xc=x)
 
@@ -250,20 +296,39 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
         m.params.max_ts = dt
         run_python(m, dt)
 
-        # save pressure
         X = np.array(m.engine.X, copy=False)
-        pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny] # for rectangular grid
-        disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny] # for rectangular grid
         if case == 'mandel':
+            pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
             p,ux,uy = m.reservoir.mandel_exact_displacements(t=time, xc=xc)
             disp['analytics'][ith_step + 1] = ux
         elif case == 'terzaghi':
+            pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(t=time, xc=x)
             disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(t=time, xc=x)
         elif case == 'terzaghi_two_layers':
+            pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_pressure(t=time, xc=x)
             disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_displacement(t=time, xc=x)
+        elif case == 'bai':
+            p_num = X[m.engine.P_VAR::m.engine.N_VARS][id_num]
+            t_num = X[m.engine.T_VAR::m.engine.N_VARS][id_num]
+            u_num = X[m.engine.U_VAR + 1::m.engine.N_VARS][id_num]
+            fp = interp1d(y_num, p_num, kind='linear', fill_value='extrapolate')
+            ft = interp1d(y_num, t_num, kind='linear', fill_value='extrapolate')
+            fu = interp1d(y_num, u_num, kind='linear', fill_value='extrapolate')
+            for y_cur in y_loc:
+                if y_cur in pres['darts'].keys():
+                    pres['darts'][y_cur][ith_step + 1] = fp(y_cur)
+                if y_cur in temp['darts'].keys():
+                    temp['darts'][y_cur][ith_step + 1] = ft(y_cur)
+                if y_cur in disp['darts'].keys():
+                    disp['darts'][y_cur][ith_step + 1] = fu(y_cur)
+
+            temp['time'][ith_step + 1] = time
 
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
@@ -274,10 +339,14 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
             m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.engine)
     m.print_timers()
 
-    if case != 'terzaghi_two_layers_no_analytics':
+    if case != 'terzaghi_two_layers_no_analytics' and case != 'bai':
         save_data = True
         plot_comparison(m, pres, discretizer, case, save_data=save_data)
         plot_comparison(m, disp, discretizer, case, save_data=save_data)
+    elif case == 'bai':
+        plot_bai_comparison(m, pres, save_data=False)
+        plot_bai_comparison(m, temp, save_data=False)
+        plot_bai_comparison(m, disp, save_data=False)
 def plot_comparison(m, data, discretizer, case, save_data=False):
     prefix = m.output_directory
     tD, dataD = m.reservoir.tD, m.reservoir.pD
@@ -344,10 +413,45 @@ def plot_comparison(m, data, discretizer, case, save_data=False):
         A[:, :, 0] = data['time'][:, np.newaxis]
         A[:, :, 1] = data['x'][np.newaxis, :]
         np.savetxt(filename, np.c_[A[:,:,0].flatten(), A[:,:,1].flatten(), data['analytics'].flatten()])
+def plot_bai_comparison(m, data, save_data=False):
+    prefix = m.output_directory
+    colors = ['b', 'r', 'g']
+
+    darts_mult = 1.0
+    an_mult = 1.0
+    if data['name'] == 'p':
+        y_label = r'Pressure, Pa'
+        darts_mult = 1.e+5
+    elif data['name'] == 't':
+        y_label = r'Temperature, $^\circ$C'
+    elif data['name'] == 'uy':
+        y_label = r'Vertical displacement, mm'
+        an_mult = -1000.0
+        darts_mult = 1000.0
+
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 6))
+
+    for i, y_cur in enumerate(data['x']):
+        darts_label = 'DARTS: y = ' + str(y_cur) + ' m'
+        ax.semilogx(data['time'][1:] * 86400, darts_mult * data['darts'][y_cur][1:], linestyle='--', color=colors[i], label=darts_label)
+        analytics_label = 'Analytics: y = ' + str(y_cur) + ' m'
+        ax.semilogx(data['analytics'][y_cur][:, 0], an_mult * data['analytics'][y_cur][:, 1], linestyle='-', color=colors[i], label=analytics_label)
+
+    ax.set_ylabel(y_label, fontsize=20)
+    ax.set_xlabel(r'Time, sec', fontsize=20)
+    ax.grid(True)
+    ax.legend(loc='lower left', prop={'size': 14 }, framealpha=0.5)
+
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    fig.tight_layout()
+    plt.savefig(prefix + '/' + data['name'] + '_bai.png')
+    plt.show()
+
 def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     if case == 'bai':
-        nt = 100
-        max_dt = 0.01
+        nt = 60
+        max_dt = 0.1
         t = np.logspace(-7, np.log10(max_dt), nt)
     else:
     nt = 60
@@ -399,7 +503,7 @@ def run_test(args: list = []):
 # run_and_plot(case='terzaghi', discretizer='pm_discretizer')
 # run_and_plot(case='mandel', discretizer='mech_discretizer')
 # run_and_plot(case='mandel', discretizer='pm_discretizer')
-run(case='bai', discretizer='mech_discretizer')
+# run_and_plot(case='bai', discretizer='mech_discretizer')
 
 # Wedge (triangular) grid
 # ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
