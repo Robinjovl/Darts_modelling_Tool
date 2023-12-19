@@ -446,7 +446,7 @@ def plot_bai_comparison(m, data, save_data=False):
     plt.yticks(fontsize=14)
     fig.tight_layout()
     plt.savefig(prefix + '/' + data['name'] + '_bai.png')
-    plt.show()
+    # plt.show()
 
 def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     if case == 'bai':
@@ -454,9 +454,9 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         max_dt = 0.1
         t = np.logspace(-7, np.log10(max_dt), nt)
     else:
-    nt = 60
+        nt = 60
         max_dt = 30
-    t = np.logspace(-3, np.log10(max_dt), nt)
+        t = np.logspace(-3, np.log10(max_dt), nt)
 
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()

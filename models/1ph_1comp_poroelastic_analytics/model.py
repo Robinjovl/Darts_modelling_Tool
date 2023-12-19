@@ -52,7 +52,7 @@ class Model(DartsModel):
         thermal = 0
         Mw = [18.015]
 
-        self.reservoir.heat_capacity = 167.2
+        self.reservoir.heat_capacity = 167.2 * 1000.0
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         hcap.fill(self.reservoir.heat_capacity)
 
@@ -61,7 +61,7 @@ class Model(DartsModel):
 
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
-        self.reservoir.fluid_density0 = 1014.0
+        self.reservoir.fluid_density0 = Mw[0]
         property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
                                                                    dens0=self.reservoir.fluid_density0))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
@@ -71,13 +71,13 @@ class Model(DartsModel):
         property_container.rock_compr_ev = ConstFunc(1.0)
         # create physics
         if self.case == 'bai':
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=self.reservoir.heat_capacity)
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity, tref=0.0))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                              thermal=True, min_t=-10.0, max_t=100.0,
-                                          discretizer = self.discretizer_name)
+                                          thermal=True, min_t=-10.0, max_t=100.0,
+                                          discretizer=self.discretizer_name)
         else:
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,

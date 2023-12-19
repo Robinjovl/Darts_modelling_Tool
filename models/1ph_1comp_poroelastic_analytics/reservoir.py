@@ -1239,10 +1239,8 @@ class UnstructReservoir:
         self.mu = self.E / 2 / (1 + self.nu)
         self.biot = 1.0
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
-        self.fluid_compressibility = 1.e-5
+        self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                            self.porosity * self.fluid_compressibility)
         self.F = -1.e-5
         self.th_expn_coef = 9.0 * 1.E-7
         self.th_expn = self.th_expn_coef * self.kd_cur
