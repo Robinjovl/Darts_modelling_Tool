@@ -15,6 +15,6 @@ if exist %fname% del %fname%
 
 if /I %UPLOAD_PKL% NEQ 1 exit
 
-"C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%.pkl"
+"C:\Program files\7-Zip\7z.exe" a -r %fname% %pklname%*.pkl"
 
 

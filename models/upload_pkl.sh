@@ -17,4 +17,4 @@ if [ "$UPLOAD_PKL" != 1 ]; then
 	exit
 fi
 
-tar -czf $fname ./*/"$pklname".pkl #./*/ref/"$pklname".pkl
+tar -czf $fname ./*/"$pklname"*.pkl ./*/ref/"$pklname"*.pkl

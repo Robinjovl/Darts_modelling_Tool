@@ -155,8 +155,8 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     pkl_suffix = ''
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '0':
         pkl_suffix = '_iter'
-    file_name = os.path.join('ref', 'perf_' + case + '_' + discr_name + '_' + mesh + '_' +
-                             platform.system().lower()[:3] + pkl_suffix + '.pkl')
+    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
+                             '_' + case + '_' + discr_name + '_' + mesh + '.pkl')
     failed = 0
 
     is_plk_exist = os.path.isfile(file_name)
