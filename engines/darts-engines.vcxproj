@@ -484,7 +484,7 @@ copy /b engines_build_info.cpp+,, &gt;NUL</Command>
     <ClInclude Include="src\mech\engine_elasticity_cpu.hpp" />
     <ClInclude Include="src\mech\engine_pm_cpu.hpp" />
     <ClInclude Include="src\mech\engine_super_elastic_cpu.hpp" />
-    <ClInclude Include="src\mech\matrix.hpp" />
+    <ClInclude Include="src\mech\matrix.h" />
     <ClInclude Include="src\mech\mech_operators.hpp" />
     <ClInclude Include="src\mech\pm_discretizer.hpp" />
     <ClInclude Include="src\ms_well.h" />

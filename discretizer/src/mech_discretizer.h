@@ -179,7 +179,8 @@ namespace dis
 	  * @return std::pair<bool, size_t> A pair where the first element is true if found,
 	  *         false otherwise, and the second element is the position in the vector.
 	  */
-	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, const index_t& element)
+	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, 
+												  const index_t& element)
 	  {
 	  for (size_t i = 0; i < vec.size(); ++i)
 		{
@@ -199,7 +200,10 @@ namespace dis
 	  * @param cell_id The ID of the cell.
 	  * @param conn_id The ID of the connection.
 	  */
-	  void calc_matrix_matrix_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t cell_id, index_t conn_id);
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn, 
+									MechApproximation<MODE>& flux, 
+									index_t cell_id, 
+									index_t conn_id);
 
 	/**
 	  * @brief Calculates approximation of tractions for matrix-boundary connections.
@@ -208,7 +212,9 @@ namespace dis
 	  * @param flux The flux to store approximation.
 	  * @param conn_id The ID of the connection.
 	  */
-	  void calc_matrix_boundary_mech(const mesh::Connection& conn, MechApproximation<MODE>& flux, index_t conn_id);
+	  void calc_matrix_boundary_mech(const mesh::Connection& conn, 
+									  MechApproximation<MODE>& flux, 
+									  index_t conn_id);
 
 	/**
 	  * @brief Writes mechanical transmissibilities in plain arrays
@@ -331,7 +337,7 @@ namespace dis
 	  * @brief Calculates the approximations of stress tensor and Darcy velocities at cells' centers
 	*/
 	void calc_cell_centered_stress_velocity_approximations();
-    };
+	};
 }
 
 #endif /* MECH_DISCRETIZER_H_ */

@@ -31,6 +31,8 @@ using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
+using std::fill;
+using std::fill_n;
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 const uint8_t engine_super_elastic_cpu<NC, NP, THERMAL>::T2U[5] = {U_VAR, U_VAR + 1, U_VAR + 2, P_VAR, T_VAR};
@@ -42,13 +44,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
 {
   newton_update_coefficient = 1.0;
   dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
-  std::fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
+  fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
   output_counter = 0;
   FIND_EQUILIBRIUM = false;
   PRINT_LINEAR_SYSTEM = false;
   contact_solver = pm::RETURN_MAPPING;
   geomechanics_mode.resize(mesh_->n_blocks, 0);
   gravity = {0.0, 0.0, 0.0};
+  discr = nullptr;
 
   init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
@@ -297,6 +300,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  thermal_forces_n.resize(ND * mesh->n_conns);
 	}
 	eps_vol.resize(mesh->n_matrix);
+
+	const uint8_t n_sym = ND * (ND + 1) / 2;
+	total_stresses.resize(n_sym * mesh->n_matrix);
+	effective_stresses.resize(n_sym * mesh->n_matrix);
+	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
 	for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
@@ -562,17 +570,17 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
 #endif //_OPENMP
 
-  std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
-  std::fill(RHS.begin(), RHS.end(), 0.0);
-  std::fill(darcy_fluxes.begin(), darcy_fluxes.end(), 0.0);
-  std::fill(structural_movement_fluxes.begin(), structural_movement_fluxes.end(), 0.0);
-  std::fill(fick_fluxes.begin(), fick_fluxes.end(), 0.0);
-  std::fill(hooke_forces.begin(), hooke_forces.end(), 0.0);
-  std::fill(biot_forces.begin(), biot_forces.end(), 0.0);
+  fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
+  fill(RHS.begin(), RHS.end(), 0.0);
+  fill(darcy_fluxes.begin(), darcy_fluxes.end(), 0.0);
+  fill(structural_movement_fluxes.begin(), structural_movement_fluxes.end(), 0.0);
+  fill(fick_fluxes.begin(), fick_fluxes.end(), 0.0);
+  fill(hooke_forces.begin(), hooke_forces.end(), 0.0);
+  fill(biot_forces.begin(), biot_forces.end(), 0.0);
   if constexpr (THERMAL)
   {
-	std::fill(fourier_fluxes.begin(), fourier_fluxes.end(), 0.0);
-	std::fill(thermal_forces.begin(), thermal_forces.end(), 0.0);
+	fill(fourier_fluxes.begin(), fourier_fluxes.end(), 0.0);
+	fill(thermal_forces.begin(), thermal_forces.end(), 0.0);
   }
 
   index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
@@ -621,7 +629,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  if (j >= n_res_blocks && j < n_blocks)
 			  connected_with_well = 1;
 
-		  std::fill_n(darcy_component_fluxes, NE, 0.0);
+		  fill_n(darcy_component_fluxes, NE, 0.0);
 
 		  // [0] transmissibility multiplier
 		  /*value_t trans_mult = 1;
@@ -1168,6 +1176,144 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
+int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
+{
+  assert(discr != nullptr);
+  assert(discr->stress_approx.size() > 0);
+
+  const index_t* adj_matrix_offset = discr->mesh->adj_matrix_offset.data();
+  const index_t* adj_matrix = discr->mesh->adj_matrix.data();
+  const mesh::Connection* conns = discr->mesh->conns.data();
+  const mesh::Vector3* centroids = discr->mesh->centroids.data();
+  const dis::Matrix33* biots = discr->biots.data();
+  const value_t* stress_approx = discr->stress_approx.data();
+  const value_t* velocity_approx = discr->velocity_approx.data();
+
+  const index_t* block_m = mesh->block_m.data();
+  const index_t* block_p = mesh->block_p.data();
+  const index_t n_matrix = mesh->n_matrix;
+  const index_t n_res_blocks = mesh->n_res_blocks;
+  const index_t n_blocks = mesh->n_blocks;
+  const index_t n_conns = mesh->n_conns;
+  const index_t n_bounds = mesh->n_bounds;
+  const index_t n_wells = n_blocks - n_res_blocks;
+  constexpr uint8_t n_sym = (ND + 1) * ND / 2;
+
+  linalg::Vector3 t_face, n;
+  index_t counter, conn_id = 0, j, tmp, tmp1;
+  value_t p_grad_vals[ND], p_face;
+  value_t cur_total_tractions[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
+  value_t cur_effective_tractions[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
+  value_t cur_darcy_fluxes[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
+  value_t Ndelta[ND][n_sym] = {0.0};
+  value_t w[n_sym];
+
+  for (index_t i = 0; i < n_matrix; i++)
+  {
+	// evaluate pressure gradient
+	const auto& p_grad = discr->p_grads[i];
+
+	p_grad_vals[0] = p_grad_vals[1] = p_grad_vals[2] = 0.0;
+	// right-hand side
+	for (uint8_t d = 0; d < ND; d++)
+	{
+	  for (uint8_t p = 0; p < NP; p++)
+	  {
+		p_grad_vals[d] += (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]) * p_grad.rhs(d, 0);
+	  }
+	}
+	// stencil assembly 
+	for (index_t k = 0; k < p_grad.stencil.size(); k++)
+	{
+	  for (uint8_t d = 0; d < ND; d++)
+	  {
+		tmp = p_grad.stencil[k] < n_res_blocks ? p_grad.stencil[k] : p_grad.stencil[k] + n_wells;
+		p_grad_vals[d] += p_grad.a(d, k) * Xop[tmp * N_STATE + P_VAR];
+	  }
+	}
+
+	const auto& b = biots[i];
+	w[0] = b(0, 0);	 w[1] = b(1, 1);  w[2] = b(2, 2);	w[3] = b(1, 2);	  w[4] = b(0, 2);	w[5] = b(0, 1);
+	fill(std::begin(cur_total_tractions), std::end(cur_total_tractions), 0.0);
+	fill(std::begin(cur_effective_tractions), std::end(cur_effective_tractions), 0.0);
+	fill(std::begin(cur_darcy_fluxes), std::end(cur_darcy_fluxes), 0.0);
+	counter = 0;
+	for (index_t face_id = 0; block_m[conn_id] == i && conn_id < n_conns;)
+	{
+	  j = block_p[conn_id];
+
+	  // skip well connection
+	  if (j >= n_res_blocks && j < n_blocks) { conn_id++;  continue; }
+
+	  const auto& conn = conns[adj_matrix[adj_matrix_offset[i] + face_id]];
+	  assert( (i == conn.elem_id1 && j == conn.elem_id2 + n_wells) ||
+			  (i == conn.elem_id2 && j == conn.elem_id1 + n_wells) );
+
+	  t_face = conn.c - centroids[i];
+	  n = (dot(conn.n, t_face) > 0 ? conn.n : -conn.n);
+	  Ndelta[0][0] = n.x;              Ndelta[1][1] = n.y;          Ndelta[2][2] = n.z;
+	  Ndelta[1][ND + 2] = n.x;         Ndelta[2][ND + 1] = n.x;
+	  Ndelta[0][ND + 2] = n.y;         Ndelta[2][ND] = n.y;
+	  Ndelta[1][ND] = n.z;			   Ndelta[0][ND + 1] = n.z;
+	  // evaluate facial pressure
+	  p_face = X[i * N_VARS + P_VAR];
+	  p_face += t_face.x * p_grad_vals[0] + t_face.y * p_grad_vals[1] + t_face.z * p_grad_vals[2];
+
+	  // fill fluxes
+	  for (uint8_t d = 0; d < ND; d++)
+	  {
+		tmp = ND * conn_id + d;
+		tmp1 = ND * counter + d;
+		// total traction
+		cur_total_tractions[tmp1] = -hooke_forces[tmp] - biot_forces[tmp];
+		if constexpr (THERMAL)
+		  cur_total_tractions[tmp1] += -thermal_forces[tmp];
+		// effective traction
+		cur_effective_tractions[tmp1] = cur_total_tractions[tmp1];
+		for (uint8_t c = 0; c < n_sym; c++)
+		  cur_effective_tractions[tmp1] += conn.area * p_face * Ndelta[d][c] * w[c];
+		// Darcy flux
+		cur_darcy_fluxes[ND * counter + d] = darcy_fluxes[conn_id];
+	  }
+
+	  counter++;
+	  face_id++;
+	  conn_id++;
+	}
+
+	// stresses
+	for (index_t c = 0; c < n_sym; c++)
+	{
+	  tmp = i * n_sym + c;
+	  total_stresses[tmp] = 0.0;
+	  effective_stresses[tmp] = 0.0;
+
+	  tmp1 = n_sym * ND * adj_matrix_offset[i] + c * ND * counter;
+	  for (index_t k = 0; k < ND * counter; k++)
+	  {
+		total_stresses[tmp] += stress_approx[tmp1 + k] * cur_total_tractions[k];
+		effective_stresses[tmp] += stress_approx[tmp1 + k] * cur_effective_tractions[k];
+	  }
+	}
+
+	// darcy velocities
+	for (index_t d = 0; d < ND; d++)
+	{
+	  tmp = i * ND + d;
+	  darcy_velocities[tmp] = 0.0;
+
+	  tmp1 = ND * adj_matrix_offset[i] + d * counter;
+	  for (index_t k = 0; k < counter; k++)
+	  {
+		darcy_velocities[tmp] += velocity_approx[tmp1 + k] * cur_darcy_fluxes[k];
+	  }
+	}
+  }
+
+  return 0;
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t deltat)
 {
 	newton_update_coefficient = 1.0;
@@ -1385,7 +1531,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 	}
 
 	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
-	std::fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
+	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
 
 	if (!converged)
 	{
@@ -1581,7 +1727,11 @@ double engine_super_elastic_cpu<NC, NP, THERMAL>::calc_well_residual_L2()
 	return residual;
 }
 
-
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer(DiscretizerType* _discr)
+{
+  discr = _discr;
+}
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)

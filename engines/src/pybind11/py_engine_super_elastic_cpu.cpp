@@ -33,6 +33,9 @@ struct engine_super_elastic_exposer
 			.def("calc_newton_dev", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
 			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
+			.def("set_discretizer", (void (engine_super_elastic_cpu<NC, NP, THERMAL>::*) 
+			(typename engine_super_elastic_cpu<NC, NP, THERMAL>::DiscretizerType*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer) \
+			.def("eval_stresses_and_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities) \
 			.def_readwrite("find_equilibrium", &engine_super_elastic_cpu<NC, NP, THERMAL>::FIND_EQUILIBRIUM) \
 			.def_readwrite("print_linear_system", &engine_super_elastic_cpu<NC, NP, THERMAL>::PRINT_LINEAR_SYSTEM) \
 			.def_readwrite("geomechanics_mode", &engine_super_elastic_cpu<NC, NP, THERMAL>::geomechanics_mode) \
@@ -58,6 +61,9 @@ struct engine_super_elastic_exposer
 			.def_readwrite("hooke_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::hooke_forces_n) \
 			.def_readwrite("biot_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::biot_forces_n) \
 			.def_readwrite("thermal_forces_n", &engine_super_elastic_cpu<NC, NP, THERMAL>::thermal_forces_n) \
+			.def_readwrite("total_stresses", &engine_super_elastic_cpu<NC, NP, THERMAL>::total_stresses) \
+			.def_readwrite("effective_stresses", &engine_super_elastic_cpu<NC, NP, THERMAL>::effective_stresses) \
+			.def_readwrite("darcy_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::darcy_velocities) \
 			.def_readwrite("dX", &engine_super_elastic_cpu<NC, NP, THERMAL>::dX) \
 			.def_readwrite("RHS", &engine_super_elastic_cpu<NC, NP, THERMAL>::RHS) \
 			.def_readwrite("contacts", &engine_super_elastic_cpu<NC, NP, THERMAL>::contacts) \

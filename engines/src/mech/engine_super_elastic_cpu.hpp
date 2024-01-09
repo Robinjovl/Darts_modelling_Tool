@@ -6,12 +6,14 @@
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
+#include <type_traits>
 
 #include "globals.h"
 #include "ms_well.h"
 #include "engine_base.h"
 #include "evaluator_iface.h"
 #include "mech/contact.h"
+#include "../../discretizer/src/mech_discretizer.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -29,7 +31,14 @@ using namespace opendarts::linear_solvers;
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 class engine_super_elastic_cpu : public engine_base
 {
-
+public:
+  /// @brief Compile-time evaluation of discretizer type.
+  using DiscretizerType = typename std::conditional<THERMAL,
+    dis::MechDiscretizer<dis::MechDiscretizerMode::THERMOPOROELASTIC>,
+    dis::MechDiscretizer<dis::MechDiscretizerMode::POROELASTIC>>::type;
+protected:
+  /// @brief Pointer to discretizer required for the evaluation of stresses and velocities.
+  DiscretizerType* discr;
 public:
   // space dimension
   const static uint8_t ND = 3;
@@ -114,6 +123,7 @@ public:
 
   int init_jacobian_structure_pme(csr_matrix_base *jacobian);
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
+  int eval_stresses_and_velocities();
 
   int solve_linear_equation();
   //void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -136,6 +146,8 @@ public:
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
+  void set_discretizer(DiscretizerType* _discr);
+
 public:
 
   std::vector<value_t> eps_vol;
@@ -152,15 +164,24 @@ public:
   /// @brief Vector storing molecular diffusion fluxes.
   std::vector<value_t> fick_fluxes;
 
-  /// @brief Vector storing pure elastic forces at this and previous time steps.
+  /// @brief Vectors storing pure elastic forces at this and previous time steps.
   std::vector<value_t> hooke_forces, hooke_forces_n;
 
-  /// @brief Vector storing pore pressure-induced forces at this and previous time steps.
+  /// @brief Vectors storing pore pressure-induced forces at this and previous time steps.
   std::vector<value_t> biot_forces, biot_forces_n;
 
-  /// @brief Vector storing thermally-induced forces at this and previous time steps.
+  /// @brief Vectors storing thermally-induced forces at this and previous time steps.
   std::vector<value_t> thermal_forces, thermal_forces_n;
-  
+
+  /// @brief Vector storing cell-centered total stresses in Voigt notation.
+  std::vector<value_t> total_stresses;
+
+  /// @brief Vector storing cell-centered effective Biot stresses in Voigt notation.
+  std::vector<value_t> effective_stresses;
+
+  /// @brief Vector storing cell-centered Darcy velocities.
+  std::vector<value_t> darcy_velocities;
+
   std::vector<value_t> Xref, Xn_ref;
   bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM;
   std::vector<pm::contact> contacts;

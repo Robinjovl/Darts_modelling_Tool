@@ -81,7 +81,7 @@ void MechDiscretizer<MODE>::init()
 	pre_N[i] = Matrix(i * ND, SUM_N(ND));
 	pre_Nflux[i] = Matrix(i, ND);
 	pre_R[i] = Matrix(i * ND, SUM_N(ND));
-	pre_stress_approx[i] = Matrix(SUM_N(ND), i);
+	pre_stress_approx[i] = Matrix(SUM_N(ND), ND * i);
 	pre_vel_approx[i] = Matrix(ND, i);
   }
 
@@ -961,7 +961,7 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
   index_t loop_face_id, face_id, n_faces;
   Matrix Ndelta(ND, SUM_N(ND)), Rdelta(ND, SUM_N(ND));
   Matrix sq_mat_flux(ND, ND), sq_mat_stress(SUM_N(ND), SUM_N(ND));
-  Vector3 t_face;
+  Vector3 t_face, n;
   bool res;
 
   // loop through the adjacency matrix (matrix cells)
@@ -990,7 +990,7 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 
 	  // vector connecting cell center to the center of interface
 	  t_face = conn.c - mesh->centroids[i];
-	  const auto& n = conn.n;
+	  n = (dot(conn.n, t_face) > 0 ? conn.n : -conn.n);
 
 	  // N-matrix
 	  Ndelta(0, 0) = n.x;					Ndelta(1, 1) = n.y;					  Ndelta(2, 2) = n.z;
@@ -1024,6 +1024,7 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 	velocity_approx.insert(std::end(velocity_approx), std::begin(vel_approx.values), std::end(vel_approx.values));
   }
 }
+
 
 template class MechDiscretizer<POROELASTIC>;
 template class MechDiscretizer<THERMOPOROELASTIC>;

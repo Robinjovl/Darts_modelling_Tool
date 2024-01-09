@@ -331,6 +331,7 @@ class UnstructReservoir:
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_interface_approximations()
+        self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
         MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
@@ -726,6 +727,7 @@ class UnstructReservoir:
         self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_interface_approximations()
+        self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
         MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
@@ -1360,6 +1362,7 @@ class UnstructReservoir:
         self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow,  self.cpp_heat)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_interface_approximations()
+        self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
     def add_well(self, name, depth):
@@ -1482,18 +1485,11 @@ class UnstructReservoir:
         available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
         available_fracture_geometries = ['quad', 'triangle']
 
-        # if ith_step != 0:
-        # fluxes = np.array(physics.engine.fluxes, copy=False)
-        # # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
-        # fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        # #vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
-        # #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
-        # self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
-        # self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
-        #                                   self.mesh.bc, physics.engine.op_vals_arr)
-        # else:
-        #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
-        #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
+        # Stresses and velocities
+        engine.eval_stresses_and_velocities()
+        total_stresses = np.array(engine.total_stresses, copy=False)
+        effective_stresses = np.array(engine.effective_stresses, copy=False)
+        darcy_velocities = np.array(engine.darcy_velocities, copy=False)
 
         # Matrix
         geom_id = 0
@@ -1502,41 +1498,24 @@ class UnstructReservoir:
         for ith_geometry in self.mesh_data.cells_dict.keys():
             if ith_geometry in available_matrix_geometries:
                 Mesh.cells.append(self.mesh_data.cells[geom_id])
-                # Add matrix data to dictionary:
+                # Add unknowns to dictionary:
                 for i in range(self.n_vars):
                     if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
                     cell_data[self.cell_property[i]].append(property_array[i:self.n_vars * self.n_matrix:self.n_vars])
 
-                #if 'velocity' not in cell_data: cell_data['velocity'] = []
-                #cell_data['velocity'].append(vels)
-                # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
-                #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
-                #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
-                #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
-                # if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
-                # if 'porosity' not in cell_data: cell_data['porosity'] = []
-                # if 'stress' not in cell_data: cell_data['stress'] = []
-                # if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
-                #
-                # cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
-                # cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
-                # cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
-                # cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+                # Add post-processed data to dictionary
+                if 'velocity' not in cell_data: cell_data['velocity'] = []
+                cell_data['velocity'].append(np.zeros((self.n_matrix, 3), dtype=np.float64))
+                for i in range(3):
+                    cell_data['velocity'][-1][:, i] = darcy_velocities[i::3]
+                if 'stress' not in cell_data: cell_data['stress'] = []
+                cell_data['stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
+                if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
+                cell_data['tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
+                for i in range(6):
+                    cell_data['stress'][-1][:, i] = effective_stresses[i::6]
+                    cell_data['tot_stress'][-1][:, i] = total_stresses[i::6]
 
-                # stress = np.array(self.mech_operators.stresses, copy=False)
-                # total_stress = np.array(self.mech_operators.total_stresses, copy=False)
-                # for i in range(6):
-                #     cell_data['stress'][-1][:, i] = stress[i::6]
-                #     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
-
-                # if 'cell_id' not in cell_data: cell_data['cell_id'] = []
-                # cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
-                # if ith_step == 0:
-                #     cell_data[ith_geometry]['permx'] = self.permx[:]
-                #     cell_data[ith_geometry]['permy'] = self.permy[:]
-                #     cell_data[ith_geometry]['permz'] = self.permz[:]
             geom_id += 1
 
         # Store solution for each time-step:

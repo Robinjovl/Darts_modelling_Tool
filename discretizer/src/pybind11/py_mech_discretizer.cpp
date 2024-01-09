@@ -38,6 +38,8 @@ struct mech_discretizer_exposer
 	  .def_readwrite("biot_vol_strain", &MechDiscretizer<MODE>::biot_vol_strain)
 	  .def_readwrite("biot_vol_strain_rhs", &MechDiscretizer<MODE>::biot_vol_strain_rhs)
 	  .def_readwrite("fourier", &MechDiscretizer<MODE>::fourier)
+	  .def_readwrite("stress_approx", &MechDiscretizer<MODE>::stress_approx)
+	  .def_readwrite("velocity_approx", &MechDiscretizer<MODE>::velocity_approx)
 	  .def_readwrite("neumann_boundaries_grad_reconstruction", &MechDiscretizer<MODE>::NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION)
 	  .def_readwrite("gradients_extended_stencil", &MechDiscretizer<MODE>::GRADIENTS_EXTENDED_STENCIL)
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)

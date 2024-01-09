@@ -104,6 +104,9 @@ class Model(DartsModel):
         self.set_op_list()
         self.reset()
 
+        if self.discretizer_name == 'mech_discretizer':
+            self.engine.set_discretizer(self.reservoir.discr)
+
     def add_wells(self):
         layers_num = 1
         is_at_corner = False

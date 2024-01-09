@@ -65,8 +65,6 @@ namespace dis
 	class Discretizer
 	{
 	protected:
-		Mesh* mesh;
-
 		std::unordered_map<index_t, Matrix> pre_grad_A_p, pre_grad_R_p, pre_grad_rhs_p;
 		std::unordered_map<index_t, Matrix> pre_grad_A_th, pre_grad_R_th;
 		std::unordered_map<index_t, Matrix> pre_Wsvd, pre_Zsvd, pre_w_svd;
@@ -122,6 +120,7 @@ namespace dis
 		};
 		std::vector<index_t> find_connections_to_reconstruct_gradient(const index_t cell_id, const index_t cur_conn_id);
 	public:
+		Mesh* mesh;
 		void set_mesh(Mesh* _mesh);
 		virtual void init();
 
