@@ -2,7 +2,7 @@ include conf_gcc.mk
 include conf_nvcc.mk
 
 TARGET      = ../darts/engines.so
-IFLAGS      = -I./src -I./src/interpolation -I../thirdparty/eigen -I./src/pybind11 -I./src/mech
+IFLAGS      = -I./src -I./src/interpolation -I../thirdparty/eigen -I./src/pybind11 -I./src/mech -I../discretizer/src
 IFLAGS      += -I$(LINEAR_SOLVERS_DIR)/include -I../thirdparty/pybind11 $(shell python3-config --includes)
 IFLAGS_GPU  = $(IFLAGS) -I/usr/local/cuda/include
 
