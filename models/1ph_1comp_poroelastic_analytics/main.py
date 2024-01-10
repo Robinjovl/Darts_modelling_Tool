@@ -498,24 +498,6 @@ def run_test(args: list = []):
         print('Not enough arguments provided')
         return 1, 0.0
 
-# Rectangular grid, comparison to analytics
-# run_and_plot(case='terzaghi', discretizer='mech_discretizer')
-# run_and_plot(case='terzaghi', discretizer='pm_discretizer')
-# run_and_plot(case='mandel', discretizer='mech_discretizer')
-# run_and_plot(case='mandel', discretizer='pm_discretizer')
-# run_and_plot(case='bai', discretizer='mech_discretizer')
-
-# Wedge (triangular) grid
-# ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
-# run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
-# run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
-# run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
-
-# Unstructured hexahedral grid
-# run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
-# run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
-# run(case='mandel', discretizer='mech_discretizer', mesh='hex')
-# run(case='mandel', discretizer='pm_discretizer', mesh='hex')
 
 def get_x(m, discr_name):
     # for rectangular grid
@@ -579,10 +561,36 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 
     return sol_data_slice
 
-# for case in ['terzaghi', 'mandel']: #TODO, 'terzaghi_two_layers']:
-#     for mesh in ['rect']:#, 'wedge', 'hex']
-#         if case == 'terzaghi_two_layers' and mesh == 'hex':
-#             continue
-#     mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
-#     pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+# Rectangular grid, comparison to analytics
+# run_and_plot(case='terzaghi', discretizer='mech_discretizer')
+# run_and_plot(case='terzaghi', discretizer='pm_discretizer')
+# run_and_plot(case='mandel', discretizer='mech_discretizer')
+# run_and_plot(case='mandel', discretizer='pm_discretizer')
+# run_and_plot(case='bai', discretizer='mech_discretizer')
 
+# Wedge (triangular) grid
+# ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
+# run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
+# run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
+# run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
+
+# Unstructured hexahedral grid
+# run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+# run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
+# run(case='mandel', discretizer='mech_discretizer', mesh='hex')
+# run(case='mandel', discretizer='pm_discretizer', mesh='hex')
+
+#exit()
+
+test_all = False
+if test_all:
+    for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
+        for mesh in ['rect', 'wedge', 'hex']:
+            if case == 'terzaghi_two_layers' and mesh == 'hex':
+                continue
+            if case != 'terzaghi_two_layers':  # is not supported by new mech_discretizer yet
+                mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+            if case != 'bai':  # is not supported by poroelastic as bai is thermoporoelasticity
+                pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+
+    print('Ok')
