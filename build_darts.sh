@@ -90,8 +90,11 @@ fi
 
 cd ..
 
+
 # compile engines
 cd engines
+# workaround to avoid relative path in Makefile
+ln -s -f ../darts/discretizer.so .
 make clean
 if [ $ODLS == "0" ]
 then
