@@ -39,14 +39,14 @@ if "%1"=="0" (
   )
 )
 
-rem 2 Compile engines with open-darts linear solver
-cd engines
-msbuild darts-engines.vcxproj /p:Configuration=%config_engines% /p:Platform=x64 -maxCpuCount:8  || goto :error
-cd ..
-
-rem 3 Compile discretizer
+rem 2 Compile discretizer
 cd discretizer
 msbuild darts-discretizer.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8  || goto :error
+cd ..
+
+rem 3 Compile engines with open-darts linear solver
+cd engines
+msbuild darts-engines.vcxproj /p:Configuration=%config_engines% /p:Platform=x64 -maxCpuCount:8  || goto :error
 cd ..
 
 rem 4 Build wheel

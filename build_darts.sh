@@ -70,14 +70,14 @@ else  #open-darts solvers
 	cd ../..
 fi
 
-# compile engines
-cd engines
+# compile discretizer
+cd discretizer
 make clean
-if [ $ODLS == "0" ]
+if [ $ODLS == "0" ] #no cmd arguments
 then
-	make "$config_engines" $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make "$config_discretizer" $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
-	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true 
+	make "$config_discretizer" $NT USE_OPENDARTS_LINEAR_SOLVERS=true
 fi
 
 if [ $? == 0 ]
@@ -90,14 +90,14 @@ fi
 
 cd ..
 
-# compile discretizer
-cd discretizer
+# compile engines
+cd engines
 make clean
-if [ $ODLS == "0" ] #no cmd arguments
+if [ $ODLS == "0" ]
 then
-	make "$config_discretizer" $NT USE_OPENDARTS_LINEAR_SOLVERS=false
+	make "$config_engines" $NT USE_OPENDARTS_LINEAR_SOLVERS=false
 else
-	make "$config_discretizer" $NT USE_OPENDARTS_LINEAR_SOLVERS=true
+	make $NT USE_OPENDARTS_LINEAR_SOLVERS=true 
 fi
 
 if [ $? == 0 ]
