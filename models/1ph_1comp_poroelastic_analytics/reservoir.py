@@ -7,6 +7,7 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 import numpy as np
 from math import inf, pi
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
+from darts.reservoirs.unstruct_reservoir_mech import bound_cond, set_domain_tags
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
@@ -32,6 +33,12 @@ class UnstructReservoir:
         self.mesh = conn_mesh()
         self.discretizer_name = discretizer
         self.n_dim = 3
+        self.bc_type = bound_cond()
+        # define correspondence between the physical tags in msh file and mesh elements types
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
+                    bnd_xm_tag=991, bnd_xp_tag=992,
+                    bnd_ym_tag=993, bnd_yp_tag=994,
+                    bnd_zm_tag=995, bnd_zp_tag=996)
 
         if discretizer == 'mech_discretizer':
             self.p_var = 0
@@ -94,6 +101,9 @@ class UnstructReservoir:
                                   self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
                                   self.n_matrix, self.n_bounds, self.n_fracs)
         elif discretizer == 'pm_discretizer':
+            if case == 'bai':
+                print(case, 'not supported in', discretizer)
+                assert False
             self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
             self.unstr_discr.x_new[:, 0] = self.u_init[0]
             self.unstr_discr.x_new[:, 1] = self.u_init[1]
@@ -166,6 +176,7 @@ class UnstructReservoir:
             self.f[:] = self.unstr_discr.f
 
         self.wells = []
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -196,11 +207,7 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
-        self.domain_tags = dict()
-        self.domain_tags[elem_loc.MATRIX] = set([99991])
-        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
-        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()  # is this for poromechanics??
+
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -217,22 +224,14 @@ class UnstructReservoir:
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
                             self.porosity * self.fluid_compressibility)
 
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
         self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
-        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(0.0)}
-        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.FREE}
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.STUCK_ROLLER(0.0)}
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -365,7 +364,7 @@ class UnstructReservoir:
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-        self.unstr_discr.physical_tags['matrix'] = [99991]
+        self.unstr_discr.physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
         # lam = 1.0 * 10000  # in bar
         # mu = 1.0 * 10000
         # nu = lam / 2 / (lam + mu)
@@ -382,41 +381,31 @@ class UnstructReservoir:
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
                         self.porosity * self.fluid_compressibility)
 
-        self.unstr_discr.init_matrix_stiffness({99991: {'E': self.E, 'nu': self.nu}})
-        self.unstr_discr.physical_tags['fracture'] = [9991]
-        self.unstr_discr.physical_tags['fracture_shape'] = []
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
+        self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
+        self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
+        self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
 
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0,
-                                   'rt': np.array([0.0, 0.0, 0.0])}
+        mech_xm = self.bc_type.ROLLER
+        mech_xp = self.bc_type.FREE
+        mech_ym = self.bc_type.ROLLER
+        mech_yp = self.bc_type.STUCK_ROLLER(0.0)
+        mech_zm = self.bc_type.ROLLER
+        mech_zp = self.bc_type.ROLLER
 
-        mech_xm = ROLLER
-        mech_xp = FREE
-        mech_ym = ROLLER
-        mech_yp = STUCK_ROLLER(0.0)
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        flow_xm = self.bc_type.NO_FLOW
+        flow_xp = self.bc_type.AQUIFER(self.p_init)
+        flow_ym = self.bc_type.NO_FLOW
+        flow_yp = self.bc_type.NO_FLOW
+        flow_zm = self.bc_type.NO_FLOW
+        flow_zp = self.bc_type.NO_FLOW
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
-
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -501,32 +490,16 @@ class UnstructReservoir:
         elif self.discretizer_name == 'pm_discretizer':
             self.update_mandel_boundary_pm_discretizer(dt, time, physics)
     def update_mandel_boundary_mech_discretizer(self, dt, time, physics):
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
         v_north = self.get_vertical_displacement_north_mandel(time)
 
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
         self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': FREE}
-        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(v_north)}
-        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.FREE}
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.STUCK_ROLLER(v_north)}
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -542,36 +515,29 @@ class UnstructReservoir:
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
     def update_mandel_boundary_pm_discretizer(self, dt, time, physics):
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
         v_north = self.get_vertical_displacement_north_mandel(time)
 
-        mech_xm = ROLLER
-        mech_xp = FREE
-        mech_ym = ROLLER
-        mech_yp = STUCK_ROLLER(v_north)
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        mech_xm = self.bc_type.ROLLER
+        mech_xp = self.bc_type.FREE
+        mech_ym = self.bc_type.ROLLER
+        mech_yp = self.bc_type.STUCK_ROLLER(v_north)
+        mech_zm = self.bc_type.ROLLER
+        mech_zp = self.bc_type.ROLLER
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
+        flow_xm = self.bc_type.NO_FLOW
+        flow_xp = self.bc_type.AQUIFER(self.p_init)
+        flow_ym = self.bc_type.NO_FLOW
+        flow_yp = self.bc_type.NO_FLOW
+        flow_zm = self.bc_type.NO_FLOW
+        flow_zp = self.bc_type.NO_FLOW
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
 
         self.pm.bc.clear()
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -594,11 +560,6 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
-        self.domain_tags = dict()
-        self.domain_tags[elem_loc.MATRIX] = set([99991])
-        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
-        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -616,22 +577,13 @@ class UnstructReservoir:
                             self.porosity * self.fluid_compressibility)
         self.F = -100.0 # bar * m
 
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
         self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[992] = {'flow': AQUIFER(self.p_init),  'mech': LOAD(self.F, [0.0, 0.0, 0.0])}
-        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[994] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER}
-        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -761,7 +713,7 @@ class UnstructReservoir:
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-        self.unstr_discr.physical_tags['matrix'] = [99991]
+        self.unstr_discr.physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
         #lam = 1.0 * 10000  # in bar
         #mu = 1.0 * 10000
         #nu = lam / 2 / (lam + mu)
@@ -778,42 +730,33 @@ class UnstructReservoir:
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
                             self.porosity * self.fluid_compressibility)
 
-        self.unstr_discr.init_matrix_stiffness({99991: {'E': self.E, 'nu': self.nu}})
-        self.unstr_discr.physical_tags['fracture'] = [9991]
-        self.unstr_discr.physical_tags['fracture_shape'] = []
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
+        self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
+        self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
+        self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
 
         self.F = -100.0 # bar * m
 
-        mech_xm = ROLLER
-        mech_xp = LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = ROLLER
-        mech_yp = ROLLER
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        mech_xm = self.bc_type.ROLLER
+        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
+        mech_ym = self.bc_type.ROLLER
+        mech_yp = self.bc_type.ROLLER
+        mech_zm = self.bc_type.ROLLER
+        mech_zp = self.bc_type.ROLLER
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
+        flow_xm = self.bc_type.NO_FLOW
+        flow_xp = self.bc_type.AQUIFER(self.p_init)
+        flow_ym = self.bc_type.NO_FLOW
+        flow_yp = self.bc_type.NO_FLOW
+        flow_zm = self.bc_type.NO_FLOW
+        flow_zp = self.bc_type.NO_FLOW
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -910,73 +853,74 @@ class UnstructReservoir:
 
         self.fluid_compressibility = 1.e-10
         self.fluid_viscosity = 1.0
-        self.props = {      99991: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
-                            99992: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
-        x = (self.props[99992]['b'] / self.props[99991]['b'] * (3 * (self.props[99991]['b'] - self.props[99991]['poro']) * (1 - self.props[99991]['b']) * (1 - self.props[99991]['nu']) / (1 + self.props[99991]['nu']) + self.props[99991]['b'] ** 2) -
-             self.props[99992]['b'] ** 2) / 3 / (self.props[99992]['b'] - self.props[99992]['poro']) / (1 - self.props[99992]['b'])
+
+        # define correspondence between the physical tags in msh file and mesh elements types
+        # two regions for different properties
+        self.m1_tag = 99991
+        self.m2_tag = 99992
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+                    bnd_xm_tag=991, bnd_xp_tag=992,
+                    bnd_ym_tag=993, bnd_yp_tag=994,
+                    bnd_zm_tag=995, bnd_zp_tag=996)
+        
+        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
+                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
+        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
+             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
         nu2 = (1 - x) / (1 + x)
-        self.props[99992]['nu'] = nu2
+        self.props[self.m2_tag]['nu'] = nu2
         assert(nu2 < 0.5 and nu2 > 0)
 
-        kd1 = self.props[99991]['E'] / 3 / (1 - 2 * self.props[99991]['nu'])
-        self.props[99991]['kd'] = kd1
-        self.props[99991]['M'] = 1.0 / ((self.props[99991]['b'] - self.props[99991]['poro']) * (1 - self.props[99991]['b']) / kd1 +
-                                        self.props[99991]['poro'] * self.fluid_compressibility)
+        kd1 = self.props[self.m1_tag]['E'] / 3 / (1 - 2 * self.props[self.m1_tag]['nu'])
+        self.props[self.m1_tag]['kd'] = kd1
+        self.props[self.m1_tag]['M'] = 1.0 / ((self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) / kd1 +
+                                        self.props[self.m1_tag]['poro'] * self.fluid_compressibility)
 
-        kd2 = self.props[99992]['E'] / 3 / (1 - 2 * self.props[99992]['nu'])
-        self.props[99992]['kd'] = kd2
-        self.props[99992]['M'] = 1.0 / ((self.props[99992]['b'] - self.props[99992]['poro']) * (1 - self.props[99992]['b']) / kd2 +
-                                        self.props[99992]['poro'] * self.fluid_compressibility)
+        kd2 = self.props[self.m2_tag]['E'] / 3 / (1 - 2 * self.props[self.m2_tag]['nu'])
+        self.props[self.m2_tag]['kd'] = kd2
+        self.props[self.m2_tag]['M'] = 1.0 / ((self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) * (1 - self.props[self.m2_tag]['b']) / kd2 +
+                                        self.props[self.m2_tag]['poro'] * self.fluid_compressibility)
 
 
         # some numbers for analytics
         for tag, p in self.props.items():
             p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
-            # if tag == 99992:
-                # p['kd'] = kd1 * self.props[99991]['b'] * self.props[99991]['m'] / self.props[99992]['b'] / self.props[99992]['m'] / \
-                #               (1 + kd1 * self.props[99991]['b'] * self.props[99991]['m'] * (self.props[99991]['b'] - self.props[99992]['b']))
+            # if tag == m2:
+                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
+                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
             p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
             p['c'] = TC.darcy_constant * p['perm'] / self.fluid_viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
 
-        assert( np.fabs(self.props[99991]['skempton'] - self.props[99992]['skempton']) < 1.e-6 )
+        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
 
         self.unstr_discr.init_matrix_stiffness(self.props)
-        self.unstr_discr.physical_tags['matrix'] = [99991, 99992]
-        self.unstr_discr.physical_tags['fracture'] = [9991]
-        self.unstr_discr.physical_tags['fracture_shape'] = []
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+        self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
+        self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
+        self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
+        self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
 
         self.F = -100.0 # bar * m
 
-        mech_xm = ROLLER
-        mech_xp = LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = ROLLER
-        mech_yp = ROLLER
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        mech_xm = self.bc_type.ROLLER
+        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
+        mech_ym = self.bc_type.ROLLER
+        mech_yp = self.bc_type.ROLLER
+        mech_zm = self.bc_type.ROLLER
+        mech_zp = self.bc_type.ROLLER
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
+        flow_xm = self.bc_type.NO_FLOW
+        flow_xp = self.bc_type.AQUIFER(self.p_init)
+        flow_ym = self.bc_type.NO_FLOW
+        flow_yp = self.bc_type.NO_FLOW
+        flow_zm = self.bc_type.NO_FLOW
+        flow_zp = self.bc_type.NO_FLOW
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
+        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -1077,48 +1021,47 @@ class UnstructReservoir:
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
 
+        # define correspondence between the physical tags in msh file and mesh elements types
+        # two regions for different properties
+        self.m1_tag = 99991
+        self.m2_tag = 99992
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+                    bnd_xm_tag=991, bnd_xp_tag=992,
+                    bnd_ym_tag=993, bnd_yp_tag=994,
+                    bnd_zm_tag=995, bnd_zp_tag=996)
+
         self.visc = 1#9.81e-2
-        self.props = {      99991: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.0, 'poro': 0.0, 'perm': 1e-10 },
-                            99992: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1  }     }
+        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.0, 'poro': 0.0, 'perm': 1e-10 },
+                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1  }     }
 
-        kd1 = self.props[99991]['E'] / 3 / (1 - 2 * self.props[99991]['nu'])
-        self.props[99991]['kd'] = kd1
-        #self.props[99991]['M'] = kd1 / (self.props[99991]['b'] - self.props[99991]['poro']) / (1 - self.props[99991]['b'])
+        kd1 = self.props[self.m1_tag]['E'] / 3 / (1 - 2 * self.props[self.self.m1_tag]['nu'])
+        self.props[self.m1_tag]['kd'] = kd1
+        #self.props[self.m2_tag]['M'] = kd1 / (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) / (1 - self.props[self.m1_tag]['b'])
 
-        kd2 = self.props[99992]['E'] / 3 / (1 - 2 * self.props[99992]['nu'])
-        self.props[99992]['kd'] = kd2
-        #self.props[99992]['M'] = kd2 / (self.props[99992]['b'] - self.props[99992]['poro']) / (1 - self.props[99992]['b'])
+        kd2 = self.props[self.m2_tag]['E'] / 3 / (1 - 2 * self.props[self.m2_tag]['nu'])
+        self.props[self.m2_tag]['kd'] = kd2
+        #self.props[self.m2_tag]['M'] = kd2 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
 
         self.unstr_discr.init_matrix_stiffness(self.props)
-        self.unstr_discr.physical_tags['matrix'] = [99991, 99992]
-        self.unstr_discr.physical_tags['fracture'] = [9991]
-        self.unstr_discr.physical_tags['fracture_shape'] = []
-        self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
+        self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
+        self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
+        self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
+        self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
         self.F = -100.0 # bar * m
 
-        mech_xm = ROLLER
-        mech_xp = LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = ROLLER
-        mech_yp = ROLLER
-        mech_zm = ROLLER
-        mech_zp = ROLLER
+        mech_xm = self.bc_type.ROLLER
+        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
+        mech_ym = self.bc_type.ROLLER
+        mech_yp = self.bc_type.ROLLER
+        mech_zm = self.bc_type.ROLLER
+        mech_zp = self.bc_type.ROLLER
 
-        flow_xm = NO_FLOW
-        flow_xp = AQUIFER(self.p_init)
-        flow_ym = NO_FLOW
-        flow_yp = NO_FLOW
-        flow_zm = NO_FLOW
-        flow_zp = NO_FLOW
+        flow_xm = self.bc_type.NO_FLOW
+        flow_xp = self.bc_type.AQUIFER(self.p_init)
+        flow_ym = self.bc_type.NO_FLOW
+        flow_yp = self.bc_type.NO_FLOW
+        flow_zm = self.bc_type.NO_FLOW
+        flow_zp = self.bc_type.NO_FLOW
 
         self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
         self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
@@ -1222,11 +1165,6 @@ class UnstructReservoir:
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
-        self.domain_tags = dict()
-        self.domain_tags[elem_loc.MATRIX] = set([99991])
-        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
-        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -1248,22 +1186,13 @@ class UnstructReservoir:
         self.th_expn = self.th_expn_coef * self.kd_cur
         self.th_conductivity = 0.836 * 86400.0 * 1000
 
-        # General representation of BC: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-        STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
-
         self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
-        self.boundary_conditions[992] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
-        self.boundary_conditions[993] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
-        self.boundary_conditions[994] = {'flow': AQUIFER(self.p_init),  'mech': LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': AQUIFER(self.t_top) }
-        self.boundary_conditions[995] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
-        self.boundary_conditions[996] = {'flow': NO_FLOW,               'mech': ROLLER,                         'temp': NO_FLOW }
+        self.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[994] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': self.bc_type.AQUIFER(self.t_top) }
+        self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -1842,8 +1771,8 @@ class UnstructReservoir:
     # Two-layer Terzaghi analytics
     def approximate_roots_two_layers_terzaghi(self) -> np.ndarray:
         # Retrieve physical data
-        p1 = self.props[99991]
-        p2 = self.props[99992]
+        p1 = self.props[self.m1_tag]
+        p2 = self.props[self.m2_tag]
         self.beta = p2['perm'] / p1['perm'] * p1['c'] / p2['c']
         self.theta = p1['h'] / p2['h'] * np.sqrt(p2['c'] / p1['c'])
 
@@ -1879,11 +1808,11 @@ class UnstructReservoir:
             Exact pressure for the given time `t`.
         """
         # Retrieve physical data
-        h1 = self.a * self.props[99991]['h']
-        h2 = self.a * self.props[99992]['h']
-        c2 = self.props[99992]['c']
+        h1 = self.a * self.props[self.m1_tag]['h']
+        h2 = self.a * self.props[self.m2_tag]['h']
+        c2 = self.props[self.m2_tag]['c']
         xi = xc - h2
-        skempton = self.props[99991]['skempton']
+        skempton = self.props[self.m1_tag]['skempton']
 
         assert(n_roots <= self.omega.size)
 
@@ -1909,15 +1838,15 @@ class UnstructReservoir:
             Exact pressure for the given time `t`.
         """
         # Retrieve physical data
-        h1 = self.a * self.props[99991]['h']
-        h2 = self.a * self.props[99992]['h']
-        b1 = self.props[99991]['b']
-        b2 = self.props[99992]['b']
-        m1 = self.props[99991]['m']
-        m2 = self.props[99992]['m']
-        c2 = self.props[99992]['c']
+        h1 = self.a * self.props[self.m1_tag]['h']
+        h2 = self.a * self.props[self.m2_tag]['h']
+        b1 = self.props[self.m1_tag]['b']
+        b2 = self.props[self.m2_tag]['b']
+        m1 = self.props[self.m1_tag]['m']
+        m2 = self.props[self.m2_tag]['m']
+        c2 = self.props[self.m2_tag]['c']
         xi = xc - h2
-        skempton = self.props[99991]['skempton']
+        skempton = self.props[self.m1_tag]['skempton']
 
         assert(n_roots <= self.omega.size)
 
