@@ -10,12 +10,12 @@ IFLAGS_GPU  = $(IFLAGS) -I/usr/local/cuda/include
 # Force the same value here for correct linking when engines are built elsewhere, and solvers are taken from manylinux2010
 DFLAGS      = -DPYBIND11_ENABLED -D_GLIBCXX_USE_CXX11_ABI=0
 DFLAGS_GPU	= $(DFLAGS) -DWITH_GPU
-LFLAGS_BASE	+= -L$(LINEAR_SOLVERS_DIR)/lib $(PYTHON_LFLAGS)
+LFLAGS_BASE	+= -L$(LINEAR_SOLVERS_DIR)/lib $(PYTHON_LFLAGS) discretizer.so
 LFLAGS_MT  	= $(LFLAGS_BASE) -ldarts_linear_solvers_mt
 # using origin enable library search in the same folder as binary 
 LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lcusolver -lamgxsh -L../darts-linear-solvers/lib/AMGX/build -Xlinker "-rpath=\$$ORIGIN" 
 #LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lgomp
-LFLAGS      = $(LFLAGS_BASE) -ldarts_linear_solvers ../darts/discretizer.so
+LFLAGS      = $(LFLAGS_BASE) -ldarts_linear_solvers 
 
 BUILD_DIR	= build
 

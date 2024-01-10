@@ -570,6 +570,8 @@ test-windows-3.7-ODLS:
     script:
         # run simulation fot test models set
         - cd models
+        # to help find discretizer.so when import engines
+        - export LD_LIBRARY_PATH=`python -c "import os;import darts;print(os.path.dirname(darts.__file__))"`:$LD_LIBRARY_PATH
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
