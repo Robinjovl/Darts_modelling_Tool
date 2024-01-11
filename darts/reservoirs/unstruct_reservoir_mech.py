@@ -55,6 +55,7 @@ class UnstructReservoirMech:
     def __init__(self, timer, discretizer='mech_discretizer', thermoporoelacticity=False):
         self.timer = timer
         self.discretizer_name = discretizer
+        self.thermoporoelacticity = thermoporoelacticity
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
         self.n_dim = 3
@@ -66,6 +67,7 @@ class UnstructReservoirMech:
             self.n_vars = 5
             self.t_var = 1
             self.u_var = 2
+            self.p_var = 0
             assert (discretizer == 'mech_discretizer')
         else: # poroelasticity
             if discretizer == 'mech_discretizer':
@@ -107,7 +109,7 @@ class UnstructReservoirMech:
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
             self.pz_bounds[self.p_var::self.n_state] = self.p_init
-            if case == 'bai':
+            if self.thermoporoelacticity:
                 self.pz_bounds[self.t_var::self.n_state] = self.t_init
             # self.pz_bounds[:] = self.pz_bounds
             # self.p_ref[:] = self.p_ref
