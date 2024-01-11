@@ -1,6 +1,6 @@
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
-from reservoir import UnstructReservoir
+from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
@@ -19,7 +19,7 @@ class Model(DartsModel):
         self.case = case
         self.discretizer_name = discretizer
 
-        self.reservoir = UnstructReservoir(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
+        self.reservoir = UnstructReservoirCustom(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
         self.set_physics()
 
         self.reservoir.P_VAR = self.engine.P_VAR

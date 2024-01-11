@@ -7,7 +7,7 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 import numpy as np
 from math import inf, pi
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.reservoirs.unstruct_reservoir_mech import bound_cond, set_domain_tags
+from darts.reservoirs.unstruct_reservoir_mech import bound_cond, set_domain_tags, UnstructReservoirMech
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
@@ -26,62 +26,34 @@ from darts.discretizer import Mesh, Elem, poro_mech_discretizer, thermoporo_mech
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 # Definitions for the unstructured reservoir class:
-class UnstructReservoir:
+class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, case='mandel', discretizer='mech_discretizer', mesh='rect'):
-        self.timer = timer
-        # Create mesh object (C++ object used by DARTS for all mesh related quantities):
-        self.mesh = conn_mesh()
-        self.discretizer_name = discretizer
-        self.n_dim = 3
-        self.bc_type = bound_cond()
+        thermoporoelacticity = True if case == 'bai' else False
+        super().__init__(timer, discretizer, thermoporoelacticity)
         # define correspondence between the physical tags in msh file and mesh elements types
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
 
-        if discretizer == 'mech_discretizer':
-            self.p_var = 0
-            self.u_var = 1
-            self.cell_property = ['p', 'ux', 'uy', 'uz']
-        elif discretizer == 'pm_discretizer':
-            self.u_var = 0
-            self.p_var = self.n_dim
-            self.cell_property = ['ux', 'uy', 'uz', 'p']
-
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
-            self.n_vars = 4
-            self.n_state = 1
             if discretizer == 'mech_discretizer':
                 self.mandel_north_dirichlet_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(mesh)
         elif case == 'terzaghi':
-            self.n_vars = 4
-            self.n_state = 1
             if discretizer == 'mech_discretizer':
                 self.terzaghi_mech_discretizer(mesh)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers':
-            self.n_vars = 4
-            self.n_state = 1
             self.terzaghi_two_layers(mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
-            self.n_vars = 4
-            self.n_state = 1
             self.terzaghi_two_layers_no_analytics(mesh)
         elif case == 'bai':
-            self.cell_property = ['p', 't', 'ux', 'uy', 'uz']
-            self.n_state = 2
-            self.n_vars = 5
-            self.t_var = 1
-            self.u_var = 2
-            assert (discretizer == 'mech_discretizer')
             self.bai_thermoporoelastic_consolidation(mesh)
 
-        dt = 0.0
         if discretizer == 'mech_discretizer':
             if case == 'bai':
                 self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
@@ -127,53 +99,10 @@ class UnstructReservoir:
             self.n_fracs = self.unstr_discr.frac_cells_tot
             self.n_matrix = self.unstr_discr.mat_cells_tot
             self.n_bounds = self.unstr_discr.bound_cells_tot
-        # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
-        self.poro = np.array(self.mesh.poro, copy=False)
-        self.volume = np.array(self.mesh.volume, copy=False)
-        self.bc = np.array(self.mesh.bc, copy=False)
-        self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
-        self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
-        self.mesh.f.resize(self.n_vars * (self.n_fracs + self.n_matrix))
-        self.f = np.array(self.mesh.f, copy=False)
-        self.biot_arr = np.array(self.mesh.biot, copy=False)
-        self.kd = np.array(self.mesh.kd, copy=False)
-        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
-        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
-        self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
-        self.poro[:self.n_matrix] = self.porosity
-        self.poro[self.n_matrix:] = 1
 
-        if discretizer == 'mech_discretizer':
-            volumes = np.array(self.discr_mesh.volumes, copy=False)
-            self.volume[:self.n_matrix] = volumes[:self.n_matrix]
-            self.bc_prev[:] = self.bc_rhs_prev
-            self.bc[:] = self.bc_rhs
-            # self.biot_arr[:] = np.tile([0,0,0,
-            #                             0,0,0,
-            #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-            self.biot_arr[:] = self.biot_mean
-            self.kd[:] = self.kd_cur
-            self.pz_bounds[self.p_var::self.n_state] = self.p_init
-            if case == 'bai':
-                self.pz_bounds[self.t_var::self.n_state] = self.t_init
-            # self.pz_bounds[:] = self.pz_bounds
-            # self.p_ref[:] = self.p_ref
-            # self.f[:] = self.f
-        elif discretizer == 'pm_discretizer':
-            self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
-            for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
-                self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
-            self.bc_prev[:] = self.bc_rhs_prev
-            self.bc[:] = self.bc_rhs
-            self.bc_ref[:] = self.bc_rhs_ref
-            # self.biot_arr[:] = np.tile([0,0,0,
-            #                             0,0,0,
-            #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-            self.biot_arr[:] = self.biot_mean
-            self.kd[:] = self.kd_cur
-            self.pz_bounds[:] = self.unstr_discr.pz_bounds
-            self.p_ref[:] = self.unstr_discr.p_ref
-            self.f[:] = self.unstr_discr.f
+        self.init_arrays()
+
+
 
         self.wells = []
 
