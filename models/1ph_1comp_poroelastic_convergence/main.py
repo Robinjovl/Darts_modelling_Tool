@@ -139,10 +139,13 @@ def run_convergence_study(n_res, discretizer, mesh='rect'):
     max_t = 0.1
     timesteps = np.array([0.1, 0.05, 0.025, 0.0125])
     nt = np.array(max_t / timesteps, dtype=np.int32)
-    dx = 1.0 / np.array([4.0, 8.0, 16.0, 32.0])
 
     if mesh == 'rect':
+        dx = 1.0 / np.array([4.0, 8.0, 16.0, 32.0])
         mesh_file_template = 'meshes/unit_trans_{}.msh'
+    elif mesh == 'tetra':
+        dx = 1.0 / np.array([2.0, 4.0, 8.0, 16.0])
+        mesh_file_template = 'meshes/unit_tetra_{}.msh'
 
     devs_u = []
     devs_p = []
@@ -172,5 +175,5 @@ def run_convergence_study(n_res, discretizer, mesh='rect'):
 
     assert(u_order > 1.0 and p_order > 1.0)
 
-# run_convergence_study(n_res=1, discretizer='pm_discretizer')
-run_convergence_study(n_res=3, discretizer='mech_discretizer')
+# run_convergence_study(n_res=2, discretizer='pm_discretizer')
+run_convergence_study(n_res=3, discretizer='mech_discretizer', mesh='rect')
