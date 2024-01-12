@@ -36,4 +36,9 @@ class Rhs:
                     self.biot * Matrix([diff(u, self.t), diff(v, self.t), diff(w, self.t)])
         self.flow = diff(phi[0], self.x) + diff(phi[1], self.y) + diff(phi[2], self.z)
 
+        self.f_func = lambdify((self.x, self.y, self.z, self.t), self.f, 'numpy')
+        self.acc_func = lambdify((self.x, self.y, self.z, self.t), self.acc, 'numpy')
+        self.flow_func = lambdify((self.x, self.y, self.z, self.t), self.flow, 'numpy')
+
+
 

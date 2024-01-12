@@ -183,19 +183,12 @@ class UnstructReservoir:
             self.bc_rhs[4 * bound_id + 3] = p
         # RHS terms
         for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items():
-            self.f_prep[4 * cell_id:4 * cell_id + 3] = -np.array(self.r.f.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf())[:,0]
+            self.f_prep[4 * cell_id:4 * cell_id + 3] = -np.array(self.r.f_func(cell.centroid[0],
+                                                                               cell.centroid[1],
+                                                                               cell.centroid[2], time))[:, 0]
             self.f_prep[4 * cell_id + 3] = -(self.c * self.porosity *
-                                                    self.r.acc.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf() +
-                                                    self.r.flow.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf())
+                                         self.r.acc_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time) +
+                                         self.r.flow_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time))
     def convergence_study_setup_pm_discretizer(self):
         self.porosity = 0.1
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=1.E-4,
@@ -261,6 +254,7 @@ class UnstructReservoir:
         #self.rho_s = 2500
         self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1e-2
+        self.fluid_density = 1.0
         self.pm.grav = matrix([0.0, 0.0, self.grav], 1, 3)
         for cell_id in range(self.unstr_discr.mat_cells_tot):
             faces = self.unstr_discr.faces[cell_id]
@@ -312,19 +306,13 @@ class UnstructReservoir:
         self.r = Rhs(stf, biot, perm, self.fluid_viscosity, self.grav, self.rho_f)
         self.f_prep = np.zeros((self.unstr_discr.mat_cells_tot, 4))
         for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items():
-            self.f_prep[cell_id, :3] = -np.array(self.r.f.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf())[:,0]
+            self.f_prep[cell_id, :3] = -np.array(self.r.f_func(cell.centroid[0],
+                                                               cell.centroid[1],
+                                                               cell.centroid[2],
+                                                               time))[:, 0]
             self.f_prep[cell_id, 3] = -(self.c * self.porosity *
-                                                    self.r.acc.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf() +
-                                                    self.r.flow.subs([(self.r.x, cell.centroid[0]),
-                                                    (self.r.y, cell.centroid[1]),
-                                                    (self.r.z, cell.centroid[2]),
-                                                    (self.r.t, time)]).evalf())
+                                        self.r.acc_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time) +
+                                        self.r.flow_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time))
         self.f_prep = self.f_prep.flatten()
 
         self.n_matrix = self.unstr_discr.mat_cells_tot
@@ -343,23 +331,11 @@ class UnstructReservoir:
 
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
-            self.f_prep[self.n_vars * cell_id + self.u_var:
-                   self.n_vars * cell_id + self.u_var + self.n_dim] = -np.array(self.r.f.subs([
-                    (self.r.x, c.values[0]),
-                    (self.r.y, c.values[1]),
-                    (self.r.z, c.values[2]),
-                    (self.r.t, time)]).evalf())[:, 0]
+            self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
+                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
             self.f_prep[self.n_vars * cell_id + self.p_var] = -self.fluid_density * (self.c * self.porosity *
-               self.r.acc.subs([
-                   (self.r.x, c.values[0]),
-                   (self.r.y, c.values[1]),
-                   (self.r.z, c.values[2]),
-                   (self.r.t, time)]).evalf() +
-               self.r.flow.subs([
-                   (self.r.x, c.values[0]),
-                   (self.r.y, c.values[1]),
-                   (self.r.z, c.values[2]),
-                   (self.r.t, time)]).evalf())
+                self.r.acc_func(c.values[0], c.values[1], c.values[2], time) +
+                self.r.flow_func(c.values[0], c.values[1], c.values[2], time))
     def convergence_study_setup_mech_discretizer(self):
         self.mesh_data = meshio.read(self.mesh_file)
         self.domain_tags = dict()
@@ -491,23 +467,11 @@ class UnstructReservoir:
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
-            self.f_prep[self.n_vars * cell_id + self.u_var:
-                   self.n_vars * cell_id + self.u_var + self.n_dim] = -np.array(self.r.f.subs([
-                                                    (self.r.x, c.values[0]),
-                                                    (self.r.y, c.values[1]),
-                                                    (self.r.z, c.values[2]),
-                                                    (self.r.t, time)]).evalf())[:,0]
+            self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
+                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
             self.f_prep[self.n_vars * cell_id + self.p_var] = -self.fluid_density * (self.c * self.porosity *
-                                                    self.r.acc.subs([
-                                                    (self.r.x, c.values[0]),
-                                                    (self.r.y, c.values[1]),
-                                                    (self.r.z, c.values[2]),
-                                                    (self.r.t, time)]).evalf() +
-                                                    self.r.flow.subs([
-                                                    (self.r.x, c.values[0]),
-                                                    (self.r.y, c.values[1]),
-                                                    (self.r.z, c.values[2]),
-                                                    (self.r.t, time)]).evalf())
+                self.r.acc_func(c.values[0], c.values[1], c.values[2], time) +
+                self.r.flow_func(c.values[0], c.values[1], c.values[2], time))
 
     def add_well(self, name, depth):
         """
