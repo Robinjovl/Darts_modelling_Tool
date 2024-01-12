@@ -1204,7 +1204,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
   value_t p_grad_vals[ND], p_face;
   value_t cur_total_tractions[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
   value_t cur_effective_tractions[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
-  value_t cur_darcy_fluxes[ND * mesh::MAX_CONNS_PER_ELEM_GMSH];
+  value_t cur_darcy_fluxes[mesh::MAX_CONNS_PER_ELEM_GMSH];
   value_t Ndelta[ND][n_sym] = {0.0};
   value_t w[n_sym];
 
@@ -1272,9 +1272,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
 		cur_effective_tractions[tmp1] = cur_total_tractions[tmp1];
 		for (uint8_t c = 0; c < n_sym; c++)
 		  cur_effective_tractions[tmp1] += conn.area * p_face * Ndelta[d][c] * w[c];
-		// Darcy flux
-		cur_darcy_fluxes[ND * counter + d] = darcy_fluxes[conn_id];
 	  }
+
+	  // Darcy flux
+	  cur_darcy_fluxes[counter] = darcy_fluxes[conn_id];
 
 	  counter++;
 	  face_id++;
