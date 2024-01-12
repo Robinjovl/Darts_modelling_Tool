@@ -1084,13 +1084,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = 1.0
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, mesh='rect'):
-        # if mesh == 'rect':
-        #     mesh_file = 'meshes/transfinite.msh'
-        # elif mesh == 'wedge':
-        #     mesh_file = 'meshes/wedge.msh'
-        # elif mesh == 'hex':
-        #     mesh_file = 'meshes/hexahedron.msh'
-        mesh_file = 'meshes/transfinite_bai.msh'
+        if mesh == 'rect':
+            mesh_file = 'meshes/transfinite_bai.msh'
+        elif mesh == 'wedge':
+            mesh_file = 'meshes/wedge_bai.msh'
+        elif mesh == 'hex':
+            mesh_file = 'meshes/hexahedron_bai.msh'
         self.file_path = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)

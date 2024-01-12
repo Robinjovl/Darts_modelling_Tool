@@ -256,7 +256,7 @@ def load_performance_data(file_name=''):
 def check_performance_data(ref_data, cur_data, prev_fail,
                            diff_max_tol=1e-6,
                            diff_max_normalized_tol=1e-4,
-                           rel_diff_tol=1, png_suffix=''):
+                           rel_diff_tol=1, plot=False, png_suffix=''):
     fail = 0
     # the difference lower than eps will not be accounted
     eps_sol = {'p': 1e-5, 'ux': 1e-5, 'uy': 1e-5, 'uz': 1e-5}
@@ -285,9 +285,9 @@ def check_performance_data(ref_data, cur_data, prev_fail,
             print(
                 '#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
                 % (fail, v, vars[v], sol_range, diff_abs_max_normalized, diff_max_normalized_tol, diff_max_abs))
-        if False: # debug plot 
+        if plot:
+            # plot two solutions and difference between them
             from matplotlib import pyplot as plt
-
             fig, (ax1, ax2) = plt.subplots(2, sharex=True)
             ax1.plot(sol_et, 'r', label='ref')
             ax1.plot(sol_cur, 'b--', label='cur')

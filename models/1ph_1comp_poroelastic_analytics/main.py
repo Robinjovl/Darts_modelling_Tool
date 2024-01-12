@@ -182,7 +182,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
             else:
                 sol_data_step = data[ith_step]
                 ref_data_step = ref_data[ith_step]
-            failed += check_performance_data(ref_data_step, sol_data_step, failed,
+            failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=True,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
             assert not failed
 
@@ -195,7 +195,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
         return (failed > 0), data[-1]['simulation time']
     else:
         return False, -1.0
-def run_and_plot(case='mandel', discretizer='mech_discretizer'):
+def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     if case == 'bai':
         nt = 60
         max_dt = 0.1
@@ -213,10 +213,10 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
     # t = np.append(t, 86400 * np.ones(int((17280000-86400) / 86400)) / 86400)
     # nt = t.size
 
-    m = Model(case=case, discretizer=discretizer)
+    m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
     redirect_darts_output('log.txt')
-    m.output_directory = 'sol_' + case + '_' + discretizer + '_rect'
+    m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
@@ -236,30 +236,23 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer'):
             # pressure
             pres = {'name': 'p', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
                     'analytics': {}, 'x' : [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1) }
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_0m.csv', delimiter=',')
-            pres['analytics'][0.0] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_4p2m.csv', delimiter=',')
-            pres['analytics'][4.2] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationPressure_5p6m.csv', delimiter=',')
-            pres['analytics'][5.6] = an_data
+            pres['analytics'][0.0] = np.loadtxt('bai_analytics/thermoConsolidationPressure_0m.csv', delimiter=',')
+            pres['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationPressure_4p2m.csv', delimiter=',')
+            pres['analytics'][5.6] = np.loadtxt('bai_analytics/thermoConsolidationPressure_5p6m.csv', delimiter=',')
+
             # temperature
             temp = {'name': 't', 'darts': {0.0: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 5.6: np.zeros(nt + 1) },
                     'analytics': {}, 'x': [0.0, 4.2, 5.6], 'time': np.zeros(nt + 1)}
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_0m.csv', delimiter=',')
-            temp['analytics'][0.0] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_4p2m.csv', delimiter=',')
-            temp['analytics'][4.2] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
-            temp['analytics'][5.6] = an_data
+            temp['analytics'][0.0] = np.loadtxt('bai_analytics/thermoConsolidationTemp_0m.csv', delimiter=',')
+            temp['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationTemp_4p2m.csv', delimiter=',')
+            temp['analytics'][5.6] = np.loadtxt('bai_analytics/thermoConsolidationTemp_5p6m.csv', delimiter=',')
+
             # vertical displacements
             disp = {'name': 'uy', 'darts': {1.4: np.zeros(nt + 1), 4.2: np.zeros(nt + 1), 7.0: np.zeros(nt + 1) },
                   'analytics': {}, 'x': [1.4, 4.2, 7.0], 'time': np.zeros(nt + 1)}
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
-            disp['analytics'][1.4] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
-            disp['analytics'][4.2] = an_data
-            an_data = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
-            disp['analytics'][7.0] = an_data
+            disp['analytics'][1.4] = np.loadtxt('bai_analytics/thermoConsolidationDisp_1p4m.csv', delimiter=',')
+            disp['analytics'][4.2] = np.loadtxt('bai_analytics/thermoConsolidationDisp_4p2m.csv', delimiter=',')
+            disp['analytics'][7.0] = np.loadtxt('bai_analytics/thermoConsolidationDisp_7m.csv', delimiter=',')
         else:
             nx = np.unique(np.round(xc[:,0], decimals=6)).size
             ny = int(m.reservoir.n_matrix / nx)
@@ -566,26 +559,28 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 # run_and_plot(case='terzaghi', discretizer='pm_discretizer')
 # run_and_plot(case='mandel', discretizer='mech_discretizer')
 # run_and_plot(case='mandel', discretizer='pm_discretizer')
-# run_and_plot(case='bai', discretizer='mech_discretizer')
+# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
 # Wedge (triangular) grid
 # ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
+# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
 # Unstructured hexahedral grid
 # run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
 # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
 # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
+# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-#exit()
 
-#test_all = False
-test_all = True
+test_all = False
+#test_all = True
+cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
 if test_all:
-    for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
+    for case in cases_list:
         for mesh in ['rect', 'wedge', 'hex']:
             if case == 'terzaghi_two_layers' and mesh == 'hex':
                 continue
