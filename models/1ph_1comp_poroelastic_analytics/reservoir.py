@@ -48,9 +48,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers':
-            self.terzaghi_two_layers(mesh)
+            if discretizer == 'mech_discretizer':
+                self.terzaghi_two_layers_mech_discretizer(mesh)
+            elif discretizer == 'pm_discretizer':
+                self.terzaghi_two_layers_pm_discretizer(mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
-            self.terzaghi_two_layers_no_analytics(mesh)
+            if discretizer == 'pm_discretizer':
+                self.terzaghi_two_layers_no_analytics_pm_discretizer(mesh)
         elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(mesh)
 
@@ -101,8 +105,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.n_bounds = self.unstr_discr.bound_cells_tot
 
         self.init_arrays()
-
-
 
         self.wells = []
 
@@ -765,7 +767,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = np.fabs(self.F)
     # Two-layer Terzaghi
-    def terzaghi_two_layers(self, mesh='rect'):
+    def terzaghi_two_layers_pm_discretizer(self, mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
         if mesh == 'rect':
@@ -853,6 +855,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
+        self.n_fracs = self.unstr_discr.frac_cells_tot
+        self.n_matrix = self.unstr_discr.mat_cells_tot
+        self.n_bounds = self.unstr_discr.bound_cells_tot
+
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.visc = 1.0
@@ -867,10 +873,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
-        self.kd_cur = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-        self.porosity = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-        self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-        for cell_id in range(self.unstr_discr.mat_cells_tot):
+        self.kd_cur = np.zeros(self.n_matrix)
+        self.porosity = np.zeros(self.n_matrix)
+        self.biot_mean = np.zeros(9 * (self.n_matrix))
+        for cell_id in range(self.n_matrix):
             faces = self.unstr_discr.faces[cell_id]
             fs = face_vector()
             for face_id in range(len(faces)):
@@ -900,15 +906,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.biot_mean[9 * cell_id + 8] = biot
             self.porosity[cell_id] = poro
 
+        self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
-        self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
+        self.unstr_discr.pz_bounds = np.zeros(self.n_bounds)
         self.unstr_discr.pz_bounds = self.p_init
-        self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
+        self.unstr_discr.p_ref = np.zeros(self.n_matrix)
         self.unstr_discr.p_ref[:] = self.p_init
-        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+        for bound_id in range(self.n_bounds):
             n = self.get_normal_to_bound_face(bound_id)
             P = np.identity(3) - np.outer(n, n)
             mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
@@ -928,14 +934,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
         #self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
-        self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+        self.unstr_discr.f = np.zeros(self.n_vars * self.n_matrix)
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_no_analytics(self, mesh='rect'):
+    def terzaghi_two_layers_no_analytics_pm_discretizer(self, mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
         if mesh == 'rect':
@@ -1082,6 +1088,180 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
         self.pD = 1.0
+    def terzaghi_two_layers_mech_discretizer(self, mesh='rect'):
+        if mesh == 'rect':
+            mesh_file = 'meshes/transfinite_two_layers.msh'
+        elif mesh == 'wedge':
+            mesh_file = 'meshes/wedge_two_layers.msh'
+        self.file_path = mesh_file
+
+        self.mesh_data = meshio.read(mesh_file)
+
+        # define correspondence between the physical tags in msh file and mesh elements types
+        # two regions for different properties
+        self.m1_tag = 99991
+        self.m2_tag = 99992
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+                                                            bnd_xm_tag=991, bnd_xp_tag=992,
+                                                            bnd_ym_tag=993, bnd_yp_tag=994,
+                                                            bnd_zm_tag=995, bnd_zp_tag=996)
+
+        self.u_init = [0.0, 0.0, 0.0]
+        self.p_init = 0.0
+        self.fluid_compressibility = 1.e-10
+        self.fluid_viscosity = 1.0
+        self.F = -100.0 # bar * m
+
+        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
+                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
+        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
+             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
+        nu2 = (1 - x) / (1 + x)
+        self.props[self.m2_tag]['nu'] = nu2
+        assert(nu2 < 0.5 and nu2 > 0)
+
+        kd1 = self.props[self.m1_tag]['E'] / 3 / (1 - 2 * self.props[self.m1_tag]['nu'])
+        self.props[self.m1_tag]['kd'] = kd1
+        self.props[self.m1_tag]['M'] = 1.0 / ((self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) / kd1 +
+                                        self.props[self.m1_tag]['poro'] * self.fluid_compressibility)
+
+        kd2 = self.props[self.m2_tag]['E'] / 3 / (1 - 2 * self.props[self.m2_tag]['nu'])
+        self.props[self.m2_tag]['kd'] = kd2
+        self.props[self.m2_tag]['M'] = 1.0 / ((self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) * (1 - self.props[self.m2_tag]['b']) / kd2 +
+                                        self.props[self.m2_tag]['poro'] * self.fluid_compressibility)
+
+        # some numbers for analytics
+        for tag, p in self.props.items():
+            p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
+            # if tag == m2:
+                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
+                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
+            p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
+            p['c'] = TC.darcy_constant * p['perm'] / self.fluid_viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
+
+        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
+
+        self.boundary_conditions = {}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+
+        self.discr_mesh = Mesh()
+        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
+
+        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
+
+        self.discr = poro_mech_discretizer()
+        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
+        self.tags = np.array(self.discr_mesh.tags, copy=False)
+        self.discr.set_mesh(self.discr_mesh)
+        self.discr.init()
+
+        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
+        self.n_fracs = 0 # self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
+        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+
+        self.kd_cur = np.zeros(self.n_matrix)
+        self.porosity = np.zeros(self.n_matrix)
+        self.biot_mean = np.zeros(9 * (self.n_matrix))
+
+        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
+                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
+            tag = self.tags[cell_id]
+            E = self.props[tag]['E']
+            nu = self.props[tag]['nu']
+            biot = self.props[tag]['b']
+            k = self.props[tag]['perm']
+            kd = self.props[tag]['kd']
+            poro = self.props[tag]['poro']
+            lam = E * nu / (1 + nu) / (1 - 2 * nu)
+            mu = E / 2 / (1 + nu)
+
+            self.discr.perms.append(disc_matrix33(k, k, k))
+            self.discr.biots.append(disc_matrix33(biot))
+            self.discr.stfs.append(disc_stiffness(lam, mu))
+            self.biot_mean[9 * cell_id] = biot
+            self.biot_mean[9 * cell_id + 4] = biot
+            self.biot_mean[9 * cell_id + 8] = biot
+            self.porosity[cell_id] = poro
+            self.kd_cur[cell_id] = kd
+
+        boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
+        ap = np.zeros(boundary_range[1] - boundary_range[0])
+        bp = np.zeros(boundary_range[1] - boundary_range[0])
+        an = np.zeros(boundary_range[1] - boundary_range[0])
+        bn = np.zeros(boundary_range[1] - boundary_range[0])
+        at = np.zeros(boundary_range[1] - boundary_range[0])
+        bt = np.ones(boundary_range[1] - boundary_range[0])
+        self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+        self.bc_rhs_prev = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
+                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
+
+        # mapping boundary connections
+        adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
+        adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
+        id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
+        self.id_boundary_conns = adj_matrix[id_sorted]
+        self.conns = np.array(self.discr_mesh.conns, copy=False)
+        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
+            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+            bc = self.boundary_conditions[tag]
+            ap[ids] = bc['flow']['a']
+            bp[ids] = bc['flow']['b']
+            an[ids] = bc['mech']['an']
+            bn[ids] = bc['mech']['bn']
+            at[ids] = bc['mech']['at']
+            bt[ids] = bc['mech']['bt']
+            # flow
+            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
+
+            for id in ids:
+                assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
+                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+
+        self.cpp_bc = THMBoundaryCondition()
+        self.cpp_bc.flow.a = value_vector(ap)
+        self.cpp_bc.flow.b = value_vector(bp)
+
+        self.cpp_bc.mech_normal.a = value_vector(an)
+        self.cpp_bc.mech_normal.b = value_vector(bn)
+        self.cpp_bc.mech_tangen.a = value_vector(at)
+        self.cpp_bc.mech_tangen.b = value_vector(bt)
+        # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
+        # which doesn't know the new THMBoundaryCondition class yet
+        self.cpp_flow = BoundaryCondition()
+        self.cpp_flow.a = value_vector(ap)
+        self.cpp_flow.b = value_vector(bp)
+
+        # Discretization
+        self.timer.node["discretization"] = timer_node()
+        self.timer.node["discretization"].start()
+        self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
+        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+        self.discr.calc_interface_approximations()
+        self.discr.calc_cell_centered_stress_velocity_approximations()
+        self.timer.node["discretization"].stop()
+
+        self.omega = self.approximate_roots_two_layers_terzaghi()
+        self.tD = 1.0
+        self.pD = 1.0
+
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, mesh='rect'):
         if mesh == 'rect':
