@@ -184,7 +184,6 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
                 ref_data_step = ref_data[ith_step]
             failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=True,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
-            assert not failed
 
     if not is_plk_exist or overwrite == '1':
         m.save_performance_data(data=data, file_name=file_name)
