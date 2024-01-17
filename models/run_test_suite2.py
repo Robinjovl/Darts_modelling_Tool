@@ -23,8 +23,6 @@ test_dirs = ['1ph_1comp_poroelastic_analytics']
 test_args = []
 for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
     for discr_name in ['mech_discretizer', 'pm_discretizer']:
-        if case == 'terzaghi_two_layers' and discr_name == 'mech_discretizer':
-            continue # is not supported by new mech_discretizer yet
         if case == 'bai' and discr_name == 'pm_discretizer':
             continue # is not supported by poroelastic as bai is thermoporoelasticity
         for mesh in ['rect', 'wedge', 'hex']:

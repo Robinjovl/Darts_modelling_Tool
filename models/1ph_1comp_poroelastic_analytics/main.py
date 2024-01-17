@@ -585,8 +585,7 @@ if test_all:
         for mesh in ['rect', 'wedge', 'hex']:
             if case == 'terzaghi_two_layers' and mesh == 'hex':
                 continue
-            if case != 'terzaghi_two_layers':  # is not supported by new mech_discretizer yet
-                mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+            mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
             if case != 'bai':  # is not supported by poroelastic as bai is thermoporoelasticity
                 pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
 
