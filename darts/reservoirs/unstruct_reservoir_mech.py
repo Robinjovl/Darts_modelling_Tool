@@ -1,8 +1,11 @@
 import numpy as np
 
-from darts.discretizer import elem_loc
-from darts.engines import conn_mesh
-from darts.engines import index_vector, value_vector
+from darts.engines import conn_mesh, index_vector, value_vector
+
+from darts.discretizer import Mesh, Elem, elem_loc, elem_type, conn_type
+from darts.discretizer import poro_mech_discretizer, thermoporo_mech_discretizer
+from darts.discretizer import THMBoundaryCondition, BoundaryCondition
+from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 class bound_cond:
     '''
@@ -158,6 +161,28 @@ class UnstructReservoirMech:
         self.n_fracs = self.unstr_discr.frac_cells_tot
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_bounds = self.unstr_discr.bound_cells_tot
+
+    def init_mech_discretizer(self):
+        self.discr_mesh = Mesh()
+        self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
+
+        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
+        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
+        if self.thermoporoelacticity:
+            self.discr = thermoporo_mech_discretizer()
+        else:
+            self.discr = poro_mech_discretizer()
+        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
+        self.tags = np.array(self.discr_mesh.tags, copy=False)
+        self.discr.set_mesh(self.discr_mesh)
+        self.discr.init()
+
+        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
+        self.n_fracs =  self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
+        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
 
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))

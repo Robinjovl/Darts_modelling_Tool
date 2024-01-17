@@ -94,10 +94,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/wedge.msh'
         elif mesh == 'hex':
             mesh_file = 'meshes/hexahedron.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
-
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -116,25 +115,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_mandel_boundary_conditions()
 
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
+        self.init_mech_discretizer()
 
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
         self.F = -100.0 * self.a # bar * m
-
-        self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs = self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
-                       self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
 
         self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
 
@@ -236,7 +219,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/wedge.msh'
         elif mesh == 'hex':
             mesh_file = 'meshes/hexahedron.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
                                                mesh_file=mesh_file)
         self.unstr_discr.eps_t = 1.E+0
@@ -450,7 +433,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/wedge.msh'
         elif mesh == 'hex':
             mesh_file = 'meshes/hexahedron.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
 
@@ -472,22 +455,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
 
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
-
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-
-        self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs = 0 # self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+        self.init_mech_discretizer()
 
         self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
 
@@ -589,7 +557,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/wedge.msh'
         elif mesh == 'hex':
             mesh_file = 'meshes/hexahedron.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
                                                mesh_file=mesh_file)
         self.unstr_discr.eps_t = 1.E+0
@@ -711,7 +679,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/transfinite_two_layers.msh'
         elif mesh == 'wedge':
             mesh_file = 'meshes/wedge_two_layers.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=mesh_file)
 
@@ -866,7 +834,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/transfinite_two_layers.msh'
         elif mesh == 'wedge':
             mesh_file = 'meshes/wedge_two_layers.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=mesh_file)
 
@@ -992,7 +960,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/transfinite_two_layers.msh'
         elif mesh == 'wedge':
             mesh_file = 'meshes/wedge_two_layers.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
 
@@ -1042,22 +1010,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
 
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
-
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-
-        self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs = 0 # self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+        self.init_mech_discretizer()
 
         self.kd_cur = np.zeros(self.n_matrix)
         self.porosity = np.zeros(self.n_matrix)
@@ -1163,7 +1116,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_file = 'meshes/wedge_bai.msh'
         elif mesh == 'hex':
             mesh_file = 'meshes/hexahedron_bai.msh'
-        self.file_path = mesh_file
+        self.mesh_filename = mesh_file
 
         self.mesh_data = meshio.read(mesh_file)
 
@@ -1189,21 +1142,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_bai_boundary_conditions()
 
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
-        self.discr = thermoporo_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs =  self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+        self.init_mech_discretizer()
 
         self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
 
@@ -1402,7 +1341,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             os.makedirs(output_directory)
 
         # Temporarily store mesh_data in copy:
-        Mesh = meshio.read(self.file_path)
+        Mesh = meshio.read(self.mesh_filename)
 
         # Allocate empty new cell_data dictionary:
         property_array = np.array(engine.X, copy=False)
