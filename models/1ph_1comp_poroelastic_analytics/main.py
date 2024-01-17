@@ -182,7 +182,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
             else:
                 sol_data_step = data[ith_step]
                 ref_data_step = ref_data[ith_step]
-            failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=True,
+            failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
 
     if not is_plk_exist or overwrite == '1':
@@ -554,10 +554,10 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
     return sol_data_slice
 
 # Rectangular grid, comparison to analytics
-# run_and_plot(case='terzaghi', discretizer='mech_discretizer')
-# run_and_plot(case='terzaghi', discretizer='pm_discretizer')
-# run_and_plot(case='mandel', discretizer='mech_discretizer')
-# run_and_plot(case='mandel', discretizer='pm_discretizer')
+#run_and_plot(case='terzaghi', discretizer='mech_discretizer')
+#run_and_plot(case='terzaghi', discretizer='pm_discretizer')
+#run_and_plot(case='mandel', discretizer='mech_discretizer')
+#run_and_plot(case='mandel', discretizer='pm_discretizer')
 # run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer')
 # run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer')
 # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')

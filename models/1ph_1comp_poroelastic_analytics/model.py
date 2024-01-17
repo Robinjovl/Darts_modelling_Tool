@@ -297,6 +297,7 @@ def check_performance_data(ref_data, cur_data, prev_fail,
             ax2.set_title('diff')
             plt.savefig(vars[v] + '_' + png_suffix + '.png', dpi=500)
             plt.clf()
+            plt.close()
 
 
     for key, value in sorted(cur_data.items()):
