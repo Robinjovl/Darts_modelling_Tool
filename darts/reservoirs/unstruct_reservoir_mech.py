@@ -2,6 +2,7 @@ import numpy as np
 
 from darts.discretizer import elem_loc
 from darts.engines import conn_mesh
+from darts.engines import index_vector, value_vector
 
 class bound_cond:
     '''
@@ -11,11 +12,14 @@ class bound_cond:
         # flow
         self.NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         self.AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+
         # mechanics
         self.ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         self.FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         self.STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        # Fn, Ft are normal and tangential load [UNIT?]
         self.LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
+        # the same as ROLLER except rn is non-zero
         self.STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
 def set_domain_tags(matrix_tags,
@@ -129,3 +133,50 @@ class UnstructReservoirMech:
             self.pz_bounds[:] = self.unstr_discr.pz_bounds
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
+
+    def init_pm_discretizer(self):
+        self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
+        self.unstr_discr.x_new[:, 0] = self.u_init[0]
+        self.unstr_discr.x_new[:, 1] = self.u_init[1]
+        self.unstr_discr.x_new[:, 2] = self.u_init[2]
+        self.unstr_discr.x_new[:, 3] = self.p_init
+        dt = 0.0
+        self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
+        self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                     index_vector(self.ref_contact_cells))
+        self.pm.reconstruct_gradients_per_cell(dt)
+        self.pm.calc_all_fluxes_once(dt)
+
+        self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p,
+                          self.pm.stencil, self.pm.offset,
+                          self.pm.tran, self.pm.rhs,
+                          self.pm.tran_biot, self.pm.rhs_biot,
+                          self.unstr_discr.mat_cells_tot,
+                          self.unstr_discr.bound_cells_tot,
+                          self.unstr_discr.frac_cells_tot)
+        self.unstr_discr.store_volume_all_cells()
+        self.n_fracs = self.unstr_discr.frac_cells_tot
+        self.n_matrix = self.unstr_discr.mat_cells_tot
+        self.n_bounds = self.unstr_discr.bound_cells_tot
+
+    def update_trans(self, dt, x):
+        #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
+        #self.pm.reconstruct_gradients_per_cell(dt)
+        #self.pm.calc_all_fluxes(dt)
+        #self.write_pm_conn_to_file(t_step=t_step)
+        #self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p, self.pm.stencil, self.pm.offset, self.pm.tran, self.pm.rhs,
+        #                  self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_cells_tot, 0)
+
+        # update transient sources / sinks
+        # self.f[:] = self.unstr_discr.f
+        # update boundaries at n+1 / n timesteps
+        self.bc[:] = self.bc_rhs
+        self.bc_prev[:] = self.bc_rhs_prev
+        #self.init_wells()
+
+    def update(self, dt, time):
+        # update local array
+        #if time > dt:
+        self.bc_rhs_prev = np.copy(self.bc_rhs)
+
+

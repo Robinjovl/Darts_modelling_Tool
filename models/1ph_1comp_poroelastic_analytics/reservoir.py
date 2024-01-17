@@ -80,52 +80,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             if case == 'bai':
                 print(case, 'not supported in', discretizer)
                 assert False
-            self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
-            self.unstr_discr.x_new[:, 0] = self.u_init[0]
-            self.unstr_discr.x_new[:, 1] = self.u_init[1]
-            self.unstr_discr.x_new[:, 2] = self.u_init[2]
-            self.unstr_discr.x_new[:, 3] = self.p_init
-            dt = 0.0
-            self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
-            self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                         index_vector(self.ref_contact_cells))
-            self.pm.reconstruct_gradients_per_cell(dt)
-            self.pm.calc_all_fluxes_once(dt)
-
-            self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p,
-                              self.pm.stencil, self.pm.offset,
-                              self.pm.tran, self.pm.rhs,
-                              self.pm.tran_biot, self.pm.rhs_biot,
-                              self.unstr_discr.mat_cells_tot,
-                              self.unstr_discr.bound_cells_tot,
-                              self.unstr_discr.frac_cells_tot)
-            self.unstr_discr.store_volume_all_cells()
-            self.n_fracs = self.unstr_discr.frac_cells_tot
-            self.n_matrix = self.unstr_discr.mat_cells_tot
-            self.n_bounds = self.unstr_discr.bound_cells_tot
+            self.init_pm_discretizer()
 
         self.init_arrays()
 
         self.wells = []
-
-    def update_trans(self, dt, x):
-        #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
-        #self.pm.reconstruct_gradients_per_cell(dt)
-        #self.pm.calc_all_fluxes(dt)
-        #self.write_pm_conn_to_file(t_step=t_step)
-        #self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p, self.pm.stencil, self.pm.offset, self.pm.tran, self.pm.rhs,
-        #                  self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_cells_tot, 0)
-
-        # update transient sources / sinks
-        # self.f[:] = self.unstr_discr.f
-        # update boundaries at n+1 / n timesteps
-        self.bc[:] = self.bc_rhs
-        self.bc_prev[:] = self.bc_rhs_prev
-        #self.init_wells()
-    def update(self, dt, time):
-        # update local array
-        #if time > dt:
-        self.bc_rhs_prev = np.copy(self.bc_rhs)
 
     # Mandel
     def mandel_north_dirichlet_mech_discretizer(self, mesh='rect'):
@@ -155,14 +114,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
                             self.porosity * self.fluid_compressibility)
 
-
-        self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.FREE}
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.STUCK_ROLLER(0.0)}
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.set_mandel_boundary_conditions()
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -417,13 +369,17 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = abs(self.F / self.a) / 2
     def update_mandel_boundary(self, dt, time, physics):
         if self.discretizer_name == 'mech_discretizer':
-            self.update_mandel_boundary_mech_discretizer(dt, time, physics)
+            self.update_mandel_boundary_mech_discretizer(time)
         elif self.discretizer_name == 'pm_discretizer':
-            self.update_mandel_boundary_pm_discretizer(dt, time, physics)
-    def update_mandel_boundary_mech_discretizer(self, dt, time, physics):
+            self.update_mandel_boundary_pm_discretizer(time)
 
-        v_north = self.get_vertical_displacement_north_mandel(time)
+    def set_boundary_conditions_pm_discretizer(self):
+        if self.discretizer_name == 'pm_discretizer':
+            self.unstr_discr.boundary_conditions = self.boundary_conditions
+            for key in self.boundary_conditions.keys():
+                self.boundary_conditions[key]['cells'] = []
 
+    def set_mandel_boundary_conditions(self, v_north=0.):
         self.boundary_conditions = {}
         self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
         self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.FREE}
@@ -431,6 +387,31 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.STUCK_ROLLER(v_north)}
         self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
         self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.set_boundary_conditions_pm_discretizer()
+
+    def set_terzaghi_boundary_conditions(self):
+        self.boundary_conditions = {}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.set_boundary_conditions_pm_discretizer()
+    def set_bai_boundary_conditions(self):
+        self.boundary_conditions = {}
+        self.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[994] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': self.bc_type.AQUIFER(self.t_top) }
+        self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+
+    def update_mandel_boundary_mech_discretizer(self, time):
+
+        v_north = self.get_vertical_displacement_north_mandel(time)
+
+        self.set_mandel_boundary_conditions(v_north)
 
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -445,30 +426,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
-    def update_mandel_boundary_pm_discretizer(self, dt, time, physics):
+    def update_mandel_boundary_pm_discretizer(self, time):
 
         v_north = self.get_vertical_displacement_north_mandel(time)
 
-        mech_xm = self.bc_type.ROLLER
-        mech_xp = self.bc_type.FREE
-        mech_ym = self.bc_type.ROLLER
-        mech_yp = self.bc_type.STUCK_ROLLER(v_north)
-        mech_zm = self.bc_type.ROLLER
-        mech_zp = self.bc_type.ROLLER
-
-        flow_xm = self.bc_type.NO_FLOW
-        flow_xp = self.bc_type.AQUIFER(self.p_init)
-        flow_ym = self.bc_type.NO_FLOW
-        flow_yp = self.bc_type.NO_FLOW
-        flow_zm = self.bc_type.NO_FLOW
-        flow_zp = self.bc_type.NO_FLOW
-
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.set_mandel_boundary_conditions(v_north)
 
         self.pm.bc.clear()
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -508,13 +470,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                             self.porosity * self.fluid_compressibility)
         self.F = -100.0 # bar * m
 
-        self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.set_terzaghi_boundary_conditions()
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -668,26 +624,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.F = -100.0 # bar * m
 
-        mech_xm = self.bc_type.ROLLER
-        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = self.bc_type.ROLLER
-        mech_yp = self.bc_type.ROLLER
-        mech_zm = self.bc_type.ROLLER
-        mech_zp = self.bc_type.ROLLER
-
-        flow_xm = self.bc_type.NO_FLOW
-        flow_xp = self.bc_type.AQUIFER(self.p_init)
-        flow_ym = self.bc_type.NO_FLOW
-        flow_yp = self.bc_type.NO_FLOW
-        flow_zm = self.bc_type.NO_FLOW
-        flow_zp = self.bc_type.NO_FLOW
-
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.set_terzaghi_boundary_conditions()
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -832,26 +769,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.F = -100.0 # bar * m
 
-        mech_xm = self.bc_type.ROLLER
-        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = self.bc_type.ROLLER
-        mech_yp = self.bc_type.ROLLER
-        mech_zm = self.bc_type.ROLLER
-        mech_zp = self.bc_type.ROLLER
-
-        flow_xm = self.bc_type.NO_FLOW
-        flow_xp = self.bc_type.AQUIFER(self.p_init)
-        flow_ym = self.bc_type.NO_FLOW
-        flow_yp = self.bc_type.NO_FLOW
-        flow_zm = self.bc_type.NO_FLOW
-        flow_zp = self.bc_type.NO_FLOW
-
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.set_terzaghi_boundary_conditions()
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -984,26 +902,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
         self.F = -100.0 # bar * m
 
-        mech_xm = self.bc_type.ROLLER
-        mech_xp = self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])
-        mech_ym = self.bc_type.ROLLER
-        mech_yp = self.bc_type.ROLLER
-        mech_zm = self.bc_type.ROLLER
-        mech_zp = self.bc_type.ROLLER
-
-        flow_xm = self.bc_type.NO_FLOW
-        flow_xp = self.bc_type.AQUIFER(self.p_init)
-        flow_ym = self.bc_type.NO_FLOW
-        flow_yp = self.bc_type.NO_FLOW
-        flow_zm = self.bc_type.NO_FLOW
-        flow_zp = self.bc_type.NO_FLOW
-
-        self.unstr_discr.boundary_conditions[991] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
+        self.set_terzaghi_boundary_conditions()
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
@@ -1141,13 +1040,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
 
-        self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.set_terzaghi_boundary_conditions()
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
@@ -1294,13 +1187,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.th_expn = self.th_expn_coef * self.kd_cur
         self.th_conductivity = 0.836 * 86400.0 * 1000
 
-        self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
-        self.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
-        self.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
-        self.boundary_conditions[994] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': self.bc_type.AQUIFER(self.t_top) }
-        self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
-        self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
+        self.set_bai_boundary_conditions()
 
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(mesh_file, self.domain_tags)
