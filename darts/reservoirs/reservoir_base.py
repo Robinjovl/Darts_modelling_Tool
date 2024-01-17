@@ -167,7 +167,21 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def output_to_vtk(self, output_directory, output_filename, property_data, ith_step):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
+        """
+        Function to export results at timestamp t into `.vtk` format.
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param output_idxs: Dictionary of properties with data array indices for output
+        :type output_idxs: dict
+        :param data: Data for output
+        :type data: np.ndarray
+        """
         pass
 
     def write_cache(self):
@@ -177,6 +191,6 @@ class ReservoirBase:
         # first write cache
         if self.cache:
             self.write_cache()
-        # Now destroy all objects in physics
+        # Now destroy all objects in Reservoir
         for name in list(vars(self).keys()):
             delattr(self, name)

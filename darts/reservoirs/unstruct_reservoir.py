@@ -240,14 +240,20 @@ class UnstructReservoir(ReservoirBase):
                 idx = j
         return idx
 
-    def output_to_vtk(self, output_directory: str, output_filename: str, property_data: dict, ith_step: int):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
         """
         Class method which writes output of unstructured grid to VTK format
 
-        :param output_directory: directory of output files
-        :param property_array: np.array containing all cell properties (N_cells x N_prop)
-        :param cell_property: list with property names (visible in ParaView (format strings)
-        :param ith_step: integer containing the output step
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param output_idxs: Dictionary of properties with data array indices for output
+        :type output_idxs: dict
+        :param data: Data for output
+        :type data: np.ndarray
         :return:
         """
         # First check if output directory already exists:
@@ -257,26 +263,26 @@ class UnstructReservoir(ReservoirBase):
         # Allocate empty new cell_data_dict dictionary:
         cell_data_dict = dict()
 
-        for ith_prop in range(len(cell_property)):
-            cell_data_dict[cell_property[ith_prop]] = []
+        for prop, prop_idx in enumerate(output_idxs):
+            cell_data_dict[prop] = []
             left_bound = 0
             right_bound = 0
-            for ith_geometry in self.mesh_data.cells_dict:
+            for ith_geometry in self.discretizer.mesh_data.cells_dict:
                 left_bound = right_bound
-                right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data_dict[cell_property[ith_prop]].append(list(property_array[left_bound:right_bound, ith_prop]))
+                right_bound = right_bound + self.discretizer.mesh_data.cells_dict[ith_geometry].shape[0]
+                cell_data_dict[prop].append(list(data[prop_idx, left_bound:right_bound]))
 
         cell_data_dict['matrix_cell_bool'] = []
         left_bound = 0
         right_bound = 0
-        for ith_geometry in self.mesh_data.cells_dict:
+        for ith_geometry in self.discretizer.mesh_data.cells_dict:
             left_bound = right_bound
-            right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
+            right_bound = right_bound + self.discretizer.mesh_data.cells_dict[ith_geometry].shape[0]
 
-            if (ith_geometry in self.available_fracture_geometries) and (right_bound - left_bound) > 0:
+            if (ith_geometry in self.discretizer.available_fracture_geometries) and (right_bound - left_bound) > 0:
                 cell_data_dict['matrix_cell_bool'].append(list(np.zeros(((right_bound - left_bound),))))
 
-            elif (ith_geometry in self.available_matrix_geometries) and (right_bound - left_bound) > 0:
+            elif (ith_geometry in self.discretizer.available_matrix_geometries) and (right_bound - left_bound) > 0:
                 cell_data_dict['matrix_cell_bool'].append(list(np.ones(((right_bound - left_bound),))))
 
         # Temporarily store mesh_data in copy:
@@ -285,8 +291,8 @@ class UnstructReservoir(ReservoirBase):
         mesh = meshio.Mesh(
             # Mesh.points,
             # Mesh.cells_dict.items(),
-            self.mesh_data.points,  # list of point coordinates
-            self.mesh_data.cells_dict.items(),  # list of
+            self.discretizer.mesh_data.points,  # list of point coordinates
+            self.discretizer.mesh_data.cells_dict.items(),  # list of
             # Each item in cell data must match the cells array
             cell_data=cell_data_dict)
 
