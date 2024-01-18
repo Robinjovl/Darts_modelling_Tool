@@ -248,11 +248,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(self.F / self.a) / 2
-    def update_mandel_boundary(self, dt, time, physics):
-        if self.discretizer_name == 'mech_discretizer':
-            self.update_mandel_boundary_mech_discretizer(time)
-        elif self.discretizer_name == 'pm_discretizer':
-            self.update_mandel_boundary_pm_discretizer(time)
 
     def set_boundary_conditions_pm_discretizer(self):
         if self.discretizer_name == 'pm_discretizer':
@@ -288,41 +283,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
         self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
 
-    def update_mandel_boundary_mech_discretizer(self, time):
-
+    def update_mandel_boundary(self, time):
         v_north = self.get_vertical_displacement_north_mandel(time)
-
         self.set_mandel_boundary_conditions(v_north)
+        self.init_bc_rhs()
 
-        for tag in self.domain_tags[elem_loc.BOUNDARY]:
-            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-            bc = self.boundary_conditions[tag]
-            # flow
-            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
-
-            for id in ids:
-                conn = self.conns[self.id_boundary_conns[id]]
-                n = np.array(conn.n.values, copy=False)
-                conn_c = np.array(conn.c.values, copy=False)
-                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
-                if n.dot(conn_c - c1) < 0: n *= -1.0
-                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
-    def update_mandel_boundary_pm_discretizer(self, time):
-
-        v_north = self.get_vertical_displacement_north_mandel(time)
-
-        self.set_mandel_boundary_conditions(v_north)
-
-        self.pm.bc.clear()
-        for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
-            n = self.get_normal_to_bound_face(bound_id)
-            P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
-            self.pm.bc.append(matrix(bc, len(bc), 1))
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
     # Terzaghi
     def terzaghi_mech_discretizer(self, mesh='rect'):
         if mesh == 'rect':

@@ -156,13 +156,42 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
 
+    def init_bc_rhs(self):
+        if self.discretizer_name == 'mech_discretizer':
+            for tag in self.domain_tags[elem_loc.BOUNDARY]:
+                ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+                bc = self.boundary_conditions[tag]
+                # flow
+                self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+                # energy
+                if self.thermoporoelacticity:
+                    self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
+                # mechanics
+                for id in ids:
+                    assert(self.adj_matrix_cols[self.id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
+                    conn = self.conns[self.id_boundary_conns[id]]
+                    n = np.array(conn.n.values, copy=False)
+                    conn_c = np.array(conn.c.values, copy=False)
+                    c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                    if n.dot(conn_c - c1) < 0: n *= -1.0
+                    self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+        elif self.discretizer_name == 'pm_discretizer':
+            self.pm.bc.clear()
+            for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+                n = self.get_normal_to_bound_face(bound_id)
+                # P = np.identity(3) - np.outer(n, n)
+                mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
+                flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
+                bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+                self.pm.bc.append(matrix(bc, len(bc), 1))
+                self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
+                self.bc_rhs[4 * bound_id + 3] = flow['r']
+
     def init_arrays_boundary_condition(self):
         if self.discretizer_name == 'mech_discretizer':
             # mapping boundary connections
-            adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
-            adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
-            id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
-            self.id_boundary_conns = adj_matrix[id_sorted]
+            self.id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:] # store it to self. as it will be used in init_bc_rhs() further
+            self.id_boundary_conns = self.adj_matrix[self.id_sorted]
 
             ap = np.ones(self.n_bounds)
             bp = np.zeros(self.n_bounds)
@@ -188,20 +217,8 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
                 if self.thermoporoelacticity:
                     at[ids] = bc['temp']['a']
                     bt[ids] = bc['temp']['b']
-                # flow
-                self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
-                # energy
-                if self.thermoporoelacticity:
-                    self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
-                # mechanics
-                for id in ids:
-                    assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
-                    conn = self.conns[self.id_boundary_conns[id]]
-                    n = np.array(conn.n.values, copy=False)
-                    conn_c = np.array(conn.c.values, copy=False)
-                    c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
-                    if n.dot(conn_c - c1) < 0: n *= -1.0
-                    self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+
+            self.init_bc_rhs()
 
             self.cpp_bc = THMBoundaryCondition()
             self.cpp_bc.flow.a = value_vector(ap)
@@ -222,6 +239,8 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
                 self.cpp_heat = BoundaryCondition()
                 self.cpp_heat.a = value_vector(at)
                 self.cpp_heat.b = value_vector(bt)
+        elif self.discretizer_name == 'pm_discretizer':
+            pass
 
 
     def init_pm_discretizer(self):
@@ -273,6 +292,9 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
 
         self.conns = np.array(self.discr_mesh.conns, copy=False)
         self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        self.adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
+        self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
+
         self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
 
     def init_uniform_properties(self):
