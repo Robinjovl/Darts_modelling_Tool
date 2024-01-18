@@ -159,8 +159,9 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             bmn = np.zeros(self.n_bounds)
             amt = np.zeros(self.n_bounds)
             bmt = np.zeros(self.n_bounds)
-            at = np.zeros(self.n_bounds)
-            bt = np.zeros(self.n_bounds)
+            if self.thermoporoelacticity:
+                at = np.zeros(self.n_bounds)
+                bt = np.zeros(self.n_bounds)
             self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
             self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
 
@@ -198,16 +199,18 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.cpp_bc.mech_normal.b = value_vector(bmn)
             self.cpp_bc.mech_tangen.a = value_vector(amt)
             self.cpp_bc.mech_tangen.b = value_vector(bmt)
-            self.cpp_bc.thermal.a = value_vector(at)
-            self.cpp_bc.thermal.b = value_vector(bt)
+            if self.thermoporoelacticity:
+                self.cpp_bc.thermal.a = value_vector(at)
+                self.cpp_bc.thermal.b = value_vector(bt)
             # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
             # which doesn't know the new THMBoundaryCondition class yet
             self.cpp_flow = BoundaryCondition()
             self.cpp_flow.a = value_vector(ap)
             self.cpp_flow.b = value_vector(bp)
-            self.cpp_heat = BoundaryCondition()
-            self.cpp_heat.a = value_vector(at)
-            self.cpp_heat.b = value_vector(bt)
+            if self.thermoporoelacticity:
+                self.cpp_heat = BoundaryCondition()
+                self.cpp_heat.a = value_vector(at)
+                self.cpp_heat.b = value_vector(bt)
 
 
     def init_pm_discretizer(self):
@@ -259,6 +262,7 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
 
         self.conns = np.array(self.discr_mesh.conns, copy=False)
         self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
 
     def init_uniform_properties(self):
         if self.discretizer_name == 'mech_discretizer':
