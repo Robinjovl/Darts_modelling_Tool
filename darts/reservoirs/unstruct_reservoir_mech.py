@@ -64,6 +64,15 @@ def set_domain_tags(matrix_tags,
 
     return domain_tags, bnd_tags
 
+def get_lambda_mu(E, nu):
+    '''
+    :param E: Young modulus
+    :param nu: Poisson ratio
+    :return: lambda and nu coefficitents for Stiffness matrix
+    '''
+    lam = E * nu / (1 + nu) / (1 - 2 * nu)
+    mu = E / 2. / (1 + nu)
+    return lam, mu
 
 class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add_well functions from there
     '''
@@ -300,6 +309,31 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
                 self.biot_mean[9 * cell_id] = self.biot
                 self.biot_mean[9 * cell_id + 4] = self.biot
                 self.biot_mean[9 * cell_id + 8] = self.biot
+
+    def init_heterogeneous_properties(self):
+        '''
+        set matrix poperties using self.props[tag]
+        :return:
+        '''
+        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
+                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
+            tag = self.tags[cell_id]
+            E = self.props[tag]['E']
+            nu = self.props[tag]['nu']
+            biot = self.props[tag]['b']
+            k = self.props[tag]['perm']
+            kd = self.props[tag]['kd']
+            poro = self.props[tag]['poro']
+            lam, mu = get_lambda_mu(E, nu)
+
+            self.discr.perms.append(disc_matrix33(k, k, k))
+            self.discr.biots.append(disc_matrix33(biot))
+            self.discr.stfs.append(disc_stiffness(lam, mu))
+            self.biot_mean[9 * cell_id] = biot
+            self.biot_mean[9 * cell_id + 4] = biot
+            self.biot_mean[9 * cell_id + 8] = biot
+            self.porosity[cell_id] = poro
+            self.kd_cur[cell_id] = kd
 
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))

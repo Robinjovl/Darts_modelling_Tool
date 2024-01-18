@@ -7,7 +7,7 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 import numpy as np
 from math import inf, pi
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.reservoirs.unstruct_reservoir_mech import bound_cond, set_domain_tags, UnstructReservoirMech
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, UnstructReservoirMech
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
@@ -104,8 +104,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.permx = self.permy = self.permz = 10.0 / 9.81
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
@@ -173,8 +172,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.E = 10000  # in bars
         self.nu = 0.25
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
@@ -343,8 +341,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.permx = self.permy = self.permz = 10.0 / 9.81
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
@@ -411,8 +408,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
@@ -599,8 +595,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             k = self.props[cell.prop_id]['perm']
             kd = self.props[cell.prop_id]['kd']
             poro = self.props[cell.prop_id]['poro']
-            lam = E * nu / (1 + nu) / (1 - 2 * nu)
-            mu = E / 2 / (1 + nu)
+            lam, mu = get_lambda_mu(E, nu)
             self.pm.stfs.append(engine_stiffness(lam, mu))
             self.pm.perms.append(engine_matrix33(k, k, k))
             self.pm.biots.append(engine_matrix33(biot))
@@ -728,8 +723,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             k = self.props[cell.prop_id]['perm']
             kd = self.props[cell.prop_id]['kd']
             poro = self.props[cell.prop_id]['poro']
-            lam = E * nu / (1 + nu) / (1 - 2 * nu)
-            mu = E / 2 / (1 + nu)
+            lam, mu = get_lambda_mu(E, nu)
             self.pm.stfs.append(Stiffness(lam, mu))
             self.pm.perms.append(matrix33(k, k, k))
             self.pm.biots.append(matrix33(biot))
@@ -834,26 +828,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.porosity = np.zeros(self.n_matrix)
         self.biot_mean = np.zeros(9 * (self.n_matrix))
 
-        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
-                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            tag = self.tags[cell_id]
-            E = self.props[tag]['E']
-            nu = self.props[tag]['nu']
-            biot = self.props[tag]['b']
-            k = self.props[tag]['perm']
-            kd = self.props[tag]['kd']
-            poro = self.props[tag]['poro']
-            lam = E * nu / (1 + nu) / (1 - 2 * nu)
-            mu = E / 2 / (1 + nu)
-
-            self.discr.perms.append(disc_matrix33(k, k, k))
-            self.discr.biots.append(disc_matrix33(biot))
-            self.discr.stfs.append(disc_stiffness(lam, mu))
-            self.biot_mean[9 * cell_id] = biot
-            self.biot_mean[9 * cell_id + 4] = biot
-            self.biot_mean[9 * cell_id + 8] = biot
-            self.porosity[cell_id] = poro
-            self.kd_cur[cell_id] = kd
+        self.init_heterogeneous_properties()
 
         self.init_arrays_boundary_condition()
 
@@ -891,8 +866,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.permx = self.permy = self.permz = 4.e+6 / 0.9869
         self.E = 0.06 # in bars
         self.nu = 0.4
-        self.lam = self.E * self.nu / (1 + self.nu) / (1 - 2 * self.nu)
-        self.mu = self.E / 2 / (1 + self.nu)
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 1.0
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 0.0
