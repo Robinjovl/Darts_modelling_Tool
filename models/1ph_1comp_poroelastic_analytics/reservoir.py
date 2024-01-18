@@ -123,63 +123,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.init_uniform_properties()
 
-        boundary_range = self.discr_mesh.region_ranges[elem_loc.BOUNDARY]
-        ap = np.zeros(boundary_range[1] - boundary_range[0])
-        bp = np.zeros(boundary_range[1] - boundary_range[0])
-        an = np.zeros(boundary_range[1] - boundary_range[0])
-        bn = np.zeros(boundary_range[1] - boundary_range[0])
-        at = np.zeros(boundary_range[1] - boundary_range[0])
-        bt = np.ones(boundary_range[1] - boundary_range[0])
-        self.bc_rhs = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
-                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
-        self.bc_rhs_prev = np.zeros(self.n_vars * (self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] -
-                                                self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]))
-
-        # mapping boundary connections
-        adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
-        adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
-        id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
-        self.id_boundary_conns = adj_matrix[id_sorted]
-        self.conns = np.array(self.discr_mesh.conns, copy=False)
-        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
-        u_var = 1
-
-        for tag in self.domain_tags[elem_loc.BOUNDARY]:
-            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-            bc = self.boundary_conditions[tag]
-            ap[ids] = bc['flow']['a']
-            bp[ids] = bc['flow']['b']
-            an[ids] = bc['mech']['an']
-            bn[ids] = bc['mech']['bn']
-            at[ids] = bc['mech']['at']
-            bt[ids] = bc['mech']['bt']
-            # flow
-            self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
-            self.bc_rhs_prev[self.n_vars * ids + self.p_var] = bc['flow']['r']
-
-            for id in ids:
-                assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
-                conn = self.conns[self.id_boundary_conns[id]]
-                n = np.array(conn.n.values, copy=False)
-                conn_c = np.array(conn.c.values, copy=False)
-                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
-                if n.dot(conn_c - c1) < 0: n *= -1.0
-                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
-                self.bc_rhs_prev[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
-
-        self.cpp_bc = THMBoundaryCondition()
-        self.cpp_bc.flow.a = value_vector(ap)
-        self.cpp_bc.flow.b = value_vector(bp)
-
-        self.cpp_bc.mech_normal.a = value_vector(an)
-        self.cpp_bc.mech_normal.b = value_vector(bn)
-        self.cpp_bc.mech_tangen.a = value_vector(at)
-        self.cpp_bc.mech_tangen.b = value_vector(bt)
-        # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
-        # which doesn't know the new THMBoundaryCondition class yet
-        self.cpp_flow = BoundaryCondition()
-        self.cpp_flow.a = value_vector(ap)
-        self.cpp_flow.b = value_vector(bp)
+        self.init_arrays_boundary_condition()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -243,26 +187,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
 
-        mech_xm = self.bc_type.ROLLER
-        mech_xp = self.bc_type.FREE
-        mech_ym = self.bc_type.ROLLER
-        mech_yp = self.bc_type.STUCK_ROLLER(0.0)
-        mech_zm = self.bc_type.ROLLER
-        mech_zp = self.bc_type.ROLLER
+        self.set_mandel_boundary_conditions()
 
-        flow_xm = self.bc_type.NO_FLOW
-        flow_xp = self.bc_type.AQUIFER(self.p_init)
-        flow_ym = self.bc_type.NO_FLOW
-        flow_yp = self.bc_type.NO_FLOW
-        flow_zm = self.bc_type.NO_FLOW
-        flow_zp = self.bc_type.NO_FLOW
-
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': flow_xm, 'mech': mech_xm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': flow_xp, 'mech': mech_xp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': flow_ym, 'mech': mech_ym, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': flow_yp, 'mech': mech_yp, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': flow_zm, 'mech': mech_zm, 'cells': []}
-        self.unstr_discr.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': flow_zp, 'mech': mech_zp, 'cells': []}
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 

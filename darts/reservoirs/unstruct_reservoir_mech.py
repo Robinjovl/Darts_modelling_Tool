@@ -173,12 +173,14 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
                 bmn[ids] = bc['mech']['bn']
                 amt[ids] = bc['mech']['at']
                 bmt[ids] = bc['mech']['bt']
-                at[ids] = bc['temp']['a']
-                bt[ids] = bc['temp']['b']
+                if self.thermoporoelacticity:
+                    at[ids] = bc['temp']['a']
+                    bt[ids] = bc['temp']['b']
                 # flow
                 self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
                 # energy
-                self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
+                if self.thermoporoelacticity:
+                    self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
                 # mechanics
                 for id in ids:
                     assert(adj_matrix_cols[id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
