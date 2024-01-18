@@ -64,13 +64,34 @@ def set_domain_tags(matrix_tags,
 
 def get_lambda_mu(E, nu):
     '''
-    :param E: Young modulus
+    :param E: Young modulus [bars]
     :param nu: Poisson ratio
-    :return: lambda and nu coefficitents for Stiffness matrix
+    :return: lambda and mu coefficitents for Stiffness matrix
     '''
     lam = E * nu / (1 + nu) / (1 - 2 * nu)
     mu = E / 2. / (1 + nu)
     return lam, mu
+
+def get_kd_cur(E, nu):
+    kd_cur = E / 3. / (1 - 2 * nu)
+    return kd_cur
+
+def get_M(biot, porosity, kd_cur, fluid_compressibility):
+    if biot == 1. and fluid_compressibility == 0.:
+        M = None
+    else:
+        M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility)
+    return M
+
+class GeoMechInputData():
+    '''
+    Class for input data Poroelasticity/ThermoPoroElasticity coupled model
+    '''
+    def __init__(self):
+        self.porosity = None
+        self.permx = self.permy = self.permz = None  # Permeability [mD]
+        self.E = None   # Young modulus [bars]
+        self.nu = 0.25  # Poisson ratio
 
 class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add_well functions from there
     '''
@@ -159,6 +180,13 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
 
         self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+
+        if hasattr(self, 'E'):  # if uniform geomechanical properties
+            self.kd_cur = get_kd_cur(self.E, self.nu)
+            self.lam, self.mu = get_lambda_mu(self.E, self.nu)
+            self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
+        if self.thermoporoelacticity:
+            self.th_expn = self.th_expn_coef * self.kd_cur  #TODO ?
 
     def init_arrays(self):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)

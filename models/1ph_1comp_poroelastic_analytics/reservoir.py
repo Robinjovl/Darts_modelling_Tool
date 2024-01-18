@@ -7,7 +7,8 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 import numpy as np
 from math import inf, pi
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, UnstructReservoirMech
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_kd_cur, get_M
+from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech, GeoMechInputData
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
@@ -100,17 +101,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
+
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                            self.porosity * self.fluid_compressibility)
 
         self.set_mandel_boundary_conditions()
 
@@ -300,13 +298,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.permx = self.permy = self.permz = 10.0 / 9.81
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                            self.porosity * self.fluid_compressibility)
+
         self.F = -100.0 # bar * m
 
         self.set_terzaghi_boundary_conditions()
@@ -369,7 +364,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.nu = 0.25
         self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
+        self.kd_cur = get_kd_cur(self.E, self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
         self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
@@ -758,15 +753,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.props[self.m2_tag]['nu'] = nu2
         assert(nu2 < 0.5 and nu2 > 0)
 
-        kd1 = self.props[self.m1_tag]['E'] / 3 / (1 - 2 * self.props[self.m1_tag]['nu'])
-        self.props[self.m1_tag]['kd'] = kd1
-        self.props[self.m1_tag]['M'] = 1.0 / ((self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) / kd1 +
-                                        self.props[self.m1_tag]['poro'] * self.fluid_compressibility)
-
-        kd2 = self.props[self.m2_tag]['E'] / 3 / (1 - 2 * self.props[self.m2_tag]['nu'])
-        self.props[self.m2_tag]['kd'] = kd2
-        self.props[self.m2_tag]['M'] = 1.0 / ((self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) * (1 - self.props[self.m2_tag]['b']) / kd2 +
-                                        self.props[self.m2_tag]['poro'] * self.fluid_compressibility)
+        for tag in self.props.keys():
+            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
+            self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], self.fluid_compressibility)
 
         # some numbers for analytics
         for tag, p in self.props.items():
@@ -825,14 +814,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.permx = self.permy = self.permz = 4.e+6 / 0.9869
         self.E = 0.06 # in bars
         self.nu = 0.4
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 1.0
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1.0
         self.F = -1.e-5
         self.th_expn_coef = 9.0 * 1.E-7
-        self.th_expn = self.th_expn_coef * self.kd_cur
         self.th_conductivity = 0.836 * 86400.0 * 1000
         self.th_expn_poro = 0.0
 
