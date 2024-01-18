@@ -249,12 +249,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(self.F / self.a) / 2
 
-    def set_boundary_conditions_pm_discretizer(self):
-        if self.discretizer_name == 'pm_discretizer':
-            self.unstr_discr.boundary_conditions = self.boundary_conditions
-            for key in self.boundary_conditions.keys():
-                self.boundary_conditions[key]['cells'] = []
-
     def set_mandel_boundary_conditions(self, v_north=0.):
         self.boundary_conditions = {}
         self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}

@@ -1,6 +1,4 @@
 import numpy as np
-import os
-import meshio
 
 from darts.engines import conn_mesh, index_vector, value_vector
 from darts.engines import ms_well, ms_well_vector
@@ -106,7 +104,62 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
                 self.cell_property = ['ux', 'uy', 'uz', 'p']
             self.n_vars = 4
             self.n_state = 1
-            
+
+
+    def init_pm_discretizer(self):
+        self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
+        self.unstr_discr.x_new[:, 0] = self.u_init[0]
+        self.unstr_discr.x_new[:, 1] = self.u_init[1]
+        self.unstr_discr.x_new[:, 2] = self.u_init[2]
+        self.unstr_discr.x_new[:, 3] = self.p_init
+        dt = 0.0
+        self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
+        self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                     index_vector(self.ref_contact_cells))
+        self.pm.reconstruct_gradients_per_cell(dt)
+        self.pm.calc_all_fluxes_once(dt)
+
+        self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p,
+                          self.pm.stencil, self.pm.offset,
+                          self.pm.tran, self.pm.rhs,
+                          self.pm.tran_biot, self.pm.rhs_biot,
+                          self.unstr_discr.mat_cells_tot,
+                          self.unstr_discr.bound_cells_tot,
+                          self.unstr_discr.frac_cells_tot)
+        self.unstr_discr.store_volume_all_cells()
+        self.n_fracs = self.unstr_discr.frac_cells_tot
+        self.n_matrix = self.unstr_discr.mat_cells_tot
+        self.n_bounds = self.unstr_discr.bound_cells_tot
+
+    def init_mech_discretizer(self):
+        self.discr_mesh = Mesh()
+        self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
+
+        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
+        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
+        if self.thermoporoelacticity:
+            self.discr = thermoporo_mech_discretizer()
+        else:
+            self.discr = poro_mech_discretizer()
+        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
+        self.tags = np.array(self.discr_mesh.tags, copy=False)
+        self.discr.set_mesh(self.discr_mesh)
+        self.discr.init()
+
+        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
+        self.n_fracs =  self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
+        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
+                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+
+        self.conns = np.array(self.discr_mesh.conns, copy=False)
+        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        self.adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
+        self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
+
+        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+
     def init_arrays(self):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.poro = np.array(self.mesh.poro, copy=False)
@@ -242,60 +295,11 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         elif self.discretizer_name == 'pm_discretizer':
             pass
 
-
-    def init_pm_discretizer(self):
-        self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
-        self.unstr_discr.x_new[:, 0] = self.u_init[0]
-        self.unstr_discr.x_new[:, 1] = self.u_init[1]
-        self.unstr_discr.x_new[:, 2] = self.u_init[2]
-        self.unstr_discr.x_new[:, 3] = self.p_init
-        dt = 0.0
-        self.pm.x_prev = value_vector(np.concatenate((self.unstr_discr.x_new.flatten(), self.bc_rhs_prev)))
-        self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                     index_vector(self.ref_contact_cells))
-        self.pm.reconstruct_gradients_per_cell(dt)
-        self.pm.calc_all_fluxes_once(dt)
-
-        self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p,
-                          self.pm.stencil, self.pm.offset,
-                          self.pm.tran, self.pm.rhs,
-                          self.pm.tran_biot, self.pm.rhs_biot,
-                          self.unstr_discr.mat_cells_tot,
-                          self.unstr_discr.bound_cells_tot,
-                          self.unstr_discr.frac_cells_tot)
-        self.unstr_discr.store_volume_all_cells()
-        self.n_fracs = self.unstr_discr.frac_cells_tot
-        self.n_matrix = self.unstr_discr.mat_cells_tot
-        self.n_bounds = self.unstr_discr.bound_cells_tot
-
-    def init_mech_discretizer(self):
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
-
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
-        if self.thermoporoelacticity:
-            self.discr = thermoporo_mech_discretizer()
-        else:
-            self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs =  self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-
-        self.conns = np.array(self.discr_mesh.conns, copy=False)
-        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
-        self.adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
-        self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
-
-        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+    def set_boundary_conditions_pm_discretizer(self):
+        if self.discretizer_name == 'pm_discretizer':
+            self.unstr_discr.boundary_conditions = self.boundary_conditions
+            for key in self.boundary_conditions.keys():
+                self.boundary_conditions[key]['cells'] = []
 
     def init_uniform_properties(self):
         if self.discretizer_name == 'mech_discretizer':
