@@ -118,15 +118,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.fluid_viscosity = 1.0
 
         self.set_mandel_boundary_conditions()
-
         self.init_mech_discretizer()
-
         self.F = -100.0 * self.a # bar * m  #TODO
-
-        self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)  #TODO
-
         self.init_uniform_properties()
-
         self.init_arrays_boundary_condition()
 
         # Discretization
@@ -169,8 +163,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                        self.porosity * self.fluid_compressibility)
+        self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
 
         self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -283,17 +276,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.biot = 0.9
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-
         self.F = -100.0 # bar * m
 
         self.set_terzaghi_boundary_conditions()
-
         self.init_mech_discretizer()
-
-        self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
-
         self.init_uniform_properties()
-
         self.init_arrays_boundary_condition()
 
         # Discretization
@@ -333,20 +320,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.E = 10000 # in bars
         self.nu = 0.25
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
         self.biot = 0.9
         self.kd_cur = get_kd_cur(self.E, self.nu)
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-        self.M = 1.0 / ((self.biot - self.porosity) * (1 - self.biot) / self.kd_cur +
-                            self.porosity * self.fluid_compressibility)
+        self.F = -100.0 # bar * m
+        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
+        self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
 
         self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
-
-        self.F = -100.0 # bar * m
 
         self.set_terzaghi_boundary_conditions()
         self.unstr_discr.load_mesh_with_bounds()
@@ -687,6 +672,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
                             self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
+        #TODO ?
         x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
              self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
         nu2 = (1 - x) / (1 + x)
@@ -709,15 +695,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
 
         self.set_terzaghi_boundary_conditions()
-
         self.init_mech_discretizer()
-
-        self.kd_cur = np.zeros(self.n_matrix)
-        self.porosity = np.zeros(self.n_matrix)
-        self.biot_mean = np.zeros(9 * (self.n_matrix))
-
         self.init_heterogeneous_properties()
-
         self.init_arrays_boundary_condition()
 
         # Discretization
@@ -756,11 +735,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.th_expn_poro = 0.0
 
         self.set_bai_boundary_conditions()
-
         self.init_mech_discretizer()
-
         self.init_uniform_properties()
-
         self.init_arrays_boundary_condition()
 
         # Discretization

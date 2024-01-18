@@ -179,14 +179,19 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         self.adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
         self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
 
-        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
-
         if hasattr(self, 'E'):  # if uniform geomechanical properties
             self.kd_cur = get_kd_cur(self.E, self.nu)
             self.lam, self.mu = get_lambda_mu(self.E, self.nu)
             self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
         if self.thermoporoelacticity:
             self.th_expn = self.th_expn_coef * self.kd_cur  #TODO ?
+
+        self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+        self.kd_cur = np.zeros(self.n_matrix) #TODO ?
+        if not hasattr(self, 'porosity'):
+            self.porosity = 0.
+        self.porosity = self.porosity + np.zeros(self.n_matrix + self.n_fracs)
+        self.biot_mean = np.zeros(9 * (self.n_matrix))
 
     def init_arrays(self):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
