@@ -156,8 +156,8 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
 
-        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])
-        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])
+        self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])  # max value of X coordinate
+        self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])  # max value of Y coordinate
         if self.thermoporoelacticity:
             self.discr = thermoporo_mech_discretizer()
         else:
