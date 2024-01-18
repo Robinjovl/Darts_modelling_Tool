@@ -317,10 +317,10 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
         if self.discretizer_name == 'mech_discretizer':
-            if self.thermoelasticity:
-                self.mesh.reverse_and_sort_pme_mech_discretizer()
-            else:
+            if self.n_vars == 4:
                 self.mesh.reverse_and_sort_pm_mech_discretizer()
+            elif self.n_vars == 5:
+                self.mesh.reverse_and_sort_pme_mech_discretizer()
         elif self.discretizer_name == 'pm_discretizer':
             self.mesh.reverse_and_sort_pm()
         #self.mesh.init_grav_coef()
