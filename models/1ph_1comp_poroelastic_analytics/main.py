@@ -50,7 +50,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             m.reservoir.update(dt=dt, time=new_time)
             # evaluate and assign transient boundaries or sources / sinks
             if m.case == 'mandel':
-                m.reservoir.update_mandel_boundary(dt=dt, time=new_time, physics=m.physics)
+                m.reservoir.update_mandel_boundary(time=new_time)
             # update transient boundaries or sources / sinks
             m.reservoir.update_trans(dt, m.engine.X)
             m.timer.node["update"].stop()
