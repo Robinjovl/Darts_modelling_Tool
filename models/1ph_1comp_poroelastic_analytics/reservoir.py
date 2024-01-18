@@ -87,17 +87,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.wells = []
 
+    def get_mesh_filename(self, mesh='rect', suffix = ''):
+        if mesh == 'rect':
+            mesh_filename = 'meshes/transfinite'
+        elif mesh == 'wedge':
+            mesh_filename = 'meshes/wedge'
+        elif mesh == 'hex':
+            mesh_filename = 'meshes/hexahedron'
+        return mesh_filename + suffix + '.msh'
     # Mandel
     def mandel_north_dirichlet_mech_discretizer(self, mesh='rect'):
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
-        self.mesh_filename = mesh_file
+        self.mesh_filename = self.get_mesh_filename()
 
-        self.mesh_data = meshio.read(mesh_file)
+        self.mesh_data = meshio.read(self.mesh_filename)
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -145,15 +147,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.p_init = 0.0
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
-        self.mesh_filename = mesh_file
+        self.mesh_filename = self.get_mesh_filename()
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
-                                               mesh_file=mesh_file)
+                                               mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
         self.unstr_discr.mu = 3.2
@@ -282,15 +278,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     # Terzaghi
     def terzaghi_mech_discretizer(self, mesh='rect'):
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
-        self.mesh_filename = mesh_file
-
-        self.mesh_data = meshio.read(mesh_file)
+        self.mesh_filename = self.get_mesh_filename()
+        self.mesh_data = meshio.read(self.mesh_filename)
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
@@ -337,15 +326,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.p_init = 0.0
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron.msh'
-        self.mesh_filename = mesh_file
+
+        self.mesh_filename = self.get_mesh_filename(mesh)
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
-                                               mesh_file=mesh_file)
+                                               mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
         self.unstr_discr.mu = 3.2
@@ -443,13 +427,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def terzaghi_two_layers_pm_discretizer(self, mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite_two_layers.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge_two_layers.msh'
-        self.mesh_filename = mesh_file
+        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
-                                               mesh_file=mesh_file)
+                                               mesh_file=self.mesh_filename)
 
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
@@ -597,13 +577,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def terzaghi_two_layers_no_analytics_pm_discretizer(self, mesh='rect'):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite_two_layers.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge_two_layers.msh'
-        self.mesh_filename = mesh_file
+        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
-                                               mesh_file=mesh_file)
+                                               mesh_file=self.mesh_filename)
 
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
@@ -722,13 +698,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = 1.0
         self.pD = 1.0
     def terzaghi_two_layers_mech_discretizer(self, mesh='rect'):
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite_two_layers.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge_two_layers.msh'
-        self.mesh_filename = mesh_file
-
-        self.mesh_data = meshio.read(mesh_file)
+        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
+        self.mesh_data = meshio.read(self.mesh_filename)
 
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -795,21 +766,17 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, mesh='rect'):
-        if mesh == 'rect':
-            mesh_file = 'meshes/transfinite_bai.msh'
-        elif mesh == 'wedge':
-            mesh_file = 'meshes/wedge_bai.msh'
-        elif mesh == 'hex':
-            mesh_file = 'meshes/hexahedron_bai.msh'
-        self.mesh_filename = mesh_file
+        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_bai')
+        self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.mesh_data = meshio.read(mesh_file)
+        self.set_uniform_initial_conditions()
 
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init = 0.0
         self.t_init = 0.0#273.15
         self.t_top = self.t_init + 50
         self.p_top = self.p_init
+
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 4.e+6 / 0.9869
         self.E = 0.06 # in bars
