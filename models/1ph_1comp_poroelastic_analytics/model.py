@@ -34,11 +34,11 @@ class Model(DartsModel):
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
+            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr
+            ls1.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
             ls1.tolerance_linear = 1.e-12
             ls1.max_i_linear = 500
             self.engine.ls_params.append(ls1)

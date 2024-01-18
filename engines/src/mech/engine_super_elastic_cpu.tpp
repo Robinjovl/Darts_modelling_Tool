@@ -308,30 +308,33 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
-	for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
-		Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
-
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
-		X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
-		}
-		for (uint8_t d = 0; d < ND; d++)
-		{
-			X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
-		}
+	  // reference
+	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
+	  // initial
+	  X_init[n_vars * i + P_VAR] = mesh->pressure[i];
+	  for (uint8_t c = 0; c < nc - 1; c++)
+	  {
+		  X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
+	  }
+	  for (uint8_t d = 0; d < ND; d++)
+	  {
+		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
+	  }
 
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	  PV[i] = mesh->volume[i] * mesh->poro[i];
+	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
 	if (THERMAL)
 	{
-		for (index_t i = 0; i < mesh_->n_blocks; i++)
-		{
-			X_init[N_VARS * i + T_VAR] = mesh->temperature[i];
-		}
+	  for (index_t i = 0; i < mesh_->n_blocks; i++)
+	  {
+		// reference
+		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
+		// initial
+		X_init[n_vars * i + T_VAR] = mesh->temperature[i];
+	  }
 	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
@@ -543,10 +546,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   const value_t *kd = mesh->drained_compressibility.data();
   const value_t *biot = mesh->biot.data();
   const value_t *poro = mesh->poro.data();
-  const value_t *p_ref = mesh->ref_pressure.data();
-  value_t *t_ref = mesh->ref_temperature.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
   const value_t *hcap = mesh->heat_capacity.data();
+  const value_t *th_poro = mesh->th_poro.data();
   // Jacobian as a BCSR matrix
   value_t *Jac = jacobian->get_values();
   index_t *diag_ind = jacobian->get_diag_ind();
@@ -587,7 +589,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
 	  csr_idx_start, csr_idx_end;
   index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5;
-  value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
+  value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, *n;
   uint8_t d, v, c, p;
   value_t gamma_p_diff, p_diff, phase_p_diff[NP], t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
   value_t CFL_in[NC], CFL_out[NC], darcy_component_fluxes[NE];
@@ -761,7 +763,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  {
 			  if (stencil[conn_st_id] == cols[st_id])
 			  {
-				  p_ref_cur = p_ref[stencil[conn_st_id]];
 				  //// momentum fluxes
 				  l_ind = ND * conn_id;
 				  r_ind = stencil[conn_st_id] * N_VARS;
@@ -976,7 +977,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  }
 		  // [?] extra loop for gravity in biot for flux
 		  // [6] (saturation ??? ) thermal expansion & fluid gravity for momentum balance
-		  // [7] add heat conduction
+		  // [7] add fluid heat conduction
 		  /*if (THERMAL)
 		  {
 			  t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
@@ -1057,15 +1058,17 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  //	RHS[i * N_VARS + P_VAR + c] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
 		  if (!geomechanics_mode[i])
 		  {
-			  biot_cur = (biot[i * ND * ND] + biot[i * ND * ND + ND + 1] + biot[i * ND * ND + 2 * ND + 2]) / 3.0; // one-third of the Biot tensor trace
-			  comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
-			  phi += comp_mult * (X[i * N_VARS + P_VAR] - p_ref[i]) - eps_vol_ref[i];
-			  phi_n += comp_mult * (Xn[i * N_VARS + P_VAR] - p_ref[i]) - eps_vol_ref[i];
-			  /*if (THERMAL)
-			  {
-				  phi -= th_poro[i] * (X[i * N_VARS + T_VAR] - t_ref[i]);
-				  phi_n -= th_poro[i] * (Xn[i * N_VARS + T_VAR] - t_ref[i]);
-			  }*/
+			r_ind = i * N_VARS;
+			r_ind1 = i * ND * ND;
+			biot_cur = (biot[r_ind1] + biot[r_ind1 + ND + 1] + biot[r_ind1 + 2 * ND + 2]) / 3.0; // one-third of the Biot tensor trace
+			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			phi += comp_mult * (X[r_ind + P_VAR] - Xref[r_ind + P_VAR]) - eps_vol_ref[i];
+			phi_n += comp_mult * (Xn[r_ind + P_VAR] - Xn_ref[r_ind + P_VAR]) - eps_vol_ref[i];
+			if (THERMAL)
+			{
+				phi -= th_poro[i] * (X[r_ind + T_VAR] - Xref[r_ind + T_VAR]);
+				phi_n -= th_poro[i] * (Xn[r_ind + T_VAR] - Xn_ref[r_ind + T_VAR]);
+			}
 		  }
 		  else
 		  {

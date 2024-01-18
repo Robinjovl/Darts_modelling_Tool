@@ -121,6 +121,11 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
         self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
+        if self.thermoporoelacticity:
+            self.t_ref = np.array(self.mesh.ref_temperature, copy=False)
+            self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
+
+        # specify properties
         self.poro[:self.n_matrix] = self.porosity
         self.poro[self.n_matrix:] = 1  # fractures
 
@@ -129,17 +134,15 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.volume[:self.n_matrix] = volumes[:self.n_matrix]
             self.bc_prev[:] = self.bc_rhs_prev
             self.bc[:] = self.bc_rhs
-            # self.biot_arr[:] = np.tile([0,0,0,
-            #                             0,0,0,
-            #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
+            self.p_ref[:] = self.p_init
             self.pz_bounds[self.p_var::self.n_state] = self.p_init
             if self.thermoporoelacticity:
+                self.t_ref[:] = self.t_init
                 self.pz_bounds[self.t_var::self.n_state] = self.t_init
-            # self.pz_bounds[:] = self.pz_bounds
-            # self.p_ref[:] = self.p_ref
-            # self.f[:] = self.f
+                self.th_expn_poro_arr[:] = self.th_expn_poro
+
         elif self.discretizer_name == 'pm_discretizer':
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
             for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
@@ -147,9 +150,6 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.bc_prev[:] = self.bc_rhs_prev
             self.bc[:] = self.bc_rhs
             self.bc_ref[:] = self.bc_rhs_ref
-            # self.biot_arr[:] = np.tile([0,0,0,
-            #                             0,0,0,
-            #                             0,0,0], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
             self.pz_bounds[:] = self.unstr_discr.pz_bounds

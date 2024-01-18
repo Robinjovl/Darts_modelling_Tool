@@ -840,6 +840,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.th_expn_coef = 9.0 * 1.E-7
         self.th_expn = self.th_expn_coef * self.kd_cur
         self.th_conductivity = 0.836 * 86400.0 * 1000
+        self.th_expn_poro = 0.0
 
         self.set_bai_boundary_conditions()
 

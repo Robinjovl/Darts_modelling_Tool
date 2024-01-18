@@ -600,8 +600,8 @@ conn_mesh::init_pm_mech_discretizer(
   poro.resize(n_blocks);
   volume.resize(n_blocks);
   pressure.resize(n_blocks);
-  ref_pressure.resize(n_blocks);
-  ref_eps_vol.resize(n_matrix);
+  ref_pressure.resize(n_blocks, 0.0);
+  ref_eps_vol.resize(n_matrix, 0.0);
   composition.resize(n_blocks);
   temperature.resize(n_blocks);
   enthalpy.resize(n_blocks);
@@ -727,8 +727,9 @@ conn_mesh::init_pme_mech_discretizer(
   poro.resize(n_blocks);
   volume.resize(n_blocks);
   pressure.resize(n_blocks);
-  ref_pressure.resize(n_blocks);
-  ref_eps_vol.resize(n_matrix);
+  ref_pressure.resize(n_blocks, 0.0);
+  ref_temperature.resize(n_blocks, 0.0);
+  ref_eps_vol.resize(n_matrix, 0.0);
   composition.resize(n_blocks);
   temperature.resize(n_blocks);
   enthalpy.resize(n_blocks);
@@ -738,6 +739,7 @@ conn_mesh::init_pme_mech_discretizer(
   heat_capacity.assign(n_blocks, 0);
   rock_cond.assign(n_blocks, 0);
   biot.resize(9 * n_blocks);
+  th_poro.resize(n_blocks);
   drained_compressibility.resize(n_blocks);
   bc.resize(n_vars * n_bounds);
   bc_n.resize(n_vars * n_bounds);
