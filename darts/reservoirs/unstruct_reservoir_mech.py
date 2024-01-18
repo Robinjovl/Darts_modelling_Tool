@@ -77,7 +77,7 @@ def get_kd_cur(E, nu):
     return kd_cur
 
 def get_M(biot, porosity, kd_cur, fluid_compressibility):
-    if biot == 1. and fluid_compressibility == 0.:
+    if biot == 1. and fluid_compressibility == 0.:  # avoid divizion by zero
         M = None
     else:
         M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility)
@@ -388,6 +388,12 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.biot_mean[9 * cell_id + 8] = biot
             self.porosity[cell_id] = poro
             self.kd_cur[cell_id] = kd
+
+    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
+        self.u_init = u_init # initial displacements U_x, U_y, U_z [m.]
+        self.p_init = p_init  # initial pressure [bars]
+        if self.thermoporoelacticity:
+            self.t_init = t_init  # initial temperature [degrees]
 
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))

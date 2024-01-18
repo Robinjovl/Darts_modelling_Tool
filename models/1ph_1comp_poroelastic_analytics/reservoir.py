@@ -97,12 +97,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         return mesh_filename + suffix + '.msh'
     # Mandel
     def mandel_north_dirichlet_mech_discretizer(self, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename()
-
+        self.mesh_filename = self.get_mesh_filename(mesh)
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
 
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
@@ -143,11 +141,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
     def mandel_north_dirichlet_pm_discretizer(self, mesh='rect'):
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
-        self.mesh_filename = self.get_mesh_filename()
+        self.mesh_filename = self.get_mesh_filename(mesh)
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
                                                mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
@@ -278,11 +275,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     # Terzaghi
     def terzaghi_mech_discretizer(self, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename()
+        self.mesh_filename = self.get_mesh_filename(mesh)
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
+
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
         self.E = 10000 # in bars
@@ -322,8 +319,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
     def terzaghi_pm_discretizer(self, mesh='rect'):
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
         self.porosity = 0.375
         self.permx = self.permy = self.permz = 10.0 / 9.81
 
@@ -425,8 +421,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = np.fabs(self.F)
     # Two-layer Terzaghi
     def terzaghi_two_layers_pm_discretizer(self, mesh='rect'):
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
@@ -575,8 +570,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = 1.0
         self.pD = 1.0
     def terzaghi_two_layers_no_analytics_pm_discretizer(self, mesh='rect'):
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
@@ -710,8 +704,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                                                             bnd_ym_tag=993, bnd_yp_tag=994,
                                                             bnd_zm_tag=995, bnd_zp_tag=996)
 
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
+        self.set_uniform_initial_conditions()
         self.fluid_compressibility = 1.e-10
         self.fluid_viscosity = 1.0
         self.F = -100.0 # bar * m
@@ -771,9 +764,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_uniform_initial_conditions()
 
-        self.u_init = [0.0, 0.0, 0.0]
-        self.p_init = 0.0
-        self.t_init = 0.0#273.15
         self.t_top = self.t_init + 50
         self.p_top = self.p_init
 
