@@ -117,10 +117,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.biot = 0.9
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
+        # mandel case has a specific setting of the mechanical boundary condition, see update_mandel_boundary()
+        self.F = -100.0 * self.a  # vertical load [bar * m]
 
         self.set_mandel_boundary_conditions()
         self.init_mech_discretizer()
-        self.F = -100.0 * self.a # bar * m  #TODO
         self.init_uniform_properties()
         self.init_arrays_boundary_condition()
 
@@ -219,7 +220,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']  #TODO use init_bc_rhs
             self.bc_rhs[4 * bound_id + 3] = flow['r']
-            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])  # prev can be not inited if bnd cond doesn't change
             self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
@@ -259,6 +260,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
 
     def update_mandel_boundary(self, time):
+        '''
+        time-dependent boundary condition from the analytic solution
+        :param time: time in days
+        '''
         v_north = self.get_vertical_displacement_north_mandel(time)
         self.set_mandel_boundary_conditions(v_north)
         self.init_bc_rhs()
@@ -281,7 +286,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()
-        self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
         self.init_uniform_properties()
         self.init_arrays_boundary_condition()
 
@@ -674,7 +678,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
                             self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
-        #TODO ?
+
         x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
              self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
         nu2 = (1 - x) / (1 + x)
@@ -699,7 +703,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()
         self.kd_cur = np.zeros(self.n_matrix)
-        self.porosity = np.zeros(self.n_matrix)  #TODO
+        self.porosity = np.zeros(self.n_matrix)  #TODO: allocate in init_mech_discretizer?
         self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()

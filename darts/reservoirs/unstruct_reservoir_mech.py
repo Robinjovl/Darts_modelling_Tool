@@ -95,7 +95,10 @@ class GeoMechInputData():
         self.E = None   # Young modulus [bars]
         self.nu = 0.25  # Poisson ratio
 
-class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add_well functions from there
+class UnstructReservoirMech(): 
+    #TODO: inherit from UnstructReservoirBase to have add_well functions from there
+    #TODO: create a py wrapper reservoir class UnstructReservoirCPP for C++ discretizer (flow only, MPFA)
+    #TODO: crate an abstract  class UnstructReservoirBase for existing Python class and UnstructReservoirCPP
     '''
     Class for Poroelasticity/ThermoPoroElasticity coupled model
     '''
@@ -186,10 +189,14 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.lam, self.mu = get_lambda_mu(self.E, self.nu)
             self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
         if self.thermoporoelacticity:
-            self.th_expn = self.th_expn_coef * self.kd_cur  #TODO ?
+            self.th_expn = self.th_expn_coef * self.kd_cur
 
         self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
-        #self.kd_cur = np.zeros(self.n_matrix) #TODO ?
+
+        #TODO: instead of biot and kd, calc compressibility in python and pass this to engines
+        # comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+
+        #self.kd_cur = np.zeros(self.n_matrix) # corresponds to drained_compressibility in conn_mesh
         #if not hasattr(self, 'porosity'):
         #    self.porosity = 0.
         #self.porosity = self.porosity + np.zeros(self.n_matrix + self.n_fracs)
@@ -396,8 +403,8 @@ class UnstructReservoirMech(): #TODO: inherit from UnstructReservoir to have add
             self.porosity[cell_id] = poro
             self.kd_cur[cell_id] = kd
 
-    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
-        self.u_init = u_init # initial displacements U_x, U_y, U_z [m.]
+    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):
+        self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
         self.p_init = p_init  # initial pressure [bars]
         if self.thermoporoelacticity:
             self.t_init = t_init  # initial temperature [degrees]
