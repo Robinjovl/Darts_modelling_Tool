@@ -117,11 +117,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.biot = 0.9
         self.fluid_compressibility = 1.e-5
         self.fluid_viscosity = 1.0
-        # mandel case has a specific setting of the mechanical boundary condition, see update_mandel_boundary()
-        self.F = -100.0 * self.a  # vertical load [bar * m]
 
         self.set_mandel_boundary_conditions()
         self.init_mech_discretizer()
+        # mandel case has a specific setting of the mechanical boundary condition, see update_mandel_boundary()
+        self.F = -100.0 * self.a  # vertical load [bar * m]
         self.init_uniform_properties()
         self.init_arrays_boundary_condition()
 
@@ -196,6 +196,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.pm.visc = 1  # 9.81e-2
 
+        self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties()
 
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
@@ -358,6 +359,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
         self.pm.visc = 1#9.81e-2
 
+        self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties()
 
         self.n_fracs = self.unstr_discr.frac_cells_tot
@@ -592,37 +594,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
-        self.kd_cur = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-        self.porosity = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
-        self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-        for cell_id in range(self.unstr_discr.mat_cells_tot):
-            faces = self.unstr_discr.faces[cell_id]
-            fs = face_vector()
-            for face_id in range(len(faces)):
-                face = faces[face_id]
-                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
-            self.pm.faces.append(fs)
 
-            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
-            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-
-            E = self.props[cell.prop_id]['E']
-            nu = self.props[cell.prop_id]['nu']
-            biot = self.props[cell.prop_id]['b']
-            k = self.props[cell.prop_id]['perm']
-            kd = self.props[cell.prop_id]['kd']
-            poro = self.props[cell.prop_id]['poro']
-            lam, mu = get_lambda_mu(E, nu)
-            self.pm.stfs.append(Stiffness(lam, mu))
-            self.pm.perms.append(matrix33(k, k, k))
-            self.pm.biots.append(matrix33(biot))
-            self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
-            self.biot_mean[9 * cell_id] = biot
-            self.biot_mean[9 * cell_id + 4] = biot
-            self.biot_mean[9 * cell_id + 8] = biot
-            self.porosity[cell_id] = poro
+        self.init_faces_centers_pm_discretizer()
+        self.init_heterogeneous_properties()
 
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))

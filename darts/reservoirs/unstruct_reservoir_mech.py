@@ -360,15 +360,6 @@ class UnstructReservoirMech():
         elif self.discretizer_name == 'pm_discretizer':
             self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
             for cell_id in range(self.unstr_discr.mat_cells_tot):
-                faces = self.unstr_discr.faces[cell_id]
-                fs = face_vector()
-                for face_id in range(len(faces)):
-                    face = faces[face_id]
-                    fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                   face.face_id1, face.face_id2,
-                                   face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
-                self.pm.faces.append(fs)
-
                 cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
                 self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
@@ -383,25 +374,47 @@ class UnstructReservoirMech():
         set matrix poperties using self.props[tag]
         :return:
         '''
-        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
-                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            tag = self.tags[cell_id]
-            E = self.props[tag]['E']
-            nu = self.props[tag]['nu']
-            biot = self.props[tag]['b']
-            k = self.props[tag]['perm']
-            kd = self.props[tag]['kd']
-            poro = self.props[tag]['poro']
-            lam, mu = get_lambda_mu(E, nu)
+        if self.discretizer_name == 'mech_discretizer':
+            self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
+            for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
+                                              self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
+                tag = self.tags[cell_id]
+                E = self.props[tag]['E']
+                nu = self.props[tag]['nu']
+                biot = self.props[tag]['b']
+                k = self.props[tag]['perm']
+                kd = self.props[tag]['kd']
+                poro = self.props[tag]['poro']
+                lam, mu = get_lambda_mu(E, nu)
 
-            self.discr.perms.append(disc_matrix33(k, k, k))
-            self.discr.biots.append(disc_matrix33(biot))
-            self.discr.stfs.append(disc_stiffness(lam, mu))
-            self.biot_mean[9 * cell_id] = biot
-            self.biot_mean[9 * cell_id + 4] = biot
-            self.biot_mean[9 * cell_id + 8] = biot
-            self.porosity[cell_id] = poro
-            self.kd_cur[cell_id] = kd
+                self.discr.perms.append(disc_matrix33(k, k, k))
+                self.discr.biots.append(disc_matrix33(biot))
+                self.discr.stfs.append(disc_stiffness(lam, mu))
+                self.biot_mean[9 * cell_id] = biot
+                self.biot_mean[9 * cell_id + 4] = biot
+                self.biot_mean[9 * cell_id + 8] = biot
+                self.porosity[cell_id] = poro
+                self.kd_cur[cell_id] = kd
+        elif self.discretizer_name == 'pm_discretizer':
+            self.kd_cur = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
+            self.porosity = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
+            self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+            for cell_id in range(self.unstr_discr.mat_cells_tot):
+                E = self.props[cell.prop_id]['E']
+                nu = self.props[cell.prop_id]['nu']
+                biot = self.props[cell.prop_id]['b']
+                k = self.props[cell.prop_id]['perm']
+                kd = self.props[cell.prop_id]['kd']
+                poro = self.props[cell.prop_id]['poro']
+                lam, mu = get_lambda_mu(E, nu)
+                self.pm.stfs.append(Stiffness(lam, mu))
+                self.pm.perms.append(matrix33(k, k, k))
+                self.pm.biots.append(matrix33(biot))
+                self.kd_cur[cell_id] = kd  # (biot - self.porosity) * (1 - biot) * kd
+                self.biot_mean[9 * cell_id] = biot
+                self.biot_mean[9 * cell_id + 4] = biot
+                self.biot_mean[9 * cell_id + 8] = biot
+                self.porosity[cell_id] = poro
 
     def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):
         self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
@@ -453,6 +466,20 @@ class UnstructReservoirMech():
                 n = face.n
                 if np.inner(t_face, n) < 0: n = -n
                 return n
+
+    def init_faces_centers_pm_discretizer(self):
+        assert self.discretizer_name == 'pm_discretizer'
+        for cell_id in range(self.unstr_discr.mat_cells_tot):
+            faces = self.unstr_discr.faces[cell_id]
+            fs = face_vector()
+            for face_id in range(len(faces)):
+                face = faces[face_id]
+                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
+                               face.face_id1, face.face_id2,
+                               face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
+            self.pm.faces.append(fs)
+            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
+            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
     def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
         assert self.discretizer_name == 'pm_discretizer'
