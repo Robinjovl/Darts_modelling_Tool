@@ -249,12 +249,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
         self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
         self.set_boundary_conditions_pm_discretizer()
-    def set_bai_boundary_conditions(self):
+    def set_bai_boundary_conditions(self, p_top, t_top):
         self.boundary_conditions = {}
         self.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
         self.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
         self.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
-        self.boundary_conditions[994] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': self.bc_type.AQUIFER(self.t_top) }
+        self.boundary_conditions[994] = {'flow': self.bc_type.AQUIFER(p_top),        'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),  'temp': self.bc_type.AQUIFER(t_top) }
         self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
         self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
 
@@ -699,7 +699,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()
         self.kd_cur = np.zeros(self.n_matrix)
-        self.porosity = np.zeros(self.n_matrix)
+        self.porosity = np.zeros(self.n_matrix)  #TODO
         self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
@@ -724,9 +724,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_uniform_initial_conditions()
 
-        self.t_top = self.t_init + 50
-        self.p_top = self.p_init
-
         self.porosity = 0.2
         self.permx = self.permy = self.permz = 4.e+6 / 0.9869
         self.E = 0.06 # in bars
@@ -739,7 +736,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.th_conductivity = 0.836 * 86400.0 * 1000
         self.th_expn_poro = 0.0
 
-        self.set_bai_boundary_conditions()
+        self.set_bai_boundary_conditions(p_top = self.p_init, t_top = self.t_init + 50)
         self.init_mech_discretizer()
         self.init_uniform_properties()
         self.init_arrays_boundary_condition()
@@ -754,8 +751,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     # Mandel analytics
-    def get_vertical_displacement_north_mandel(self, t):
-        # Parameters
+    def get_params_analytic(self):
         F = np.fabs(self.F)
         K_s = self.lam + 2 * self.mu / 3
         skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
@@ -766,11 +762,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         k_s = self.permx / self.fluid_viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
 
-        # Calculate constants
-        aa_n = self.approximate_roots()[:, np.newaxis]
-
         cy0 = (-F * (1 - nu_s)) / (2 * mu_s * self.a)
         cy1 = F * (1 - nu_u) / (mu_s * self.a)
+        return c_f, cy0, cy1, skempton, nu_u, nu_s, k_s
+
+    def get_vertical_displacement_north_mandel(self, t):
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+
+        # Calculate constants
+        aa_n = self.approximate_roots()[:, np.newaxis]
 
         # Calculate exact north boundary condition
         uy_sum = np.sum(
@@ -785,11 +785,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         """
         f(x) = tan(x) - ((1-nu)/(nu_u-nu)) x
         """
-        # Parameters
-        K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
         # Function f(x)
         def f(x):
             y = np.tan(x) - ((1 - nu_s) / (nu_u - nu_s)) * x
@@ -815,14 +811,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         """
         # Parameters
         F = np.fabs(self.F)
-        K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
-        mu_s = self.mu
-        mu_f = self.fluid_viscosity
-        k_s = self.permx / self.fluid_viscosity
-        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
 
         if t == 0.0:  # initial condition has its own expression
             p = ((F * skempton * (1 + nu_u)) / (3 * self.a)) * np.ones(xc.size)
@@ -854,15 +843,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # Retrieve physical data
         F = np.fabs(self.F)
-        K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
-        mu_s = self.mu
-        mu_f = self.fluid_viscosity
-        k_s = self.permx / self.fluid_viscosity
-        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
-
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
         # -----> Compute exact fluid pressure
 
         if t == 0.0:  # initial condition has its own expression
@@ -915,14 +896,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         return p
     def terzaghi_exact_pressure(self, t, xc) -> np.ndarray:
         # Parameters
-        K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
-        mu_s = self.mu
-        k_s = self.permx / self.fluid_viscosity
-        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * (1 - nu_u) * (nu_u - nu_s) )
-
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD
@@ -949,14 +923,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             Exact pressure for the given time `t`.
         """
         # Retrieve physical data
-        K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
-        mu_s = self.mu
-        k_s = self.permx / self.fluid_viscosity
-        c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * (1 - nu_u) * (nu_u - nu_s) )
-
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD

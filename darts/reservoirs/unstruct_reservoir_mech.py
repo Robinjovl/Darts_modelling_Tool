@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import meshio
 
 from darts.engines import conn_mesh, index_vector, value_vector
 from darts.engines import ms_well, ms_well_vector
