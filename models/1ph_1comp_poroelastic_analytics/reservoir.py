@@ -55,6 +55,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(mesh)
 
+        # allocate arrays in C++ (conn_mesh)
         if discretizer == 'mech_discretizer':
             if case == 'bai':
                 self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
@@ -216,7 +217,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             # else:
             bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
             self.pm.bc.append(matrix(bc, len(bc), 1))
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']  #TODO use init_bc_rhs
             self.bc_rhs[4 * bound_id + 3] = flow['r']
             self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
             self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
@@ -280,6 +281,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()
+        self.porosity = self.porosity * np.ones(self.n_matrix + self.n_fracs)
         self.init_uniform_properties()
         self.init_arrays_boundary_condition()
 
@@ -696,6 +698,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()
+        self.kd_cur = np.zeros(self.n_matrix)
+        self.porosity = np.zeros(self.n_matrix)
+        self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
 
