@@ -1685,6 +1685,36 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
   return 0;
 }
 
+int conn_mesh::set_volume(std::vector<value_t> &volume_)
+{
+	this->volume = volume_;
+
+	PV.resize(this->n_blocks);
+	RV.resize(this->n_blocks);
+
+	for (index_t i = 0; i < this->n_blocks; i++)
+	{
+		PV[i] = this->volume[i] * this->poro[i];
+		RV[i] = this->volume[i] * (1. - this->poro[i]);
+	}
+	return 0;
+}
+
+int conn_mesh::set_poro(std::vector<value_t> &poro_)
+{
+	this->poro = poro_;
+
+	PV.resize(this->n_blocks);
+	RV.resize(this->n_blocks);
+
+	for (index_t i = 0; i < this->n_blocks; i++)
+	{
+		PV[i] = this->volume[i] * this->poro[i];
+		RV[i] = this->volume[i] * (1. - this->poro[i]);
+	}
+	return 0;
+}
+
 int conn_mesh::save_volume(std::string filename)
 {
   return save_keyword_compressed (filename, "VOLUME", &volume[0], n_res_blocks);
