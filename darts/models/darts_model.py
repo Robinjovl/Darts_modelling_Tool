@@ -123,8 +123,10 @@ class DartsModel:
         :type verbose: bool
         """
         self.physics = physics
-        self.engine = self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose)
-        if platform =='gpu':
+        if os.environ.get('OPENDARTSGPU') == '1': # override the 'platform' parameter if environment is set
+            platform_ = 'gpu'
+        self.engine = self.physics.init_physics(discr_type=discr_type, platform=platform_, verbose=verbose)
+        if platform_ =='gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         return
 
