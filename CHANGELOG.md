@@ -1,12 +1,40 @@
-**1.0.6 [2024]**
-- Migrated to cmake build system. We kept the old Visual Studio project, but it will be removed later.
-- Well rates in SuperEngine ("Compositional") are defined in reservoir conditions now
+# 1.0.6 [2024]
+- Migrated to cmake build system [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/58). We kept the old Visual Studio projects, but they will be removed later.
+- Well rates in SuperEngine ("Compositional") are defined in reservoir conditions now, the units are Kmol/day
 - Breaking changes:
-    - The function of darts_model run_python() renamed to run()
-	- No need to call super().set_physics(physics), super().set_reservoir() and super().set_physics() in user's model
-	- Moved engine object to Physics (as before, in version 1.0.4) to be consistent with Reservoir and Mesh
+    - The function `darts_model run_python()` is renamed to `run()`.
+	- No need to call `super().set_physics(physics)`, `super().set_reservoir()` and `super().set_physics()` in user's model: \
+	    {- reservoir = UnstructReservoir(...) -}\
+		{- super().set_reservoir(reservoir)-}\
+        {+ self.reservoir = UnstructReservoir(...) +}
+	- Discretization moved from the reservoir constructor to `init_reservoir()` method, which is called in `DartsModel.init()`.
+	Thus, reservoir.mesh is not available right after the self.reservoir initialization. If it is needed, one can call `self.reservoir.init_reservoir()`. For example:
+	```python	
+	self.reservoir = StrucReservoir(...)
+	self.reservoir.init_reservoir()
+	volume = np.array(reservoir.mesh.volume, copy=False)
+	# set boundary volume
+	m.init()
+	```
+	- Adding additional properties to the report changed. Examples:\
+	{- from darts.physics.super.operator_evaluator import PropertyOperators -}\
+	{- props = [('Brine saturation', 'sat', 1), ('Gas saturation', 'sat', 0)] -} \
+	{- physics.add_property_operators(PropertyOperators(props, property_container)) -}\
+	{+ property_container.output_props = {'Brine saturation': lambda: property_container.sat[1], 'Gas saturation': lambda: property_container.sat[0]} +}
+	- `property_container` and `property_container` are now dictionaries with a key=region index. Examples:			  
+	{- sat = self.physics.property_operators.property_container.compute_saturation_full(state) -}\
+	{- properties = self.physics.vars + self.physics.property_operators.props_name -}\
+	{+ sat = self.physics.property_containers[0].compute_saturation_full(state)  # 0 - is a region index +}\
+	{+ properties = self.physics.vars + self.physics.property_operators[0].props_name +}
+	- The engine object moved to physics (as before, in version 1.0.4):\
+	{- m.engine -}\
+    {+ m.physics.engine +}
 
-**1.0.5 [20-11-2023]**
+	- Wells object moved to Reservoir :\
+	{- m.wells -}\
+    {+ m.reservoir.wells +}
+
+# 1.0.5 [20-11-2023]
 - Adjoints with MPFA (C++ discretizer for the unstructured grid)
 - MPFA for the heat conduction (C++ discretizer for the unstructured grid)
 - Fast and accurate version of CPG discretizer
@@ -54,40 +82,48 @@
 		- Before: Geothermal(..., platform='gpu')  
 		- Now:	Geothermal(...); super().set_physics(physics, platform='gpu')  
 
-**1.0.4 [11-09-2023]**
+# 1.0.4 [11-09-2023]
 Small fixes.
 
-**1.0.3 [11-09-2023]**
+# 1.0.3 [11-09-2023]
 - Folders reorganized.
-Breaking changes: physics creation changed:\
-        **Before:**\
-            self.physics = Geothermal(...)\
-        **Now:**\
-            from darts.physics.geothermal.property_container import PropertyContainer\
-            property_container = PropertyContainer()\
-            self.physics = Geothermal(...)\
-            self.physics.add_property_region(property_container)\
-            self.physics.init_physics()\
+- Breaking changes: physics creation changed:\
+	{- Before: -}
+	```python
+	self.physics = Geothermal(...)
+	```
+	{+ Now: +}
+	```python
+	from darts.physics.geothermal.property_container import PropertyContainer
+	property_container = PropertyContainer()
+	self.physics = Geothermal(...)
+	self.physics.add_property_region(property_container)
+	self.physics.init_physics()
+	```
 
-**1.0.2 [30-06-2023]**
+# 1.0.2 [30-06-2023]
 - Wheels creation for Python 3.11 added.
 
-**1.0.0 [16-06-2023]**
+# 1.0.0 [16-06-2023]
 - Folders reorganized. 
 - Breaking changes: import paths changed:\
-    Before:\
-        from darts.models.physics.geothermal import Geothermal\
-        from darts.models.physics.iapws.iapws_property_vec import _Backward1_T_Ph_vec\
-    Now:\
-        from darts.physics.geothermal.physics import Geothermal\
-        from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec\
+    {- Before: -}
+	```python
+	from darts.models.physics.geothermal import Geothermal
+	from darts.models.physics.iapws.iapws_property_vec import _Backward1_T_Ph_vec
+	```
+    {+ Now: +}
+	```python
+	from darts.physics.geothermal.physics import Geothermal\
+	from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
+	```
 - Stop wheels creation for Python 3.6
 
-**0.1.4 [13-04-2023]**
+# 0.1.4 [13-04-2023]
 - Added heat losses from wellbore. It works by default for all thermal models.
 - Added capability for connection arbitrary well segments for modeling closed-loop wells. 
 - Adedd CoaxWell model which models closed loop well with surrounded reservoir. 
 - Added poromechanics tests.
 
-**0.1.3 [06-03-2023]**
+# 0.1.3 [06-03-2023]
 Initial release.
