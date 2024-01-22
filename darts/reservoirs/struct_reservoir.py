@@ -117,6 +117,8 @@ class StructReservoir(ReservoirBase):
 
         self.set_boundary_volume(self.boundary_volumes)
 
+        mesh.set_volume(value_vector(self.volume))
+
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
