@@ -819,8 +819,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  l_ind1 = st_id * N_VARS_SQ + (U_VAR + d) * N_VARS;
 					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind1 + v] * X[r_ind + T2U[v]];
-						  Jac[l_ind1 + T2U[v]] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind1 + v];
+						  RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v] * X[r_ind + T2U[v]];
+						  Jac[l_ind1 + T2U[v]] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v];
 					  }
 				  }
 				  //// heat fluxes
@@ -887,7 +887,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  l_ind = i * N_VARS + U_VAR + d;
 					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_tran[r_ind + v] * cur_bc[T2U[v]];
+						  RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind + v] * cur_bc[T2U[v]];
 					  }
 				  }
 				  // rock energy
@@ -970,7 +970,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
 				for (v = 0; v < NE; v++)
 				{
-				  Jac[l_ind1 + v] += V[i] * f[l_ind] * eff_density * biot_vol_strain_rhs[conn_id] *
+				  Jac[l_ind1 + v] += V[i] * gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] *
 							  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 				}
 			  }
