@@ -9,12 +9,12 @@ import numpy as np
 m = Model()
 
 m.init()
-# m.export_pro_vtk()
+# m.export_pro_vtk(ith_step=0)
 m.output_to_vtk(ith_step=0, output_directory='vtk')
 m.run(3650)
 m.print_timers()
 m.print_stat()
-# m.export_pro_vtk()
+# m.export_pro_vtk(ith_step=1)
 m.output_to_vtk(ith_step=1, output_directory='vtk')
 
 
