@@ -42,4 +42,4 @@ if __name__ == '__main__':
     property_array = np.empty((2, nb))
     property_array[0, :] = Xn[0:nb*nc:nc]
     property_array[1, :] = Xn[1:nb*nc:nc]
-    n.reservoir.discretizer.write_to_vtk('output_directory', property_array, ('p', 'z'), 0)
+    n.output_to_vtk(ith_step=0, output_directory='vtk')
