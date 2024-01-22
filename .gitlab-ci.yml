@@ -254,7 +254,7 @@ build-windows-3.7-ODLS:
     artifacts:
       paths:
         - './dist/*.whl'
-      expire_in: 1 months
+      expire_in: 1 week
       
 ###################################################################################
 
@@ -281,7 +281,7 @@ build-windows-3.7-ODLS:
     artifacts:
       paths:
         - '.\dist\*.whl'
-      expire_in: 1 months
+      expire_in: 1 week
 
 ###################################################################################
 
@@ -582,7 +582,7 @@ test-windows-3.7-ODLS:
         - './models/_logs/*.log'
         - './models/pkl_lin.tar.gz'
       when: always
-      expire_in: 1 year
+      expire_in: 1 week
 
 ###################################################################################
 
@@ -616,7 +616,7 @@ test-windows-3.7-ODLS:
         - '.\models\_logs\*.log'
         - '.\models\pkl_win.zip'
       when: always
-      expire_in: 1 year
+      expire_in: 1 week
 
 ###################################################################################
 
