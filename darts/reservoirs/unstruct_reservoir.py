@@ -303,14 +303,14 @@ class UnstructReservoir(ReservoirBase):
         # Allocate empty new cell_data_dict dictionary:
         cell_data = {}
 
-        for prop_idx, prop in enumerate(output_idxs):
-            cell_data[prop] = []
+        for key, idx in output_idxs.items():
+            cell_data[key] = []
             left_bound = 0
             right_bound = 0
             for ith_geometry in self.discretizer.mesh_data.cells_dict:
                 left_bound = right_bound
                 right_bound = right_bound + self.discretizer.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data[prop] += [data[prop_idx, left_bound:right_bound].tolist()]
+                cell_data[key] += [data[idx, left_bound:right_bound].tolist()]
 
         cell_data['matrix_cell_bool'] = []
         left_bound = 0
