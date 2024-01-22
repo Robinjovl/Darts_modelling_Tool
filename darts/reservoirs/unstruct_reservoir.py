@@ -240,6 +240,45 @@ class UnstructReservoir(ReservoirBase):
                 idx = j
         return idx
 
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        os.makedirs(output_directory, exist_ok=True)
+
+        # Temporarily store mesh_data in copy:
+        # Mesh = meshio.read(self.mesh_file)
+        self.reporting_cells = {geometry: self.discretizer.mesh_data.cells_dict[geometry]
+                                for geometry in self.discretizer.mat_geometries_in_file}
+
+        if export_grid_data:
+            cell_data = {}
+            mesh_geom_dtype = np.float32
+            mesh_props = {'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
+                          'hcap': self.hcap, 'rcond': self.rcond, 'op_num': self.op_num,
+                          # 'depth': self.depth, 'volume': self.volume
+                          }
+            for key, data in mesh_props.items():
+                cell_data[key] = []
+                if np.isscalar(data):
+                    if type(data) is int:
+                        cell_data[key] += [(data * np.ones(self.mesh.n_res_blocks)).tolist()]
+                    elif type(data) is float:
+                        cell_data[key] += [(data * np.ones(self.mesh.n_res_blocks, dtype=mesh_geom_dtype)).tolist()]
+                else:
+                    cell_data[key] += [data.tolist()]  # * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
+            mesh_filename = output_directory + '/mesh'
+
+            mesh = meshio.Mesh(
+                # Mesh.points,
+                # Mesh.cells_dict.items(),
+                points=self.discretizer.mesh_data.points,  # list of point coordinates
+                cells=self.reporting_cells,  # list of cell geometries and idxs for reporting
+                # cells=self.discretizer.mesh_data.cells_dict.items(),  # list of cell geometries and idxs
+                # Each item in cell data must match the cells array
+                cell_data=cell_data
+            )
+
+            print('Writing mesh data to VTK file')
+            meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
+
     def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
         """
         Class method which writes output of unstructured grid to VTK format
@@ -257,44 +296,44 @@ class UnstructReservoir(ReservoirBase):
         :return:
         """
         # First check if output directory already exists:
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        if ith_step == 0:
+            self.init_vtk(output_directory, export_grid_data=True)
 
         # Allocate empty new cell_data_dict dictionary:
-        cell_data_dict = dict()
+        cell_data = {}
 
-        for prop, prop_idx in enumerate(output_idxs):
-            cell_data_dict[prop] = []
+        for prop_idx, prop in enumerate(output_idxs):
+            cell_data[prop] = []
             left_bound = 0
             right_bound = 0
             for ith_geometry in self.discretizer.mesh_data.cells_dict:
                 left_bound = right_bound
                 right_bound = right_bound + self.discretizer.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data_dict[prop].append(list(data[prop_idx, left_bound:right_bound]))
+                cell_data[prop] += [data[prop_idx, left_bound:right_bound].tolist()]
 
-        cell_data_dict['matrix_cell_bool'] = []
+        cell_data['matrix_cell_bool'] = []
         left_bound = 0
         right_bound = 0
         for ith_geometry in self.discretizer.mesh_data.cells_dict:
             left_bound = right_bound
             right_bound = right_bound + self.discretizer.mesh_data.cells_dict[ith_geometry].shape[0]
 
-            if (ith_geometry in self.discretizer.available_fracture_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.zeros(((right_bound - left_bound),))))
+            if ith_geometry in self.discretizer.available_fracture_geometries and (right_bound - left_bound) > 0:
+                cell_data['matrix_cell_bool'].append(list(np.zeros(((right_bound - left_bound),))))
 
-            elif (ith_geometry in self.discretizer.available_matrix_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.ones(((right_bound - left_bound),))))
+            elif ith_geometry in self.discretizer.available_matrix_geometries and (right_bound - left_bound) > 0:
+                cell_data['matrix_cell_bool'].append(list(np.ones(((right_bound - left_bound),))))
 
         # Temporarily store mesh_data in copy:
-        # Mesh = meshio.read(self.mesh_file)
-
         mesh = meshio.Mesh(
             # Mesh.points,
             # Mesh.cells_dict.items(),
-            self.discretizer.mesh_data.points,  # list of point coordinates
-            self.discretizer.mesh_data.cells_dict.items(),  # list of
+            points=self.discretizer.mesh_data.points,  # list of point coordinates
+            cells=self.reporting_cells,  # list of cell geometries and idxs for reporting
+            # cells=self.discretizer.mesh_data.cells_dict.items(),  # list of cell geometries and idxs
             # Each item in cell data must match the cells array
-            cell_data=cell_data_dict)
+            cell_data=cell_data
+        )
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
