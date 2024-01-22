@@ -229,6 +229,15 @@ class StructReservoir(ReservoirBase):
         return dx, dy, dz
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Method to initialize objects required for output of structured reservoir into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
+
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
         from pyevtk.hl import gridToVTK
 
         self.vtk_initialized = True
@@ -280,6 +289,20 @@ class StructReservoir(ReservoirBase):
         return
 
     def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
+        """
+        Function to export results of structured reservoir at timestamp t into `.vtk` format.
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param output_idxs: Dictionary of properties with data array indices for output
+        :type output_idxs: dict
+        :param data: Data for output
+        :type data: np.ndarray
+        """
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
 

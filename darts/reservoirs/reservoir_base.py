@@ -173,6 +173,15 @@ class ReservoirBase:
 
     @abc.abstractmethod
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Method to initialize objects required for output into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
+
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
         pass
 
     @abc.abstractmethod

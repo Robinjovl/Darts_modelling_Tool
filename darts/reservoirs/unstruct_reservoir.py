@@ -241,6 +241,15 @@ class UnstructReservoir(ReservoirBase):
         return idx
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Method to initialize objects required for output of unstructured reservoir into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
+
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
         self.vtk_initialized = True
 
         # Temporarily store mesh_data in copy:
@@ -281,7 +290,7 @@ class UnstructReservoir(ReservoirBase):
 
     def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
         """
-        Class method which writes output of unstructured grid to VTK format
+        Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
 
         :param ith_step: i'th reporting step
         :type ith_step: int
@@ -293,7 +302,6 @@ class UnstructReservoir(ReservoirBase):
         :type output_idxs: dict
         :param data: Data for output
         :type data: np.ndarray
-        :return:
         """
         # First check if output directory already exists:
         os.makedirs(output_directory, exist_ok=True)
@@ -338,4 +346,3 @@ class UnstructReservoir(ReservoirBase):
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
-        return 0
