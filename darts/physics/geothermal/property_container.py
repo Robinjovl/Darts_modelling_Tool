@@ -13,7 +13,6 @@ class PropertyContainer(PropertyBase):
     """
     nc: int = 1
     nph: int = 2
-    output_props = {}
 
     def __init__(self, property_evaluator='IAPWS'):
         """
@@ -70,6 +69,8 @@ class PropertyContainer(PropertyBase):
         self.viscosity = np.zeros(2)
         self.conduction = np.zeros(2)
         self.relperm = np.zeros(2)
+
+        self.output_props = {'temperature': lambda: self.temperature}
 
     def evaluate(self, state):
         self.temperature = self.temperature_ev.evaluate(state)
