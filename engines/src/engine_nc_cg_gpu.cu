@@ -55,9 +55,9 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
   // initialize rhs and diagonal part with accumulation
   if (v == 0)
   {
-    rhs = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+    rhs = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
   }
-  jac_diag = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+  jac_diag = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
 
   // index of first entry for block i in CSR cols array
   index_t csr_idx_start = rows[i];
@@ -182,7 +182,7 @@ assemble_jacobian_array_spmv0(const unsigned int n_blocks, value_t dt,
   // initialize diagonal part with accumulation
   for (index_t v = 0; v < N_VARS; v++)
   {
-    jac_diag[v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+    jac_diag[v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
   }
 
   // index of first entry for block i in CSR cols array
@@ -311,7 +311,7 @@ assemble_jacobian_array_lincomb(const unsigned int n_blocks, value_t dt,
   // initialize diagonal part with accumulation
   for (index_t v = 0; v < N_VARS; v++)
   {
-    jac_diag[v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+    jac_diag[v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
   }
 
   // index of first entry for block i in CSR cols array

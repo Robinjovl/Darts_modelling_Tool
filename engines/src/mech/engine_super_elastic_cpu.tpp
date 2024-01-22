@@ -1061,10 +1061,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
       {
         for (c = 0; c < NC; c++)
         {
-          if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+          if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
           {
-            CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-            CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+            CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+            CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
           }
         }
       }
@@ -1381,7 +1381,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 			for (uint8_t c = 0; c < nc; c++)
 			{
 				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+				FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 			}
 		}
 
@@ -1929,14 +1929,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //	{
 //		for (int c = 0; c < NC; c++)
 //		{
-//			res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+//			res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
 //			if (res > residual)
 //				residual = res;
 //		}
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + NC] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

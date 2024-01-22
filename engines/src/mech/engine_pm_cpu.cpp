@@ -1827,7 +1827,7 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 			for (uint8_t c = 0; c < nc; c++)
 			{
 				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+				FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 			}
 		}
 
@@ -1903,7 +1903,7 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
 	for (uint8_t c = 0; c < nc; c++)
 	{
 	  // assuming ACC_OP is 0
-	  FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+	  FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 	}
   }
 

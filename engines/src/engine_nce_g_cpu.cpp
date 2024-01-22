@@ -97,23 +97,23 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
             // [NC] mass eqns
             for (uint8_t c = 0; c < NC; c++)
             {
-                RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+                RHS[i * N_VARS + c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
                 for (uint8_t v = 0; v < N_VARS; v++)
                 {
-                    Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+                    Jac[diag_idx + c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
                 }
             }
 
             // [1] energy eqn
             // fluid energy
-            RHS[i * N_VARS + NC] = PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
+            RHS[i * N_VARS + NC] = mesh->PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
             // + rock energy (no rock compressibility included in these computations)
-            RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
+            RHS[i * N_VARS + NC] += mesh->RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
 
             for (uint8_t v = 0; v < N_VARS; v++)
             {
-                Jac[diag_idx + NC * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
-                Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
+                Jac[diag_idx + NC * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
+                Jac[diag_idx + NC * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
             }
 
             // index of first entry for block i in CSR cols array
@@ -295,11 +295,11 @@ engine_nce_g_cpu<NC, NP>::calc_newton_residual_L2()
     {
         for (int c = 0; c < NC; c++)
         {
-            res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+            res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
             res_m += res * res;
         }
 
-        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+        res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
         res_e += res * res;
     }
     residual = sqrt(res_m + res_e);
@@ -317,12 +317,12 @@ engine_nce_g_cpu<NC, NP>::calc_newton_residual_Linf()
     {
         for (int c = 0; c < NC; c++)
         {
-            res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+            res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
             if (res > residual)
                 residual = res;
         }
 
-        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+        res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
         if (res > residual)
             residual = res;
     }
@@ -504,7 +504,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 		{
 			for (uint8_t v = 0; v < N_VARS; v++)
 			{
-				Jac_n[diag_idx + c * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]);
+				Jac_n[diag_idx + c * N_VARS + v] = -(mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]);
 			}
 		}
 
@@ -512,8 +512,8 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 		// fluid energy 
 		for (uint8_t v = 0; v < N_VARS; v++)
 		{
-			Jac_n[diag_idx + NC * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v]);
-			Jac_n[diag_idx + NC * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i]);
+			Jac_n[diag_idx + NC * N_VARS + v] = -(mesh->PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v]);
+			Jac_n[diag_idx + NC * N_VARS + v] -= (mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i]);
 		}
 
 		// index of first entry for block i in CSR cols array

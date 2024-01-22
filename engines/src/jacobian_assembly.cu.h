@@ -40,14 +40,14 @@ template<typename IndexType, typename ValueType, typename InterpValueType,
 	if (i == cl)
 	  {
 	    // fill diagonal part
-	    rhs[0] += PV[i] * (acc1[4 * i] - acc1[4 * i + 3]);
-	    rhs[1] += PV[i] * (acc2[4 * i] - acc2[4 * i + 3]);
+	    rhs[0] += mesh->PV[i] * (acc1[4 * i] - acc1[4 * i + 3]);
+	    rhs[1] += mesh->PV[i] * (acc2[4 * i] - acc2[4 * i + 3]);
 
 	    jac_diag_idx = j;
-	    jac_d[0] += PV[i] * acc1[4 * i + 1];
-	    jac_d[1] += PV[i] * acc1[4 * i + 2];
-	    jac_d[2] += PV[i] * acc2[4 * i + 1];
-	    jac_d[3] += PV[i] * acc2[4 * i + 2];
+	    jac_d[0] += mesh->PV[i] * acc1[4 * i + 1];
+	    jac_d[1] += mesh->PV[i] * acc1[4 * i + 2];
+	    jac_d[2] += mesh->PV[i] * acc2[4 * i + 1];
+	    jac_d[3] += mesh->PV[i] * acc2[4 * i + 2];
 	  }
 	else
 	  {

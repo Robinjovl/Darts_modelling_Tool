@@ -46,25 +46,25 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
   // [NC] mass eqns
   for (uint8_t c = 0; c < NC; c++)
   {
-    RHS_l[c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+    RHS_l[c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
     // CFL_out[c] = 0;
     // CFL_in[c] = 0;
     // connected_with_well = 0;
     for (uint8_t v = 0; v < N_VARS; v++)
     {
-      jac_diag_l[c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+      jac_diag_l[c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
     }
   }
   // [1] energy eqn
   // fluid energy
-  RHS_l[NC] = PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
+  RHS_l[NC] = mesh->PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
   // + rock energy (no rock compressibility included in these computations)
-  RHS_l[NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
+  RHS_l[NC] += mesh->RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
 
   for (uint8_t v = 0; v < N_VARS; v++)
   {
-    jac_diag_l[NC * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
-    jac_diag_l[NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
+    jac_diag_l[NC * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
+    jac_diag_l[NC * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -326,11 +326,11 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_L2()
   {
     for (int c = 0; c < NC; c++)
     {
-      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+      res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
       res_m += res * res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
     res_e += res * res;
   }
   residual = sqrt(res_m + res_e);
@@ -348,12 +348,12 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_Linf()
   {
     for (int c = 0; c < NC; c++)
     {
-      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+      res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
       if (res > residual)
         residual = res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
     if (res > residual)
       residual = res;
   }

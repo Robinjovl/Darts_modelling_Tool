@@ -1062,19 +1062,19 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		// [8] accumulation terms
 		for (c = 0; c < NE; c++)
 		{
-			RHS[i * N_VARS + P_VAR + c] += PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
+			RHS[i * N_VARS + P_VAR + c] += mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
 			for (v = 0; v < N_STATE; v++)
 			{
-				Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] += PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v];
+				Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] += mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v];
 			}
 		}
 		if (THERMAL)
 		{
-			RHS[i * N_VARS + T_VAR] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+			RHS[i * N_VARS + T_VAR] += mesh->RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
 
 			for (v = 0; v < NE; v++)
 			{
-				Jac[diag_idx + T_VAR * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i];
+				Jac[diag_idx + T_VAR * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i];
 			}
 		}
 
@@ -1083,10 +1083,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		{
 			for (c = 0; c < NC; c++)
 			{
-				if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+				if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
 				{
-					CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-					CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+					CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+					CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
 				}
 			}
 		}
@@ -1396,14 +1396,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		{
 			for (v = 0; v < N_STATE; v++)
 			{
-				Jac_n[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] -= (PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v]);
+				Jac_n[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] -= (mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v]);
 			}
 		}
 		if (THERMAL)
 		{
 			for (v = 0; v < NE; v++)
 			{
-				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i]);
+				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i]);
 			}
 		}
 
@@ -1550,14 +1550,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t de
 //	{
 //		for (int c = 0; c < NC; c++)
 //		{
-//			res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+//			res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
 //			if (res > residual)
 //				residual = res;
 //		}
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + NC] + mesh->RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

@@ -59,19 +59,19 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
   if (v == 0)
   {
-    rhs = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+    rhs = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 
     // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
     if (i < n_res_blocks)
-      rhs += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+      rhs += (mesh->PV[i] + mesh->RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
   }
 
-  jac_diag = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
+  jac_diag = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
 
   // Include derivatives for reaction term if part of reservoir cells:
   if (i < n_res_blocks)
   {
-    jac_diag += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+    jac_diag += (mesh->PV[i] + mesh->RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
   }
 
   // if thermal is enabled, full up the last equation
@@ -79,10 +79,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   {
     if (v == 0)
     {
-      rhs += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+      rhs += mesh->RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
     }
 
-    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
+    jac_diag += mesh->RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array

@@ -1548,7 +1548,7 @@ engine_base::calc_newton_residual_L1()
 		for (int c = 0; c < n_vars; c++)
 		{
 			res[c] += RHS[i * n_vars + c];
-			norm[c] += PV[i] * op_vals_arr[i * n_ops + c];
+			norm[c] += mesh->PV[i] * op_vals_arr[i * n_ops + c];
 		}
 	}
 	for (int c = 0; c < n_vars; c++)
@@ -1571,7 +1571,7 @@ engine_base::calc_newton_residual_L2()
 		for (int c = 0; c < n_vars; c++)
 		{
 			res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
-			norm[c] += (PV[i] * op_vals_arr[i * n_ops + c]) * (PV[i] * op_vals_arr[i * n_ops + c]);
+			norm[c] += (mesh->PV[i] * op_vals_arr[i * n_ops + c]) * (mesh->PV[i] * op_vals_arr[i * n_ops + c]);
 		}
 	}
 	for (int c = 0; c < n_vars; c++)
@@ -1592,7 +1592,7 @@ engine_base::calc_newton_residual_Linf()
 	{
 		for (int c = 0; c < n_vars; c++)
 		{
-			norm = PV[i] * op_vals_arr[i * n_ops + c];
+			norm = mesh->PV[i] * op_vals_arr[i * n_ops + c];
 			if (norm > 1e-3)
 				residual = std::max(residual, fabs(RHS[i * n_vars + c] / norm));
 		}
@@ -2612,7 +2612,7 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 			for (uint8_t c = 0; c < nc; c++)
 			{
 				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+				FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 			}
 		}
 

@@ -500,12 +500,12 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_avgmpfa(value_t dt, std::vecto
 			// fill diagonal part
 			for (uint8_t c = 0; c < NC; c++)
 			{
-				RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+				RHS[i * N_VARS + c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 				CFL_out[c] = 0;
 				CFL_in[c] = 0;
 				for (uint8_t v = 0; v < N_VARS; v++)
 				{
-					Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+					Jac[diag_idx + c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
 				}
 			}
 			// index of first entry for block i in CSR cols array
@@ -612,10 +612,10 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_avgmpfa(value_t dt, std::vecto
 			{
 				for (uint8_t c = 0; c < NC; c++)
 				{
-					if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+					if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
 					{
-						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
 					}
 				}
 			}
@@ -703,12 +703,12 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_nltpfa(value_t dt, std::vector
 			// fill diagonal part
 			for (uint8_t c = 0; c < NC; c++)
 			{
-				RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+				RHS[i * N_VARS + c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 				CFL_out[c] = 0;
 				CFL_in[c] = 0;
 				for (uint8_t v = 0; v < N_VARS; v++)
 				{
-					Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+					Jac[diag_idx + c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
 				}
 			}
 			// index of first entry for block i in CSR cols array
@@ -909,10 +909,10 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_nltpfa(value_t dt, std::vector
 			{
 				for (uint8_t c = 0; c < NC; c++)
 				{
-					if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+					if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
 					{
-						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
 					}
 				}
 			}
