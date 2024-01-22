@@ -9,12 +9,13 @@ import numpy as np
 m = Model(resolution=10)
 
 m.init()
-m.export_pro_vtk()
+# m.export_pro_vtk()
+m.output_to_vtk(ith_step=0, output_directory='vtk')
 m.run(365)
 m.print_timers()
 m.print_stat()
-m.export_pro_vtk()
-
+# m.export_pro_vtk()
+m.output_to_vtk(ith_step=1, output_directory='vtk')
 
 td = pd.DataFrame.from_dict(m.physics.engine.time_data)
 td.to_pickle("darts_time_data.pkl")

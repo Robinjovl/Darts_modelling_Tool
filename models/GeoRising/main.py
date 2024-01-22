@@ -9,11 +9,13 @@ import numpy as np
 m = Model()
 
 m.init()
-m.export_pro_vtk()
+# m.export_pro_vtk()
+m.output_to_vtk(ith_step=0, output_directory='vtk')
 m.run(3650)
 m.print_timers()
 m.print_stat()
-m.export_pro_vtk()
+# m.export_pro_vtk()
+m.output_to_vtk(ith_step=1, output_directory='vtk')
 
 
 td = pd.DataFrame.from_dict(m.physics.engine.time_data)
