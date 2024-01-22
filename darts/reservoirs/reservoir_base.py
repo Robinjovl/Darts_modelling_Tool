@@ -24,6 +24,8 @@ class ReservoirBase:
         self.poro, self.permx, self.permy, self.permz = [], [], [], []
         self.hcap, self.rcond = [], []
 
+        self.vtk_initialized = False
+
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []

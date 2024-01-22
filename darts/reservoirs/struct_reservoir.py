@@ -231,6 +231,7 @@ class StructReservoir(ReservoirBase):
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         from pyevtk.hl import gridToVTK
 
+        self.vtk_initialized = True
         self.vtk_z = 0
         self.vtk_y = 0
         self.vtk_x = 0
@@ -251,8 +252,6 @@ class StructReservoir(ReservoirBase):
                 self.generate_vtk_grid()
         else:
             self.generate_cpg_vtk_grid()
-
-        os.makedirs(output_directory, exist_ok=True)
 
         if export_grid_data:
             cell_data = {}
@@ -285,7 +284,8 @@ class StructReservoir(ReservoirBase):
         from pyevtk.vtk import VtkGroup
 
         # only for the first export call
-        if ith_step == 0:
+        os.makedirs(output_directory, exist_ok=True)
+        if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
         vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)

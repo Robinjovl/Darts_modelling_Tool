@@ -241,7 +241,7 @@ class UnstructReservoir(ReservoirBase):
         return idx
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
-        os.makedirs(output_directory, exist_ok=True)
+        self.vtk_initialized = True
 
         # Temporarily store mesh_data in copy:
         # Mesh = meshio.read(self.mesh_file)
@@ -296,7 +296,8 @@ class UnstructReservoir(ReservoirBase):
         :return:
         """
         # First check if output directory already exists:
-        if ith_step == 0:
+        os.makedirs(output_directory, exist_ok=True)
+        if not self.vtk_initialized:
             self.init_vtk(output_directory, export_grid_data=True)
 
         # Allocate empty new cell_data_dict dictionary:
