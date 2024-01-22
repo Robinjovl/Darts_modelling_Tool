@@ -21,6 +21,9 @@ class ReservoirBase:
         self.cache = cache
         self.wells = []
 
+        self.poro, self.permx, self.permy, self.permz = [], [], [], []
+        self.hcap, self.rcond = [], []
+
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
@@ -165,6 +168,10 @@ class ReservoirBase:
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
+
+    @abc.abstractmethod
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        pass
 
     @abc.abstractmethod
     def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):

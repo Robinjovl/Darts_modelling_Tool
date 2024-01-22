@@ -6,7 +6,6 @@ import numpy as np
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_vector, index_vector
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from pyevtk import hl, vtk
 from scipy.interpolate import griddata
 
 
@@ -56,19 +55,6 @@ class StructReservoir(ReservoirBase):
         self.zcorn = zcorn
         self.is_cpg = is_cpg
         self.global_to_local = global_to_local
-
-        self.vtk_z = 0
-        self.vtk_y = 0
-        self.vtk_x = 0
-        self.vtk_filenames_and_times = {}
-        self.vtkobj = 0
-
-        if np.isscalar(self.coord):
-            # Usual structured grid generated from DX, DY, DZ, DEPTH
-            self.vtk_grid_type = 0
-        else:
-            # CPG grid from COORD ZCORN
-            self.vtk_grid_type = 1
 
         self.boundary_volumes = {'xy_minus': None, 'xy_plus': None,
                                  'yz_minus': None, 'yz_plus': None,
@@ -242,44 +228,77 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def output_to_vtk(self, file_name, t, local_cell_data, global_cell_data, export_constant_data=True):
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        from pyevtk.hl import gridToVTK
 
-        nb = self.discretizer.nodes_tot
-        cell_data = global_cell_data.copy()
+        self.vtk_z = 0
+        self.vtk_y = 0
+        self.vtk_x = 0
+        self.vtk_filenames_and_times = {}
+        self.vtkobj = 0
+
+        if np.isscalar(self.coord):
+            # Usual structured grid generated from DX, DY, DZ, DEPTH
+            self.vtk_grid_type = 0
+        else:
+            # CPG grid from COORD ZCORN
+            self.vtk_grid_type = 1
+
+        if self.vtk_grid_type == 0:
+            if (self.n == self.nx) or (self.n == self.ny) or (self.n == self.nz) or (self.ny == 1):
+                self.generate_vtk_grid(compute_depth_by_dz_sum=False)  # Add this (if condition) for special 1D or 2D crossection
+            else:
+                self.generate_vtk_grid()
+        else:
+            self.generate_cpg_vtk_grid()
+
+        os.makedirs(output_directory, exist_ok=True)
+
+        if export_grid_data:
+            cell_data = {}
+            mesh_geom_dtype = np.float32
+            for key, data in self.global_data.items():
+                if np.isscalar(data):
+                    if type(data) is int:
+                        cell_data[key] = data * np.ones(self.discretizer.nodes_tot, dtype=int)
+                    elif type(data) is float:
+                        cell_data[key] = data * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
+                else:
+                    cell_data[key] = np.array(data)# * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
+            mesh_filename = output_directory + '/mesh'
+
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(mesh_filename, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
+                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+
+                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+        return
+
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, output_idxs: dict, data: np.ndarray):
+        from pyevtk.hl import gridToVTK
+        from pyevtk.vtk import VtkGroup
 
         # only for the first export call
-        if len(self.vtk_filenames_and_times) == 0:
-            if self.vtk_grid_type == 0:
-                if (self.n == self.nx) or (self.n == self.ny) or (self.n == self.nz) or (self.ny == 1):
-                    self.generate_vtk_grid(
-                        compute_depth_by_dz_sum=False)  # Add this (if condition) for special 1D or 2D crossection
-                else:
-                    self.generate_vtk_grid()
-            else:
-                self.generate_cpg_vtk_grid()
-            self.vtk_path = './vtk_data/'
-            if len(self.vtk_filenames_and_times) == 0:
-                os.makedirs(self.vtk_path, exist_ok=True)
+        if ith_step == 0:
+            self.init_vtk(output_directory)
 
-            if export_constant_data:
-                mesh_geom_dtype = np.float32
-                for key, data in self.global_data.items():
-                    if np.isscalar(data):
-                        if type(data) == int:
-                            data = data * np.ones(nb, dtype=int)
-                        else:
-                            data = data * np.ones(nb, dtype=mesh_geom_dtype)
-                    cell_data[key] = data
+        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
-        vtk_file_name = self.vtk_path + file_name + '_ts%d' % len(self.vtk_filenames_and_times)
-
-        for key, value in local_cell_data.items():
-            global_array = np.ones(nb, dtype=value.dtype) * np.nan
-            global_array[self.discretizer.local_to_global] = value
+        cell_data = {}
+        for key, idx in output_idxs.items():
+            local_data = data[idx, :]
+            global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
+            global_array[self.discretizer.local_to_global] = local_data
             cell_data[key] = global_array
 
         if self.vtk_grid_type == 0:
-            vtk_file_name = hl.gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
         else:
             for key, value in cell_data.items():
                 self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
@@ -296,11 +315,10 @@ class StructReservoir(ReservoirBase):
         # group file every time
 
         self.vtk_filenames_and_times[vtk_file_name] = t
-
-        self.group = vtk.VtkGroup(file_name)
+        vtk_group = VtkGroup('solution')
         for fname, t in self.vtk_filenames_and_times.items():
-            self.group.addFile(fname, t)
-        self.group.save()
+            vtk_group.addFile(fname, t)
+        vtk_group.save()
 
     def generate_vtk_grid(self, strict_vertical_layers=True, compute_depth_by_dz_sum=True):
         # interpolate 2d array using grid (xx, yy) and specified method
