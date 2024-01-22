@@ -56,8 +56,12 @@ class Model(DartsModel):
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
         hcap.fill(self.reservoir.heat_capacity)
 
-        property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                               Mw=Mw, min_z=zero / 10, temperature=1.)
+        if self.case == 'bai':
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=zero / 10)
+        else:
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=zero / 10, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
