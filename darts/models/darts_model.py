@@ -394,7 +394,7 @@ class DartsModel:
         :type output_properties: list
         """
         # Find index of properties to output
-        tot_props = self.physics.vars + self.physics.property_operators[0].props
+        tot_props = self.physics.vars + self.physics.property_operators[0].props_name
         if output_properties is None:
             # If None, all variables and properties from property_operators will be passed
             output_idxs = {prop: i for i, prop in enumerate(tot_props)}
