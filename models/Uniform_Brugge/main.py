@@ -32,14 +32,6 @@ if __name__ == '__main__':
     plot_phase_rate_darts('P1', time_data1, 'oil')
     plot_phase_rate_darts('P5', time_data1, 'oil')
 
-
     plt.savefig('out.png')
 
-    Xn = np.array(n.physics.engine.X, copy=False)
-    nc = n.physics.nc
-    nb = n.reservoir.mesh.n_res_blocks
-    # Allocate and store the properties in an array:
-    property_array = np.empty((2, nb))
-    property_array[0, :] = Xn[0:nb*nc:nc]
-    property_array[1, :] = Xn[1:nb*nc:nc]
     n.output_to_vtk(ith_step=0, output_directory='vtk')
