@@ -193,7 +193,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('Error: unsupported scheme', scheme)
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = True
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.init_gravity(gravity_on=False)
         self.pm.visc = 1  # 9.81e-2
 
         self.init_faces_centers_pm_discretizer()
@@ -356,7 +356,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('Error: unsupported scheme', scheme)
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = True
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.init_gravity(gravity_on=False)
         self.pm.visc = 1#9.81e-2
 
         self.init_faces_centers_pm_discretizer()
@@ -474,7 +474,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('Error: unsupported scheme', scheme)
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.init_gravity(gravity_on=False)
         self.kd_cur = np.zeros(self.n_matrix)
         self.porosity = np.zeros(self.n_matrix)
         self.biot_mean = np.zeros(9 * (self.n_matrix))
@@ -593,7 +593,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('Error: unsupported scheme', scheme)
             exit(1)
         self.pm.neumann_boundaries_grad_reconstruction = False
-        self.pm.grav = matrix([0.0, 0.0, 0.0], 1, 3)
+        self.init_gravity(gravity_on=False)
 
         self.init_faces_centers_pm_discretizer()
         self.init_heterogeneous_properties()

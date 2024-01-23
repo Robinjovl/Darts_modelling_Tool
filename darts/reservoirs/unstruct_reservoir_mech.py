@@ -167,7 +167,6 @@ class UnstructReservoirMech():
             self.discr = thermoporo_mech_discretizer()
         else:
             self.discr = poro_mech_discretizer()
-        self.discr.grav_vec = matrix([0.0, 0.0, 0.0], 1, 3)  # 0.0??
         self.tags = np.array(self.discr_mesh.tags, copy=False)
         self.discr.set_mesh(self.discr_mesh)
         self.discr.init()
@@ -343,6 +342,19 @@ class UnstructReservoirMech():
             for key in self.boundary_conditions.keys():
                 self.boundary_conditions[key]['cells'] = []
 
+    def init_gravity(self, gravity_on=False):
+        # set gravity vector
+        if gravity_on:
+            from scipy import gravitational_constant
+            grav_coeff = gravitational_constant / 1e5  # convert units
+        else:
+            grav_coeff = 0.
+        grav_vec = matrix([0.0, 0.0, grav_coeff])
+        if self.discretizer_name == 'mech_discretizer':
+            self.discr.grav_vec = grav_vec
+        elif self.discretizer_name == 'pm_discretizer':
+            self.pm.grav = grav_vec
+
     def init_uniform_properties(self):
         if self.discretizer_name == 'mech_discretizer':
             self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
@@ -416,7 +428,7 @@ class UnstructReservoirMech():
                 self.biot_mean[9 * cell_id + 8] = biot
                 self.porosity[cell_id] = poro
 
-    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):
+    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
         self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
         self.p_init = p_init  # initial pressure [bars]
         if self.thermoporoelacticity:
