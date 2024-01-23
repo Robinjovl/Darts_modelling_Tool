@@ -122,6 +122,8 @@ public:
     trans_mult_exp = 0;
     obl_min_fac = 10;
     assembly_kernel = 0;
+
+    finalize_mpi = 1;
   }
 
   value_t first_ts; // first time step length (days)
@@ -154,6 +156,8 @@ public:
 
   // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
   // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
+
+  index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 };
 
 class linear_solver_params

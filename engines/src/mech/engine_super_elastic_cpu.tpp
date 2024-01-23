@@ -139,7 +139,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR, NC_);
-			static_cast<linsolv_bos_fs_cpr<N_VARS> *>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>); //new linsolv_amg1r5<1>);
+			static_cast<linsolv_bos_fs_cpr<N_VARS> *>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>(params->finalize_mpi)); //new linsolv_amg1r5<1>);
 			static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix + mesh->n_fracs, 0, mesh->n_blocks - mesh->n_res_blocks);
 			linear_solver->set_prec(fs_cpr);
 			break;
