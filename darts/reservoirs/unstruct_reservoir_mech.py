@@ -493,6 +493,17 @@ class UnstructReservoirMech():
             cell = self.unstr_discr.mat_cell_info_dict[cell_id]
             self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
 
+    def set_scheme_pm_discretizer(self, scheme='non_stabilized'):
+        assert self.discretizer_name == 'pm_discretizer'
+        if scheme == 'stabilized':
+            self.pm.scheme = scheme_type.apply_eigen_splitting_new
+            self.pm.min_alpha_stabilization = 0.5
+        elif scheme == 'non_stabilized':
+            pass
+        else:
+            print('Error: unsupported scheme', scheme)
+            exit(1)
+
     def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
         assert self.discretizer_name == 'pm_discretizer'
         #self.check_positive_negative_sides()

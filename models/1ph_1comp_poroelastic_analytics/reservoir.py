@@ -183,15 +183,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        scheme = 'non_stabilized'
-        if scheme == 'stabilized':
-            self.pm.scheme = scheme_type.apply_eigen_splitting_new
-            self.pm.min_alpha_stabilization = 0.5
-        elif scheme == 'non_stabilized':
-            pass
-        else:
-            print('Error: unsupported scheme', scheme)
-            exit(1)
+        self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
         self.pm.visc = 1  # 9.81e-2
@@ -346,15 +338,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        scheme = 'non_stabilized'
-        if scheme == 'stabilized':
-            self.pm.scheme = scheme_type.apply_eigen_splitting_new
-            self.pm.min_alpha_stabilization = 0.5
-        elif scheme == 'non_stabilized':
-            pass
-        else:
-            print('Error: unsupported scheme', scheme)
-            exit(1)
+        self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
         self.pm.visc = 1#9.81e-2
@@ -464,15 +448,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.visc = 1.0
-        scheme = 'non_stabilized'
-        if scheme == 'stabilized':
-            self.pm.scheme = scheme_type.apply_eigen_splitting_new
-            self.pm.min_alpha_stabilization = 0.5
-        elif scheme == 'non_stabilized':
-            pass
-        else:
-            print('Error: unsupported scheme', scheme)
-            exit(1)
+        self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
         self.kd_cur = np.zeros(self.n_matrix)
@@ -583,15 +559,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # init poromechanics discretizer
         self.pm = pm_discretizer()
         self.pm.visc = self.visc
-        scheme = 'non_stabilized'
-        if scheme == 'stabilized':
-            self.pm.scheme = scheme_type.apply_eigen_splitting_new
-            self.pm.min_alpha_stabilization = 0.5
-        elif scheme == 'non_stabilized':
-            pass
-        else:
-            print('Error: unsupported scheme', scheme)
-            exit(1)
+        self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
 

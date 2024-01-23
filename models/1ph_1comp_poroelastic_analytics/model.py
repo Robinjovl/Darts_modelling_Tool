@@ -106,8 +106,13 @@ class Model(DartsModel):
         self.set_initial_conditions()
         self.set_well_controls()
         self.set_op_list()
-        self.reset()
+        self.reset()  # engine is created here
+        #TODO replace the lines above with this;
+        # remove self.engine arg from self.physics.init_wells as engine is located is in self.physics in the current dev branch
+        # self.reservoir.init_wells()  keep this?
+        #super().init()  # init base model and engine
 
+        # link engine with discretizer
         if self.discretizer_name == 'mech_discretizer':
             self.engine.set_discretizer(self.reservoir.discr)
 
