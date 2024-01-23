@@ -349,7 +349,7 @@ class UnstructReservoirMech():
             grav_coeff = gravitational_constant / 1e5  # convert units
         else:
             grav_coeff = 0.
-        grav_vec = matrix([0.0, 0.0, grav_coeff])
+        grav_vec = matrix([0.0, 0.0, grav_coeff], 1, 3)
         if self.discretizer_name == 'mech_discretizer':
             self.discr.grav_vec = grav_vec
         elif self.discretizer_name == 'pm_discretizer':
