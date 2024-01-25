@@ -475,9 +475,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.pm.perms.append(engine_matrix33(k, k, k))
             self.pm.biots.append(engine_matrix33(biot))
             self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
-            self.biot_mean[9 * cell_id] = biot
-            self.biot_mean[9 * cell_id + 4] = biot
-            self.biot_mean[9 * cell_id + 8] = biot
+            self.set_diag_matrix(self.biot_mean, cell_id, biot)
             self.porosity[cell_id] = poro
 
         self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
