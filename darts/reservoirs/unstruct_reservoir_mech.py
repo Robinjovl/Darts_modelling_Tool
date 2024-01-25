@@ -348,7 +348,35 @@ class UnstructReservoirMech():
                 self.cpp_heat.a = value_vector(at)
                 self.cpp_heat.b = value_vector(bt)
         elif self.discretizer_name == 'pm_discretizer':
-            pass
+            self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
+            self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+            self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+            self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+            self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
+            self.unstr_discr.p_ref[:] = self.p_init
+            for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
+                n = self.get_normal_to_bound_face(bound_id)
+                P = np.identity(3) - np.outer(n, n)
+                mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
+                flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
+                # if flow['a'] == 1.0:
+                #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
+                #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
+                #    else: bc.extend([0.0, 1.0, 0.0])
+                # else:
+                bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+                self.pm.bc.append(matrix(bc, len(bc), 1))
+                self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']  # TODO use init_bc_rhs
+                self.bc_rhs[4 * bound_id + 3] = flow['r']
+                self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array(
+                    [0, 0, 0])  # prev can be not inited if bnd cond doesn't change
+                self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+                self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
+                self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+            # self.bc_rhs_prev = np.copy(self.bc_rhs)
+            self.pm.bc_prev = self.pm.bc
+            self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+            self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
     def set_boundary_conditions_pm_discretizer(self):
         if self.discretizer_name == 'pm_discretizer':
