@@ -459,6 +459,7 @@ class UnstructReservoirMech():
             self.porosity = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
             self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
             for cell_id in range(self.unstr_discr.mat_cells_tot):
+                cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 E = self.props[cell.prop_id]['E']
                 nu = self.props[cell.prop_id]['nu']
                 biot = self.props[cell.prop_id]['b']
@@ -466,9 +467,9 @@ class UnstructReservoirMech():
                 kd = self.props[cell.prop_id]['kd']
                 poro = self.props[cell.prop_id]['poro']
                 lam, mu = get_lambda_mu(E, nu)
-                self.pm.stfs.append(Stiffness(lam, mu))
-                self.pm.perms.append(matrix33(k, k, k))
-                self.pm.biots.append(matrix33(biot))
+                self.pm.stfs.append(engine_stiffness(lam, mu))
+                self.pm.perms.append(engine_matrix33(k, k, k))
+                self.pm.biots.append(engine_matrix33(biot))
                 self.kd_cur[cell_id] = kd  # (biot - self.porosity) * (1 - biot) * kd
                 self.set_diag_matrix(self.biot_mean, cell_id, biot)
                 self.porosity[cell_id] = poro

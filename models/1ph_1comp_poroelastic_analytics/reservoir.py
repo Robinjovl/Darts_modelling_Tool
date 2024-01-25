@@ -392,35 +392,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
-        self.kd_cur = np.zeros(self.n_matrix)
-        self.porosity = np.zeros(self.n_matrix)
-        self.biot_mean = np.zeros(9 * (self.n_matrix))
-        for cell_id in range(self.n_matrix):
-            faces = self.unstr_discr.faces[cell_id]
-            fs = face_vector()
-            for face_id in range(len(faces)):
-                face = faces[face_id]
-                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid), index_vector(face.pts_id)))
-            self.pm.faces.append(fs)
-
-            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
-            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-
-            E = self.props[cell.prop_id]['E']
-            nu = self.props[cell.prop_id]['nu']
-            biot = self.props[cell.prop_id]['b']
-            k = self.props[cell.prop_id]['perm']
-            kd = self.props[cell.prop_id]['kd']
-            poro = self.props[cell.prop_id]['poro']
-            lam, mu = get_lambda_mu(E, nu)
-            self.pm.stfs.append(engine_stiffness(lam, mu))
-            self.pm.perms.append(engine_matrix33(k, k, k))
-            self.pm.biots.append(engine_matrix33(biot))
-            self.kd_cur[cell_id] = kd #(biot - self.porosity) * (1 - biot) * kd
-            self.set_diag_matrix(self.biot_mean, cell_id, biot)
-            self.porosity[cell_id] = poro
+        self.init_faces_centers_pm_discretizer()
+        self.init_heterogeneous_properties()
 
         self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
