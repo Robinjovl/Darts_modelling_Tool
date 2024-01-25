@@ -212,8 +212,6 @@ class UnstructReservoirMech():
         self.f = np.array(self.mesh.f, copy=False)
         self.biot_arr = np.array(self.mesh.biot, copy=False)
         self.kd = np.array(self.mesh.kd, copy=False)
-        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
-        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
         if self.thermoporoelacticity:
             self.t_ref = np.array(self.mesh.ref_temperature, copy=False)
@@ -225,18 +223,15 @@ class UnstructReservoirMech():
 
         if self.discretizer_name == 'mech_discretizer':
             volumes = np.array(self.discr_mesh.volumes, copy=False)
-            self.volume[:self.n_matrix] = volumes[:self.n_matrix]
+            self.volume[:self.n_matrix] = volumes[:self.n_matrix]  #TODO init frac volumes
             self.bc_prev[:] = self.bc_rhs_prev
             self.bc[:] = self.bc_rhs
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
             self.p_ref[:] = self.p_init
-            self.pz_bounds[self.p_var::self.n_state] = self.p_init
             if self.thermoporoelacticity:
                 self.t_ref[:] = self.t_init
-                self.pz_bounds[self.t_var::self.n_state] = self.t_init
                 self.th_expn_poro_arr[:] = self.th_expn_poro
-
         elif self.discretizer_name == 'pm_discretizer':
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
             for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
@@ -246,9 +241,27 @@ class UnstructReservoirMech():
             self.bc_ref[:] = self.bc_rhs_ref
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
-            self.pz_bounds[:] = self.unstr_discr.pz_bounds
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
+
+
+    def set_pz_bounds(self, p, z=None, t=None):
+        '''
+        # sets boundary values of pressures, (inflow) fractions at boundaries, and temperatures
+        # should be called after conn_mesh initialization
+        :param p: pressure values, bars
+        :param z: composition values TODO: implement
+        :param t: temperatures values, degrees
+        :return: None
+        '''
+        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
+        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+        if self.discretizer_name == 'mech_discretizer':
+            self.pz_bounds[self.p_var::self.n_state] = p
+            if self.thermoporoelacticity:
+                self.pz_bounds[self.t_var::self.n_state] = t
+        elif self.discretizer_name == 'pm_discretizer':
+            self.pz_bounds[:] = p
 
     def init_bc_rhs(self):
         if self.discretizer_name == 'mech_discretizer':
@@ -433,6 +446,8 @@ class UnstructReservoirMech():
         self.p_init = p_init  # initial pressure [bars]
         if self.thermoporoelacticity:
             self.t_init = t_init  # initial temperature [degrees]
+        else:
+            self.t_init = None
 
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))

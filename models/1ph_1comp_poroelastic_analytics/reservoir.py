@@ -81,6 +81,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.init_pm_discretizer()
 
         self.init_arrays()
+        self.set_pz_bounds(p=self.p_init, z=None, t=self.t_init)
 
         self.wells = []
 
@@ -195,8 +196,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
-        self.unstr_discr.pz_bounds = self.p_init
         self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
         self.unstr_discr.p_ref[:] = self.p_init
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -353,8 +352,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
-        self.unstr_discr.pz_bounds = self.p_init
         self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
         self.unstr_discr.p_ref[:] = self.p_init
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -487,8 +484,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
         self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
-        self.unstr_discr.pz_bounds = np.zeros(self.n_bounds)
-        self.unstr_discr.pz_bounds = self.p_init
         self.unstr_discr.p_ref = np.zeros(self.n_matrix)
         self.unstr_discr.p_ref[:] = self.p_init
         for bound_id in range(self.n_bounds):
@@ -570,8 +565,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-        self.unstr_discr.pz_bounds = np.zeros(self.unstr_discr.bound_cells_tot)
-        self.unstr_discr.pz_bounds = self.p_init
         self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
         self.unstr_discr.p_ref[:] = self.p_init
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
