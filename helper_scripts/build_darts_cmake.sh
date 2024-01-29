@@ -9,7 +9,7 @@ set -e
 Help_Info()
 {
   echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13]"
-  echo "   Script to install opendarts-linear_solvers on macOS."
+  echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
   echo "   -h : displays this help menu."
   echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
