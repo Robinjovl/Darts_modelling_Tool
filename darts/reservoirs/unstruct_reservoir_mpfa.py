@@ -277,3 +277,93 @@ class UnstructReservoirMPFA(UnstructReservoir):
                     #row_vals += str('{:.2e}'.format(coefs[i])) + '\t'
             f.write(row + '\n')# + row_cells + '\n' + row_vals + '\n')
         f.close()
+
+
+    def write_to_vtk(self, output_directory, cell_property, ith_step, engine):
+        """
+        Class method which writes output of unstructured grid to VTK format
+        :param output_directory: directory of output files
+        :param property_array: np.array containing all cell properties (N_cells x N_prop)
+        :param cell_property: list with property names (visible in ParaView (format strings)
+        :param ith_step: integer containing the output step
+        :return:
+        """
+        # First check if output directory already exists:
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+
+        # Allocate empty new cell_data dictionary:
+        props_num = len(cell_property)
+        if props_num > self.n_vars: props_num = self.n_vars
+        property_array = np.array(engine.X, copy=False)
+        available_matrix_geometries_cpp = [elem_type.HEX, elem_type.PRISM, elem_type.TETRA, elem_type.PYRAMID]
+        available_fracture_geometries_cpp = [elem_type.QUAD, elem_type.TRI]
+        available_matrix_geometries = {'hexahedron': elem_type.HEX,
+                                       'wedge': elem_type.PRISM,
+                                       'tetra': elem_type.TETRA,
+                                       'pyramid': elem_type.PYRAMID}
+        available_fracture_geometries = ['quad', 'triangle']
+
+        # Matrix
+        cells = []
+        cell_data = {}
+        for cell_block in self.mesh_data.cells:
+            if cell_block.type in available_matrix_geometries:
+                cells.append(cell_block)
+                cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], copy=False, dtype=np.int64)
+                for i in range(props_num):
+                    if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
+                    cell_data[cell_property[i]].append(property_array[props_num * cell_ids + i])
+
+                if ith_step == 0:
+                    if 'perm' not in cell_data: cell_data['perm'] = []
+                    if 'cell_id' not in cell_data: cell_data['cell_id'] = []
+                    cell_data['perm'].append(np.zeros((len(cell_ids), 9), dtype=np.float64))
+                    cell_data['cell_id'].append(np.zeros(len(cell_ids), dtype=np.int64))
+                    for i, cell_id in enumerate(cell_ids):
+                        cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
+                        cell_data['cell_id'][-1][i] = cell_id
+
+                # if 'cell_id' not in cell_data:
+                #     cell_data['cell_id'] = []
+                # cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
+
+                # if 'vel' not in cell_data: cell_data['vel'] = []
+                # vel = self.reconstruct_velocities(property_array[::2])
+                # cell_data['vel'].append(vel)
+
+        # Store solution for each time-step:
+        mesh = meshio.Mesh(
+            self.mesh_data.points,
+            cells,
+            cell_data=cell_data)
+        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+
+
+        # for ith_geometry in self.unstr_discr.mesh_data.cells:
+        #     # Extract left and right bound of array slicing:
+        #
+        #     # Store matrix or fractures cells in appropriate location
+        #     if ith_geometry == 'hexahedron' or ith_geometry == 'wedge':
+        #         # Add matrix data to dictionary:
+        #         cell_data[ith_geometry] = {}
+        #         for i in range(len(cell_property)):
+        #             cell_data[ith_geometry][cell_property[i]] = property_array[:, i]
+        #
+        #         cell_data[ith_geometry]['matrix_cell_bool'] = np.ones(((self.unstr_discr.matrix_cell_count),))
+        #         cell_data[ith_geometry]['perm'] = np.zeros((self.unstr_discr.matrix_cell_count, 9))
+        #         for cell_id in self.unstr_discr.mat_cell_info_dict.keys():
+        #             cell_data[ith_geometry]['perm'][cell_id] = self.unstr_discr.permeability[cell_id].flatten()
+        #
+        #         vel = self.reconstruct_velocities(property_array[:, 0])
+        #         cell_data[ith_geometry]['velocity'] = vel
+        #         cell_data[ith_geometry]['matrix_cell_bool'] = np.ones(((self.unstr_discr.matrix_cell_count),))
+        #
+        #         # vel = self.reconstruct_velocities(property_array[:, 0])
+        #         # cell_data[ith_geometry]['velocity'] = vel
+        #
+        # # Store solution for each time-step:
+        # Mesh.cell_data = cell_data
+        # print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        # meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), Mesh)
+        return 0
