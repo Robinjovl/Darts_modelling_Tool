@@ -14,6 +14,7 @@ class ReservoirBase:
     """
     mesh: conn_mesh
     wells: ms_well_vector = []
+    ndims: int
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
@@ -170,6 +171,22 @@ class ReservoirBase:
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
+
+    @abc.abstractmethod
+    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: list = None):
+        """
+        Method for plotting output using matplotlib library.
+        Implementation is specific to inherited Reservoir classes
+
+        :param output_idxs: Dictionary of properties with data array indices for output
+        :type output_idxs: dict
+        :param data: Data for output
+        :type data: np.ndarray
+        :param fig: Figure object, default is None
+        :param lims: List of lists with [lower, upper] limits for each output variable
+        :type lims: list
+        """
+        pass
 
     @abc.abstractmethod
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
