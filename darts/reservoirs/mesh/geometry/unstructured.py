@@ -381,7 +381,7 @@ class Unstructured(Geometry):
 
                         # Add Physical Volume
                         self.physical_groups['matrix']['Volume_' + str(i+1)] = i + nps + self.tags[3]
-                        f.write('Physical Volume("Volume_{:d}", {:d}) = {{out[1]}};\n'.format(i + 1, i + nps + self.tags[3]))
+                        f.write('Physical Volume("Volume_{:d}", {:d}) = {{out_{:d}[1]}};\n'.format(i + 1, i + nps + self.tags[3], i + 1))
                         f.write('\n')
                         npv += 1
 
