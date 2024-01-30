@@ -106,11 +106,16 @@ class Model(CICDModel):
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         return temp
 
-    def export_pro_vtk(self, file_name='Results'):
+    def export_pro_vtk(self, ith_step, file_name='Results'):
         X = np.array(self.physics.engine.X, copy=False)
         nb = self.reservoir.mesh.n_res_blocks
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         local_cell_data = {'Temperature': temp,
                            'Perm': self.reservoir.global_data['permx'][self.reservoir.discretizer.local_to_global]}
 
-        self.export_vtk(file_name, local_cell_data=local_cell_data)
+        output_data = np.array([temp])
+        # output_data = self.output_properties()
+        output_idxs = {'temp': 0}
+
+        # Pass to Reservoir.output_to_vtk() method
+        self.reservoir.output_to_vtk(ith_step, self.physics.engine.t, 'vtk_data', output_idxs, output_data)
