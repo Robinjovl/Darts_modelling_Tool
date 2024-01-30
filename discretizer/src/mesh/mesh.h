@@ -238,6 +238,7 @@ namespace mesh
 		void gmsh_mesh_reading(std::string filename, const PhysicalTags& tags);
 		void gmsh_mesh_construct_connections(const PhysicalTags& tags);
 		void generate_adjacency_matrix();
+		std::vector<index_t> get_boundary_cells();
 
 	}; //class Mesh
 

@@ -456,6 +456,20 @@ void Mesh::generate_adjacency_matrix()
 	cout << "Adjacency matrix:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl; 
 }
 
+// returns the vector of boundary cells indices
+std::vector<index_t> Mesh::get_boundary_cells()
+{
+	std::vector<index_t> bnd_cells;
+	// Append connections per element to 2D array
+	for (auto& conn : conns)
+	{
+		if (conn.type == MAT_BOUND)
+		{
+			bnd_cells.push_back(conn.elem_id1);
+		}
+	}
+	return bnd_cells;
+}
 // fills:
 // nodes, elems, elems_of_node, elem_nodes, elem_nodes_sorted, 
 // elem_type_map, region_ranges, region_elems_num, //TODO
