@@ -465,7 +465,6 @@ class Unstructured(Geometry):
         # Find well surfaces and turn into physical surfaces
         f.write('Mesh {:d};  // Generate {:d}D mesh\n'.format(self.dim, self.dim))
         f.write('Coherence Mesh;  // Remove duplicate entities\n')
-        f.write('Mesh.MshFileVersion = 2.1;\n')
         f.close()
         # https://gmsh.info/doc/texinfo/gmsh.html#File-formats
 
