@@ -368,10 +368,11 @@ class Unstructured(Geometry):
                     f.write('\n')
 
                 # Extrude non-Physical surfaces that haven't been extruded yet
+                npv = 0
                 nps = len(self.physical_surfaces)  # add length of physical surfaces to physical volume index
                 for i, surface in enumerate(self.surfaces):
                     if surface.idx not in surfaces_seen and surface.idx not in self.holes:
-                        local_text = 'out[] = Extrude {{{:f}, {:f}, {:f}}}{{ Surface'.format(extrusion[0], extrusion[1], extrusion[2]) \
+                        local_text = 'out_{:d}[] = Extrude {{{:f}, {:f}, {:f}}}{{ Surface'.format(i + 1, extrusion[0], extrusion[1], extrusion[2]) \
                                      + '{{{:d}}};'.format(surface.idx) + ' Layers{{{:d}}};'.format(self.extrude['layers'])
                         if self.extrude['recombine']:
                             local_text += ' Recombine;'
@@ -381,6 +382,18 @@ class Unstructured(Geometry):
                         # Add Physical Volume
                         self.physical_groups['matrix']['Volume_' + str(i+1)] = i + nps + self.tags[3]
                         f.write('Physical Volume("Volume_{:d}", {:d}) = {{out[1]}};\n'.format(i + 1, i + nps + self.tags[3]))
+                        f.write('\n')
+                        npv += 1
+
+                # add tags to the z+ and z- boundary surfaces 
+                tag_idx = npv + nps + self.tags[2]  # offset
+                for i, surface in enumerate(self.surfaces):
+                    if surface.idx not in surfaces_seen and surface.idx not in self.holes:
+                        # bound tag
+                        f.write('Physical Surface("boundary_zm_{:d}", {:d}) = {{{:d}}};\n'.format(i + 1, i + tag_idx, i + 1))
+                        f.write('Physical Surface("boundary_zp_{:d}", {:d}) = {{out_{:d}[0]}};\n'.format(i + 1, i + tag_idx + 1, i + 1))
+                        tag_idx += 2
+                        f.write('\n')
                 f.write('\n')
         else:
             # Write 3D
@@ -446,11 +459,13 @@ class Unstructured(Geometry):
                     # Add Physical Volume
                     self.physical_groups['matrix']['Volume_' + str(i+1)] = i + npv + self.tags[3]
                     f.write('Physical Volume("Volume_{:d}", {:d}) = {{{:d}}};\n'.format(i + 1, i + npv + self.tags[3], i + 1))
+                    f.write('\n')
             f.write('\n')
 
         # Find well surfaces and turn into physical surfaces
         f.write('Mesh {:d};  // Generate {:d}D mesh\n'.format(self.dim, self.dim))
         f.write('Coherence Mesh;  // Remove duplicate entities\n')
+        f.write('Mesh.MshFileVersion = 2.1;\n')
         f.close()
         # https://gmsh.info/doc/texinfo/gmsh.html#File-formats
 
