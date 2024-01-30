@@ -55,35 +55,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(mesh)
 
-        # allocate arrays in C++ (conn_mesh)
-        if discretizer == 'mech_discretizer':
-            if case == 'bai':
-                self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
-                                  self.discr.flux_stencil, self.discr.flux_offset,
-                                  self.discr.hooke, self.discr.hooke_rhs,
-                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
-                                  self.discr.darcy, self.discr.darcy_rhs,
-                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
-                                  self.discr.thermal_traction, self.discr.fourier,
-                                  self.n_matrix, self.n_bounds, self.n_fracs)
-            else:
-                self.mesh.init_pm_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
-                                  self.discr.flux_stencil, self.discr.flux_offset,
-                                  self.discr.hooke, self.discr.hooke_rhs,
-                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
-                                  self.discr.darcy, self.discr.darcy_rhs,
-                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
-                                  self.n_matrix, self.n_bounds, self.n_fracs)
-        elif discretizer == 'pm_discretizer':
-            if case == 'bai':
-                print(case, 'not supported in', discretizer)
-                assert False
-            self.init_pm_discretizer()
-
-        self.init_arrays()
-        self.set_pz_bounds(p=self.p_init, z=None, t=self.t_init)
-
-        self.wells = []
+        self.init_reservoir_main()
 
     def get_mesh_filename(self, mesh='rect', suffix = ''):
         if mesh == 'rect':

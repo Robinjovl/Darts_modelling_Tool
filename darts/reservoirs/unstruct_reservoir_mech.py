@@ -482,6 +482,38 @@ class UnstructReservoirMech():
         else:
             self.t_init = None
 
+    def init_reservoir_main(self):
+        # allocate arrays in C++ (conn_mesh)
+        if self.discretizer_name == 'mech_discretizer':
+            if self.thermoporoelacticity:
+                self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
+                                  self.discr.flux_stencil, self.discr.flux_offset,
+                                  self.discr.hooke, self.discr.hooke_rhs,
+                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
+                                  self.discr.darcy, self.discr.darcy_rhs,
+                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
+                                  self.discr.thermal_traction, self.discr.fourier,
+                                  self.n_matrix, self.n_bounds, self.n_fracs)
+            else:
+                self.mesh.init_pm_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
+                                  self.discr.flux_stencil, self.discr.flux_offset,
+                                  self.discr.hooke, self.discr.hooke_rhs,
+                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
+                                  self.discr.darcy, self.discr.darcy_rhs,
+                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
+                                  self.n_matrix, self.n_bounds, self.n_fracs)
+        elif self.discretizer_name == 'pm_discretizer':
+            if self.thermoporoelacticity:
+                print('thermoporoelacticity is not supported in', self.discretizer_name)
+                assert False
+            self.init_pm_discretizer()
+
+        self.init_arrays()
+        self.set_pz_bounds(p=self.p_init, z=None, t=self.t_init)
+
+        self.wells = []
+
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
