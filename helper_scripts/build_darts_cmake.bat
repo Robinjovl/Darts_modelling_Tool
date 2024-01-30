@@ -35,6 +35,12 @@ if %bos_solvers_artifact%==true (
   call .\update_private_artifacts.bat %SMBNAME% %SMBLOGIN% %SMBPASS%
   cd ..
   set bos_solvers_dir="%cd%\engines\lib\darts_linear_solvers"
+  if %testing%==true (
+    set %testing%=false
+  )
+  if %MT%==true (
+    set %MT%=false
+  )
 )
 echo - Report configuration of this script: START
 echo    bos_solvers_dir = %bos_solvers_dir%
