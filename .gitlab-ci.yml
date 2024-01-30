@@ -277,7 +277,7 @@ build-windows-3.7-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8
     artifacts:
       paths:
         - '.\dist\*.whl'
