@@ -41,10 +41,14 @@ class StructReservoir(ReservoirBase):
         self.ny = ny
         self.nz = nz
         self.n = nx * ny * nz
+        self.ndims = (nx > 1) + (ny > 1) + (nz > 1)
 
-        self.permx = permx
-        self.permy = permy
-        self.permz = permz
+        dx = self.convert_to_3d_array(dx)
+        dy = self.convert_to_3d_array(dy)
+        dz = self.convert_to_3d_array(dz)
+        permx = self.convert_to_3d_array(permx)
+        permy = self.convert_to_3d_array(permy)
+        permz = self.convert_to_3d_array(permz)
         self.global_data = {'dx': dx, 'dy': dy, 'dz': dz,
                             'poro': poro, 'permx': permx, 'permy': permy, 'permz': permz, 'rcond': rcond, 'hcap': hcap,
                             'depth': depth, 'actnum': actnum, 'op_num': op_num,
@@ -202,6 +206,26 @@ class StructReservoir(ReservoirBase):
                 idx = j
         return idx
 
+    def convert_to_3d_array(self, data):
+        """
+        Class method which converts the data object (scalar or vector) to a true 3D array (Nx,Ny,Nz)
+
+        :param data: any type of data, e.g. permeability of the cells (scalar, vector, or array form)
+        :return data: true data 3D data array
+        """
+        if np.isscalar(data):
+            if type(data) != int:
+                data = data * np.ones((self.nx, self.ny, self.nz), dtype=type(data))
+            else:
+                data = data * np.ones((self.nx, self.ny, self.nz))
+        else:
+            if data.ndim == 1:
+                assert data.size == self.n, "size is %s instead of %s" % (data.size, self.n)
+                data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
+            else:
+                assert data.shape == (self.nx, self.ny, self.nz), "shape is %s instead of %s" % (data.shape, (self.nx, self.ny, self.nz))
+        return data
+
     def get_cell_cpg_widths(self):
         assert self.discretizer.is_cpg
 
@@ -227,6 +251,70 @@ class StructReservoir(ReservoirBase):
         dy *= self.global_data['actnum']
         dz *= self.global_data['actnum']
         return dx, dy, dz
+
+    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: dict = None):
+        assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
+        import matplotlib.pyplot as plt
+        n_plots = len(output_idxs)
+        lims = lims if lims is not None else {}
+
+        if self.ndims == 1:
+            if fig is None:
+                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+
+                for j, (prop, idx) in enumerate(output_idxs.items()):
+                    axs[j].set_title(prop)
+
+            for j, (prop, idx) in enumerate(output_idxs.items()):
+                ax = fig.axes[j]
+
+                if self.nx > 1:
+                    x = self.discretizer.centroids_all_cells[:, 0]
+                    ax.plot(x, data[idx, :])
+                    if prop in lims.keys():
+                        ax.set(ylim=lims[prop])
+                elif self.nz > 1:
+                    z = self.discretizer.centroids_all_cells[:, 2]
+                    ax.plot(data[idx, :], z)
+                    if prop in lims.keys():
+                        ax.set(xlim=lims[prop])
+
+        elif self.ndims == 2:
+            dx, dy, dz = self.global_data['dx'], self.global_data['dy'], self.global_data['dz']
+            xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
+            ygrid = np.append(0, np.cumsum(dy[0, :, 0])) if self.ny > 1 else np.append(0, np.cumsum(dz[0, 0, :]))
+            X, Y = np.meshgrid(xgrid, ygrid)
+            shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
+
+            if fig is None:
+                from mpl_toolkits.axes_grid1 import make_axes_locatable
+                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+
+                for j, (prop, idx) in enumerate(output_idxs.items()):
+                    axs[j].set_title(prop)
+                    if prop not in lims.keys():
+                        lims[prop] = [None, None]
+
+                    z = np.empty(shape)
+                    im = axs[j].pcolormesh(X, Y, z, cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
+
+                    divider = make_axes_locatable(axs[j])
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                    # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                    # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+
+            for j, (prop, idx) in enumerate(output_idxs.items()):
+                ax = fig.axes[j]
+                if prop not in lims.keys():
+                    lims[prop] = [None, None]
+
+                ax.pcolormesh(X, Y, data[idx, :].reshape(shape), cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
+                ax.axis('scaled')
+                if self.nz > 1:
+                    ax.invert_yaxis()
+
+        return fig
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         """

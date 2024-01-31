@@ -14,7 +14,6 @@ class ReservoirBase:
     """
     mesh: conn_mesh
     wells: ms_well_vector = []
-    ndims: int
 
     def __init__(self, timer: timer_node, cache: bool = False):
         # Initialize timer for initialization and caching
@@ -173,7 +172,7 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: list = None):
+    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: dict = None):
         """
         Method for plotting output using matplotlib library.
         Implementation is specific to inherited Reservoir classes
@@ -183,8 +182,8 @@ class ReservoirBase:
         :param data: Data for output
         :type data: np.ndarray
         :param fig: Figure object, default is None
-        :param lims: List of lists with [lower, upper] limits for each output variable
-        :type lims: list
+        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
+        :type lims: dict
         """
         pass
 
