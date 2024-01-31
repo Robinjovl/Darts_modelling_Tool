@@ -12,6 +12,10 @@ if "%1"=="-b" (
   set bos_solvers_option=-D BOS_SOLVERS_DIR=%2 -DOPENDARTS_CONFIG=MT
 )
 
+if "%1"=="-d" (
+  set config=Debug
+)
+
 echo "bos_solvers_option=" %bos_solvers_option%
 
 rem - Update submodules: START

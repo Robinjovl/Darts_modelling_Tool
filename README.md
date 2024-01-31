@@ -18,6 +18,8 @@ To build openDARTS please check our [wiki](https://gitlab.com/open-darts/open-da
 
 Check some our tutorials and a crash-course on openDARTS [here](https://gitlab.com/open-darts/open-darts-workshop).
 
+Also to get started take a look at the different examples in [models](https://gitlab.com/open-darts/open-darts/-/tree/development/models?ref_type=heads).
+
 ## Documentation
 
 For more information about how to get started visit the [documentation](https://open-darts.gitlab.io/open-darts/).

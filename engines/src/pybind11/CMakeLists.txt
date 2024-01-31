@@ -5,31 +5,18 @@
 set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nonnewton_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear  
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_elastic_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_ms_well.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra_dif.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_dif.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_kin.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_kin_phi.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_kin_dif.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_kin_dif_np.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_sol.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_dvelocity.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pzt.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pzt_kin.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp  # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_well_controls.cpp

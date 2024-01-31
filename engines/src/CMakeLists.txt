@@ -301,7 +301,6 @@ set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nonnewton_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.cpp
 )
 
@@ -310,7 +309,6 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.h
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nonnewton_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp

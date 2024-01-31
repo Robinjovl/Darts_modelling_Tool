@@ -29,7 +29,7 @@ class Model(CICDModel):
 
         self.discr_type = discr_type
         self.gridfile = gridfile
-        self.propfile = propfile
+        self.propfile = gridfile if propfile == '' else propfile
         self.sch_fname = sch_fname
 
         arrays = read_arrays(self.gridfile, self.propfile)

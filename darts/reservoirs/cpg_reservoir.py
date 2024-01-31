@@ -55,7 +55,6 @@ class CPG_Reservoir(ReservoirBase):
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
         self.vtk_grid_type = 1
-        self.optimized_vtk_export = True
 
     def set_arrays(self, arrays):
         '''
@@ -505,169 +504,6 @@ class CPG_Reservoir(ReservoirBase):
             self.group.addFile(fname, t)
         self.group.save()
 
-    def generate_vtk_grid(self, strict_vertical_layers=True, compute_depth_by_dz_sum=True):
-        # interpolate 2d array using grid (xx, yy) and specified method
-        def interpolate_slice(xx, yy, array, method):
-            array = np.ma.masked_invalid(array)
-            # get only the valid values
-            x1 = xx[~array.mask]
-            y1 = yy[~array.mask]
-            newarr = array[~array.mask]
-            array = griddata((x1, y1), newarr.ravel(),
-                             (xx, yy),
-                             method=method)
-            return array
-
-        def interpolate_zeroes_2d(array):
-            array[array == 0] = np.nan
-            x = np.arange(0, array.shape[1])
-            y = np.arange(0, array.shape[0])
-            xx, yy = np.meshgrid(x, y)
-
-            # stage 1 - fill in interior data using cubic interpolation
-            array = interpolate_slice(xx, yy, array, 'cubic')
-            # stage 2 - fill exterior data using nearest
-            array = interpolate_slice(xx, yy, array, 'nearest')
-            return array
-
-        def interpolate_zeroes_3d(array_3d):
-            if array_3d[array_3d == 0].size > 0:
-                array_3d[array_3d == 0] = np.nan
-                x = np.arange(0, array_3d.shape[1])
-                y = np.arange(0, array_3d.shape[0])
-                xx, yy = np.meshgrid(x, y)
-                # slice array over third dimension
-                for k in range(array_3d.shape[2]):
-                    array = array_3d[:, :, k]
-                    if array[np.isnan(array) == False].size > 3:
-                        # stage 1 - fill in interior data using cubic interpolation
-                        array = interpolate_slice(xx, yy, array, 'cubic')
-
-                    if array[np.isnan(array) == False].size > 0:
-                        # stage 2 - fill exterior data using nearest
-                        array_3d[:, :, k] = interpolate_slice(xx, yy, array, 'nearest')
-                    else:
-                        if k > 0:
-                            array_3d[:, :, k] = np.mean(array_3d[:, :, k - 1])
-                        else:
-                            array_3d[:, :, k] = np.mean(array_3d)
-
-            return array_3d
-
-        # consider 16-bit float is enough for mesh geometry
-        mesh_geom_dtype = np.float32
-
-        # get tops from depths
-        if np.isscalar(self.global_data['depth']):
-            tops = self.global_data['depth'] * np.ones((self.nx, self.ny))
-            compute_depth_by_dz_sum = True
-        elif compute_depth_by_dz_sum:
-            tops = self.global_data['depth'][:self.nx * self.ny]
-            tops = np.reshape(tops, (self.nx, self.ny), order='F').astype(mesh_geom_dtype)
-        else:
-            depths = np.reshape(self.global_data['depth'], (self.nx, self.ny, self.nz), order='F').astype(mesh_geom_dtype)
-
-        # tops_avg = np.mean(tops[tops > 0])
-        # tops[tops <= 0] = 2000
-
-        # average x-s of the left planes for the left cross-section (i=1)
-        lefts = 0 * np.ones((self.ny, self.nz))
-        # average y-s of the front planes for the front cross_section (j=1)
-        fronts = 0 * np.ones((self.nx, self.nz))
-
-        self.vtk_x = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=mesh_geom_dtype)
-        self.vtk_y = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=mesh_geom_dtype)
-        self.vtk_z = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=mesh_geom_dtype)
-
-        if compute_depth_by_dz_sum:
-            tops = interpolate_zeroes_2d(tops)
-            tops_padded = np.pad(tops, 1, 'edge')
-        else:
-            depths_padded = np.pad(depths, 1, 'edge').astype(mesh_geom_dtype)
-        lefts_padded = np.pad(lefts, 1, 'edge')
-        fronts_padded = np.pad(fronts, 1, 'edge')
-
-        dx_padded = np.pad(self.discretizer.len_cell_xdir, 1, 'edge').astype(mesh_geom_dtype)
-        dy_padded = np.pad(self.discretizer.len_cell_ydir, 1, 'edge').astype(mesh_geom_dtype)
-        dz_padded = np.pad(self.discretizer.len_cell_zdir, 1, 'edge').astype(mesh_geom_dtype)
-
-        if strict_vertical_layers:
-            print("Interpolating missing data in DX...")
-            dx_padded_top = interpolate_zeroes_2d(dx_padded[:, :, 0])
-            dx_padded = np.repeat(dx_padded_top[:, :, np.newaxis], dx_padded.shape[2], axis=2)
-
-            print("Interpolating missing data in DY...")
-            dy_padded_top = interpolate_zeroes_2d(dy_padded[:, :, 0])
-            dy_padded = np.repeat(dy_padded_top[:, :, np.newaxis], dy_padded.shape[2], axis=2)
-        else:
-            print("Interpolating missing data in DX...")
-            interpolate_zeroes_3d(dx_padded)
-            print("Interpolating missing data in DY...")
-            interpolate_zeroes_3d(dy_padded)
-
-        # DZ=0 can actually be correct values in case of zero-thickness inactive blocks
-        # So we don`t need to interpolate them
-
-        # print("Interpolating missing data in DZ...")
-        # interpolate_zeroes_3d(dz_padded)
-
-        if not compute_depth_by_dz_sum:
-            print("Interpolating missing data in DEPTH...")
-            interpolate_zeroes_3d(depths_padded)
-
-        # initialize k=0 as sum of 4 neighbours
-        if compute_depth_by_dz_sum:
-            self.vtk_z[:, :, 0] = (tops_padded[:-1, :-1] +
-                                   tops_padded[:-1, 1:] +
-                                   tops_padded[1:, :-1] +
-                                   tops_padded[1:, 1:]) / 4
-        else:
-            self.vtk_z[:, :, 0] = (depths_padded[:-1, :-1, 0] - dz_padded[:-1, :-1, 0] / 2 +
-                                   depths_padded[:-1, 1:, 0] - dz_padded[:-1, 1:, 0] / 2 +
-                                   depths_padded[1:, :-1, 0] - dz_padded[1:, :-1, 0] / 2 +
-                                   depths_padded[1:, 1:, 0] - dz_padded[1:, 1:, 0] / 2) / 4
-        # initialize i=0
-        self.vtk_x[0, :, :] = (lefts_padded[:-1, :-1] +
-                               lefts_padded[:-1, 1:] +
-                               lefts_padded[1:, :-1] +
-                               lefts_padded[1:, 1:]) / 4
-        # initialize j=0
-        self.vtk_y[:, 0, :] = (fronts_padded[:-1, :-1] +
-                               fronts_padded[:-1, 1:] +
-                               fronts_padded[1:, :-1] +
-                               fronts_padded[1:, 1:]) / 4
-
-        # assign the rest coordinates by averaged size of neigbouring cells
-        if compute_depth_by_dz_sum:
-            self.vtk_z[:, :, 1:] = (dz_padded[:-1, :-1, 1:-1] +
-                                    dz_padded[:-1, 1:, 1:-1] +
-                                    dz_padded[1:, :-1, 1:-1] +
-                                    dz_padded[1:, 1:, 1:-1]) / 4
-        else:
-            self.vtk_z[:, :, 1:] = (depths_padded[:-1, :-1, 1:-1] + dz_padded[:-1, :-1, 1:-1] / 2 +
-                                    depths_padded[:-1, 1:, 1:-1] + dz_padded[:-1, 1:, 1:-1] / 2 +
-                                    depths_padded[1:, :-1, 1:-1] + dz_padded[1:, :-1, 1:-1] / 2 +
-                                    depths_padded[1:, 1:, 1:-1] + dz_padded[1:, 1:, 1:-1] / 2) / 4
-
-        self.vtk_x[1:, :, :] = (dx_padded[1:-1, :-1, :-1] +
-                                dx_padded[1:-1, :-1, 1:] +
-                                dx_padded[1:-1, 1:, :-1] +
-                                dx_padded[1:-1, 1:, 1:]) / 4
-
-        self.vtk_y[:, 1:, :] = (dy_padded[:-1, 1:-1, :-1] +
-                                dy_padded[:-1, 1:-1, 1:] +
-                                dy_padded[1:, 1:-1, :-1] +
-                                dy_padded[1:, 1:-1, 1:]) / 4
-
-        self.vtk_x = np.cumsum(self.vtk_x, axis=0)
-        self.vtk_y = np.cumsum(self.vtk_y, axis=1)
-        if compute_depth_by_dz_sum:
-            self.vtk_z = np.cumsum(self.vtk_z, axis=2)
-
-        # convert to negative coordinate
-        z_scale = -1
-        self.vtk_z *= z_scale
-
     def generate_cpg_vtk_grid(self):
 
         from darts.tools import GRDECL2VTK
@@ -682,45 +518,41 @@ class CPG_Reservoir(ReservoirBase):
         self.vtkobj.GRDECL_Data.GRID_type = 'CornerPoint'
 
         start = time.perf_counter()
-        if not self.optimized_vtk_export:
-            # python implementation
-            self.vtkobj.GRDECL2VTK(self.actnum)
-        else:
-            # c++ implementation using discretizer.pyd
-            print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data (new implementation)....')
-            nodes_cpp = self.discr_mesh.get_nodes_array()
-            nodes_1d = np.array(nodes_cpp, copy=True)
-            points = nodes_1d.reshape((nodes_1d.size // 3, 3))
+        # c++ implementation using discretizer.pyd
+        print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data (new implementation)....')
+        nodes_cpp = self.discr_mesh.get_nodes_array()
+        nodes_1d = np.array(nodes_cpp, copy=True)
+        points = nodes_1d.reshape((nodes_1d.size // 3, 3))
 
-            cells_1d = np.arange(self.discr_mesh.n_cells * 8)
-            cells = cells_1d.reshape((cells_1d.size//8, 8))
-            cells = [("hexahedron", cells)]
+        cells_1d = np.arange(self.discr_mesh.n_cells * 8)
+        cells = cells_1d.reshape((cells_1d.size//8, 8))
+        cells = [("hexahedron", cells)]
 
-            offset = np.arange(self.discr_mesh.n_cells + 1) * 8
-            offset_vtk = numpy_to_vtk(np.asarray(offset, dtype=np.int64), deep=True)
+        offset = np.arange(self.discr_mesh.n_cells + 1) * 8
+        offset_vtk = numpy_to_vtk(np.asarray(offset, dtype=np.int64), deep=True)
 
-            cells_vtk = numpy_to_vtk(np.asarray(cells_1d, dtype=np.int64), deep=True)
+        cells_vtk = numpy_to_vtk(np.asarray(cells_1d, dtype=np.int64), deep=True)
 
-            cellArray = vtkCellArray()
-            cellArray.SetNumberOfCells(cells_1d.size)
-            cellArray.SetData(offset_vtk, cells_vtk)
+        cellArray = vtkCellArray()
+        cellArray.SetNumberOfCells(cells_1d.size)
+        cellArray.SetData(offset_vtk, cells_vtk)
 
-            Cell = vtkHexahedron()
-            self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(),cellArray)
+        Cell = vtkHexahedron()
+        self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(),cellArray)
 
-            vtk_points = vtkPoints()
-            vtk_points.SetNumberOfPoints(points.size)
-            points_vtk = numpy_to_vtk(np.asarray(points, dtype=np.float32), deep=True)
-            vtk_points.SetData(points_vtk)
-            self.vtkobj.VTK_Grids.SetPoints(vtk_points)
+        vtk_points = vtkPoints()
+        vtk_points.SetNumberOfPoints(points.size)
+        points_vtk = numpy_to_vtk(np.asarray(points, dtype=np.float32), deep=True)
+        vtk_points.SetData(points_vtk)
+        self.vtkobj.VTK_Grids.SetPoints(vtk_points)
 
-            print("new     NumOfPoints",self.vtkobj.VTK_Grids.GetNumberOfPoints())
-            print("new     NumOfCells",self.vtkobj.VTK_Grids.GetNumberOfCells())
+        print("new     NumOfPoints",self.vtkobj.VTK_Grids.GetNumberOfPoints())
+        print("new     NumOfCells",self.vtkobj.VTK_Grids.GetNumberOfCells())
 
-            # 3. Load grid properties data if applicable
-            for keyword,data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
-                self.vtkobj.AppendScalarData(keyword,data)
-            print('new.....Done!')
+        # 3. Load grid properties data if applicable
+        for keyword,data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
+            self.vtkobj.AppendScalarData(keyword,data)
+        print('new.....Done!')
 
         end = time.perf_counter()
         print('time:', end - start, 'sec.')
