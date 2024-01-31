@@ -36,9 +36,10 @@ class bound_cond:
         self.STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
 
 def set_domain_tags(matrix_tags,
-                    bnd_xm_tag, bnd_xp_tag,
-                    bnd_ym_tag, bnd_yp_tag,
-                    bnd_zm_tag, bnd_zp_tag,
+                    bnd_xm_tag=None, bnd_xp_tag=None,
+                    bnd_ym_tag=None, bnd_yp_tag=None,
+                    bnd_zm_tag=None, bnd_zp_tag=None,
+                    bnd_tags=None,  # list of boundary tags
                     fracture_tags=[], frac_bnd_tags=[]):
     '''
     :param matrix_tag: list of integers
@@ -47,7 +48,11 @@ def set_domain_tags(matrix_tags,
     :param frac_bnd_tag: list of integers
     :return: dictionary of sets containing integer tags for each element type; dictionary of tags for 6 boundaries
     '''
-    boundary_tags = [bnd_xm_tag, bnd_xp_tag, bnd_ym_tag, bnd_yp_tag, bnd_zm_tag, bnd_zp_tag]
+    # one can specify tags for the each boundary side, or the list of boundary tags (bnd_tags)
+    if bnd_tags is None:
+        boundary_tags = [bnd_xm_tag, bnd_xp_tag, bnd_ym_tag, bnd_yp_tag, bnd_zm_tag, bnd_zp_tag]
+    else:
+        boundary_tags = bnd_tags
     domain_tags = dict()
     domain_tags[elem_loc.MATRIX] = set(matrix_tags)
     domain_tags[elem_loc.FRACTURE] = set(fracture_tags)
