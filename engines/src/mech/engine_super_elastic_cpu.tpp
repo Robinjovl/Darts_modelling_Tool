@@ -963,7 +963,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  for (d = 0; d < ND; d++)
 			  {
 				l_ind = i * N_VARS + U_VAR + d;
-				RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_rhs[conn_id] * 
+				RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] * 
 							  op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
 				l_ind1 = diag_idx + (U_VAR + d) * N_VARS;
 				r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;
