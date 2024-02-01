@@ -113,13 +113,19 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer'):
+def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer', is_last_model=False):
     t = timestep * np.ones(n_steps)
     m = Model(discretizer=discretizer, mesh_file=mesh_file)
+    m.params.finalize_mpi = is_last_model
     m.init()
     redirect_darts_output('log.txt')
     m.output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
+
+    # vol_strain = np.array(m.reservoir.mesh.vol_strain_tran, copy=False)
+    # vol_strain_rhs = np.array(m.reservoir.mesh.vol_strain_rhs, copy=False)
+    # vol_strain[:] = 0.0
+    # vol_strain_rhs[:] = 0.0
 
     ith_step = 0
     m.engine.t = 0.0
@@ -149,31 +155,49 @@ def run_convergence_study(n_res, discretizer, mesh='rect'):
 
     devs_u = []
     devs_p = []
+    devs_s = []
+    devs_v = []
     for i in range(n_res):
         print('Run model with resolution #' + str(i))
 
         mesh_file = mesh_file_template.format(i)
-        dev_u, dev_p = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
-                                             mesh_file=mesh_file, discretizer=discretizer)
+        dev_u, dev_p, dev_s, dev_v = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+                                             mesh_file=mesh_file, discretizer=discretizer, is_last_model=(i == n_res - 1))
         devs_u.append(dev_u)
         devs_p.append(dev_p)
+        devs_s.append(dev_s)
+        devs_v.append(dev_v)
 
     devs_u = np.array(devs_u)
     devs_p = np.array(devs_p)
+    devs_s = np.array(devs_s)
+    devs_v = np.array(devs_v)
 
     x = np.sqrt((timesteps * dx)[:n_res])
     id = np.argsort(x)
     u_order = (np.diff(np.log(devs_u[id])) / np.diff(np.log(x[id])))[0]
     p_order = (np.diff(np.log(devs_p[id])) / np.diff(np.log(x[id])))[0]
+    s_order = (np.diff(np.log(devs_s[id])) / np.diff(np.log(x[id])))[0]
+    v_order = (np.diff(np.log(devs_v[id])) / np.diff(np.log(x[id])))[0]
 
     print('dev_u')
     print(devs_u)
     print('u_order = ' + str(u_order))
+
     print('dev_p')
     print(devs_p)
     print('p_order = ' + str(p_order))
 
+    print('dev_s')
+    print(devs_s)
+    print('s_order = ' + str(s_order))
+
+    print('dev_v')
+    print(devs_v)
+    print('v_order = ' + str(v_order))
+
     assert(u_order > 1.0 and p_order > 1.0)
 
-# run_convergence_study(n_res=2, discretizer='pm_discretizer')
+# run_convergence_study(n_res=3, discretizer='pm_discretizer')
 run_convergence_study(n_res=3, discretizer='mech_discretizer', mesh='rect')
+# run_convergence_study(n_res=4, discretizer='mech_discretizer', mesh='tetra')

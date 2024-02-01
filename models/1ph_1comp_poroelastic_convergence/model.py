@@ -31,11 +31,11 @@ class Model(DartsModel):
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_superlu#cpu_gmres_fs_cpr#cpu_gmres_fs_cpr#sim_params.cpu_gmres_ilu0#sim_params.cpu_gmres_fs_cpr###sim_params.cpu_superlu
+            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr
+            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             ls1.tolerance_linear = 1.e-12
             ls1.max_i_linear = 500
             self.engine.ls_params.append(ls1)
@@ -78,6 +78,14 @@ class Model(DartsModel):
         self.set_well_controls()
         self.set_op_list()
         self.reset()
+
+        if self.discretizer_name == 'mech_discretizer':
+            self.engine.set_discretizer(self.reservoir.discr)
+
+        Xref = np.array(self.engine.Xref, copy=False)
+        Xn_ref = np.array(self.engine.Xn_ref, copy=False)
+        Xref[:] = 0.0
+        Xn_ref[:] = 0.0
 
     def set_initial_conditions(self):
         #self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
