@@ -231,8 +231,7 @@ class UnstructDiscretizer:
                     elif type in self.physical_tags['output']:
                         self.output_faces_tot += count
                     else:
-                        # Found geometry which is not supported by discretizer!
-                        print('!!!!!!!!!!!!UNSUPORTED GEOMETRY FOUND!!!!!!!!!!!!')
+                        raise ValueError("Unsupported physical tag found")
 
             if self.verbose:
                 print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
@@ -402,7 +401,6 @@ class UnstructDiscretizer:
 
     def find_vtk_output_cells(self, fractures: bool = True):
         self.vtk_output_cells = {}
-        cell_count = 0
         for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
             cell_idxs = {}
             unique, counts = np.unique(tags, return_counts=True)
@@ -414,13 +412,18 @@ class UnstructDiscretizer:
             # Main loop over different existing geometries
             for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
                 # matrix cells and fracture cells
-                if tags[ith_cell] in self.physical_tags['matrix'] or tags[ith_cell] in self.physical_tags['fracture']:
-                    cell_idxs[tags[ith_cell]].insert(-1, nodes_to_cell)
-                    cell_count += 1
+                tag = tags[ith_cell]
+                if tag in self.physical_tags['matrix'] or tag in self.physical_tags['fracture']:
+                    cell_idxs[tag].append(nodes_to_cell)
 
+            # Append the lists of nodes of all physical tags in particular geometry
             self.vtk_output_cells[geometry] = []
             for tag in cell_idxs.keys():
-                self.vtk_output_cells[geometry] += cell_idxs[tag]
+                if len(self.vtk_output_cells[geometry]) == 0:
+                    self.vtk_output_cells[geometry] = cell_idxs[tag]
+                else:
+                    self.vtk_output_cells[geometry].append(cell_idxs[tag])
+            np.asarray(self.vtk_output_cells[geometry])
 
         return
 

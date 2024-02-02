@@ -249,8 +249,6 @@ class UnstructReservoir(ReservoirBase):
         """
         self.vtk_initialized = True
         self.discretizer.find_vtk_output_cells()
-        self.discretizer.vtk_output_cells = {geometry: self.discretizer.mesh_data.cells_dict[geometry]
-                                             for geometry in self.discretizer.mat_geometries_in_file}
 
         if export_grid_data:
             cell_data = {}
