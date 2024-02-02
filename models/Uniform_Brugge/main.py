@@ -9,6 +9,7 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.output_to_vtk(ith_step=0, output_directory='vtk')
 
     if True:
         n.run(2000)
@@ -34,4 +35,4 @@ if __name__ == '__main__':
 
     plt.savefig('out.png')
 
-    n.output_to_vtk(ith_step=0, output_directory='vtk')
+    n.output_to_vtk(ith_step=1, output_directory='vtk')

@@ -65,6 +65,7 @@ class Model(CICDModel):
         # defined in this class --> in this case constant pressure/rate at the left (x==x_min) and right (x==x_max) side
         self.reservoir = UnstructReservoir(timer=self.timer, mesh_file=mesh_file, permx=permx, permy=permy, permz=permz,
                                            poro=poro, frac_aper=frac_aper)
+        self.reservoir.physical_tags['matrix'] = [999]
 
         return
 
