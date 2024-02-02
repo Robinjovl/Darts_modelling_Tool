@@ -122,11 +122,6 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
     m.output_directory = 'sol_{:s}'.format(m.physics_type)
     m.timer.node["update"] = timer_node()
 
-    # vol_strain = np.array(m.reservoir.mesh.vol_strain_tran, copy=False)
-    # vol_strain_rhs = np.array(m.reservoir.mesh.vol_strain_rhs, copy=False)
-    # vol_strain[:] = 0.0
-    # vol_strain_rhs[:] = 0.0
-
     ith_step = 0
     m.engine.t = 0.0
     time = 0
@@ -138,7 +133,6 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
 
         # m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
         # m.reservoir.write_diff_to_vtk(output_directory, property_array, m.cell_property, ith_step + 1, time)
-        #m.reservoir.write_pm_conn_to_file(t_step=ith_step + 1)
     return m.reservoir.calc_deviations(m.engine)
 
 def run_convergence_study(n_res, discretizer, mesh='rect'):
@@ -197,7 +191,8 @@ def run_convergence_study(n_res, discretizer, mesh='rect'):
     print('v_order = ' + str(v_order))
 
     assert(u_order > 1.0 and p_order > 1.0)
+    assert(s_order > 0.5 and v_order > 0.5)
 
 # run_convergence_study(n_res=3, discretizer='pm_discretizer')
 run_convergence_study(n_res=3, discretizer='mech_discretizer', mesh='rect')
-# run_convergence_study(n_res=4, discretizer='mech_discretizer', mesh='tetra')
+# run_convergence_study(n_res=3, discretizer='mech_discretizer', mesh='tetra')

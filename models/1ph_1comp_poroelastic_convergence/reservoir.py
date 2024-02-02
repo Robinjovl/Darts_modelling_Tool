@@ -127,13 +127,13 @@ class UnstructReservoir:
             x_an = reference_solution_poroelastic(self.x_all[:, :self.n_matrix])
             # stresses
             engine.eval_stresses_and_velocities()
-            total_stresses = np.array(engine.total_stresses, copy=False)
-            darcy_velocities = np.array(engine.darcy_velocities, copy=False)
+            total_stresses = np.array(engine.total_stresses, copy=True).reshape((self.n_matrix, 6))
+            darcy_velocities = np.array(engine.darcy_velocities, copy=True).reshape((self.n_matrix, 3))
 
         dev_u = np.sqrt((vol * ((x_num[self.u_var:self.u_var+self.n_dim] - x_an[:self.n_dim]) ** 2).sum(axis=0)).sum() / total_vol)
         dev_p = np.sqrt((vol * ((x_num[self.p_var] - x_an[self.n_dim]) ** 2)).sum() / total_vol)
-        dev_s = np.sqrt((vol * ((total_stresses - self.total_stress_an) ** 2).sum(axis=0)).sum() / total_vol)
-        dev_v = np.sqrt((vol * ((darcy_velocities - self.darcy_velocities_an) ** 2).sum(axis=0)).sum() / total_vol)
+        dev_s = np.sqrt((vol * ((total_stresses - self.total_stress_an) ** 2).sum(axis=1)).sum() / total_vol)
+        dev_v = np.sqrt((vol * ((darcy_velocities - self.darcy_velocities_an) ** 2).sum(axis=1)).sum() / total_vol)
 
         return dev_u, dev_p, dev_s, dev_v
     def update_trans(self, dt, x):
@@ -343,8 +343,8 @@ class UnstructReservoir:
             self.f_prep[self.n_vars * cell_id + self.p_var] = -self.fluid_density * (self.c * self.porosity *
                 self.r.acc_func(c.values[0], c.values[1], c.values[2], time) +
                 self.r.flow_func(c.values[0], c.values[1], c.values[2], time))
-            self.total_stress_an[6 * cell_id:6 * (cell_id + 1)] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-            self.darcy_velocities_an[3 * cell_id:3 * (cell_id + 1)] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
+            self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
+            self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer(self):
         self.mesh_data = meshio.read(self.mesh_file)
         self.domain_tags = dict()
@@ -475,8 +475,8 @@ class UnstructReservoir:
         self.c = 1.4503768e-05
         self.r = RhsPoroelastic(stf, biot, perm, self.fluid_viscosity, self.grav, self.fluid_density)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
-        self.total_stress_an = np.zeros(6 * self.n_matrix)
-        self.darcy_velocities_an = np.zeros(3 * self.n_matrix)
+        self.total_stress_an = np.zeros((self.n_matrix, 6))
+        self.darcy_velocities_an = np.zeros((self.n_matrix, 3))
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
             self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
@@ -530,55 +530,6 @@ class UnstructReservoir:
                 n = face.n
                 if np.inner(t_face, n) < 0: n = -n
                 return n
-    def get_parametrized_fault_props(self):
-        ref_id = next(iter(self.unstr_discr.frac_cell_info_dict))
-        tags = np.array([cell.prop_id for cell in self.unstr_discr.frac_cell_info_dict.values()])
-        tag_ids = {}
-        t0 = {}
-        coords = {}
-        z_coords = {}
-        for tag in self.unstr_discr.physical_tags['fracture']:
-            ids = np.argwhere(tags == tag)[:,0]
-            tag_ids[tag] = ref_id + ids
-            n0 = self.unstr_discr.faces[ref_id + ids[0]][4].n[:2]
-            t0[tag] = np.identity(2) - np.outer(n0, n0)
-            coords[tag] = np.array([self.unstr_discr.frac_cell_info_dict[i].centroid for i in tag_ids[tag]])
-            z_coords[tag] = np.unique(coords[tag][:,2])
-        def dist_sort_key(id):
-            c = self.unstr_discr.frac_cell_info_dict[id].centroid
-            return c[0] ** 2 + c[1] ** 2
-        def eval_frac_proj(tag, coords):
-            return np.linalg.norm(t0[tag].dot(coords), axis=0)
-
-        output_layers = 1
-        output_var_num = {tag: int(output_layers * inds.size / z_coords[tag].size) for tag, inds in tag_ids.items()}
-        faults_num = len(self.unstr_discr.physical_tags['fracture'])
-
-        s = {tag: np.zeros(num) for tag, num in output_var_num.items()}
-        #gap = np.zeros( (output_var_num, 3) )
-        #Ftan = np.zeros( (output_var_num, 3) )
-        #Fnorm = np.zeros( output_var_num )
-        inds = {tag: np.zeros((output_layers, num), dtype=np.int64) for tag, num in output_var_num.items()}
-        s_ref_prev = 0
-        for tag, ids in tag_ids.items():
-            counter = 0
-            for l, z in enumerate(z_coords[tag][:output_layers]):
-                z_inds = list(ids[np.argwhere( np.logical_and(coords[tag][:,2] > z-1.E-5, coords[tag][:,2] < z+1.E-5) )[:,0]])
-                z_inds.sort(key=dist_sort_key)
-                pts = self.unstr_discr.frac_cell_info_dict[z_inds[0]].coord_nodes_to_cell
-                s_ref = np.min(eval_frac_proj(tag, pts[:,:2].T))
-                inds[tag][l] = np.array(z_inds) - ref_id
-                for id in z_inds:
-                    c = self.unstr_discr.frac_cell_info_dict[id].centroid[:2]
-                    s[tag][counter] = eval_frac_proj(tag, c) - s_ref + s_ref_prev
-                    #gap[counter] = g[id - ref_id]
-                    #Ftan[counter] = Ft[id - ref_id]
-                    #Fnorm[counter] = Fn[id - ref_id]
-                    counter += 1
-                pts = self.unstr_discr.frac_cell_info_dict[z_inds[-1]].coord_nodes_to_cell
-                s_ref_prev += np.max(eval_frac_proj(tag, pts[:,:2].T)) - s_ref
-        z_output = {tag: z[:output_layers] for tag, z in z_coords.items()}
-        return s, z_output, inds#gap, Ftan, Fnorm
     def write_data_field(self, filename, u, s = None):
         r = np.array([cell.centroid for cell in self.unstr_discr.mat_cell_info_dict.values()])
         inds = list(np.arange(len(r)))
@@ -588,54 +539,6 @@ class UnstructReservoir:
         else:
             np.savetxt(filename, np.c_[r[inds, 0], r[inds, 1], r[inds, 2], u[inds, 0], u[inds, 1], u[inds,2],
                 s[inds, 0], s[inds, 1], s[inds, 2], s[inds, 3], s[inds, 4], s[inds, 5]])
-    def check_positive_negative_sides(self):
-        block_size = 4
-        cell_m = np.array(self.pm.cell_m,dtype=np.intp)
-        cell_p = np.array(self.pm.cell_p,dtype=np.intp)
-        for i, cell_id1 in enumerate(cell_m):
-            cell_id2 = cell_p[i]
-            if cell_id2 < self.unstr_discr.mat_cells_tot:
-                # find other one
-                st1 = np.array(self.pm.stencil[self.pm.offset[i]:self.pm.offset[i + 1]], dtype=np.intp)
-                all_trans1 = np.array(self.pm.tran)[(self.pm.offset[i] * block_size) * block_size: (self.pm.offset[i + 1] * block_size) * block_size].reshape(self.pm.offset[i + 1] - self.pm.offset[i], block_size, block_size)
-                j = np.where(np.logical_and(cell_m == cell_id2, cell_p == cell_id1))[0][0]
-                st2 = np.array(self.pm.stencil[self.pm.offset[j]:self.pm.offset[j + 1]], dtype=np.intp)
-                all_trans2 = np.array(self.pm.tran)[(self.pm.offset[j] * block_size) * block_size: (self.pm.offset[j + 1] * block_size) * block_size].reshape(self.pm.offset[j + 1] - self.pm.offset[j], block_size, block_size)
-                assert(set(st1) == set(st2))
-                ids1 = np.argsort(st1)
-                ids2 = np.argsort(st2)
-                diff = all_trans1[ids1] + all_trans2[ids2]
-                assert((np.abs(diff) < 1.E-10).all())
-    def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
-        #self.check_positive_negative_sides()
-        path = 'pm_conn' + str(t_step) + '.dat'
-        block_size = 4
-        f = open(path, 'w')
-        f.write(str(len(self.pm.cell_m)) + '\n')
-        for i, cell_id1 in enumerate(self.pm.cell_m):
-            cell_id2 = self.pm.cell_p[i]
-            f.write(str(cell_id1) + '\t' + str(cell_id2) + '\n')
-
-            for k in range(block_size):
-                row = 'F' + str(k) + '\t{:.5e}'.format(self.pm.rhs[i * block_size + k])
-                for j in range(self.pm.offset[i], self.pm.offset[i + 1]):
-                    row += '\t' + str(self.pm.stencil[j]) + '\t[' + ', '.join(
-                    ['{:.5e}'.format(self.pm.tran[n]) for n in range((j * block_size + k) * block_size, (j * block_size + k + 1) * block_size)]) + str(']')
-                f.write(row + '\n')
-            # Biot
-            for k in range(block_size):
-                row = 'b' + str(k) + '\t{:.5e}'.format(self.pm.rhs_biot[i * block_size + k])
-                for j in range(self.pm.offset[i], self.pm.offset[i + 1]):
-                    row += '\t' + str(self.pm.stencil[j]) + '\t[' + ', '.join(
-                    ['{:.5e}'.format(self.pm.tran_biot[n]) for n in range((j * block_size + k) * block_size, (j * block_size + k + 1) * block_size)]) + str(']')
-                f.write(row + '\n')
-            # if self.pm.cell_p[i] < self.unstr_discr.mat_cells_tot:
-            #     st = np.array(self.pm.stencil[self.pm.offset[i]:self.pm.offset[i+1]],dtype=np.intp)
-            #     all_trans_biot = np.array(self.pm.tran_biot)[(self.pm.offset[i] * block_size) * block_size: (self.pm.offset[i + 1] * block_size) * block_size].reshape(self.pm.offset[i + 1] - self.pm.offset[i], block_size, block_size)
-            #     sum = np.sum(all_trans_biot, axis=0)
-            #     #sum_no_bound = np.sum(all_trans[st < self.unstr_discr.mat_cells_tot], axis=0)
-            #     assert((abs(sum[:3,:3]) < 1.E-10).all())
-        f.close()
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
         Class method which writes output of unstructured grid to VTK format
@@ -727,223 +630,6 @@ class UnstructReservoir:
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
-
-    def get_fault_props(self, property_array, ith_step, physics):
-        n_vars = 4
-        n_dim = 3
-        fluxes = np.array(physics.engine.fluxes, copy=False)
-        fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        S_eng = vector_matrix(physics.engine.contacts[0].S)
-        frac_prop = property_array[n_vars * self.unstr_discr.mat_cells_tot:n_vars * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)].reshape(self.unstr_discr.frac_cells_tot, n_vars)
-        fstress = np.array(physics.engine.contacts[0].fault_stress, copy=False)
-
-        frac_data = {}
-        frac_data['tag'] = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intp)
-        frac_data['g_local'] = np.zeros((self.unstr_discr.frac_cells_tot, n_dim))
-        frac_data['f_local'] = np.zeros((self.unstr_discr.frac_cells_tot, n_dim))
-        frac_data['mu'] = np.array(physics.engine.contacts[0].mu, copy=False)
-
-        for cell_id, cell in self.unstr_discr.frac_cell_info_dict.items():
-            cell_id -= self.unstr_discr.mat_cells_tot
-            frac_data['tag'][cell_id] = int(cell.prop_id)
-            face = self.unstr_discr.faces[cell_id + self.unstr_discr.mat_cells_tot][4]
-            S = np.array(S_eng[cell_id].values).reshape((n_dim, n_dim))
-            f = fstress[n_dim * cell_id:n_dim * (cell_id + 1)] / face.area
-            frac_data['f_local'][cell_id] = S.dot(f)
-            frac_data['g_local'][cell_id] = S.dot(frac_prop[cell_id,:n_dim])
-
-        phi = np.array(physics.engine.contacts[0].phi, copy=False)
-        #states = phi > 0
-        frac_data['phi'] = phi
-
-        #if ith_step == 0:
-        #    self.time_file.write(str(0.0) + '\t' + str(self.un_top) + '\n')
-        #else:
-        #    self.time_file.write(str(physics.engine.t * 86400.0) + '\t' + str(self.un_top) + '\n')
-        #self.time_file.flush()
-
-        return frac_data
-    def write_fault_props(self, output_directory, property_array, ith_step, physics):
-        n_vars = 4
-        n_dim = 3
-        fluxes = np.array(physics.engine.fluxes, copy=False)
-        fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-        s, z_coords, inds = self.get_parametrized_fault_props()
-        x = property_array.reshape(int(property_array.size / n_vars), n_vars)[self.unstr_discr.mat_cells_tot:self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot]
-        g = {}
-        glocal = {}
-        flocal = {}
-        mu = {}
-        for tag, ids in inds.items():
-            if ids.size * z_coords[tag].size < self.unstr_discr.frac_cells_tot: return 0
-
-            g[tag] = np.array(x[ids[0],:n_dim])
-            glocal[tag] = np.zeros((len(ids[0]), 3))
-            flocal[tag] = np.zeros((len(ids[0]), 3))
-            S_eng = vector_matrix(physics.engine.contacts[0].S)
-            mu[tag] = np.array(physics.engine.contacts[0].mu, copy=False)
-            fstress = np.array(physics.engine.contacts[0].fault_stress, copy=False)
-            for i, id in enumerate(ids[0]):
-                face = self.unstr_discr.faces[id + self.unstr_discr.mat_cells_tot][4]
-                S = np.array(S_eng[id].values).reshape((n_dim, n_dim))
-                flocal[tag][i] = S.dot(fstress[n_dim * id:n_dim * (id + 1)] / face.area)
-                #n = self.unstr_discr.faces[self.unstr_discr.mat_cells_tot][max(self.unstr_discr.faces[self.unstr_discr.mat_cells_tot].keys())].n
-                #S = np.zeros((n_dim, n_dim))
-                #S[:n_dim - 1] = null_space(np.array([-n])).T
-                #S[n_dim - 1] = -n
-                glocal[tag][i] = S.dot(g[tag][i])
-
-            #if ith_step == 0:
-            self.fig, self.ax = plt.subplots(nrows=2, sharex=True, figsize=(12, 10))
-            self.ax0 = self.ax[0].twinx()
-            self.ax1 = self.ax[1].twinx()
-            self.ax11 = self.ax[1].twinx()
-            #self.ax[0].set_ylabel('normal gap, $g_N$')
-            self.ax[0].set_ylabel('friction coefficient, $\mu$')
-            self.ax0.set_ylabel('slip, $g_T$')
-            self.ax[1].set_ylabel('normal traction, $F_N$')
-            self.ax1.set_ylabel('tangential traction, $F_T$')
-            self.ax[1].set_xlabel('distance')
-                #self.ax1.set_ylabel('distance along fault')
-
-            phi = np.array(physics.engine.contacts[0].phi, copy=False)
-            states = phi > 0
-            for tag, s_cur in s.items():
-                Fn = flocal[tag][:,0]
-                Ft = flocal[tag][:,1]
-                #self.ax[0].plot(s_cur, glocal[tag][:,0], color='b', linestyle='-', marker='o', label=str(tag) + r': $g_N$')
-                if (mu[tag] != 0.0).all() and (Fn != 0.0).all():
-                    self.ax[0].plot(s_cur, mu[tag], color='b', linestyle='-', marker='o', label=str(tag) + r': $\mu$')
-                    self.ax[0].plot(s_cur, Ft / Fn, color='r', linestyle='--', marker='o', label=str(tag) + r': $\mu * SCU$')
-                self.ax0.plot(s_cur, -glocal[tag][:,1], color='r', linestyle='-', marker='o', label=str(tag) + r': $g_T$')
-                self.ax[1].plot(s_cur, Fn, color='b', linestyle='-', marker='o', label=str(tag) + r': $F_N$')
-                self.ax1.plot(s_cur, Ft, color='r', linestyle='-', marker='o', label=str(tag) + r': $F_T$')
-                self.ax11.plot(s_cur, states[ids[0]], color='g', linestyle=':', marker='x')
-                if states[ids[0]][0] == 0:
-                    self.ax11.text(0, 0, 'STUCK', fontsize=15)
-                elif states[ids[0]][0] == 1:
-                    self.ax11.text(0, 1, 'SLIP', fontsize=15)
-
-                np.savetxt(output_directory + '/fault_step_' + str(ith_step) + '_tag_' + str(tag) + ".txt",
-                           np.c_[s_cur, glocal[tag][:, 0], glocal[tag][:, 1], glocal[tag][:, 2], Fn, Ft, mu[tag]])
-
-            self.ax[0].grid(axis='x')
-            self.ax[1].grid(axis='x')
-            self.ax0.grid(axis='y')
-            self.ax1.grid(axis='y')
-            self.ax[0].legend(loc='upper left')
-            self.ax0.legend(loc='upper right')
-            self.ax[1].legend(loc='upper left')
-            self.ax1.legend(loc='upper right')
-            if mu[tag].min() != mu[tag].max():
-                self.ax[0].set_ylim([0.98 * mu[tag].min(), 1.02 * mu[tag].max()])
-            else:
-                self.ax[0].set_ylim([0.0, 1.0])
-            #self.ax0.set_ylim([-0.0002, 0.0006])
-            #self.ax[1].set_ylim([19, 21])
-            #self.ax1.set_ylim([-0.1, 0.1])
-            self.ax11.get_yaxis().set_visible(False)
-
-            self.fig.tight_layout()
-            self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
-            plt.close(self.fig)
-
-    def write_fault_props_old(self, output_directory, property_array, ith_step, fluxes, physics):
-        n_vars = 4
-        n_dim = 3
-        s, z_coords, inds = self.get_parametrized_fault_props()
-        x = property_array.reshape(int(property_array.size / n_vars), n_vars)[self.unstr_discr.mat_cells_tot:self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot]
-        g = {}
-        glocal = {}
-        f = [{}, {}]
-        flocal = [{}, {}]
-        for tag, ids in inds.items():
-            g[tag] = np.array(x[ids[0],:n_dim])
-            glocal[tag] = np.zeros((len(ids[0]), 3))
-            f[0][tag] = np.zeros((len(ids[0]), 3))
-            f[1][tag] = np.zeros((len(ids[0]), 3))
-            flocal[0][tag] = np.zeros((len(ids[0]), 3))
-            flocal[1][tag] = np.zeros((len(ids[0]), 3))
-            S_eng = vector_matrix(physics.engine.contacts[0].S)
-            for i, id in enumerate(ids[0]):
-                conn_id = self.mesh.fault_conn_id[id][0]
-                dx = self.unstr_discr.mat_cell_info_dict[self.mesh.block_p[conn_id]].centroid - \
-                        self.unstr_discr.mat_cell_info_dict[self.mesh.block_m[conn_id]].centroid
-                sign = 1.0 if self.unstr_discr.faces[self.unstr_discr.mat_cells_tot][max(self.unstr_discr.faces[self.unstr_discr.mat_cells_tot].keys())].n.dot(dx) > 0 else -1
-                for k in range(0, 2):
-                    conn_id = self.mesh.fault_conn_id[id][k]
-                    face = self.unstr_discr.faces[id + self.unstr_discr.mat_cells_tot][4]
-                    if k > 0: sign = -sign
-
-                    #n = face.n#np.array(self.mesh.fault_normals[id])
-                    #dx = self.unstr_discr.mat_cell_info_dict[self.mesh.block_p[conn_id]].centroid - \
-                    #     self.unstr_discr.mat_cell_info_dict[self.mesh.block_m[conn_id]].centroid
-                    #n = n if n.dot(dx) > 0 else -n
-                    #S = np.zeros((n_dim, n_dim))
-                    #S[1:] = null_space(np.array([n])).T
-                    #S[0] = n
-
-                    S = np.array(S_eng[id].values).reshape((n_dim, n_dim))
-
-                    f[k][tag][i] = sign * fluxes[n_vars * conn_id:n_vars * conn_id + 3]# / face.area
-                    flocal[k][tag][i] = S.dot(f[k][tag][i])
-                    if k == 0:
-                        #n = self.unstr_discr.faces[self.unstr_discr.mat_cells_tot][max(self.unstr_discr.faces[self.unstr_discr.mat_cells_tot].keys())].n
-                        #S = np.zeros((n_dim, n_dim))
-                        #S[:n_dim - 1] = null_space(np.array([-n])).T
-                        #S[n_dim - 1] = -n
-                        glocal[tag][i] = S.dot(g[tag][i])
-
-            #if ith_step == 0:
-                self.fig, self.ax = plt.subplots(nrows=2, sharex=True, figsize=(12, 10))
-                self.ax0 = self.ax[0].twinx()
-                self.ax1 = self.ax[1].twinx()
-                self.ax11 = self.ax[1].twinx()
-                self.ax[0].set_ylabel('normal gap, $g_N$')
-                self.ax0.set_ylabel('slip, $g_T$')
-                self.ax[1].set_ylabel('normal traction, $F_N$')
-                self.ax1.set_ylabel('tangential traction, $F_T$')
-                self.ax[1].set_xlabel('distance')
-                #self.ax1.set_ylabel('distance along fault')
-
-            phi = np.array(physics.engine.contacts[0].phi, copy=False)
-            states = phi > 0
-            for tag, s_cur in s.items():
-                self.ax[0].plot(s_cur, glocal[tag][:,0], color='b', linestyle='-', marker='o', label=str(tag) + r': $g_N$')
-                self.ax0.plot(s_cur, -glocal[tag][:,1], color='r', linestyle='-', marker='o', label=str(tag) + r': $g_T$')
-                self.ax[1].plot(s_cur, flocal[0][tag][:,0], color='b', linestyle='--', marker='x', label=str(tag) + r': $F_N^+$')
-                self.ax1.plot(s_cur, flocal[0][tag][:,1], color='r', linestyle='--', marker='x', label=str(tag) + r': $F_T^+$')
-                self.ax[1].plot(s_cur, flocal[1][tag][:,0], color='b', linestyle='--', marker='^', label=str(tag) + r': $F_N^-$')
-                self.ax1.plot(s_cur, flocal[1][tag][:,1], color='r', linestyle='--', marker='^', label=str(tag) + r': $F_T^-$')
-                self.ax[1].plot(s_cur, (flocal[0][tag][:,0] + flocal[1][tag][:,0]) / 2, color='b', linestyle='-', marker='o', label=str(tag) + r': $F_N$')
-                self.ax1.plot(s_cur, (flocal[0][tag][:,1] + flocal[1][tag][:,1]) / 2, color='r', linestyle='-', marker='o', label=str(tag) + r': $F_T$')
-                self.ax11.plot(s_cur, states[ids[0]], color='g', linestyle=':', marker='x')
-                if states[ids[0]][0] == 0:
-                    self.ax11.text(0, 0, 'STUCK', fontsize=15)
-                elif states[ids[0]][0] == 1:
-                    self.ax11.text(0, 1, 'SLIP', fontsize=15)
-
-            self.ax[0].grid(axis='x')
-            self.ax[1].grid(axis='x')
-            self.ax0.grid(axis='y')
-            self.ax1.grid(axis='y')
-            self.ax[0].legend(loc='upper left')
-            self.ax0.legend(loc='upper right')
-            self.ax[1].legend(loc='upper left')
-            self.ax1.legend(loc='upper right')
-            self.ax[0].set_ylim([0, 0.001])
-            #self.ax0.set_ylim([-0.0002, 0.0006])
-            #self.ax[1].set_ylim([19, 21])
-            #self.ax1.set_ylim([-0.1, 0.1])
-            self.ax11.get_yaxis().set_visible(False)
-
-            self.fig.tight_layout()
-            self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
-
-            np.savetxt(output_directory + '/fault_step_' + str(ith_step) + '_tag_' + str(tag) + ".txt",
-                       np.c_[s[tag], glocal[tag][:,0], glocal[tag][:,1], glocal[tag][:,2],
-                    (flocal[0][tag][:,0] + flocal[1][tag][:,0]) / 2, (flocal[0][tag][:,1] + flocal[1][tag][:,1]) / 2])
-
     def write_diff_to_vtk(self, output_directory, property_array, cell_property, ith_step, time):
         """
         Class method which writes output of unstructured grid to VTK format
