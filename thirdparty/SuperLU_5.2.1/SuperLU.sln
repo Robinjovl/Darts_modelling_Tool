@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33205.214
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SuperLU", "SuperLU\SuperLU.vcxproj", "{02291271-93B7-4F0C-90A4-D02EAC46A64D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "slu_blas", "slu_blas\slu_blas.vcxproj", "{C5AE009E-3C5E-461F-AE85-A1E439B9A63C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{02291271-93B7-4F0C-90A4-D02EAC46A64D}.Debug|x64.ActiveCfg = Debug|x64
+		{02291271-93B7-4F0C-90A4-D02EAC46A64D}.Debug|x64.Build.0 = Debug|x64
+		{02291271-93B7-4F0C-90A4-D02EAC46A64D}.Release|x64.ActiveCfg = Release|x64
+		{02291271-93B7-4F0C-90A4-D02EAC46A64D}.Release|x64.Build.0 = Release|x64
+		{C5AE009E-3C5E-461F-AE85-A1E439B9A63C}.Debug|x64.ActiveCfg = Debug|x64
+		{C5AE009E-3C5E-461F-AE85-A1E439B9A63C}.Debug|x64.Build.0 = Debug|x64
+		{C5AE009E-3C5E-461F-AE85-A1E439B9A63C}.Release|x64.ActiveCfg = Release|x64
+		{C5AE009E-3C5E-461F-AE85-A1E439B9A63C}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C3AADE0E-A3B0-4819-AEA4-5289B7F45CE7}
+	EndGlobalSection
+EndGlobal
