@@ -107,17 +107,17 @@ class UnstructReservoirMech():
     '''
     Class for Poroelasticity/ThermoPoroElasticity coupled model
     '''
-    def __init__(self, timer, discretizer='mech_discretizer', thermoporoelacticity=False):
+    def __init__(self, timer, discretizer='mech_discretizer', thermoporoelasticity=False):
         self.timer = timer
         self.discretizer_name = discretizer
-        self.thermoporoelacticity = thermoporoelacticity
+        self.thermoporoelasticity = thermoporoelasticity
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
         self.n_dim = 3
         self.n_dim_sq = self.n_dim * self.n_dim
         self.bc_type = bound_cond()
     
-        if thermoporoelacticity:
+        if thermoporoelasticity:
             self.cell_property = ['p', 't', 'ux', 'uy', 'uz']
             self.n_state = 2
             self.n_vars = 5
@@ -169,7 +169,7 @@ class UnstructReservoirMech():
 
         self.a = np.max([node.values[0] for node in self.discr_mesh.nodes])  # max value of X coordinate
         self.b = np.max([node.values[1] for node in self.discr_mesh.nodes])  # max value of Y coordinate
-        if self.thermoporoelacticity:
+        if self.thermoporoelasticity:
             self.discr = thermoporo_mech_discretizer()
         else:
             self.discr = poro_mech_discretizer()
@@ -193,7 +193,7 @@ class UnstructReservoirMech():
             self.kd_cur = get_kd_cur(self.E, self.nu)
             self.lam, self.mu = get_lambda_mu(self.E, self.nu)
             self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
-        if self.thermoporoelacticity:
+        if self.thermoporoelasticity:
             self.th_expn = self.th_expn_coef * self.kd_cur
 
         self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
@@ -219,7 +219,7 @@ class UnstructReservoirMech():
         self.biot_arr = np.array(self.mesh.biot, copy=False)
         self.kd = np.array(self.mesh.kd, copy=False)
         self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
-        if self.thermoporoelacticity:
+        if self.thermoporoelasticity:
             self.t_ref = np.array(self.mesh.ref_temperature, copy=False)
             self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
 
@@ -235,7 +235,7 @@ class UnstructReservoirMech():
             self.biot_arr[:] = self.biot_mean
             self.kd[:] = self.kd_cur
             self.p_ref[:] = self.p_init
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 self.t_ref[:] = self.t_init
                 self.th_expn_poro_arr[:] = self.th_expn_poro
         elif self.discretizer_name == 'pm_discretizer':
@@ -264,7 +264,7 @@ class UnstructReservoirMech():
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         if self.discretizer_name == 'mech_discretizer':
             self.pz_bounds[self.p_var::self.n_state] = p
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 self.pz_bounds[self.t_var::self.n_state] = t
         elif self.discretizer_name == 'pm_discretizer':
             self.pz_bounds[:] = p
@@ -277,7 +277,7 @@ class UnstructReservoirMech():
                 # flow
                 self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
                 # energy
-                if self.thermoporoelacticity:
+                if self.thermoporoelasticity:
                     self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
                 # mechanics
                 for id in ids:
@@ -312,7 +312,7 @@ class UnstructReservoirMech():
             bmn = np.zeros(self.n_bounds)
             amt = np.zeros(self.n_bounds)
             bmt = np.zeros(self.n_bounds)
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 at = np.zeros(self.n_bounds)
                 bt = np.zeros(self.n_bounds)
             self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
@@ -327,7 +327,7 @@ class UnstructReservoirMech():
                 bmn[ids] = bc['mech']['bn']
                 amt[ids] = bc['mech']['at']
                 bmt[ids] = bc['mech']['bt']
-                if self.thermoporoelacticity:
+                if self.thermoporoelasticity:
                     at[ids] = bc['temp']['a']
                     bt[ids] = bc['temp']['b']
 
@@ -340,7 +340,7 @@ class UnstructReservoirMech():
             self.cpp_bc.mech_normal.b = value_vector(bmn)
             self.cpp_bc.mech_tangen.a = value_vector(amt)
             self.cpp_bc.mech_tangen.b = value_vector(bmt)
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 self.cpp_bc.thermal.a = value_vector(at)
                 self.cpp_bc.thermal.b = value_vector(bt)
             # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
@@ -348,7 +348,7 @@ class UnstructReservoirMech():
             self.cpp_flow = BoundaryCondition()
             self.cpp_flow.a = value_vector(ap)
             self.cpp_flow.b = value_vector(bp)
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 self.cpp_heat = BoundaryCondition()
                 self.cpp_heat.a = value_vector(at)
                 self.cpp_heat.b = value_vector(bt)
@@ -422,7 +422,7 @@ class UnstructReservoirMech():
                 self.discr.biots.append(disc_matrix33(self.biot))
                 self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
                 self.set_diag_matrix(self.biot_mean, cell_id, self.biot)
-                if self.thermoporoelacticity:
+                if self.thermoporoelasticity:
                     self.discr.heat_conductions.append(disc_matrix33(self.th_conductivity))
                     self.discr.thermal_expansions.append(disc_matrix33(self.th_expn))
         elif self.discretizer_name == 'pm_discretizer':
@@ -482,7 +482,7 @@ class UnstructReservoirMech():
     def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
         self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
         self.p_init = p_init  # initial pressure [bars]
-        if self.thermoporoelacticity:
+        if self.thermoporoelasticity:
             self.t_init = t_init  # initial temperature [degrees]
         else:
             self.t_init = None
@@ -490,7 +490,7 @@ class UnstructReservoirMech():
     def init_reservoir_main(self):
         # allocate arrays in C++ (conn_mesh)
         if self.discretizer_name == 'mech_discretizer':
-            if self.thermoporoelacticity:
+            if self.thermoporoelasticity:
                 self.mesh.init_pme_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
                                   self.discr.flux_stencil, self.discr.flux_offset,
                                   self.discr.hooke, self.discr.hooke_rhs,
@@ -508,8 +508,8 @@ class UnstructReservoirMech():
                                   self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
                                   self.n_matrix, self.n_bounds, self.n_fracs)
         elif self.discretizer_name == 'pm_discretizer':
-            if self.thermoporoelacticity:
-                print('thermoporoelacticity is not supported in', self.discretizer_name)
+            if self.thermoporoelasticity:
+                print('thermoporoelasticity is not supported in', self.discretizer_name)
                 assert False
             self.init_pm_discretizer()
 
