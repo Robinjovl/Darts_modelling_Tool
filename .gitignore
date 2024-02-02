@@ -29,4 +29,5 @@ darts/build_info.txt
 *.ipdb
 *.lib
 *.pdb
+*.npy
 .vscode
