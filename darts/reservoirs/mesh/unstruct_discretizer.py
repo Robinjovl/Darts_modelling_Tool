@@ -400,6 +400,30 @@ class UnstructDiscretizer:
                 print("Files have been read and cached.")
         return 0
 
+    def find_vtk_output_cells(self, fractures: bool = True):
+        self.vtk_output_cells = {}
+        cell_count = 0
+        for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+            cell_idxs = {}
+            unique, counts = np.unique(tags, return_counts=True)
+            for tag, count in zip(unique, counts):
+                # Create empty arrays in vtk output cells
+                if tag in self.physical_tags['matrix'] or tag in self.physical_tags['fracture']:
+                    cell_idxs[tag] = []
+
+            # Main loop over different existing geometries
+            for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
+                # matrix cells and fracture cells
+                if tags[ith_cell] in self.physical_tags['matrix'] or tags[ith_cell] in self.physical_tags['fracture']:
+                    cell_idxs[tags[ith_cell]].insert(-1, nodes_to_cell)
+                    cell_count += 1
+
+            self.vtk_output_cells[geometry] = []
+            for tag in cell_idxs.keys():
+                self.vtk_output_cells[geometry] += cell_idxs[tag]
+
+        return
+
     def write_to_vtk(self, output_directory, property_array, cell_property, ith_step):
         """
         Class method which writes output of unstructured grid to VTK format

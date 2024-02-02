@@ -46,14 +46,11 @@ class UnstructReservoir(ReservoirBase):
     def discretize(self, verbose: bool = False) -> conn_mesh:
         # Construct instance of Unstructured Discretization class:
         self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=self.physical_tags,
-                                               permx=self.permx, permy=self.permy, permz=self.permz,
-                                               frac_aper=self.frac_aper, verbose=verbose)
+                                               verbose=verbose)
 
         # Use class method load_mesh to load the GMSH file specified above:
-        self.discretizer.load_mesh()
-
-        # Calculate cell information of each geometric element in the .msh file:
-        self.discretizer.calc_cell_information()
+        self.discretizer.load_mesh(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=self.frac_aper,
+                                   cache=False)
 
         # Store volumes and depth to single numpy arrays:
         self.discretizer.store_volume_all_cells()
@@ -251,11 +248,9 @@ class UnstructReservoir(ReservoirBase):
         :type export_grid_data: bool
         """
         self.vtk_initialized = True
-
-        # Temporarily store mesh_data in copy:
-        # Mesh = meshio.read(self.mesh_file)
-        self.reporting_cells = {geometry: self.discretizer.mesh_data.cells_dict[geometry]
-                                for geometry in self.discretizer.mat_geometries_in_file}
+        self.discretizer.find_vtk_output_cells()
+        self.discretizer.vtk_output_cells = {geometry: self.discretizer.mesh_data.cells_dict[geometry]
+                                             for geometry in self.discretizer.mat_geometries_in_file}
 
         if export_grid_data:
             cell_data = {}
@@ -272,15 +267,11 @@ class UnstructReservoir(ReservoirBase):
                     elif type(data) is float:
                         cell_data[key] += [(data * np.ones(self.mesh.n_res_blocks, dtype=mesh_geom_dtype)).tolist()]
                 else:
-                    cell_data[key] += [data.tolist()]  # * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
-            mesh_filename = output_directory + '/mesh'
+                    cell_data[key] += [data.tolist()]
 
             mesh = meshio.Mesh(
-                # Mesh.points,
-                # Mesh.cells_dict.items(),
                 points=self.discretizer.mesh_data.points,  # list of point coordinates
-                cells=self.reporting_cells,  # list of cell geometries and idxs for reporting
-                # cells=self.discretizer.mesh_data.cells_dict.items(),  # list of cell geometries and idxs
+                cells=self.discretizer.vtk_output_cells,  # list of cell geometries and idxs for reporting
                 # Each item in cell data must match the cells array
                 cell_data=cell_data
             )
@@ -335,11 +326,8 @@ class UnstructReservoir(ReservoirBase):
 
         # Temporarily store mesh_data in copy:
         mesh = meshio.Mesh(
-            # Mesh.points,
-            # Mesh.cells_dict.items(),
             points=self.discretizer.mesh_data.points,  # list of point coordinates
-            cells=self.reporting_cells,  # list of cell geometries and idxs for reporting
-            # cells=self.discretizer.mesh_data.cells_dict.items(),  # list of cell geometries and idxs
+            cells=self.discretizer.vtk_output_cells,  # list of cell geometries and idxs for reporting
             # Each item in cell data must match the cells array
             cell_data=cell_data
         )
