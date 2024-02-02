@@ -269,7 +269,7 @@ class UnstructReservoir(ReservoirBase):
 
             mesh = meshio.Mesh(
                 points=self.discretizer.mesh_data.points,  # list of point coordinates
-                cells=self.discretizer.vtk_output_cells,  # list of cell geometries and idxs for reporting
+                cells=self.discretizer.vtk_output_nodes_to_cells,  # list of cell geometries and idxs for reporting
                 # Each item in cell data must match the cells array
                 cell_data=cell_data
             )
@@ -325,7 +325,7 @@ class UnstructReservoir(ReservoirBase):
         # Temporarily store mesh_data in copy:
         mesh = meshio.Mesh(
             points=self.discretizer.mesh_data.points,  # list of point coordinates
-            cells=self.discretizer.vtk_output_cells,  # list of cell geometries and idxs for reporting
+            cells=self.discretizer.vtk_output_nodes_to_cells,  # list of cell geometries and idxs for reporting
             # Each item in cell data must match the cells array
             cell_data=cell_data
         )

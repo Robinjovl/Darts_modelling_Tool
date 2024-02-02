@@ -63,7 +63,8 @@ class UnstructDiscretizer:
         self.frac_bound_face_info_dict = {}  # Dictionary containing information of all the segments of fracture boundaries
         self.frac_bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node on boundary
         self.output_face_info_dict = {}  # Dictionary containing information of all the faces for output
-        self.vtk_output_cells = {}
+        self.vtk_output_nodes_to_cells = {}
+        self.vtk_output_cell_idxs = {}
 
         self.geometries_in_mesh_file = []  # List with geometries found in mesh file
         self.mat_geometries_in_file = []  # List with matrix geometries found in mesh file
@@ -400,13 +401,18 @@ class UnstructDiscretizer:
         return 0
 
     def find_vtk_output_cells(self, fractures: bool = True):
-        self.vtk_output_cells = {}
+        self.vtk_output_nodes_to_cells = {}
+        self.vtk_output_cell_idxs = {}
+        cell_count = 0
         for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+            nodes = {}
             cell_idxs = {}
+
             unique, counts = np.unique(tags, return_counts=True)
             for tag, count in zip(unique, counts):
                 # Create empty arrays in vtk output cells
                 if tag in self.physical_tags['matrix'] or tag in self.physical_tags['fracture']:
+                    nodes[tag] = []
                     cell_idxs[tag] = []
 
             # Main loop over different existing geometries
@@ -414,16 +420,22 @@ class UnstructDiscretizer:
                 # matrix cells and fracture cells
                 tag = tags[ith_cell]
                 if tag in self.physical_tags['matrix'] or tag in self.physical_tags['fracture']:
-                    cell_idxs[tag].append(nodes_to_cell)
+                    nodes[tag].append(nodes_to_cell)
+                    cell_idxs[tag].append(cell_count)
+                    cell_count += 1
 
             # Append the lists of nodes of all physical tags in particular geometry
-            self.vtk_output_cells[geometry] = []
+            self.vtk_output_nodes_to_cells[geometry] = []
+            self.vtk_output_cell_idxs[geometry] = []
             for tag in cell_idxs.keys():
-                if len(self.vtk_output_cells[geometry]) == 0:
-                    self.vtk_output_cells[geometry] = cell_idxs[tag]
+                if len(self.vtk_output_nodes_to_cells[geometry]) == 0:
+                    self.vtk_output_nodes_to_cells[geometry] = nodes[tag]
+                    self.vtk_output_cell_idxs[geometry] = cell_idxs[tag]
                 else:
-                    self.vtk_output_cells[geometry].append(cell_idxs[tag])
-            np.asarray(self.vtk_output_cells[geometry])
+                    self.vtk_output_nodes_to_cells[geometry].append(nodes[tag])
+                    self.vtk_output_cell_idxs[geometry].append(cell_idxs[tag])
+            np.asarray(self.vtk_output_nodes_to_cells[geometry])
+            np.asarray(self.vtk_output_cell_idxs[geometry])
 
         return
 
