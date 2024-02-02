@@ -10,9 +10,12 @@ import meshio
 import os
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
-from t2 import RhsPoroelastic
+from t2 import RhsPoroelastic, RhsThermoporoelastic
 from scipy.linalg import null_space
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
+from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags
+
 
 import darts.discretizer as dis
 from darts.discretizer import Mesh, Elem, poro_mech_discretizer, THMBoundaryCondition, BoundaryCondition, elem_loc, elem_type, conn_type
@@ -22,92 +25,55 @@ from darts.engines import Stiffness as engine_stiffness
 from darts.discretizer import Stiffness as disc_stiffness
 
 # Definitions for the unstructured reservoir class:
-class UnstructReservoir:
-    def __init__(self, timer, discretizer, mesh_file):
-        self.timer = timer
-        # Create mesh object (C++ object used by DARTS for all mesh related quantities):
-        self.mesh = conn_mesh()
-        self.discretizer_name = discretizer
-        self.mesh_file = mesh_file
-        self.n_vars = 4
-        self.n_dim = 3
+class UnstructReservoirCustom(UnstructReservoirMech):
+    def __init__(self, timer, discretizer, mode, mesh_file):
+        thermoporoelasticity = True if mode == 'thermoporoelatic' else False
+        super().__init__(timer, discretizer, thermoporoelasticity)
+        # define correspondence between the physical tags in msh file and mesh elements types
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
+                    bnd_xm_tag=991, bnd_xp_tag=992,
+                    bnd_ym_tag=993, bnd_yp_tag=994,
+                    bnd_zm_tag=995, bnd_zp_tag=996)
+        self.mesh_filename = mesh_file
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
+        self.timer.node["discretization"].start()
         if self.discretizer_name == 'pm_discretizer':
-            self.u_var = 0
-            self.p_var = self.n_dim
             self.convergence_study_setup_pm_discretizer()
         elif self.discretizer_name == 'mech_discretizer':
-            self.p_var = 0
-            self.u_var = 1
-            self.convergence_study_setup_mech_discretizer()
+            if self.thermoporoelasticity:
+                self.convergence_study_setup_mech_discretizer_thermoporoelasticity()
+            else:
+                self.convergence_study_setup_mech_discretizer_poroelasticity()
 
         self.x_new = np.ones((self.n_matrix + self.n_fracs, self.n_vars))
         self.x_new[:, self.u_var] = self.u_init[0]
         self.x_new[:, self.u_var + 1] = self.u_init[1]
         self.x_new[:, self.u_var + 2] = self.u_init[2]
         self.x_new[:, self.p_var] = self.p_init
+        if self.thermoporoelasticity:
+            self.x_new[:, self.t_var] = self.t_init
 
-        dt = 0.0
+        self.biot_mean = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
+        self.kd_cur = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
+        self.t_init = 0.0 # TODO: fix/generalize self.set_pz_bounds()
+        self.p_init_copy = np.copy(self.p_init) # TODO: FFFIIIXXX self.pz_bounds()
+        self.p_init = 0.0 # TODO: FFFIIIXXX self.pz_bounds()
         if self.discretizer_name == 'pm_discretizer':
-            self.timer.node["discretization"].start()
-
-            self.pm.x_prev = value_vector(np.concatenate((self.x_new.flatten(), self.bc_rhs_prev)))
-            self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot, index_vector(self.ref_contact_cells))
-            self.pm.reconstruct_gradients_per_cell(dt)
-            self.pm.calc_all_fluxes_once(dt)
-
-            self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p, self.pm.stencil, self.pm.offset, self.pm.tran, self.pm.rhs,
-                              self.pm.tran_biot, self.pm.rhs_biot,
-                              self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_cells_tot, self.unstr_discr.frac_cells_tot)
-            self.timer.node["discretization"].stop()
-
-            self.unstr_discr.store_volume_all_cells()
-        elif self.discretizer_name == 'mech_discretizer':
-            self.mesh.init_pm_mech_discretizer(self.discr.cell_m, self.discr.cell_p,
-                                  self.discr.flux_stencil, self.discr.flux_offset,
-                                  self.discr.hooke, self.discr.hooke_rhs,
-                                  self.discr.biot_traction, self.discr.biot_traction_rhs,
-                                  self.discr.darcy, self.discr.darcy_rhs,
-                                  self.discr.biot_vol_strain, self.discr.biot_vol_strain_rhs,
-                                  self.n_matrix, self.n_bounds, self.n_fracs)
-
-        # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
-        self.poro = np.array(self.mesh.poro, copy=False)
-        self.volume = np.array(self.mesh.volume, copy=False)
-        self.bc = np.array(self.mesh.bc, copy=False)
-        self.bc_prev = np.array(self.mesh.bc_prev, copy=False)
-        self.bc_ref = np.array(self.mesh.bc_ref, copy=False)
-        self.mesh.f.resize(self.n_vars * (self.n_matrix + self.n_fracs))
-        self.f = np.array(self.mesh.f, copy=False)
-        self.biot_arr = np.array(self.mesh.biot, copy=False)
-        self.kd = np.array(self.mesh.kd, copy=False)
-        self.mesh.pz_bounds.resize(self.n_bounds)
-        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
-        self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
-
-        self.poro[:self.n_matrix] = self.porosity
-        self.poro[self.n_matrix:] = 1
-        if self.discretizer_name == 'pm_discretizer':
-            self.volume[:self.n_matrix] = self.unstr_discr.volume_all_cells[:self.n_matrix]
-            for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
-                self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
-        elif self.discretizer_name == 'mech_discretizer':
-            volumes = np.array(self.discr_mesh.volumes, copy=False)
-            self.volume[:self.n_matrix] = volumes[:self.n_matrix]
+            self.unstr_discr.p_ref = self.p_init
+            self.unstr_discr.f = self.f_prep
+        self.init_reservoir_main()
+        self.p_init = np.copy(self.p_init_copy) # TODO: FFFIIIXXX self.pz_bounds()
+        self.timer.node["discretization"].stop()
 
         self.bc_prev[:] = self.bc_rhs_prev
         self.bc[:] = self.bc_rhs
         self.bc_ref[:] = self.bc_rhs_ref
-        # self.biot_arr[:] = np.tile([self.biot,0,0,
-        #                             0,self.biot,0,
-        #                             0,0,self.biot], self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
         self.biot_arr[:] = np.tile([0,0,0,
                                     0,0,0,
                                     0,0,0], self.n_matrix + self.n_fracs)
-        self.kd[:] = 1 / self.c / self.porosity#self.lam + 2 * self.mu / 3
-        # self.pz_bounds[:] = self.unstr_discr.pz_bounds
+        self.kd[:] = 1 / self.c / self.porosity
         self.p_ref[:] = self.p_init
         self.f[:] = self.f_prep
 
@@ -122,6 +88,10 @@ class UnstructReservoir:
         if self.discretizer_name == 'pm_discretizer':
             x = np.array([np.array([c.centroid[0], c.centroid[1], c.centroid[2], time]) for c in self.unstr_discr.mat_cell_info_dict.values()]).T
             x_an = reference_solution_poroelastic(x)
+            self.mech_operators.eval_stresses(engine.fluxes, engine.fluxes_biot, engine.X,
+                                              self.mesh.bc, engine.op_vals_arr)
+            total_stresses = np.array(self.mech_operators.total_stresses, copy=True).reshape((self.n_matrix, 6))
+            darcy_velocities = np.array(self.mech_operators.velocities, copy=True).reshape((self.n_matrix, 3))
         elif self.discretizer_name == 'mech_discretizer':
             # unknowns
             x_an = reference_solution_poroelastic(self.x_all[:, :self.n_matrix])
@@ -167,11 +137,8 @@ class UnstructReservoir:
                             self.unstr_discr.matrix_cell_count, self.unstr_discr.bound_cell_count,
                             self.unstr_discr.fracture_cell_count)
         self.f[:] = self.unstr_discr.f
-    def update(self, dt, time):
-        # update local array
-        #if time > dt:
-        self.bc_rhs_prev = np.copy(self.bc_rhs)
 
+    # pm_discretizer: poroelastic
     def update_pm_discretizer(self, time):
         # Boundary conditions
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -196,10 +163,12 @@ class UnstructReservoir:
             self.f_prep[4 * cell_id + 3] = -(self.c * self.porosity *
                                          self.r.acc_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time) +
                                          self.r.flow_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time))
+            self.total_stress_an[cell_id] = self.r.total_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
+            self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
     def convergence_study_setup_pm_discretizer(self):
         self.porosity = 0.1
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=1.E-4,
-                                               mesh_file=self.mesh_file)
+                                               mesh_file=self.mesh_filename)
         E = 10000 # in bars
         nu = 0.25
         lam = E * nu / (1 + nu) / (1 - 2 * nu)
@@ -325,8 +294,10 @@ class UnstructReservoir:
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_fracs = self.unstr_discr.frac_cells_tot
         self.n_bounds = self.unstr_discr.bound_cells_tot
-
-    def update_mech_discretizer(self, time):
+        self.total_stress_an = np.zeros((self.n_matrix, 6))
+        self.darcy_velocities_an = np.zeros((self.n_matrix, 3))
+    # mech_discretizer: poroelastic
+    def update_mech_discretizer_poroelasticity(self, time):
         # Boundary conditions
         self.x_all[3, :] = time
         sol = reference_solution_poroelastic(self.x_all[:, self.n_matrix + self.n_fracs:])
@@ -345,13 +316,29 @@ class UnstructReservoir:
                 self.r.flow_func(c.values[0], c.values[1], c.values[2], time))
             self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-    def convergence_study_setup_mech_discretizer(self):
-        self.mesh_data = meshio.read(self.mesh_file)
-        self.domain_tags = dict()
-        self.domain_tags[elem_loc.MATRIX] = set([99991])
-        self.domain_tags[elem_loc.FRACTURE] = set([])  # 9991, 9992])
-        self.domain_tags[elem_loc.BOUNDARY] = set([991, 992, 993, 994, 995, 996])
-        self.domain_tags[elem_loc.FRACTURE_BOUNDARY] = set()  # is this for poromechanics??
+    def set_boundary_conditions(self):
+        self.boundary_conditions = {}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.AQUIFER(0),
+                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
+                                                             'temp': self.bc_type.AQUIFER(0) }
+        self.set_boundary_conditions_pm_discretizer()
+    def convergence_study_setup_mech_discretizer_poroelasticity(self):
+        self.mesh_data = meshio.read(self.mesh_filename)
 
         # params
         self.porosity = 0.1
@@ -372,38 +359,9 @@ class UnstructReservoir:
         self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1e-2
 
-        # prescribe boundary conditions
-        NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        ROLLER =    {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        FREE =      {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
-        STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
-
-        self.boundary_conditions = {}
-        self.boundary_conditions[991] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.boundary_conditions[992] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.boundary_conditions[993] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.boundary_conditions[994] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.boundary_conditions[995] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.boundary_conditions[996] = {'flow': AQUIFER(0), 'mech': STUCK(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-
-        # initialize discretizer
-        self.discr_mesh = Mesh()
-        self.discr_mesh.gmsh_mesh_processing(self.mesh_file, self.domain_tags)
-        self.discr = poro_mech_discretizer()
+        self.set_boundary_conditions()
+        self.init_mech_discretizer()
         self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
-        self.tags = np.array(self.discr_mesh.tags, copy=False)
-        self.discr.set_mesh(self.discr_mesh)
-        self.discr.init()
-
-        # number of elements
-        self.n_matrix = self.discr_mesh.region_ranges[elem_loc.MATRIX][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.MATRIX][0]
-        self.n_fracs = self.discr_mesh.region_ranges[elem_loc.FRACTURE][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.FRACTURE][0]
-        self.n_bounds = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][1] - \
-                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
 
         # bulk properties
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
@@ -412,14 +370,9 @@ class UnstructReservoir:
             self.discr.biots.append(disc_matrix33(biot))
             self.discr.stfs.append(disc_stiffness(stf))
 
-        # initial conditions
         # mapping boundary connections
-        adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
-        adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
-        id_sorted = np.argsort(adj_matrix_cols)[-self.n_bounds:]
-        self.id_boundary_conns = adj_matrix[id_sorted]
-        self.conns = np.array(self.discr_mesh.conns, copy=False)
-        self.centroids = np.array(self.discr_mesh.centroids, copy=False)
+        id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
+        self.id_boundary_conns = self.adj_matrix[id_sorted]
         time = 0.0
         self.x_all = np.array([np.array([c.values[0], c.values[1], c.values[2], time]) for c in self.centroids]).T
         sol = reference_solution_poroelastic(self.x_all)
@@ -511,13 +464,6 @@ class UnstructReservoir:
         """
         well_block = 0
         well.perforations = well.perforations + [(well_block, res_block, well_index)]
-        return 0
-    def init_wells(self):
-        self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
-        if self.discretizer_name == 'mech_discretizer':
-            self.mesh.reverse_and_sort_pm_mech_discretizer()
-        elif self.discretizer_name == 'pm_discretizer':
-            self.mesh.reverse_and_sort_pm()
         return 0
 
     def get_normal_to_bound_face(self, b_id):

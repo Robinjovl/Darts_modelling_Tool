@@ -1,6 +1,6 @@
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
-from reservoir import UnstructReservoir
+from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
@@ -10,16 +10,17 @@ from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 
 class Model(DartsModel):
-    def __init__(self, mesh_file, discretizer='mech_discretizer', n_points=64):
+    def __init__(self, mesh_file, discretizer='mech_discretizer', mode='poroelastic', n_points=64):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
         self.physics_type = 'poromechanics'
         self.discretizer_name = discretizer
 
-        self.reservoir = UnstructReservoir(timer=self.timer,
-                                           discretizer=self.discretizer_name,
-                                           mesh_file=mesh_file)
+        self.reservoir = UnstructReservoirCustom(timer=self.timer,
+                                                   discretizer=self.discretizer_name,
+                                                   mode=mode,
+                                                   mesh_file=mesh_file)
         self.set_physics()
 
         self.reservoir.P_VAR = self.engine.P_VAR
@@ -46,31 +47,52 @@ class Model(DartsModel):
         # Create property containers:
         components = ['H2O']
         phases = ['wat']
-        thermal = 0
         Mw = [1.0]
 
-        property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                               Mw=Mw, min_z=zero / 10, temperature=1.)
+        if self.reservoir.thermoporoelasticity:
+            self.reservoir.heat_capacity = 2200.0 * 1000.0
+            hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
+            hcap.fill(self.reservoir.heat_capacity)
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=zero / 10)
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity, tref=0.0))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)
+            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            # create physics
+            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
+                                          thermal=True, min_t=-10.0, max_t=100.0,
+                                          discretizer=self.discretizer_name)
+        else:
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=zero / 10, temperature=1.)
+            # create physics
+            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
+                                          min_p=-1000, max_p=1000, min_z=zero / 10, max_z=1 - zero / 10,
+                                          discretizer=self.discretizer_name)
 
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
         property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
                                                                    dens0=self.reservoir.fluid_density))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
-
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-        # rock compressibility is treated inside engine
-        property_container.rock_compr_ev = ConstFunc(1.0)
-        # create physics
-        self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                      min_p=-1000, max_p=1000, min_z=zero/10, max_z=1-zero/10,
-                                      discretizer=self.discretizer_name)
+        property_container.rock_compr_ev = ConstFunc(1.0) # rock compressibility is treated inside engine
+
         self.physics.add_property_region(property_container)
 
         self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
         return
 
     def init(self):
+        if self.discretizer_name == 'pm_discretizer':
+            self.reservoir.mech_operators = mech_operators()
+            self.reservoir.mech_operators.init(self.reservoir.mesh, self.reservoir.pm,
+                                     self.engine.P_VAR, self.engine.Z_VAR, self.engine.U_VAR,
+                                     self.engine.N_VARS, self.engine.N_OPS, self.engine.NC,
+                                     self.engine.ACC_OP, self.engine.FLUX_OP, self.engine.GRAV_OP)
+            self.reservoir.mech_operators.prepare()
+
         self.set_boundary_conditions()
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells, self.engine)
@@ -88,13 +110,17 @@ class Model(DartsModel):
         Xn_ref[:] = 0.0
 
     def set_initial_conditions(self):
-        #self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-        #                                            uniform_pressure=self.reservoir.p_init,
-        #                                            uniform_displacement=self.reservoir.u_init)
-        self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                    initial_pressure=self.reservoir.p_init,
-                                                    initial_displacement=self.reservoir.u_init)
+        if self.reservoir.thermoporoelasticity:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                initial_pressure=self.reservoir.p_init,
+                                                initial_temperature=self.reservoir.t_init,
+                                                initial_displacement=self.reservoir.u_init)
+        else:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                initial_pressure=self.reservoir.p_init,
+                                                initial_displacement=self.reservoir.u_init)
         return 0
+
     def set_boundary_conditions(self):
         """
         Class method called in the init() class method of parents class
