@@ -219,7 +219,6 @@ class ReservoirThermalOperators(ReservoirOperators):
         """ Alpha operator represents accumulation term: """
         for m in self.ph:
             values[i] += self.compr * self.sat[m] * self.rho_m[m] * enthalpy[m]  # fluid enthalpy (kJ/m3)
-        values[i] -= self.compr * 100 * pressure
 
         """ Beta operator represents flux term: """
         for j in self.ph:
