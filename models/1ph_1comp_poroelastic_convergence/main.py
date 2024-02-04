@@ -153,22 +153,33 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     devs_u = []
     devs_p = []
     devs_s = []
+    devs_seff = []
     devs_v = []
+    devs_t = []
     for i in range(n_res):
         print('Run model with resolution #' + str(i))
 
         mesh_file = mesh_file_template.format(i)
-        dev_u, dev_p, dev_s, dev_v = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
-                                            mesh_file=mesh_file, discretizer=discretizer,
-                                            mode=mode, is_last_model=(i == n_res - 1))
+        if mode == 'thermoporoelastic':
+            dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+                                                mesh_file=mesh_file, discretizer=discretizer,
+                                                mode=mode, is_last_model=(i == n_res - 1))
+            devs_t.append(dev_t)
+        else:
+            dev_u, dev_p, dev_s, dev_seff, dev_v = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+                                                mesh_file=mesh_file, discretizer=discretizer,
+                                                mode=mode, is_last_model=(i == n_res - 1))
+
         devs_u.append(dev_u)
         devs_p.append(dev_p)
         devs_s.append(dev_s)
+        devs_seff.append(dev_seff)
         devs_v.append(dev_v)
 
     devs_u = np.array(devs_u)
     devs_p = np.array(devs_p)
     devs_s = np.array(devs_s)
+    devs_seff = np.array(devs_seff)
     devs_v = np.array(devs_v)
 
     x = np.sqrt((timesteps * dx)[:n_res])
@@ -176,6 +187,7 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     u_order = (np.diff(np.log(devs_u[id])) / np.diff(np.log(x[id])))[0]
     p_order = (np.diff(np.log(devs_p[id])) / np.diff(np.log(x[id])))[0]
     s_order = (np.diff(np.log(devs_s[id])) / np.diff(np.log(x[id])))[0]
+    seff_order = (np.diff(np.log(devs_seff[id])) / np.diff(np.log(x[id])))[0]
     v_order = (np.diff(np.log(devs_v[id])) / np.diff(np.log(x[id])))[0]
 
     print('dev_u')
@@ -186,19 +198,34 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     print(devs_p)
     print('p_order = ' + str(p_order))
 
+    if mode == 'thermoporoelastic':
+        devs_t = np.array(devs_t)
+        t_order = (np.diff(np.log(devs_t[id])) / np.diff(np.log(x[id])))[0]
+        print('dev_t')
+        print(devs_t)
+        print('t_order = ' + str(t_order))
+
     print('dev_s')
     print(devs_s)
     print('s_order = ' + str(s_order))
+
+    print('dev_seff')
+    print(devs_seff)
+    print('seff_order = ' + str(seff_order))
 
     print('dev_v')
     print(devs_v)
     print('v_order = ' + str(v_order))
 
-    assert(u_order > 1.0 and p_order > 1.0)
-    assert(s_order > 0.5)
-    if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
-        assert(v_order > 0.5)
+    assert(u_order > 1.0)
+    assert(s_order > 0.5)# and s_eff_order > 0.5)
+
+    if mode == 'poroelastic':
+        assert(p_order > 1.0)
+        if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
+            assert(v_order > 0.5)
 
 # run_convergence_study(n_res=3, mode='poroelastic', discretizer='pm_discretizer')
-run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
+# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
+run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')

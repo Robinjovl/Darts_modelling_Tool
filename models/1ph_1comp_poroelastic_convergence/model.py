@@ -8,6 +8,7 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
+from darts.physics.properties.enthalpy import EnthalpyBasic
 
 class Model(DartsModel):
     def __init__(self, mesh_file, discretizer='mech_discretizer', mode='poroelastic', n_points=64):
@@ -32,7 +33,10 @@ class Model(DartsModel):
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+            if self.reservoir.thermoporoelasticity:
+                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+            else:
+                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             ls1 = linear_solver_params()
@@ -50,7 +54,6 @@ class Model(DartsModel):
         Mw = [1.0]
 
         if self.reservoir.thermoporoelasticity:
-            self.reservoir.heat_capacity = 2200.0 * 1000.0
             hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
             hcap.fill(self.reservoir.heat_capacity)
             property_container = PropertyContainer(phases_name=phases, components_name=components,
@@ -103,6 +106,12 @@ class Model(DartsModel):
 
         if self.discretizer_name == 'mech_discretizer':
             self.engine.set_discretizer(self.reservoir.discr)
+
+        if self.reservoir.thermoporoelasticity:
+            vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)
+            vol_strain_rhs = np.array(self.reservoir.mesh.vol_strain_rhs, copy=False)
+            vol_strain_trans[:] = 0.0
+            vol_strain_rhs[:] = 0.0
 
         Xref = np.array(self.engine.Xref, copy=False)
         Xn_ref = np.array(self.engine.Xn_ref, copy=False)
