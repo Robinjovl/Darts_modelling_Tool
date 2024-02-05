@@ -37,7 +37,7 @@ class Model(DartsModel):
         permy = const_perm  # Matrix permeability in the y-direction [mD]
         permz = const_perm * 0.1  # Matrix permeability in the z-direction [mD]
         poro = input_data['poro']  # Matrix porosity [-]
-        frac_aper =  input_data['frac_aper']  # Aperture of fracture cells (but also takes a list of apertures for each segment) [m]
+        frac_aper = input_data['frac_aper']  # Aperture of fracture cells (but also takes a list of apertures for each segment) [m]
 
         self.inj_well_coords = input_data['inj_well_coords']
         self.prod_well_coords = input_data['prod_well_coords']
@@ -68,7 +68,9 @@ class Model(DartsModel):
                                       rcond=input_data['conduction'],
                                       hcap=input_data['hcap'],
                                       frac_aper=frac_aper)
-        self.reservoir.init_reservoir()
+        self.reservoir.physical_tags['matrix'] = [9991]
+        self.reservoir.physical_tags['fracture'] = [90000 + i for i in range(4)]
+        # self.reservoir.init_reservoir()
 
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
@@ -214,8 +216,8 @@ class Model(DartsModel):
         #TODO use idx = self.reservoir.find_cell_index(wc)
         # Store number of control volumes (NOTE: in case of fractures, this includes both matrix and fractures):
         self.nb = self.reservoir.discretizer.volume_all_cells.size
-        self.num_frac = self.reservoir.discretizer.fracture_cell_count
-        self.num_mat = self.reservoir.discretizer.matrix_cell_count
+        self.num_frac = self.reservoir.discretizer.frac_cells_tot
+        self.num_mat = self.reservoir.discretizer.mat_cells_tot
         if self.bound_cond == 'wells_in_frac':
             offset = 0
             left_int = 0
@@ -264,7 +266,7 @@ class Model(DartsModel):
 
         self.well_perf_loc = np.array([self.injection_wells, self.production_wells])
 
-    def add_wells_perfs(self):
+    def set_wells(self):
         """
         Class method which initializes the wells (adding wells and their perforations to the reservoir)
         :return:
@@ -282,7 +284,6 @@ class Model(DartsModel):
             self.reservoir.add_well(f'P{i + 1}', well_depth)
             self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[1][i],
                                  well_indexD=0, verbose=True)
-
 
     def get_perm_unstr_from_struct_grid(self, perm_file):
         # Set non-uniform permeability

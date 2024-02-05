@@ -20,8 +20,8 @@ from examples.case_1 import *
 
 print('Running simulation for case', input_data['case_name'])
 
-from darts.fracture_network.frac_apertures import calc_frac_aper_by_stress
-input_data['frac_aper'] = calc_frac_aper_by_stress(input_data)
+#from darts.fracture_network.frac_apertures import calc_frac_aper_by_stress
+#input_data['frac_aper'] = calc_frac_aper_by_stress(input_data)
 
 # Properties for writing to vtk format:
 # output_directory = 'trial_dir'  # Specify output directory here
@@ -45,7 +45,6 @@ m = model_fn.Model(input_data)
 # darts/models/darts_model.py (NOTE: This is not the same as the__init__(self, **) method which each class (should)
 # have).
 
-m.add_wells_perfs()
 m.init()
 
 # Specify some other time-related properties (NOTE: all time parameters are in [days])
@@ -71,16 +70,11 @@ property_array = np.empty((m.get_pressure(0).size, tot_properties_initial_step))
 property_array[:, 0] = m.get_pressure(0)
 property_array[:, 1] = m.get_saturation(0)
 property_array[:, 2] = m.get_temperature(0)
-dummmy_perm_for_frac_cells = np.zeros(m.reservoir.discretizer.fracture_cell_count)
+dummmy_perm_for_frac_cells = np.zeros(m.reservoir.discretizer.frac_cells_tot)
 property_array[:, 3] = np.hstack((dummmy_perm_for_frac_cells, m.reservoir.discretizer.perm_x_cell))
 
-# Write to vtk using class methods of unstructured discretizer (uses within meshio write to vtk function):
-if True: #try:
-    m.reservoir.discretizer.write_to_vtk(output_directory, property_array, m.cell_property +['perm'], ith_step)
-else:#except:
-    pass
-    #m.reservoir.export_vtk(file_name='struct', t=m.physics.engine.t, global_cell_data={})#, local_cell_data={'temperature': property_array[:, 2]})
-    #m.reservoir.output_to_vtk(ith_step=0, t=m.physics.engine.t, output_directory=output_directory,output_idxs={'temperature': 0}, data=property_array)
+# Write to vtk
+m.output_to_vtk(ith_step=0, output_directory=output_directory)
 
 property_array = np.empty((m.get_pressure(0).size,tot_properties))
 
@@ -101,14 +95,8 @@ for ith_step in range(num_report_steps):
     property_array[:,2] = m.get_temperature(0)
 
     # Write to vtk using class methods of unstructured discretizer (uses within meshio write to vtk function):
-    if True: #try:
-        if ith_step % 20 == 0:
-            m.reservoir.discretizer.write_to_vtk(output_directory, property_array, m.cell_property, ith_step+1)
-    else:#except:
-        pass
-        #m.reservoir.export_vtk(file_name='struct', t=m.physics.engine.t, global_cell_data={})#, local_cell_data={'temperature': property_array[:, 2]})
-        # output_data = self.output_properties()
-        #m.reservoir.output_to_vtk(ith_step=ith_step+1, t=m.physics.engine.t, output_directory=output_directory,output_idxs = {'temperature': 0}, data = property_array)
+    if ith_step % 20 == 0:
+        m.output_to_vtk(ith_step=ith_step+1, output_directory=output_directory)
 
     sim_year += size_report_step / 365.
     m.print_range(sim_year)

@@ -963,6 +963,6 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     # Create mesh and perform coherency check:
     f.write('Mesh 3;  // Generate 3D mesh\n')
     f.write('Coherence Mesh;  // Remove duplicate entities\n')
-    f.write('Mesh.MshFileVersion = 2.1;\n')
+    # f.write('Mesh.MshFileVersion = 2.1;\n')
     f.close()
     return 0

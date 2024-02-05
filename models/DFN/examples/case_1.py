@@ -6,6 +6,9 @@ input_data['case_name'] = 'case_1'
 # geometry
 input_data['frac_file'] = os.path.join('examples', 'frac_1.txt')
 
+# do not use cleaned mesh
+input_data['mesh_prefix'] = 'raw_lc'
+
 # initial pressure and temperature
 # uniform initial pressure and temperature
 input_data['initial_uniform'] = True
