@@ -133,6 +133,8 @@ class UnstructDiscretizer:
                 data = data * np.ones((self.mat_cells_tot,), dtype=type(data))
                 # ONLY UNCOMMENT THIS LINE BELOW IF YOU WANT HETEROGENEITY BY RANDOM INPUT:
                 # data = data * np.random.uniform(0.95, 1.05, (self.mat_cells_tot,))
+            else:
+                assert len(data) == self.mat_cells_tot, "Length of matrix data not equal to number of matrix cells"
         return data
 
     def check_fracture_data_input(self, data, data_name: str):
@@ -147,6 +149,8 @@ class UnstructDiscretizer:
             if np.isscalar(data):
                 # Input data object is scalar value
                 data = data * np.ones((self.frac_cells_tot,), dtype=type(data))
+            else:
+                assert len(data) == self.frac_cells_tot, "Length of fracture data not equal to number of fracture cells"
         return data
 
     def load_mesh(self, permx, permy, permz, frac_aper, cache: bool = False):
@@ -227,12 +231,12 @@ class UnstructDiscretizer:
                         self.frac_cells_tot += count
                     elif type in self.physical_tags['boundary']:
                         self.bound_faces_tot += count
-                    elif type in self.physical_tags['fracture_shape']:
+                    elif type in self.physical_tags['fracture_boundary']:
                         self.frac_bound_faces_tot += count
                     elif type in self.physical_tags['output']:
                         self.output_faces_tot += count
                     else:
-                        raise ValueError("Unsupported physical tag found")
+                        raise ValueError("Unsupported physical tag found", type)
 
             if self.verbose:
                 print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
@@ -272,30 +276,30 @@ class UnstructDiscretizer:
                     if tags[ith_cell] in self.physical_tags['matrix']:
                         for key in nodes_to_cell:
                             self.mat_cells_to_node.setdefault(key, [])
-                            self.mat_cells_to_node[key].append(cell_count)
+                            self.mat_cells_to_node[key].append(mat_count)
 
                         if geometry == 'hexahedron':
-                            self.mat_cell_info_dict[cell_count] = \
+                            self.mat_cell_info_dict[mat_count] = \
                                 Hexahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                            np.array([self.perm_x_cell[mat_count],
                                                      self.perm_y_cell[mat_count],
                                                      self.perm_z_cell[mat_count]]),
                                            tags[ith_cell])
                         elif geometry == 'wedge':
-                            self.mat_cell_info_dict[cell_count] = \
+                            self.mat_cell_info_dict[mat_count] = \
                                 Wedge(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                       np.array([self.perm_x_cell[mat_count],
                                                 self.perm_y_cell[mat_count],
                                                 self.perm_z_cell[mat_count]]), tags[ith_cell])
                         elif geometry == 'tetra':
-                            self.mat_cell_info_dict[cell_count] = \
+                            self.mat_cell_info_dict[mat_count] = \
                                 Tetrahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                             np.array([self.perm_x_cell[mat_count],
                                                       self.perm_y_cell[mat_count],
                                                       self.perm_z_cell[mat_count]]),
                                             tags[ith_cell])
                         elif geometry == 'pyramid':
-                            self.mat_cell_info_dict[cell_count] = \
+                            self.mat_cell_info_dict[mat_count] = \
                                 Pyramid(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                         np.array([self.perm_x_cell[mat_count],
                                                   self.perm_y_cell[mat_count],
@@ -307,18 +311,17 @@ class UnstructDiscretizer:
                     elif tags[ith_cell] in self.physical_tags['fracture']:
                         for key in nodes_to_cell:
                             self.frac_cells_to_node.setdefault(key, [])
-                            self.frac_cells_to_node[key].append(cell_count)
+                            self.frac_cells_to_node[key].append(frac_count)
 
                         if geometry == 'quad':
-                            self.frac_cell_info_dict[cell_count] = \
+                            self.frac_cell_info_dict[frac_count] = \
                                 Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                            self.fracture_aperture[frac_count], tags[ith_cell])
                         elif geometry == 'triangle':
-                            self.frac_cell_info_dict[cell_count] = \
+                            self.frac_cell_info_dict[frac_count] = \
                                 Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                          self.fracture_aperture[frac_count], tags[ith_cell])
 
-                        self.vtk_output_cells[geometry].append(ith_cell)
                         frac_count += 1
                         cell_count += 1
                     # boundary cells
@@ -340,7 +343,7 @@ class UnstructDiscretizer:
                         face_count += 1
                         bound_count += 1
                     # fracture boundaries
-                    elif tags[ith_cell] in self.physical_tags['fracture_shape']:
+                    elif tags[ith_cell] in self.physical_tags['fracture_boundary']:
                         for key in nodes_to_cell:
                             self.frac_bound_cells_to_node.setdefault(key, [])
                             self.frac_bound_cells_to_node[key].append(face_count)
@@ -400,7 +403,7 @@ class UnstructDiscretizer:
                 print("Files have been read and cached.")
         return 0
 
-    def find_vtk_output_cells(self, fractures: bool = True):
+    def find_vtk_output_cells(self):
         self.vtk_output_nodes_to_cells = {}
         self.vtk_output_cell_idxs = {}
         cell_count = 0
@@ -427,13 +430,9 @@ class UnstructDiscretizer:
             # Append the lists of nodes of all physical tags in particular geometry
             self.vtk_output_nodes_to_cells[geometry] = []
             self.vtk_output_cell_idxs[geometry] = []
-            for tag in cell_idxs.keys():
-                if len(self.vtk_output_nodes_to_cells[geometry]) == 0:
-                    self.vtk_output_nodes_to_cells[geometry] = nodes[tag]
-                    self.vtk_output_cell_idxs[geometry] = cell_idxs[tag]
-                else:
-                    self.vtk_output_nodes_to_cells[geometry].append(nodes[tag])
-                    self.vtk_output_cell_idxs[geometry].append(cell_idxs[tag])
+            for ith_tag, tag in enumerate(cell_idxs.keys()):
+                self.vtk_output_nodes_to_cells[geometry] += nodes[tag]
+                self.vtk_output_cell_idxs[geometry] += cell_idxs[tag]
             np.asarray(self.vtk_output_nodes_to_cells[geometry])
             np.asarray(self.vtk_output_cell_idxs[geometry])
 

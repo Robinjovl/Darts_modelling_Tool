@@ -26,7 +26,7 @@ class UnstructReservoir(ReservoirBase):
     :param cache: Switch to load/save cache of discretization
     :type cache: bool
     """
-    physical_tags = {'matrix': [], 'boundary': [], 'fracture': [], 'fracture_shape': [], 'output': []}
+    physical_tags = {'matrix': [], 'fracture': [], 'boundary': [], 'fracture_boundary': [], 'output': []}
 
     def __init__(self, timer: timer_node, mesh_file: str, permx, permy, permz, poro, rcond=0, hcap=0,
                  frac_aper=0, op_num=0, cache: bool = False):
@@ -251,21 +251,44 @@ class UnstructReservoir(ReservoirBase):
         self.discretizer.find_vtk_output_cells()
 
         if export_grid_data:
-            cell_data = {}
             mesh_geom_dtype = np.float32
-            mesh_props = {'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
-                          'hcap': self.hcap, 'rcond': self.rcond, 'op_num': self.op_num,
-                          # 'depth': self.depth, 'volume': self.volume
-                          }
-            for key, data in mesh_props.items():
-                cell_data[key] = []
-                if np.isscalar(data):
-                    if type(data) is int:
-                        cell_data[key] += [(data * np.ones(self.mesh.n_res_blocks)).tolist()]
-                    elif type(data) is float:
-                        cell_data[key] += [(data * np.ones(self.mesh.n_res_blocks, dtype=mesh_geom_dtype)).tolist()]
-                else:
-                    cell_data[key] += [data.tolist()]
+            matrix_props = {'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
+                            'hcap': self.hcap, 'rcond': self.rcond, 'op_num': self.op_num,
+                            # 'depth': self.depth, 'volume': self.volume
+                            }
+            frac_props = {'frac_aper': self.frac_aper}
+
+            # Create empty lists for each geometry type
+            cell_data = {key: [[] for ith_geometry, geometry in enumerate(self.discretizer.vtk_output_cell_idxs.keys())]
+                         for key in list(matrix_props.keys()) + list(frac_props.keys())}
+
+            ith_geometry = -1
+            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs.items():
+                ith_geometry += 1
+                # Loop over matrix cell properties
+                for prop, data in matrix_props.items():
+                    if geometry in self.discretizer.available_matrix_geometries:
+                        if np.isscalar(data):
+                            if type(data) is int:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs))).tolist()
+                            elif type(data) is float:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)).tolist()
+                        else:
+                            cell_data[prop][ith_geometry] += data.tolist()
+                    else:
+                        cell_data[prop][ith_geometry] += [0.] * len(cell_idxs)
+                # Loop over fracture cell properties
+                for prop, data in frac_props.items():
+                    if geometry in self.discretizer.available_fracture_geometries:
+                        if np.isscalar(data):
+                            if type(data) is int:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs))).tolist()
+                            elif type(data) is float:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)).tolist()
+                        else:
+                            cell_data[prop][ith_geometry] += data.tolist()
+                    else:
+                        cell_data[prop][ith_geometry] += [0.] * len(cell_idxs)
 
             mesh = meshio.Mesh(
                 points=self.discretizer.mesh_data.points,  # list of point coordinates
