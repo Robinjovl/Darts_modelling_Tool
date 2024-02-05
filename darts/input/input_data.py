@@ -87,7 +87,7 @@ class InputData():
         '''
         # count number of regions (one value per region)
         max_n_regions = 1
-        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
+        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
             sub_obj = self.__getattribute__(k)
             for k2 in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
@@ -97,6 +97,8 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
+            if k == 'fluid':
+                continue
             sub_obj = self.__getattribute__(k)
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)

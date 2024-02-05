@@ -85,7 +85,7 @@ def get_kd_cur(E, nu):
     return kd_cur
 
 def get_M(biot, porosity, kd_cur, fluid_compressibility):
-    eps = 1e-10 # avoid divizion by zero
+    eps = 1e-100 # avoid divizion by zero
     M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility + eps)
     return M
 
@@ -204,7 +204,7 @@ class UnstructReservoirMech():
         if self.thermoporoelacticity:
             self.t_ref = np.array(self.mesh.ref_temperature, copy=False)
             self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
-
+            
         # specify properties
         self.poro[:self.n_matrix] = idata.rock.porosity
         self.poro[self.n_matrix:] = 1  # fractures
