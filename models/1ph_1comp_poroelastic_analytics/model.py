@@ -64,7 +64,6 @@ class Model(DartsModel):
             self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
-            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
             self.idata.rock.biot = 0.9
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
@@ -73,22 +72,27 @@ class Model(DartsModel):
             self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
-            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
             self.idata.rock.biot = 0.9
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
         elif case == 'terzaghi_two_layers':
-            self.idata.rock.porosity = np.array([0.15, 0.001])
+            biot_1 = 0.9; biot_2 = 0.01
+            poro_1 = 0.15; poro_2 = 0.001
+            nu_1 = 0.15
+            self.idata.rock.porosity = np.array([poro_1, poro_2])
             self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 1.
             self.idata.rock.E = 10000  # in bars
-            self.idata.rock.nu = 0.15
-            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
-            self.idata.rock.biot = np.array([0.9, 0.01])
+            self.idata.rock.biot = np.array([biot_1, biot_2])
             self.idata.fluid.compressibility = 1.e-10
             self.idata.fluid.viscosity = 1.0
-            self.idata.h = np.array([0.25, 0.75])  #TODO add comments
+            self.idata.other.h = np.array([0.25, 0.75])  #TODO add comments
+            # compute nu_2
+            x = (biot_2 / biot_1 * ( 3 * (biot_1 - poro_1) * (1 - biot_1) * (1 - nu_1) / (1 + nu_1) + biot_1 ** 2) -
+                 biot_2 ** 2) / 3 / (biot_2 - poro_2) / (1 - biot_2)
+            nu_2 = (1 - x) / (1 + x)
+            assert (nu_2 < 0.5 and nu_2 > 0)
+            self.idata.rock.nu = np.array([nu_1, nu_2])
             self.idata.make_prop_arrays()
-            self.idata.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
             self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 4.e+6 / 0.9869
@@ -103,6 +107,17 @@ class Model(DartsModel):
             self.idata.fluid.compressibility = 0.0   #TODO explain
             self.idata.fluid.viscosity = 1.0
 
+        self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+        self.idata.other.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
+
+        if case == 'terzaghi_two_layers':
+            # short names
+            b = self.idata.rock.biot; nu = self.idata.rock.nu; E = self.idata.rock.E; M = self.idata.other.M;
+            # some numbers for analytics
+            self.idata.other.m = m = (1 + nu) * (1 - 2 * nu) / E / (1 - nu)
+            self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)
+            self.idata.other.c = TC.darcy_constant * self.idata.rock.permx / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
+            assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
         self.idata.check()
     def set_physics(self):
         zero = 1e-8

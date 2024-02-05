@@ -296,26 +296,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
         self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
-        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
-             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
-        nu2 = (1 - x) / (1 + x)
-        self.props[self.m2_tag]['nu'] = nu2
-        assert(nu2 < 0.5 and nu2 > 0)
-        #TODO why this modification needed
-        for tag in self.props.keys():
-            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
-            self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], self.idata.fluid.compressibility)
-
-        # some numbers for analytics
-        for tag, p in self.props.items():
-            p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
-            # if tag == m2:
-                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
-                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
-            p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-            p['c'] = TC.darcy_constant * p['perm'] / self.idata.fluid.viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-
-        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
 
         self.unstr_discr.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
@@ -438,26 +418,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.F = -100.0 # bar * m
         self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
-        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
-             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
-        nu2 = (1 - x) / (1 + x)
-        self.props[self.m2_tag]['nu'] = nu2
-        assert(nu2 < 0.5 and nu2 > 0)
-
-        for tag in self.props.keys():
-            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
-            self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], idata.fluid.compressibility)
-
-        # some numbers for analytics
-        for tag, p in self.props.items():
-            p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
-            # if tag == m2:
-                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
-                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
-            p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-            p['c'] = TC.darcy_constant * p['perm'] / idata.fluid.viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-
-        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
 
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer()

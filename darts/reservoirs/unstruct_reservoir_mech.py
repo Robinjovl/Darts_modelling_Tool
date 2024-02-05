@@ -85,10 +85,8 @@ def get_kd_cur(E, nu):
     return kd_cur
 
 def get_M(biot, porosity, kd_cur, fluid_compressibility):
-    if biot == 1. and fluid_compressibility == 0.:  # avoid divizion by zero
-        M = None
-    else:
-        M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility)
+    eps = 1e-10 # avoid divizion by zero
+    M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility + eps)
     return M
 
 class UnstructReservoirMech(): 

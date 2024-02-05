@@ -52,6 +52,13 @@ class InitialSolution():
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/m]
 
+class OtherProps():
+    '''
+    Other user defined properties
+    '''
+    def __init__(self):
+        pass
+
 class InputData():
     '''
     Class for initial values
@@ -60,6 +67,7 @@ class InputData():
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
         #self.initial = InitialSolution() #TODO
+        self.other = OtherProps()
         
     def check(self):
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
@@ -71,18 +79,28 @@ class InputData():
                     assert False
                     
     def make_prop_arrays(self):
-        # count number of regions
+        '''
+        one can specify different property values with a numpy array, and another property as a scalar value
+        in that case, this function can replace scalar properties with a uniform array, so the props
+        can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
+        :return:
+        '''
+        # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
-            for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
+            for k2 in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
-                if not np.isscalar(value):
-                    max_n_regions = value.size()
+                if value is None:
+                    continue
+                if not np.isscalar(value):  # if np.array
+                    max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
+                if value is None:
+                    continue
                 if np.isscalar(value):
                     self.__dict__[k].__dict__[k2] = np.zeros(max_n_regions, dtype=type(value)) + value
