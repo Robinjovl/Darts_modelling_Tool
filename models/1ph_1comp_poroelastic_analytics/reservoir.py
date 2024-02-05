@@ -108,9 +108,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.props = {}
         i = 0
         for m in matrix_tags:
-            self.props[m] = {'h': idata.h[i], 'E': idata.rock.E, 'nu': idata.rock.nu, 'b': idata.rock.biot[i],
-                                           'poro': idata.rock.porosity[i], 'perm': idata.rock.permx,
-                                           'kd': idata.rock.kd_cur[i], 'M': idata.rock.M[i]}
+            self.props[m] = {'h': idata.other.h[i], 'E': idata.rock.E[i], 'nu': idata.rock.nu[i], 'b': idata.rock.biot[i],
+                            'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': idata.rock.kd_cur[i],
+                             'M': idata.other.M[i], 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
+                             'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i]}
             i += 1
 
     def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
