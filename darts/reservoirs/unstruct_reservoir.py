@@ -262,9 +262,7 @@ class UnstructReservoir(ReservoirBase):
             cell_data = {key: [[] for ith_geometry, geometry in enumerate(self.discretizer.vtk_output_cell_idxs.keys())]
                          for key in list(matrix_props.keys()) + list(frac_props.keys())}
 
-            ith_geometry = -1
-            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs.items():
-                ith_geometry += 1
+            for ith_geometry, (geometry, cell_idxs) in enumerate(self.discretizer.vtk_output_cell_idxs.items()):
                 # Loop over matrix cell properties
                 for prop, data in matrix_props.items():
                     if geometry in self.discretizer.available_matrix_geometries:
