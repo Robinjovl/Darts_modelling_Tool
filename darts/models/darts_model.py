@@ -65,7 +65,6 @@ class DartsModel:
         assert self.reservoir is not None, "Reservoir object has not been defined"
         self.reservoir.init_reservoir(verbose)
         self.set_wells()
-        self.reservoir.init_wells()
 
         # Initialize physics and Engine object
         assert self.reservoir is not None, "Physics object has not been defined"
@@ -75,7 +74,8 @@ class DartsModel:
 
         # Initialize well objects
         self.physics.init_wells(self.reservoir.wells)
-
+        self.reservoir.init_wells()
+        
         self.set_boundary_conditions()
         self.set_initial_conditions()
         self.set_well_controls()
