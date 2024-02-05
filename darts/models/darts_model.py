@@ -74,8 +74,9 @@ class DartsModel:
 
         # Initialize well objects
         self.physics.init_wells(self.reservoir.wells)
+        self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.init_wells()
-        
+
         self.set_boundary_conditions()
         self.set_initial_conditions()
         self.set_well_controls()
