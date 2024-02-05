@@ -9,6 +9,8 @@ from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
+from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M
+from darts.input.input_data import InputData
 
 class Model(DartsModel):
     def __init__(self, n_points=64, case='mandel', discretizer='mech_discretizer', mesh='rect'):
@@ -19,7 +21,10 @@ class Model(DartsModel):
         self.case = case
         self.discretizer_name = discretizer
 
-        self.reservoir = UnstructReservoirCustom(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
+        self.set_input_data(case=case)
+
+        self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=case, discretizer=discretizer,
+                                                 mesh=mesh)
         self.set_physics()
 
         self.reservoir.P_VAR = self.engine.P_VAR
@@ -44,19 +49,73 @@ class Model(DartsModel):
             self.engine.ls_params.append(ls1)
 
         self.timer.node["initialization"].stop()
+
+    def set_input_data(self, case: str):
+        type_mech = 'thermoporoelasticity' if case == 'bai' else 'poroelasticity'
+        self.idata = InputData(type_hydr='thermal', type_mech=type_mech)
+        self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
+        self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
+        self.idata.rock.compressibility = 1.
+        self.idata.fluid.Mw = 18.015
+        self.idata.fluid.density_ref = self.idata.fluid.Mw  #TODO check
+
+        if case == 'mandel':
+            self.idata.rock.porosity = 0.375
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.nu = 0.25
+            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.biot = 0.9
+            self.idata.fluid.compressibility = 1.e-5
+            self.idata.fluid.viscosity = 1.0
+        elif case == 'terzaghi':
+            self.idata.rock.porosity = 0.375
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.nu = 0.25
+            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.biot = 0.9
+            self.idata.fluid.compressibility = 1.e-5
+            self.idata.fluid.viscosity = 1.0
+        elif case == 'terzaghi_two_layers':
+            self.idata.rock.porosity = np.array([0.15, 0.001])
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 1.
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.nu = 0.15
+            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.biot = np.array([0.9, 0.01])
+            self.idata.fluid.compressibility = 1.e-10
+            self.idata.fluid.viscosity = 1.0
+            self.idata.h = np.array([0.25, 0.75])  #TODO add comments
+            self.idata.make_prop_arrays()
+            self.idata.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
+        elif case == 'bai':
+            self.idata.rock.porosity = 0.2
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 4.e+6 / 0.9869
+            self.idata.rock.E = 0.06  # in bars
+            self.idata.rock.nu = 0.4
+            self.idata.rock.biot = 1.0
+            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.th_expn = 9.0 * 1.E-7
+            self.idata.rock.th_expn *= self.idata.rock.kd_cur  #TODO explain
+            self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
+            self.idata.rock.th_expn_poro = 0.0   #TODO explain
+            self.idata.fluid.compressibility = 0.0   #TODO explain
+            self.idata.fluid.viscosity = 1.0
+
+        self.idata.check()
     def set_physics(self):
         zero = 1e-8
         # Create property containers:
         components = ['H2O']
         phases = ['wat']
-        thermal = 0
-        Mw = [18.015]
+        thermal = self.case == 'bai'
+        Mw = [self.idata.fluid.Mw]
 
-        self.reservoir.heat_capacity = 167.2 * 1000.0
         hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        hcap.fill(self.reservoir.heat_capacity)
+        hcap.fill(self.idata.rock.heat_capacity)
 
-        if self.case == 'bai':
+        if thermal:
             property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                    Mw=Mw, min_z=zero / 10)
         else:
@@ -65,18 +124,17 @@ class Model(DartsModel):
 
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
-        self.reservoir.fluid_density0 = Mw[0]
-        property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
-                                                                   dens0=self.reservoir.fluid_density0))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
+        property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
+                                                                   dens0=self.idata.fluid.density_ref))])
+        property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # rock compressibility is treated inside engine
-        property_container.rock_compr_ev = ConstFunc(1.0)
+        property_container.rock_compr_ev = ConstFunc(self.idata.rock.compressibility)
         # create physics
-        if self.case == 'bai':
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity, tref=0.0))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)
+        if thermal:
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata?
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,

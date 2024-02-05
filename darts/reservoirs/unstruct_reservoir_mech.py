@@ -16,6 +16,7 @@ from darts.discretizer import THMBoundaryCondition, BoundaryCondition
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
+from darts.input.input_data import InputData
 
 class bound_cond:
     '''
@@ -90,16 +91,6 @@ def get_M(biot, porosity, kd_cur, fluid_compressibility):
         M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility)
     return M
 
-class GeoMechInputData():
-    '''
-    Class for input data Poroelasticity/ThermoPoroElasticity coupled model
-    '''
-    def __init__(self):
-        self.porosity = None
-        self.permx = self.permy = self.permz = None  # Permeability [mD]
-        self.E = None   # Young modulus [bars]
-        self.nu = 0.25  # Poisson ratio
-
 class UnstructReservoirMech(): 
     #TODO: inherit from UnstructReservoirBase to have add_well functions from there
     #TODO: create a py wrapper reservoir class UnstructReservoirCPP for C++ discretizer (flow only, MPFA)
@@ -163,7 +154,7 @@ class UnstructReservoirMech():
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_bounds = self.unstr_discr.bound_cells_tot
 
-    def init_mech_discretizer(self):
+    def init_mech_discretizer(self, idata: InputData):
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
 
@@ -189,13 +180,6 @@ class UnstructReservoirMech():
         self.adj_matrix_cols = np.array(self.discr_mesh.adj_matrix_cols, copy=False)
         self.adj_matrix = np.array(self.discr_mesh.adj_matrix, copy=False)
 
-        if hasattr(self, 'E'):  # if uniform geomechanical properties
-            self.kd_cur = get_kd_cur(self.E, self.nu)
-            self.lam, self.mu = get_lambda_mu(self.E, self.nu)
-            self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
-        if self.thermoporoelacticity:
-            self.th_expn = self.th_expn_coef * self.kd_cur
-
         self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
 
         #TODO: instead of biot and kd, calc compressibility in python and pass this to engines
@@ -207,7 +191,7 @@ class UnstructReservoirMech():
         #self.porosity = self.porosity + np.zeros(self.n_matrix + self.n_fracs)
         #self.biot_mean = np.zeros(9 * (self.n_matrix))
 
-    def init_arrays(self):
+    def init_arrays(self, idata: InputData):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.poro = np.array(self.mesh.poro, copy=False)
         self.volume = np.array(self.mesh.volume, copy=False)
@@ -224,7 +208,7 @@ class UnstructReservoirMech():
             self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
 
         # specify properties
-        self.poro[:self.n_matrix] = self.porosity
+        self.poro[:self.n_matrix] = idata.rock.porosity
         self.poro[self.n_matrix:] = 1  # fractures
 
         if self.discretizer_name == 'mech_discretizer':
@@ -233,11 +217,11 @@ class UnstructReservoirMech():
             self.bc_prev[:] = self.bc_rhs_prev
             self.bc[:] = self.bc_rhs
             self.biot_arr[:] = self.biot_mean
-            self.kd[:] = self.kd_cur
+            self.kd[:] = idata.rock.kd_cur
             self.p_ref[:] = self.p_init
             if self.thermoporoelacticity:
                 self.t_ref[:] = self.t_init
-                self.th_expn_poro_arr[:] = self.th_expn_poro
+                self.th_expn_poro_arr[:] = idata.rock.th_expn_poro
         elif self.discretizer_name == 'pm_discretizer':
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
             for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
@@ -246,7 +230,7 @@ class UnstructReservoirMech():
             self.bc[:] = self.bc_rhs
             self.bc_ref[:] = self.bc_rhs_ref
             self.biot_arr[:] = self.biot_mean
-            self.kd[:] = self.kd_cur
+            self.kd[:] = idata.rock.kd_cur
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
 
@@ -413,27 +397,27 @@ class UnstructReservoirMech():
             m[idx] = val
             idx += self.n_dim + 1
 
-    def init_uniform_properties(self):
+    def init_uniform_properties(self, idata: InputData):
         if self.discretizer_name == 'mech_discretizer':
             self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
             for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                               self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-                self.discr.perms.append(disc_matrix33(self.permx, self.permy, self.permz))
-                self.discr.biots.append(disc_matrix33(self.biot))
+                self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                self.discr.biots.append(disc_matrix33(idata.rock.biot))
                 self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
-                self.set_diag_matrix(self.biot_mean, cell_id, self.biot)
+                self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
                 if self.thermoporoelacticity:
-                    self.discr.heat_conductions.append(disc_matrix33(self.th_conductivity))
-                    self.discr.thermal_expansions.append(disc_matrix33(self.th_expn))
+                    self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
+                    self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))
         elif self.discretizer_name == 'pm_discretizer':
             self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
             for cell_id in range(self.unstr_discr.mat_cells_tot):
                 cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-                self.pm.perms.append(engine_matrix33(self.permx, self.permy, self.permz))
-                self.pm.biots.append(engine_matrix33(self.biot))
+                self.pm.perms.append(engine_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                self.pm.biots.append(engine_matrix33(idata.rock.biot))
                 self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
-                self.set_diag_matrix(self.biot_mean, cell_id, self.biot)
+                self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
 
     def init_heterogeneous_properties(self):
         '''
@@ -479,7 +463,7 @@ class UnstructReservoirMech():
                 self.set_diag_matrix(self.biot_mean, cell_id, biot)
                 self.porosity[cell_id] = poro
 
-    def set_uniform_initial_conditions(self, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
+    def set_uniform_initial_conditions(self, idata: InputData, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
         self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
         self.p_init = p_init  # initial pressure [bars]
         if self.thermoporoelacticity:
@@ -487,7 +471,7 @@ class UnstructReservoirMech():
         else:
             self.t_init = None
 
-    def init_reservoir_main(self):
+    def init_reservoir_main(self, idata:InputData):
         # allocate arrays in C++ (conn_mesh)
         if self.discretizer_name == 'mech_discretizer':
             if self.thermoporoelacticity:
@@ -513,7 +497,7 @@ class UnstructReservoirMech():
                 assert False
             self.init_pm_discretizer()
 
-        self.init_arrays()
+        self.init_arrays(idata)
         self.set_pz_bounds(p=self.p_init, z=None, t=self.t_init)
 
         self.wells = []
