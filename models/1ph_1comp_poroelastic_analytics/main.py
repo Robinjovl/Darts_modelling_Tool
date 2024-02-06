@@ -263,16 +263,16 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
                 'time': np.zeros(nt + 1), 'x': x}
         disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
-        pres['analytics'][0] = m.reservoir.mandel_exact_pressure(t=0.0, xc=x)
-        p,ux,uy = m.reservoir.mandel_exact_displacements(t=0.0, xc=xc)
+        pres['analytics'][0] = m.reservoir.mandel_exact_pressure(idata=m.idata, t=0.0, xc=x)
+        p,ux,uy = m.reservoir.mandel_exact_displacements(idata=m.idata, t=0.0, xc=xc)
         disp['analytics'][0] = ux
     elif case == 'terzaghi':
         pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
         disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
-        pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(t=0.0, xc=x)
-        disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(t=0.0, xc=x)
+        pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(idata=m.idata, t=0.0, xc=x)
+        disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(idata=m.idata, t=0.0, xc=x)
     elif case == 'terzaghi_two_layers':
         pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
@@ -292,14 +292,14 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         if case == 'mandel':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
-            pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
-            p,ux,uy = m.reservoir.mandel_exact_displacements(t=time, xc=xc)
+            pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(idata=m.idata, t=time, xc=x)
+            p,ux,uy = m.reservoir.mandel_exact_displacements(idata=m.idata, t=time, xc=xc)
             disp['analytics'][ith_step + 1] = ux
         elif case == 'terzaghi':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
-            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(t=time, xc=x)
-            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(t=time, xc=x)
+            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(idata=m.idata, t=time, xc=x)
+            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(idata=m.idata,t=time, xc=x)
         elif case == 'terzaghi_two_layers':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
@@ -554,23 +554,23 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
     return sol_data_slice
 
 # Rectangular grid, comparison to analytics
-#run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
-#run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
-#run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
-#run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
-#run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
-#run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
-#run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
+run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
+run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
+run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
+run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
+run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
+run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
+run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
 # Wedge (triangular) grid
-# run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
-# run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
+#run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
+#run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
-# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
+#run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
 # Unstructured hexahedral grid
-# run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+#run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
 # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
 # run(case='mandel', discretizer='pm_discretizer', mesh='hex')

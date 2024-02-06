@@ -519,19 +519,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             x0 += np.pi  # apply a phase change of pi to get the next root
 
         return a_n
-    def mandel_exact_pressure(self, t, xc) -> np.ndarray:
+    def mandel_exact_pressure(self, idata:InputData, t, xc) -> np.ndarray:
         """
         Pressure solution for a given time `t`.
         """
         # Parameters
         F = np.fabs(self.F)
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
 
         if t == 0.0:  # initial condition has its own expression
             p = ((F * skempton * (1 + nu_u)) / (3 * self.a)) * np.ones(xc.size)
         else:
             # Retrieve approximated roots
-            aa_n = self.approximate_roots()[:, np.newaxis]
+            aa_n = self.approximate_roots(idata)[:, np.newaxis]
             # Exact p
             c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
             p_sum_0 = np.sum(
@@ -543,7 +543,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             p = c0 * p_sum_0
 
         return p
-    def mandel_exact_displacements(self, t, xc) -> np.ndarray:
+    def mandel_exact_displacements(self, idata:InputData, t, xc) -> np.ndarray:
         """
         Exact pressure solution for a given time `t`.
 
@@ -557,7 +557,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # Retrieve physical data
         F = np.fabs(self.F)
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         # -----> Compute exact fluid pressure
 
         if t == 0.0:  # initial condition has its own expression
@@ -566,7 +566,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             uy = F / self.mu / self.a * (nu_u - 1) * xc[:, 1] / 2
         else:
             # Retrieve approximated roots
-            aa_n = self.approximate_roots()[:, np.newaxis]
+            aa_n = self.approximate_roots(idata)[:, np.newaxis]
             # Exact p
             c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
             p_sum_0 = np.sum(
@@ -582,14 +582,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                   (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
                 axis=0,
             )
-            ux = F / self.mu / self.a * (self.nu * xc[:,0] / 2 + ux_sum_0)
+            ux = F / self.mu / self.a * (idata.rock.nu * xc[:,0] / 2 + ux_sum_0)
             # Exact uy
             uy_sum_0 = np.sum(
                 ( np.sin(aa_n) * np.cos(aa_n) /
                   (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
                 axis=0,
             )
-            uy = F / self.mu / self.a * ((self.nu - 1) * xc[:,1] / 2 - (nu_u - 1) * xc[:,1] * uy_sum_0)
+            uy = F / self.mu / self.a * ((idata.rock.nu - 1) * xc[:,1] / 2 - (nu_u - 1) * xc[:,1] * uy_sum_0)
 
         return p, ux, uy
     # Terzaghi analytics
@@ -608,9 +608,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     * np.exp((-((2 * i - 1) ** 2)) * (np.pi ** 2 / 4) * dimless_t) )
         p = (4 / np.pi) * vertical_load * sum_series
         return p
-    def terzaghi_exact_pressure(self, t, xc) -> np.ndarray:
+    def terzaghi_exact_pressure(self, idata: InputData, t, xc) -> np.ndarray:
         # Parameters
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD
@@ -629,7 +629,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         else:
             p = p0
         return p
-    def terzaghi_exact_displacements(self, t, xc) -> np.ndarray:
+    def terzaghi_exact_displacements(self, idata: InputData, t, xc) -> np.ndarray:
         """Compute exact pressure.
         Args:
             t: Time in seconds.
@@ -637,16 +637,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             Exact pressure for the given time `t`.
         """
         # Retrieve physical data
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD
 
         n = 1000
 
-        u0 = -xc * vertical_load * (1  - 2 * self.nu) / 2 / self.mu / (1 - self.nu)
+        u0 = -xc * vertical_load * (1  - 2 * idata.rock.nu) / 2 / self.mu / (1 - idata.rock.nu)
         c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / idata.rock.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
-        coef = 4 * vertical_load * h * (nu_u - self.nu) / np.pi ** 2 / self.mu / (1 - self.nu) / (1 - nu_u)
+        coef = 4 * vertical_load * h * (nu_u - idata.rock.nu) / np.pi ** 2 / self.mu / (1 - idata.rock.nu) / (1 - nu_u)
 
         if dimless_t > 0:
             sum_series = np.zeros_like(xc)

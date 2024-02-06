@@ -103,8 +103,8 @@ class Model(DartsModel):
             self.idata.rock.th_expn = 9.0 * 1.E-7
             self.idata.rock.th_expn *= self.idata.rock.kd_cur  #TODO explain
             self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
-            self.idata.rock.th_expn_poro = 0.0   #TODO explain
-            self.idata.fluid.compressibility = 0.0   #TODO explain
+            self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
+            self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
 
         self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
@@ -127,9 +127,6 @@ class Model(DartsModel):
         thermal = self.case == 'bai'
         Mw = [self.idata.fluid.Mw]
 
-        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        hcap.fill(self.idata.rock.heat_capacity)
-
         if thermal:
             property_container = PropertyContainer(phases_name=phases, components_name=components,
                                                    Mw=Mw, min_z=zero / 10)
@@ -149,7 +146,7 @@ class Model(DartsModel):
         # create physics
         if thermal:
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata?
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
             self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
                                           min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,

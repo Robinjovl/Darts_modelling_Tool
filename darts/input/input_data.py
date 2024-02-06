@@ -21,9 +21,9 @@ class RockProps():
             self.E = None   # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.biot = None  # Biot
-            self.kd_cur = None  # Bulk modulus #TODO units
+            self.kd_cur = None  # Bulk modulus [bar]
         else: # only hydrodynamic
-            self.compressibility = 1.   #TODO check
+            self.compressibility = 1.   # [1/bar]
 
         if type_mech == 'thermoporoelasticity': # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
@@ -101,6 +101,8 @@ class InputData():
                 continue
             sub_obj = self.__getattribute__(k)
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
+                if k2 == 'compressibility':
+                    continue
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     continue
