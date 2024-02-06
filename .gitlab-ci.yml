@@ -561,6 +561,7 @@ test-windows-3.7-ODLS:
         - export WHEEL_NAME=`python -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"`
         # upgrade pip package first
         - python -m pip install --upgrade pip
+        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         - ls ./dist/*
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
@@ -606,6 +607,7 @@ test-windows-3.7-ODLS:
         - $env:WHEEL_NAME=python.exe -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.0.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"
         # upgrade pip package first
         - python -m pip install --upgrade pip
+        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         - pip install --force-reinstall --no-deps .\dist\$env:WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
