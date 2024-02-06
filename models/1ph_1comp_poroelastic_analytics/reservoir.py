@@ -421,7 +421,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
 
         self.set_terzaghi_boundary_conditions()
-        self.init_mech_discretizer()
+        self.init_mech_discretizer(idata=idata)
         self.kd_cur = np.zeros(self.n_matrix)
         self.porosity = np.zeros(self.n_matrix)  #TODO: allocate in init_mech_discretizer?
         self.biot_mean = np.zeros(9 * (self.n_matrix))
