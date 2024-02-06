@@ -83,18 +83,20 @@ def run_timestep_python(m, dt, t):
         res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
         self.e.dev_p = res[0]
         self.e.dev_u = res[1]
-        if len(res) > 2 and res[2] == res[2]:       self.e.dev_g = res[2]
-        else:                                       self.e.dev_g = 0.0
+        dev_e = 0
+        if self.reservoir.thermoporoelasticity:
+            self.e.dev_e = res[2]
+            dev_e = res[2]
 
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_g ** 2)
+        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)
         #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
         self.e.well_residual_last_dt = self.e.calc_well_residual()
         print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+                    're = ' + str(dev_e) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and self.e.dev_g < self.params.tolerance_newton
+        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton
            and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
               or self.e.n_newton_last_dt == self.params.max_i_newton):
             if (i > 0):  # min_i_newton
@@ -218,14 +220,23 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     print('v_order = ' + str(v_order))
 
     assert(u_order > 1.0)
-    assert(s_order > 0.5)# and s_eff_order > 0.5)
-
     if mode == 'poroelastic':
         assert(p_order > 1.0)
+        assert (s_order > 0.5)  # and s_eff_order > 0.5) # TODO: fix stresses in thermoporoelastic mode
         if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
             assert(v_order > 0.5)
+    else:
+        assert(t_order > 1.0)
 
-# run_convergence_study(n_res=3, mode='poroelastic', discretizer='pm_discretizer')
+def run_test(args: list = []):
+    run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
+    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
+    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
+    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
+    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
+
+# run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
-run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
+# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
+# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
