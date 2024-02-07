@@ -138,7 +138,7 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
 
         # m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
         # m.reservoir.write_diff_to_vtk(output_directory, property_array, m.cell_property, ith_step + 1, time)
-    return m.reservoir.calc_deviations(m.engine)
+    return {'dev': m.reservoir.calc_deviations(m.engine), 'time': m.timer.node['simulation'].get_timer()}
 
 def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     max_t = 0.1
@@ -158,19 +158,24 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     devs_seff = []
     devs_v = []
     devs_t = []
+    time = 0.0
     for i in range(n_res):
         print('Run model with resolution #' + str(i))
 
         mesh_file = mesh_file_template.format(i)
         if mode == 'thermoporoelastic':
-            dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+            res = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
                                                 mesh_file=mesh_file, discretizer=discretizer,
                                                 mode=mode, is_last_model=(i == n_res - 1))
+            dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t = res['dev']
+            time += res['time']
             devs_t.append(dev_t)
         else:
-            dev_u, dev_p, dev_s, dev_seff, dev_v = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
+            res = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
                                                 mesh_file=mesh_file, discretizer=discretizer,
                                                 mode=mode, is_last_model=(i == n_res - 1))
+            dev_u, dev_p, dev_s, dev_seff, dev_v = res['dev']
+            time += res['time']
 
         devs_u.append(dev_u)
         devs_p.append(dev_p)
@@ -219,21 +224,42 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     print(devs_v)
     print('v_order = ' + str(v_order))
 
+    test_passed = 1
     assert(u_order > 1.0)
+    if u_order < 1.0:
+        test_passed = 0
     if mode == 'poroelastic':
         assert(p_order > 1.0)
+        if p_order < 1.0:
+            test_passed = 0
         assert (s_order > 0.5)  # and s_eff_order > 0.5) # TODO: fix stresses in thermoporoelastic mode
+        if s_order < 0.5:
+            test_passed = 0
         if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
             assert(v_order > 0.5)
+            if v_order < 0.5:
+                test_passed = 0
     else:
         assert(t_order > 1.0)
+        if t_order < 1.0:
+            test_passed = 0
+
+    return test_passed, time
 
 def run_test(args: list = []):
-    run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
-    run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
+    n_res = [3, 3, 3, 3, 3]
+    discretizers = ['pm_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer']
+    modes = ['poroelastic', 'poroelastic', 'poroelastic', 'thermoporoelastic', 'thermoporoelastic']
+    meshes = ['rect', 'rect', 'tetra', 'rect', 'tetra']
+
+    test_passed = 1
+    time = 0.0
+    for i in range(len(n_res)):
+        test_passed_cur, time_cur = run_convergence_study(n_res=n_res[i], discretizer=discretizers[i], mode=modes[i])
+        test_passed *= test_passed_cur
+        time += time_cur
+
+    return (1 - test_passed), time
 
 # run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
