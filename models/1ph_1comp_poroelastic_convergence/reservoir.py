@@ -286,6 +286,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.pz_bounds_rhs = np.zeros(self.unstr_discr.bound_cells_tot)
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
             c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
             n = self.get_normal_to_bound_face(bound_id)
