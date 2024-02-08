@@ -1,0 +1,23 @@
+darts-linear-solvers built on Jan 26 2024 15:02:02 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
+darts-engines built on Jan 26 2024 15:02:01 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
+darts-discretizer built on Jan 26 2024 15:02:02 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
+Processing mesh: 1000 reservoir blocks, 4 well blocks, 1003 connections
+2-phase 3-component isothermal flow with kinetic reaction and diffusion CPU engine
+Sim params: 
+	First ts: 	0.001
+	Max ts: 	1
+	Mult ts: 	2
+	Max i newton: 	10
+	Max i linear: 	50
+	Tol newton: 	0.01
+	Tol linear: 	0.001
+
+START SIMULATION
+-------------------------------------------------------------------------------------------------------------
+Well I1 initialized with BHP injector
+Well P1 initialized with BHP producer
+	 #1 (7.9732e-02, 3.0267e+02): lin 1 (0.0e+00)
+Composition correction applied in 2 block(s)
+-------------------------------------------------------------------------------------------------------------
+ T = 0.001, DT = 0.001, NI = 1, LI = 1, RES = 5.3e-05 (2.2e-04), CFL=0.023 (ELAPSED 00:00:00 )
+-------------------------------------------------------------------------------------------------------------

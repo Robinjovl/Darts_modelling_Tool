@@ -316,6 +316,7 @@ class DartsModel:
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
+        P= self.physics.engine.X[::3] # Shahram
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
