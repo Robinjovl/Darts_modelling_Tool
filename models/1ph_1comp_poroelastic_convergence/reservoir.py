@@ -68,6 +68,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_prev[:] = self.bc_rhs_prev
         self.bc[:] = self.bc_rhs
         self.bc_ref[:] = self.bc_rhs_ref
+        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
+        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+        self.pz_bounds[:] = self.pz_bounds_rhs
         if self.thermoporoelasticity:
             self.biot_arr[:] = np.tile([self.porosity,0,0,
                                         0,self.porosity,0,
@@ -135,6 +138,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # update boundaries at n+1 / n timesteps
         self.bc[:] = self.bc_rhs
         self.bc_prev[:] = self.bc_rhs_prev
+        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+        self.pz_bounds[:] = self.pz_bounds_rhs
         #self.init_wells()
     def set_boundary_conditions(self):
         self.boundary_conditions = {}
@@ -281,6 +286,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
         self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
+        self.pz_bounds_rhs = np.zeros(self.unstr_discr.bound_cells_tot)
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
             c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
             n = self.get_normal_to_bound_face(bound_id)
@@ -329,6 +335,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             for id in ids:
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
                 self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
+                self.pz_bounds_rhs[self.n_state * id + self.p_var] = sol[3, id]
 
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
@@ -392,6 +399,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+        self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
 
         sol = reference_solution_poroelastic(self.x_all[:, self.n_matrix + self.n_fracs:])
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
@@ -407,6 +415,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             for id in ids:
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
                 self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
+                self.pz_bounds_rhs[self.n_state * id + self.p_var] = sol[3, id]
 
         self.cpp_bc = THMBoundaryCondition()
         self.cpp_bc.flow.a = value_vector(ap)
@@ -455,6 +464,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
                 self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
                 self.bc_rhs[self.n_vars * id + self.t_var] = sol[4, id]
+                self.pz_bounds_rhs[self.n_state * id + self.p_var] = sol[3, id]
+                self.pz_bounds_rhs[self.n_state * id + self.t_var] = sol[4, id]
 
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
@@ -534,6 +545,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
         self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+        self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
 
         sol = reference_solution_thermoporoelastic(self.x_all[:, self.n_matrix + self.n_fracs:])
         for tag in self.domain_tags[elem_loc.BOUNDARY]:
@@ -551,6 +563,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
                 self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
                 self.bc_rhs[self.n_vars * id + self.t_var] = sol[4, id]
+                self.pz_bounds_rhs[self.n_state * id + self.p_var] = sol[3, id]
+                self.pz_bounds_rhs[self.n_state * id + self.t_var] = sol[4, id]
 
         # mechanics
         self.cpp_bc = THMBoundaryCondition()
