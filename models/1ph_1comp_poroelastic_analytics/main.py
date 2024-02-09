@@ -1,4 +1,4 @@
-from model import Model, load_performance_data, check_performance_data
+from model import Model
 from darts.engines import *
 import numpy as np
 import meshio
@@ -161,7 +161,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     is_plk_exist = os.path.isfile(file_name)
     if is_plk_exist:
-        ref_data = load_performance_data(file_name=file_name)
+        ref_data = m.load_performance_data(file_name=file_name)
 
     for ith_step, dt in enumerate(t):
         time += dt
@@ -182,7 +182,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
             else:
                 sol_data_step = data[ith_step]
                 ref_data_step = ref_data[ith_step]
-            failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
+            failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
 
     if not is_plk_exist or overwrite == '1':

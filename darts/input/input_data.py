@@ -52,6 +52,20 @@ class InitialSolution():
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/m]
 
+class OBLParams():
+    '''
+    OBL range, number of points
+    '''
+    def __init__(self):
+        self.zero = None
+        self.n_points = None
+        self.min_p = None
+        self.max_p = None
+        self.min_t = None
+        self.max_t = None
+        self.min_z = None
+        self.max_z = None
+
 class OtherProps():
     '''
     Other user defined properties
@@ -64,14 +78,21 @@ class InputData():
     Class for initial values
     '''
     def __init__(self, type_hydr, type_mech):
+        self.type_hydr = type_hydr
+        self.type_mech = type_mech
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
+        self.obl = OBLParams()
         #self.initial = InitialSolution() #TODO
         self.other = OtherProps()
         
     def check(self):
+        assert self.type_hydr in ['isothermal', 'thermal'], 'input_data: Unknown type_hydr'
+        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity'], 'input_data: Unknown type_mech'
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
+            if not hasattr(sub_obj, '__dict__'):
+                continue
             for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
@@ -89,6 +110,8 @@ class InputData():
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
             sub_obj = self.__getattribute__(k)
+            if not hasattr(sub_obj, '__dict__'):
+                continue
             for k2 in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
@@ -97,9 +120,11 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
-            if k == 'fluid':
+            if k == 'fluid' or k == 'obl':
                 continue
             sub_obj = self.__getattribute__(k)
+            if not hasattr(sub_obj, '__dict__'):
+                continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 if k2 == 'compressibility':
                     continue

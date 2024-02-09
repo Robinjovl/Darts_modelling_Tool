@@ -204,7 +204,7 @@ class UnstructReservoirMech():
         self.kd = np.array(self.mesh.kd, copy=False)
         self.p_ref = np.array(self.mesh.ref_pressure, copy=False)
         hcap = np.array(self.mesh.heat_capacity, copy=False)
-        if self.thermoporoelacticity:
+        if self.thermoporoelasticity:
             self.t_ref = np.array(self.mesh.ref_temperature, copy=False)
             self.th_expn_poro_arr = np.array(self.mesh.th_poro, copy=False)
             
