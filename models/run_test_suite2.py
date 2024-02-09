@@ -18,7 +18,7 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
                  'CoaxWell'
                  ]
 
-test_dirs = ['1ph_1comp_poroelastic_analytics']
+test_dirs = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
 
 test_args = []
 for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
@@ -29,7 +29,7 @@ for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
             if case == 'terzaghi_two_layers' and mesh == 'hex':
                 continue
             test_args.append([case, discr_name, mesh])
-test_args = [test_args]
+test_args = [test_args, [['']]]
 
 accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
 

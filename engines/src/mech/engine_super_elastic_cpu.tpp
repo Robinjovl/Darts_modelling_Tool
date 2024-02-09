@@ -138,8 +138,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR, NC_);
-			static_cast<linsolv_bos_fs_cpr<N_VARS> *>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>(params->finalize_mpi)); //new linsolv_amg1r5<1>);
+			linsolv_iface *fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR);
+			if constexpr (NE == 1)
+			  static_cast<linsolv_bos_fs_cpr<N_VARS> *>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>(params->finalize_mpi));
+			else
+			{
+			  linsolv_iface* cpr = new linsolv_bos_cpr<NE>;
+			  cpr->set_prec(new linsolv_bos_amg<1>);
+			  static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec(cpr, new linsolv_hypre_amg<1>(params->finalize_mpi));
+			}
 			static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix + mesh->n_fracs, 0, mesh->n_blocks - mesh->n_res_blocks);
 			linear_solver->set_prec(fs_cpr);
 			break;
@@ -590,7 +597,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 	  csr_idx_start, csr_idx_end;
   index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5;
   value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, *n;
-  uint8_t d, v, c, p;
+  uint8_t d, v, c, p, density_cond;
   value_t gamma_p_diff, p_diff, phase_p_diff[NP], t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
   value_t CFL_in[NC], CFL_out[NC], darcy_component_fluxes[NE];
   value_t CFL_max_local = 0;
@@ -716,16 +723,40 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  // [2] phase fluxes & upwind direction
 		  for (p = 0; p < NP; p++)
 		  {
-			  // calculate gravity term for phase p
-			  avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+			  // etimate average densities between cells for current time step
+			  if (op_vals_arr[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE && op_vals_arr[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+			  {
+				avg_density = avg_weigthed_density = 0.0;
+			  }
+			  else if (op_vals_arr[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+			  {
+				avg_density = op_vals_arr[j * N_OPS + GRAV_OP + p];
+				avg_weigthed_density = op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p];
+			  }
+			  else if (op_vals_arr[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+			  {
+				avg_density = op_vals_arr[i * N_OPS + GRAV_OP + p];
+				avg_weigthed_density = op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+			  }
+			  else
+			  {
+				avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+				avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
+									    op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+			  }
+			  // etimate average density between cells for previous time step
+			  if (op_vals_arr_n[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE && op_vals_arr_n[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+				avg_weigthed_density_n = 0.0;
+			  else if (op_vals_arr_n[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+				avg_weigthed_density_n = op_vals_arr_n[j * N_OPS + SAT_OP + p] * op_vals_arr_n[j * N_OPS + GRAV_OP + p];
+			  else if (op_vals_arr_n[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+				avg_weigthed_density_n = op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p];
+			  else
+				avg_weigthed_density_n = (op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p] +
+										  op_vals_arr_n[j * N_OPS + SAT_OP + p] * op_vals_arr_n[j * N_OPS + GRAV_OP + p]) / 2;
 
 			  // sum up gravity and cappillary terms
 			  phase_p_diff[p] = p_diff + avg_density * darcy_rhs[conn_id] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
-
-			  avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
-									  op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
-			  avg_weigthed_density_n = (op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p] +
-										op_vals_arr_n[j * N_OPS + SAT_OP + p] * op_vals_arr_n[j * N_OPS + GRAV_OP + p]) / 2;
 
 			  // sum up gravity for Biot volumetric strain
 			  biot_mult += avg_weigthed_density * biot_vol_strain_rhs[conn_id];
@@ -905,19 +936,55 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  // [5] loop over pressure, composition & temperature
 		  for (p = 0; p < NP; p++)
 		  {
+			  density_cond = -1;
 			  // calculate partial derivatives for gravity and capillary terms
-			  value_t grav_pc_der_i[N_VARS - ND];
-			  value_t grav_pc_der_j[N_VARS - ND];
+			  value_t grav_pc_der_i[N_VARS - ND] = { 0.0 };
+			  value_t grav_pc_der_j[N_VARS - ND] = { 0.0 };
 			  r_ind = (i * N_OPS + GRAV_OP + p) * N_STATE;
 			  r_ind1 = (j * N_OPS + GRAV_OP + p) * N_STATE;
 			  r_ind2 = (i * N_OPS + PC_OP + p) * N_STATE;
 			  r_ind3 = (j * N_OPS + PC_OP + p) * N_STATE;
-			  for (v = 0; v < NE; v++)
+			  // estimate average gravity between cells
+			  if (op_vals_arr[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE && op_vals_arr[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
 			  {
+				 avg_weigthed_density = 0.0;
+			  }
+			  else if (op_vals_arr[i * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+			  {
+				avg_weigthed_density = op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p];
+				density_cond = 2;
+			  }
+			  else if (op_vals_arr[j * N_OPS + SAT_OP + p] < EQUALITY_TOLERANCE)
+			  {
+				avg_weigthed_density = op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				density_cond = 1;
+			  }
+			  else
+			  {
+				avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
+										op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+				density_cond = 0;
+			  }
+			  // store derivatives of 'avg_density' coming with (gravitational) free term
+			  if (density_cond == 0)
+			  {
+				for (v = 0; v < NE; v++)
+				{
 				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * darcy_rhs[conn_id] / 2 - op_ders_arr[r_ind2 + v];
 				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * darcy_rhs[conn_id] / 2 + op_ders_arr[r_ind3 + v];
+				}
 			  }
-
+			  else if (density_cond == 1)
+			  {
+				for (v = 0; v < NE; v++)
+				  grav_pc_der_i[v] = -op_ders_arr[r_ind + v] * darcy_rhs[conn_id] - op_ders_arr[r_ind2 + v];
+			  }
+			  else if (density_cond == 2)
+			  {
+				for (v = 0; v < NE; v++)
+				  grav_pc_der_j[v] = -op_ders_arr[r_ind1 + v] * darcy_rhs[conn_id] / 2 + op_ders_arr[r_ind3 + v];
+			  }
+			  // assemble
 			  for (c = 0; c < NE; c++)
 			  {
 				  l_ind = diag_idx + (P_VAR + c) * N_VARS;
@@ -930,8 +997,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  r_ind4 = (j * N_OPS + GRAV_OP + p) * N_STATE;
 				  r_ind5 = (j * N_OPS + SAT_OP + p) * N_STATE;
 				  
-				  avg_weigthed_density = (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] +
-					op_vals_arr[j * N_OPS + SAT_OP + p] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
 				  RHS[l_ind2] += avg_weigthed_density * biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c];
 				  for (v = 0; v < NE; v++)
 				  {
@@ -943,15 +1008,23 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  // 2. derivatives of 'avg_density' coming with (gravitational) free term
 					  Jac[l_ind + v] += dt * op_vals_arr[r_ind] * grav_pc_der_i[v];
 					  // 3. derivatives of 'avg_weigthed_density' coming with (gravitational) free term
-					  Jac[l_ind + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
-						(op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]) / 2;
+					  if (density_cond == 0)
+						Jac[l_ind + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]) / 2;
+					  else if (density_cond == 1)
+						Jac[l_ind + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 					  if (nebr_jac_idx < csr_idx_end)
 					  {
 						// 2. .. with respect to neighbour j
 						Jac[l_ind1 + v] += dt * op_vals_arr[r_ind] * grav_pc_der_j[v]; // 1.
 						// 3. .. with respect to neighbour j
-						Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
-						  (op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+						if (density_cond == 0)
+						  Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+							(op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+						else if (density_cond == 2)
+						  Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
+							(op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]);
 					  } 
 				  }
 			  }
@@ -963,7 +1036,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  for (d = 0; d < ND; d++)
 			  {
 				l_ind = i * N_VARS + U_VAR + d;
-				RHS[l_ind] += V[i] * f[l_ind] * eff_density * biot_vol_strain_rhs[conn_id] * 
+				RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] * 
 							  op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
 				l_ind1 = diag_idx + (U_VAR + d) * N_VARS;
 				r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;

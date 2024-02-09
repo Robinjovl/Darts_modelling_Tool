@@ -25,8 +25,8 @@ from darts.input.input_data import InputData
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, case='mandel', discretizer='mech_discretizer', mesh='rect'):
-        thermoporoelacticity = True if case == 'bai' else False
-        super().__init__(timer, discretizer, thermoporoelacticity)
+        thermoporoelasticity = True if case == 'bai' else False
+        super().__init__(timer, discretizer=discretizer, thermoporoelasticity=thermoporoelasticity)
         # define correspondence between the physical tags in msh file and mesh elements types
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,
