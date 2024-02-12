@@ -211,7 +211,8 @@ class UnstructReservoirMech():
         # specify properties
         self.poro[:self.n_matrix] = self.porosity
         self.poro[self.n_matrix:] = 1  # fractures
-        hcap[:] = self.hcap
+        if self.thermoporoelasticity:
+            hcap[:] = self.hcap
         self.kd[:] = self.kd_cur
 
         if self.discretizer_name == 'mech_discretizer':
