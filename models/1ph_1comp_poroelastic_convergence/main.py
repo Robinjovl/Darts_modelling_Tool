@@ -120,7 +120,7 @@ def run_timestep_python(m, dt, t):
 
 def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer', mode='poroelastic', is_last_model=False):
     t = timestep * np.ones(n_steps)
-    m = Model(discretizer=discretizer, mode=mode, mesh_file=mesh_file)
+    m = Model(mode=mode, mesh_filename=mesh_file, discretizer=discretizer)
     m.params.finalize_mpi = is_last_model
     m.init()
     redirect_darts_output('log.txt')

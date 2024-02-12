@@ -401,25 +401,43 @@ class UnstructReservoirMech():
 
     def init_uniform_properties(self, idata: InputData):
         if self.discretizer_name == 'mech_discretizer':
-            self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
+            if np.isscalar(idata.rock.biot):
+                self.biot_mean = np.zeros(9 * (self.n_matrix + self.n_fracs))
             for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                               self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
                 #self.discr.poro.append(idata.rock.porosity)  # for cell activity filtering
-                self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                if idata.rock.perm is None:
+                    self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                else:
+                    self.discr.perms.append(disc_matrix33(idata.rock.perm))
+
+                if idata.rock.stiffness is None:
+                    self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
+                else:
+                    self.discr.stfs.append(disc_stiffness(idata.rock.stiffness))
+
+                if np.isscalar(idata.rock.biot):
+                    self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
                 self.discr.biots.append(disc_matrix33(idata.rock.biot))
-                self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
-                self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
+
                 if self.thermoporoelasticity:
                     self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
                     self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))
         elif self.discretizer_name == 'pm_discretizer':
-            self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+            if np.isscalar(idata.rock.biot):
+                self.biot_mean = np.zeros(9 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
             for cell_id in range(self.unstr_discr.mat_cells_tot):
                 cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-                self.pm.perms.append(engine_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                if idata.rock.perm is None:
+                    self.pm.perms.append(engine_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                else:
+                    self.pm.perms.append(engine_matrix33(idata.rock.perm))
                 self.pm.biots.append(engine_matrix33(idata.rock.biot))
-                self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
+                if idata.rock.stiffness is None:
+                    self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
+                else:
+                    self.pm.stfs.append(engine_stiffness(idata.rock.stiffness))
                 self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
         self.hcap = idata.rock.heat_capacity
         self.porosity = idata.rock.porosity

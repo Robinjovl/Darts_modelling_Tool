@@ -23,10 +23,10 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 from darts.discretizer import matrix33 as disc_matrix33
 from darts.engines import Stiffness as engine_stiffness
 from darts.discretizer import Stiffness as disc_stiffness
-
+from darts.input.input_data import InputData
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, discretizer, mode, mesh_file):
+    def __init__(self, timer, idata: InputData, discretizer, mode, mesh_filename):
         thermoporoelasticity = True if mode == 'thermoporoelastic' else False
         super().__init__(timer, discretizer, thermoporoelasticity)
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -34,17 +34,17 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_xm_tag=991, bnd_xp_tag=992,
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
-        self.mesh_filename = mesh_file
+        self.mesh_filename = mesh_filename
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
         if self.discretizer_name == 'pm_discretizer':
-            self.convergence_study_setup_pm_discretizer()
+            self.convergence_study_setup_pm_discretizer(idata=idata)
         elif self.discretizer_name == 'mech_discretizer':
             if self.thermoporoelasticity:
-                self.convergence_study_setup_mech_discretizer_thermoporoelasticity()
+                self.convergence_study_setup_mech_discretizer_thermoporoelasticity(idata=idata)
             else:
-                self.convergence_study_setup_mech_discretizer_poroelasticity()
+                self.convergence_study_setup_mech_discretizer_poroelasticity(idata=idata)
 
         self.x_new = np.ones((self.n_matrix + self.n_fracs, self.n_vars))
         self.x_new[:, self.u_var] = self.u_init[0]
@@ -190,7 +190,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
-    def convergence_study_setup_pm_discretizer(self):
+    def convergence_study_setup_pm_discretizer(self, idata: InputData):
         self.porosity = 0.1
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=1.E-4,
                                                mesh_file=self.mesh_filename)
@@ -251,11 +251,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pm = pm_discretizer()
         self.pm.visc = 1.0#9.81e-2
         self.grav = 9.81e-2
-        self.rho_f = 978
         #self.rho_s = 2500
         self.fluid_compressibility = 0.0
         self.fluid_viscosity = 1e-2
-        self.fluid_density = 1.0
+        self.fluid_density = 978
         self.pm.grav = matrix([0.0, 0.0, self.grav], 1, 3)
         for cell_id in range(self.unstr_discr.mat_cells_tot):
             faces = self.unstr_discr.faces[cell_id]
@@ -347,7 +346,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-    def convergence_study_setup_mech_discretizer_poroelasticity(self):
+    def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
 
         # params
@@ -370,7 +369,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.fluid_viscosity = 1e-2
 
         self.set_boundary_conditions()
-        self.init_mech_discretizer()
+        self.init_mech_discretizer(idata=idata)
         self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
 
         # bulk properties
@@ -480,7 +479,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-    def convergence_study_setup_mech_discretizer_thermoporoelasticity(self):
+    def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
 
         # params
@@ -511,17 +510,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.heat_capacity = 1.0#2200.0 * 1000.0
 
         self.set_boundary_conditions()
-        self.init_mech_discretizer()
+        self.init_mech_discretizer(idata=idata)
         self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
 
-        # bulk properties
-        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
-                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            self.discr.perms.append(disc_matrix33(perm))
-            self.discr.biots.append(disc_matrix33(biot))
-            self.discr.stfs.append(disc_stiffness(stf))
-            self.discr.heat_conductions.append(disc_matrix33(heat_cond))
-            self.discr.thermal_expansions.append(disc_matrix33(therm_expn))
+        self.init_uniform_properties(idata=idata)
 
         # mapping boundary connections
         id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
