@@ -10,7 +10,7 @@ import meshio
 import os
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
-from t2 import RhsPoroelastic, RhsThermoporoelastic
+from rhs import RhsPoroelastic, RhsThermoporoelastic
 from scipy.linalg import null_space
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
