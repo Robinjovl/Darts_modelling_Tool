@@ -10,6 +10,7 @@ class RockProps():
         :param type_mech: if '' - mechanics off; options: 'poroelasticity', 'thermoporoelasticity'
         '''
         self.porosity = None
+        self.perm = None  # Permeability tensor, 9 values [mD]
         self.permx = self.permy = self.permz = None  # Permeability [mD]
         self.compressibility = None
         
@@ -96,6 +97,15 @@ class InputData():
             for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
+
+                    # either perm or permx+permy+permx should be specified
+                    if k2 == 'permx' or k2 == 'permy' or k2 == 'permz':
+                        if sub_obj.__dict__['perm'] is not None:
+                            continue
+                    if k2 == 'perm':
+                        if sub_obj.__dict__['permx'] is not None and sub_obj.__dict__['permy'] is not None and sub_obj.__dict__['permz'] is not None:
+                            continue
+
                     print('Error in InputData check: property', k, k2, 'is not initialized!')
                     assert False
                     
