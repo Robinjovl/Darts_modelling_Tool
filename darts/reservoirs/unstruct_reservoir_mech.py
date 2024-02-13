@@ -318,6 +318,13 @@ class UnstructReservoirMech():
                 self.bc_rhs[self.n_vars * id + self.p_var] = flow['r']
 
     def init_arrays_boundary_condition(self):
+        self.set_vars_pm_discretizer()
+
+        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+        self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
+
         if self.discretizer_name == 'mech_discretizer':
             # mapping boundary connections
             self.id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:] # store it to self. as it will be used in init_bc_rhs() further
@@ -332,10 +339,6 @@ class UnstructReservoirMech():
             if self.thermoporoelasticity:
                 at = np.zeros(self.n_bounds)
                 bt = np.zeros(self.n_bounds)
-            self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
-            self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
-            self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
-            self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
 
             for tag in self.domain_tags[elem_loc.BOUNDARY]:
                 ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -370,11 +373,8 @@ class UnstructReservoirMech():
                 self.cpp_heat.a = value_vector(at)
                 self.cpp_heat.b = value_vector(bt)
         elif self.discretizer_name == 'pm_discretizer':
-            self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
-            self.bc_rhs_ref = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-            self.bc_rhs = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-            self.bc_rhs_prev = np.zeros(4 * len(self.unstr_discr.bound_cell_info_dict))
-            self.unstr_discr.p_ref = np.zeros(self.unstr_discr.mat_cells_tot)
+            self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
+            self.unstr_discr.p_ref = np.zeros(self.n_matrix)
             self.unstr_discr.p_ref[:] = self.p_init
             for bound_id in range(len(self.unstr_discr.bound_cell_info_dict)):
                 n = self.get_normal_to_bound_face(bound_id)
@@ -591,6 +591,14 @@ class UnstructReservoirMech():
         # update local array
         #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
+
+    def set_vars_pm_discretizer(self):
+        # make vars with the same name as in mech_discretize to avoid code duplication
+        if self.discretizer_name == 'pm_discretizer':
+            self.n_matrix = self.unstr_discr.mat_cells_tot
+            self.n_fracs = self.unstr_discr.frac_cells_tot
+            self.n_bounds = self.unstr_discr.bound_cells_tot
+            self.n_elements = self.n_matrix + self.n_fracs
 
     def init_wells(self):
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
