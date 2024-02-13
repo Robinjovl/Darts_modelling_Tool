@@ -441,7 +441,8 @@ class UnstructReservoirMech():
                     self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
                 else:
                     self.discr.perms.append(disc_matrix33(idata.rock.perm))
-                self.discr.stfs.append(disc_stiffness(idata.rock.stiffness.flatten()))
+                stif = np.array(idata.rock.stiffness).flatten().tolist()
+                self.discr.stfs.append(disc_stiffness(stif))
                 if np.isscalar(idata.rock.biot):
                     self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
                 self.discr.biots.append(disc_matrix33(idata.rock.biot))
