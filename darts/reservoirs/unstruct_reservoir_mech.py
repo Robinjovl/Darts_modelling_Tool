@@ -334,6 +334,8 @@ class UnstructReservoirMech():
                 bt = np.zeros(self.n_bounds)
             self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
             self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
+            self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+            self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
 
             for tag in self.domain_tags[elem_loc.BOUNDARY]:
                 ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
@@ -347,8 +349,6 @@ class UnstructReservoirMech():
                 if self.thermoporoelasticity:
                     at[ids] = bc['temp']['a']
                     bt[ids] = bc['temp']['b']
-
-            self.init_bc_rhs()
 
             self.cpp_bc = THMBoundaryCondition()
             self.cpp_bc.flow.a = value_vector(ap)

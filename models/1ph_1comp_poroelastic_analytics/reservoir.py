@@ -90,6 +90,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -159,6 +160,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
         self.init_tD_pD(idata, self.a)
 
     def set_mandel_boundary_conditions(self, v_north=0.):
@@ -211,6 +213,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -267,6 +270,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         self.n_fracs = self.unstr_discr.frac_cells_tot #TODO
         self.n_matrix = self.unstr_discr.mat_cells_tot
@@ -395,6 +399,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_faces_centers_pm_discretizer()
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
@@ -424,6 +429,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -451,6 +457,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()

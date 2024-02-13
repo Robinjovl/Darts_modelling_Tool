@@ -442,66 +442,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.p_init = sol[self.n_dim, :self.n_matrix]
         self.t_init = sol[self.n_dim + 1, :self.n_matrix]
 
-        # assign boundary conditions element-by-element
-        ap = np.ones(self.n_bounds)
-        bp = np.zeros(self.n_bounds)
-        amn = np.ones(self.n_bounds)
-        bmn = np.zeros(self.n_bounds)
-        amt = np.ones(self.n_bounds)
-        bmt = np.zeros(self.n_bounds)
-        at = np.ones(self.n_bounds)
-        bt = np.zeros(self.n_bounds)
-        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
-        self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
-
         sol = reference_solution_thermoporoelastic(self.x_all[:, self.n_matrix + self.n_fracs:])
-        for tag in self.domain_tags[elem_loc.BOUNDARY]:
-            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-            bc = self.boundary_conditions[tag]
-            ap[ids] = bc['flow']['a']
-            bp[ids] = bc['flow']['b']
-            amn[ids] = bc['mech']['an']
-            bmn[ids] = bc['mech']['bn']
-            amt[ids] = bc['mech']['at']
-            bmt[ids] = bc['mech']['bt']
-            at[ids] = bc['temp']['a']
-            bt[ids] = bc['temp']['b']
-            for id in ids:
-                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = sol[:3, id]
-                self.bc_rhs[self.n_vars * id + self.p_var] = sol[3, id]
-                self.bc_rhs[self.n_vars * id + self.t_var] = sol[4, id]
-                self.pz_bounds_rhs[self.n_state * id + self.p_var] = sol[3, id]
-                self.pz_bounds_rhs[self.n_state * id + self.t_var] = sol[4, id]
-
-        # mechanics
-        self.cpp_bc = THMBoundaryCondition()
-        self.cpp_bc.flow.a = value_vector(ap)
-        self.cpp_bc.flow.b = value_vector(bp)
-        self.cpp_bc.mech_normal.a = value_vector(amn)
-        self.cpp_bc.mech_normal.b = value_vector(bmn)
-        self.cpp_bc.mech_tangen.a = value_vector(amt)
-        self.cpp_bc.mech_tangen.b = value_vector(bmt)
-        self.cpp_bc.thermal.a = value_vector(at)
-        self.cpp_bc.thermal.b = value_vector(bt)
-        # flow
-        self.cpp_flow = BoundaryCondition() # TODO: why do we duplicate them?
-        self.cpp_flow.a = value_vector(ap)
-        self.cpp_flow.b = value_vector(bp)
-        # heat
-        self.cpp_heat = BoundaryCondition() # TODO: why do we duplicate them?
-        self.cpp_heat.a = value_vector(at)
-        self.cpp_heat.b = value_vector(bt)
-
-        # perform discretization
-        self.timer.node["discretization"].start()
-        self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
-        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_interface_approximations()
-        self.discr.calc_cell_centered_stress_velocity_approximations()
-        self.timer.node["discretization"].stop()
-
+        self.init_arrays_boundary_condition()
         # RHS term
         self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                       th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
@@ -512,16 +454,17 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
         self.darcy_velocities_an = np.zeros((self.n_matrix, 3))
-        for cell_id in range(self.n_matrix):
-            c = self.centroids[cell_id]
-            self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
-                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
-            self.f_prep[self.n_vars * cell_id + self.t_var] = \
-                -self.r.energy_acc_func(c.values[0], c.values[1], c.values[2], time) - \
-                self.r.energy_flow_func(c.values[0], c.values[1], c.values[2], time)
-            self.f_prep[self.n_vars * cell_id + self.p_var] = \
-                -self.r.acc_func(c.values[0], c.values[1], c.values[2], time) - \
-                self.r.flow_func(c.values[0], c.values[1], c.values[2], time)
+
+        self.update_mech_discretizer_thermoporoelasticity(time=0)
+
+        # perform discretization
+        self.timer.node["discretization"].start()
+        self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
+        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+        self.discr.calc_interface_approximations()
+        self.discr.calc_cell_centered_stress_velocity_approximations()
+        self.timer.node["discretization"].stop()
+
 
     def add_well(self, name, depth):
         """
