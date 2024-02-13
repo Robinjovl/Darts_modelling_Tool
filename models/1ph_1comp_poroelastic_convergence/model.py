@@ -57,7 +57,7 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.fluid.compressibility = 0.0  #TODO why zero here
         self.idata.fluid.viscosity = 1e-2
         self.idata.fluid.Mw = 1.0
-        self.idata.fluid.density_ref = 978.0
+        self.idata.fluid.density = 978.0
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

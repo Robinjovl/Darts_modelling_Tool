@@ -36,7 +36,7 @@ class FluidProps():
     '''
     def __init__(self):
         self.compressibility = None  #TODO units
-        self.density_ref = None  # Density at reference conditions, #TODO units
+        self.density = None  # Density at reference conditions, #TODO units
         self.viscosity = None  #TODO units
         self.Mw = None  # molar weight, [g/mol]
         

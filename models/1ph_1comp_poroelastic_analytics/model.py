@@ -28,7 +28,7 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
         self.idata.rock.compressibility = 1.
         self.idata.fluid.Mw = 18.015
-        self.idata.fluid.density_ref = self.idata.fluid.Mw  #TODO check
+        self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
 
         if case == 'mandel':
             self.idata.rock.porosity = 0.375

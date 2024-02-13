@@ -64,7 +64,7 @@ class OnePhaseThermoPoroElasticModel(DartsModel):
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)
         property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                   dens0=self.idata.fluid.density_ref))])
+                                                                   dens0=self.idata.fluid.density))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])

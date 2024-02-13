@@ -406,14 +406,25 @@ class UnstructReservoirMech():
             for key in self.boundary_conditions.keys():
                 self.boundary_conditions[key]['cells'] = []
 
-    def init_gravity(self, gravity_on=False):
-        # set gravity vector
+    def init_gravity(self, gravity_on: bool =False, gravity_coeff: float=None, gravity_direction: str ='z'):
+        '''
+        sets gravity vector in discretizer
+        '''
         if gravity_on:
-            from scipy import gravitational_constant
-            grav_coeff = gravitational_constant / 1e5  # convert units
+            from scipy.constants import gravitational_constant
+            if gravity_coeff is None:
+                g_coeff = gravitational_constant / 1e5  # convert units
+            else:
+                g_coeff = gravity_coeff
         else:
-            grav_coeff = 0.
-        grav_vec = matrix([0.0, 0.0, grav_coeff], 1, 3)  # n_dims=3
+            g_coeff = 0.
+        if gravity_direction == 'x':
+            grav_vec = [g_coeff, 0.0, 0.0]
+        elif gravity_direction == 'y':
+            grav_vec = [0.0, g_coeff, 0.0]
+        elif gravity_direction == 'z':
+            grav_vec = [0.0, 0.0, g_coeff]
+        grav_vec = matrix(grav_vec, 1, 3)  # n_dims=3
         if self.discretizer_name == 'mech_discretizer':
             self.discr.grav_vec = grav_vec
         elif self.discretizer_name == 'pm_discretizer':
@@ -441,8 +452,8 @@ class UnstructReservoirMech():
                     self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
                 else:
                     self.discr.perms.append(disc_matrix33(idata.rock.perm))
-                stif = np.array(idata.rock.stiffness).flatten().tolist()
-                self.discr.stfs.append(disc_stiffness(stif))
+                stif_tmp = np.array(idata.rock.stiffness).flatten().tolist()
+                self.discr.stfs.append(disc_stiffness(stif_tmp))
                 if np.isscalar(idata.rock.biot):
                     self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
                 self.discr.biots.append(disc_matrix33(idata.rock.biot))
@@ -461,10 +472,11 @@ class UnstructReservoirMech():
                 else:
                     self.pm.perms.append(engine_matrix33(idata.rock.perm))
                 self.pm.biots.append(engine_matrix33(idata.rock.biot))
-                self.pm.stfs.append(engine_stiffness(idata.rock.stiffness.flatten()))
+                self.pm.stfs.append(engine_stiffness(np.array(idata.rock.stiffness).flatten()))
                 if np.isscalar(idata.rock.biot):
                     self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
-        self.hcap = idata.rock.heat_capacity
+        if self.thermoporoelasticity:
+            self.hcap = idata.rock.heat_capacity
         self.porosity = idata.rock.porosity
         self.kd_cur = idata.rock.kd_cur
 

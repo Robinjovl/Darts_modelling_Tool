@@ -38,6 +38,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
+        self.grav = 9.81e-2  # to make gravity term the same order as orther terms in equation
         if self.discretizer_name == 'pm_discretizer':
             self.convergence_study_setup_pm_discretizer(idata=idata)
         elif self.discretizer_name == 'mech_discretizer':
@@ -82,11 +83,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if self.thermoporoelasticity:
             self.kd[:] = 1.0
         else:
-            self.kd[:] = 1 / self.c / self.porosity
+            self.kd[:] = 1 / self.c / self.porosity #TODO 1
         self.p_ref[:] = self.p_init
         self.f[:] = self.f_prep
 
         self.wells = []
+
+
     def calc_deviations(self, engine):
         vol = np.array(self.mesh.volume, copy=False)
         total_vol = vol.sum()
@@ -191,16 +194,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
     def convergence_study_setup_pm_discretizer(self, idata: InputData):
-        self.porosity = 0.1
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=1.E-4,
                                                mesh_file=self.mesh_filename)
-        E = 10000 # in bars
-        nu = 0.25
-        lam = E * nu / (1 + nu) / (1 - 2 * nu)
-        mu = E / 2 / (1 + nu)
 
         self.unstr_discr.physical_tags['matrix'] = [99991]
-        #self.unstr_discr.init_matrix_stiffness({99991: {'E': E, 'nu': nu}})
         self.unstr_discr.physical_tags['fracture'] = [9991]
         self.unstr_discr.physical_tags['fracture_shape'] = []
         self.unstr_discr.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
@@ -235,42 +232,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
 
-        perm = [1.5,    0.5,    0.35,
-                0.5,    1.5,    0.45,
-                0.35,   0.45,   1.5]
-        biot = [1.5,    0.1,    0.5,
-                0.1,    1.5,    0.15,
-                0.5,    0.15,   1.5]
-        stf =  [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
-                0.0726, 1.276, -0.318, 0.383, 0.108, 0.501,
-                0.263, -0.318, 0.943, -0.183, 0.146, 0.182,
-                0.108, 0.383, -0.183, 1.517, -0.0127, -0.304,
-                -0.08, 0.108, 0.146, -0.0127, 1.209, -0.326,
-                -0.239, 0.501, 0.182, -0.304, -0.326, 1.373]
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.visc = 1.0#9.81e-2
-        self.grav = 9.81e-2
-        #self.rho_s = 2500
-        self.fluid_compressibility = 0.0
-        self.fluid_viscosity = 1e-2
-        self.fluid_density = 978
-        self.pm.grav = matrix([0.0, 0.0, self.grav], 1, 3)
-        for cell_id in range(self.unstr_discr.mat_cells_tot):
-            faces = self.unstr_discr.faces[cell_id]
-            fs = face_vector()
-            for face_id in range(len(faces)):
-                face = faces[face_id]
-                fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
-                                        face.face_id1, face.face_id2,
-                                        face.area, list(face.n), list(face.centroid)))
-            self.pm.faces.append(fs)
+        self.init_uniform_properties(idata=idata)
+        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.init_faces_centers_pm_discretizer()
 
-            cell = self.unstr_discr.mat_cell_info_dict[cell_id]
-            self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-            self.pm.perms.append(matrix33(perm))
-            self.pm.biots.append(matrix33(biot))
-            self.pm.stfs.append(Stiffness(stf))
         # Initial conditions
         self.p_init = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
         self.u_init = np.zeros((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 3))
@@ -304,9 +271,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pm.bc_prev = self.pm.bc
         # RHS (force) term
         self.c = 1.4503768e-05
-        self.r = RhsPoroelastic(stf=stf, biot=biot, perm=perm,
-                                visc=self.fluid_viscosity, grav=self.grav, rho_f=self.fluid_density,
-                                comp_s=self.c * self.porosity, poro0=self.porosity)
+        self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
+                                visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
+                                comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity) #TODO self.c * self.porosity, also see ikd_cur in __init__
         self.f_prep = np.zeros((self.unstr_discr.mat_cells_tot, 4))
         for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items():
             self.f_prep[cell_id, :3] = -np.array(self.r.f_func(cell.centroid[0],
@@ -348,36 +315,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-
-        # params
-        self.porosity = 0.1
-        perm = [1.5,    0.5,    0.35,
-                0.5,    1.5,    0.45,
-                0.35,   0.45,   1.5]
-        biot = [1.5,    0.1,    0.5,
-                0.1,    1.5,    0.15,
-                0.5,    0.15,   1.5]
-        stf =  [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
-                0.0726, 1.276, -0.318, 0.383, 0.108, 0.501,
-                0.263, -0.318, 0.943, -0.183, 0.146, 0.182,
-                0.108, 0.383, -0.183, 1.517, -0.0127, -0.304,
-                -0.08, 0.108, 0.146, -0.0127, 1.209, -0.326,
-                -0.239, 0.501, 0.182, -0.304, -0.326, 1.373]
-        self.grav = 9.81e-2
-        self.fluid_density = 978.0
-        self.fluid_compressibility = 0.0
-        self.fluid_viscosity = 1e-2
-
         self.set_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
-        self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
-
+        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.init_uniform_properties(idata=idata)
         # bulk properties
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            self.discr.perms.append(disc_matrix33(perm))
-            self.discr.biots.append(disc_matrix33(biot))
-            self.discr.stfs.append(disc_stiffness(stf))
+            self.discr.perms.append(disc_matrix33(idata.rock.perm))
+            self.discr.biots.append(disc_matrix33(idata.rock.biot))
+            self.discr.stfs.append(disc_stiffness(idata.rock.stiffness))
 
         # mapping boundary connections
         id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
@@ -437,9 +384,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # RHS term
         self.c = 1.4503768e-05
-        self.r = RhsPoroelastic(stf=stf, biot=biot, perm=perm,
-                                visc=self.fluid_viscosity, grav=self.grav, rho_f=self.fluid_density,
-                                comp_s=self.c * self.porosity, poro0=self.porosity)
+        self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
+                                visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
+                                comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
@@ -481,40 +428,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-
-        # params
-        self.porosity = 0.1
-        perm = [1.5,    0.5,    0.35,
-                0.5,    1.5,    0.45,
-                0.35,   0.45,   1.5]
-        biot = [1.5,    0.1,    0.5,
-                0.1,    1.5,    0.15,
-                0.5,    0.15,   1.5]
-        heat_cond = 1.e+6 * np.array([1.5,    0.1,    0.5,
-                                        0.1,    1.5,    0.15,
-                                        0.5,    0.15,   1.5])
-        therm_expn = [1.5,    0.5,    0.35,
-                      0.5,    1.5,    0.45,
-                      0.35,   0.45,   1.5]
-        stf =  [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
-                0.0726, 1.276, -0.318, 0.383, 0.108, 0.501,
-                0.263, -0.318, 0.943, -0.183, 0.146, 0.182,
-                0.108, 0.383, -0.183, 1.517, -0.0127, -0.304,
-                -0.08, 0.108, 0.146, -0.0127, 1.209, -0.326,
-                -0.239, 0.501, 0.182, -0.304, -0.326, 1.373]
-        self.th_expn_poro = self.th_expn_coef = self.kd_cur = 0.0 # TODO: why parent ask self.th_expn_coef and self.kd_cur?
-        self.grav = 9.81e-2
-        self.fluid_density = 978.0
-        self.fluid_compressibility = 0.0
-        self.fluid_viscosity = 1e-2
-        self.heat_capacity = 1.0#2200.0 * 1000.0
-
         self.set_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
-        self.discr.grav_vec = matrix([0.0, 0.0, self.grav], 1, 3)
-
+        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)
-
         # mapping boundary connections
         id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
         self.id_boundary_conns = self.adj_matrix[id_sorted]
@@ -586,10 +503,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
         # RHS term
-        self.r = RhsThermoporoelastic(stf=stf, biot=biot, perm=perm, th_expn=therm_expn, heat_cond=heat_cond,
-                                visc=self.fluid_viscosity, grav=self.grav, rho_f=self.fluid_density,
+        self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
+                                      th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
+                                visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
                                 comp_s=0.0, poro0=self.porosity,
-                                th_expn_poro=self.th_expn_poro, heat_capacity=self.heat_capacity)
+                                th_expn_poro=idata.rock.th_expn_poro, heat_capacity=idata.rock.heat_capacity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))

@@ -155,7 +155,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
-        self.pm.visc = idata.fluid.viscosity
 
         self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties(idata=idata)
@@ -264,7 +263,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
-        self.pm.visc = idata.fluid.viscosity
 
         self.init_faces_centers_pm_discretizer()
         self.init_uniform_properties(idata=idata)
@@ -317,7 +315,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.visc = idata.fluid.viscosity
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
@@ -391,7 +388,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.visc = idata.fluid.viscosity
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
