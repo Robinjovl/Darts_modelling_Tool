@@ -111,7 +111,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.props[m] = {'h': idata.other.h[i], 'E': idata.rock.E[i], 'nu': idata.rock.nu[i], 'b': idata.rock.biot[i],
                             'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': idata.rock.kd_cur[i],
                              'M': idata.other.M[i], 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
-                             'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i]}
+                             'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i], 'stiffness': idata.rock.stiffness[i]}
             i += 1
 
     def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
@@ -135,8 +135,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
         self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
-
-        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': idata.rock.E, 'nu': idata.rock.nu}})
+        self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
+                                                    {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
@@ -249,7 +249,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
         self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
 
-        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': idata.rock.E, 'nu': idata.rock.nu}})
+        self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
+                                                    {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
@@ -298,7 +299,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_zm_tag=995, bnd_zp_tag=996)
         self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
 
-        self.unstr_discr.init_matrix_stiffness(self.props)
+        self.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
@@ -377,7 +378,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_zm_tag=995, bnd_zp_tag=996)
 
         self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
-        self.unstr_discr.init_matrix_stiffness(self.props)
+        self.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = matrix_tags
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])

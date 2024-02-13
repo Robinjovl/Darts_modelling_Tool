@@ -2,7 +2,7 @@ from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticMo
 from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
-from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M
+from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M, get_isotropic_stiffness
 from darts.input.input_data import InputData
 
 class Model(OnePhaseThermoPoroElasticModel):
@@ -80,6 +80,7 @@ class Model(OnePhaseThermoPoroElasticModel):
 
         self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
         self.idata.other.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
+        self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         if case == 'terzaghi_two_layers':
             # short names

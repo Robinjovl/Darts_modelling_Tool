@@ -21,6 +21,7 @@ class RockProps():
         if type_mech != '': # geomechanical properties
             self.E = None   # Young modulus [bars]
             self.nu = None  # Poisson ratio
+            self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
             self.kd_cur = None  # Bulk modulus [bar]
         else: # only hydrodynamic

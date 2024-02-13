@@ -89,6 +89,31 @@ def get_M(biot, porosity, kd_cur, fluid_compressibility):
     M = 1.0 / ((biot - porosity) * (1 - biot) / kd_cur + porosity * fluid_compressibility + eps)
     return M
 
+def get_isotropic_stiffness(E, nu):
+    la = nu * E / (1 + nu) / (1 - 2 * nu)
+    mu = E / 2 / (1 + nu)
+    if np.isscalar(la):
+        return np.array([[la + 2 * mu, la, la, 0, 0, 0],
+                         [la, la + 2 * mu, la, 0, 0, 0],
+                         [la, la, la + 2 * mu, 0, 0, 0],
+                         [0, 0, 0, mu, 0, 0],
+                         [0, 0, 0, 0, mu, 0],
+                         [0, 0, 0, 0, 0, mu]])
+    else: # If non-scalar, initialize an empty list to store matrices
+        matrices = []
+        # Iterate over each element in la (and mu if mu is also an array)
+        for l, m in zip(la, mu):
+            # Create a matrix for each pair of la and mu
+            matrix = np.array([[l + 2 * m, l, l, 0, 0, 0],
+                               [l, l + 2 * m, l, 0, 0, 0],
+                               [l, l, l + 2 * m, 0, 0, 0],
+                               [0, 0, 0, m, 0, 0],
+                               [0, 0, 0, 0, m, 0],
+                               [0, 0, 0, 0, 0, m]])
+            matrices.append(matrix)
+        # Return the list of matrices
+        return matrices
+
 #TODO add cache of discretizer, recompute if something changed
 
 class UnstructReservoirMech(): 
@@ -128,6 +153,12 @@ class UnstructReservoirMech():
             self.n_vars = 4
             self.n_state = 1
 
+    def init_matrix_stiffness(self, props):
+        self.unstr_discr.stiffness = {}
+        self.unstr_discr.stf = {}
+        for id, prop in props.items():
+            self.unstr_discr.stiffness[id] = prop['stiffness']
+            self.unstr_discr.stf[id] = self.unstr_discr.get_stiffness_submatrices(self.unstr_discr.stiffness[id])
 
     def init_pm_discretizer(self):
         self.unstr_discr.x_new = np.ones((self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot, 4))
@@ -410,12 +441,7 @@ class UnstructReservoirMech():
                     self.discr.perms.append(disc_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
                 else:
                     self.discr.perms.append(disc_matrix33(idata.rock.perm))
-
-                if idata.rock.stiffness is None:
-                    self.discr.stfs.append(disc_stiffness(self.lam, self.mu))
-                else:
-                    self.discr.stfs.append(disc_stiffness(idata.rock.stiffness))
-
+                self.discr.stfs.append(disc_stiffness(idata.rock.stiffness.flatten()))
                 if np.isscalar(idata.rock.biot):
                     self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
                 self.discr.biots.append(disc_matrix33(idata.rock.biot))
@@ -434,11 +460,9 @@ class UnstructReservoirMech():
                 else:
                     self.pm.perms.append(engine_matrix33(idata.rock.perm))
                 self.pm.biots.append(engine_matrix33(idata.rock.biot))
-                if idata.rock.stiffness is None:
-                    self.pm.stfs.append(engine_stiffness(self.lam, self.mu))
-                else:
-                    self.pm.stfs.append(engine_stiffness(idata.rock.stiffness))
-                self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
+                self.pm.stfs.append(engine_stiffness(idata.rock.stiffness.flatten()))
+                if np.isscalar(idata.rock.biot):
+                    self.set_diag_matrix(self.biot_mean, cell_id, idata.rock.biot)
         self.hcap = idata.rock.heat_capacity
         self.porosity = idata.rock.porosity
         self.kd_cur = idata.rock.kd_cur
