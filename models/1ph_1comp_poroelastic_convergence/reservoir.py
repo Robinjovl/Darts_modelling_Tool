@@ -39,6 +39,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
         self.grav = 9.81e-2  # to make gravity term the same order as orther terms in equation
+        self.c = 1.4503768e-05  #TODO add comments
         if self.discretizer_name == 'pm_discretizer':
             self.convergence_study_setup_pm_discretizer(idata=idata)
         elif self.discretizer_name == 'mech_discretizer':
@@ -225,7 +226,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Boundary conditions
         self.init_arrays_boundary_condition()
         # RHS (force) term
-        self.c = 1.4503768e-05
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
                                 comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity) #TODO self.c * self.porosity, also see ikd_cur in __init__
@@ -265,12 +265,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_mech_discretizer(idata=idata)
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)
-        # bulk properties
-        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
-                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            self.discr.perms.append(disc_matrix33(idata.rock.perm))
-            self.discr.biots.append(disc_matrix33(idata.rock.biot))
-            self.discr.stfs.append(disc_stiffness(idata.rock.stiffness))
 
         # mapping boundary connections
         id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
@@ -283,7 +277,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.init_arrays_boundary_condition()
         # RHS term
-        self.c = 1.4503768e-05
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
                                 comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity)
@@ -345,7 +338,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.p_init = sol[self.n_dim, :self.n_matrix]
         self.t_init = sol[self.n_dim + 1, :self.n_matrix]
 
-        sol = reference_solution_thermoporoelastic(self.x_all[:, self.n_matrix + self.n_fracs:])
         self.init_arrays_boundary_condition()
         # RHS term
         self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
