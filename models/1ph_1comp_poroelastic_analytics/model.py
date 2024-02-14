@@ -101,5 +101,34 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.obl.max_z = 1 - self.idata.obl.zero
         super().set_input_data()
 
+    def pre_timestep(self, dt, t, init_step=False):
+        if init_step:   new_time = t
+        else:           new_time = t + dt
+        if not init_step:
+            self.timer.node["update"].start()
+            # store boundaries taken at previous time step
+            self.reservoir.update(dt=dt, time=new_time)
+            # evaluate and assign transient boundaries or sources / sinks
+            if self.case == 'mandel':
+                self.reservoir.update_mandel_boundary(time=new_time, idata=self.idata)
+            # update transient boundaries or sources / sinks
+            self.reservoir.update_trans(dt, self.engine.X)
+            self.timer.node["update"].stop()
+
+    def post_newton_iteration(self, i):
+        res = self.engine.calc_newton_dev()
+        self.engine.dev_p = res[0]
+        self.engine.dev_u = res[1]
+        if len(res) > 2 and res[2] == res[2]:       self.engine.dev_g = res[2]
+        else:                                       self.engine.dev_g = 0.0
+
+        self.engine.newton_residual_last_dt = np.sqrt(self.engine.dev_u ** 2 + self.engine.dev_p ** 2 + self.engine.dev_g ** 2)
+        #self.engine.newton_residual_last_dt = self.engine.calc_newton_residual()
+        self.engine.well_residual_last_dt = self.engine.calc_well_residual()
+        print(str(i) + ': ' + 'rp = ' + str(self.engine.dev_p) + '\t' + 'ru = ' + str(self.engine.dev_u) + '\t' + \
+                    'rg = ' + str(self.engine.dev_g) + '\t' + 'rwell = ' + str(self.engine.well_residual_last_dt) + \
+              '\t' + 'CFL = ' + str(self.engine.CFL_max))
+
+
 
 

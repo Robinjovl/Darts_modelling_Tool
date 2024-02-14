@@ -245,6 +245,19 @@ class DartsModel:
 
         self.engine.run(runtime)
 
+    def pre_timestep(self, dt, t):
+        '''
+        One can override this function to execute custom code before each timestep,
+        for example to update time-dependent boundary conditions
+        '''
+        pass
+
+    def post_newton_iteration(self, dt, t):
+        '''
+        One can override this function to execute custom code after each newton iteration
+        '''
+        pass
+
     def run_python(self, days: float = None, restart_dt: float = 0, timestep_python: bool = False):
         runtime = days if days is not None else self.runtime
         mult_dt = self.params.mult_ts
@@ -266,6 +279,8 @@ class DartsModel:
         ts = 0
 
         while t < runtime:
+            self.pre_timestep(dt, t)
+
             if timestep_python:
                  converged = self.engine.run_timestep(dt, t)
             else:
@@ -334,7 +349,7 @@ class DartsModel:
             self.engine.run_single_newton_iteration(dt)
             self.apply_rhs_flux(dt)
             self.engine.newton_residual_last_dt = self.engine.calc_newton_residual()
-
+            self.post_newton_iteration(i)
             max_residual[i] = self.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
