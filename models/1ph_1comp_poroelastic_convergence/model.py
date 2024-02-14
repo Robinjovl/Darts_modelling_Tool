@@ -4,11 +4,12 @@ import numpy as np
 from darts.input.input_data import InputData
 
 class Model(OnePhaseThermoPoroElasticModel):
-    def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer'):
+    def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer', heat_cond_mult=1.):
         self.mode = mode
         self.mesh_filename = mesh_filename
         self.discretizer_name = discretizer
         self.physics_type = 'poromechanics'  # folder name for vtk output
+        self.heat_cond_mult = heat_cond_mult
         super().__init__(n_points=n_points, discretizer=discretizer)
 
     def set_reservoir(self):
@@ -67,6 +68,8 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.obl.max_t = 100.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
+
+        self.idata.other.heat_cond_mult = self.heat_cond_mult
 
         super().set_input_data()
 
