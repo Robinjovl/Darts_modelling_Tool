@@ -131,7 +131,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         per_day_2_per_sec = 86400.0
         vel = self.r.darcy_velocity_func(self.a / 2, self.a / 2, self.a / 2, time)[:, 0] / idata.fluid.viscosity / per_day_2_per_sec
         hc = np.linalg.norm(idata.rock.conductivity)
-        self.peclet = idata.rock.heat_capacity * idata.rock.fluid.density * np.linalg.norm(vel) * self.a / hc
+        self.peclet = idata.rock.heat_capacity * idata.fluid.density * np.linalg.norm(vel) * self.a / hc
         return self.peclet
 
     def update_trans(self, dt, x):
