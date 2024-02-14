@@ -35,6 +35,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
         self.mesh_filename = mesh_filename
+        self.heat_cond_mult = idata.other.heat_cond_mult
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
@@ -124,6 +125,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             return dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t
         else:
             return dev_u, dev_p, dev_s, dev_seff, dev_v
+    def calc_peclet_number(self, idata: InputData, time):
+        assert(self.thermoporoelasticity)
+
+        per_day_2_per_sec = 86400.0
+        vel = self.r.darcy_velocity_func(self.a / 2, self.a / 2, self.a / 2, time)[:, 0] / idata.fluid.viscosity / per_day_2_per_sec
+        hc = np.linalg.norm(idata.rock.conductivity)
+        self.peclet = idata.rock.heat_capacity * idata.fluid.density * np.linalg.norm(vel) * self.a / hc
+        return self.peclet
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
