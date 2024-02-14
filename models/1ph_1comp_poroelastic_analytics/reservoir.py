@@ -56,6 +56,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.bai_thermoporoelastic_consolidation(idata=idata, mesh=mesh)
 
         self.init_reservoir_main(idata=idata)
+        self.set_pzt_bounds(p=self.p_init, z=None, t=self.t_init)
 
     def get_mesh_filename(self, mesh='rect', suffix = ''):
         if mesh == 'rect':

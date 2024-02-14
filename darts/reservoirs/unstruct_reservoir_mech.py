@@ -268,7 +268,7 @@ class UnstructReservoirMech():
             self.f[:] = self.unstr_discr.f
 
 
-    def set_pz_bounds(self, p, z=None, t=None):
+    def set_pzt_bounds(self, p, z=None, t=None):
         '''
         # sets boundary values of pressures, (inflow) fractions at boundaries, and temperatures
         # should be called after conn_mesh initialization
@@ -285,6 +285,14 @@ class UnstructReservoirMech():
                 self.pz_bounds[self.t_var::self.n_state] = t
         elif self.discretizer_name == 'pm_discretizer':
             self.pz_bounds[:] = p
+
+    def set_bounds(self, p_z_t):
+        '''
+        :param p_z_t: array of boundary values: pressure, compositions, temperature
+        '''
+        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
+        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
+        self.pz_bounds[:] = p_z_t
 
     def init_bc_rhs(self):
         if self.discretizer_name == 'mech_discretizer':
@@ -565,10 +573,7 @@ class UnstructReservoirMech():
                 print('thermoporoelasticity is not supported in', self.discretizer_name)
                 assert False
             self.init_pm_discretizer()
-
         self.init_arrays(idata)
-        self.set_pz_bounds(p=self.p_init, z=None, t=self.t_init)
-
         self.wells = []
 
 

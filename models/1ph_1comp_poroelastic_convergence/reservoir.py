@@ -58,21 +58,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.biot_mean = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
         self.kd_cur = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
-        self.t_init = 0.0 # TODO: fix/generalize self.set_pz_bounds()
-        self.p_init_copy = np.copy(self.p_init) # TODO: FFFIIIXXX self.pz_bounds()
-        self.p_init = 0.0 # TODO: FFFIIIXXX self.pz_bounds()
         if self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.p_ref = self.p_init
             self.unstr_discr.f = self.f_prep
         self.init_reservoir_main(idata=idata)
-        self.p_init = np.copy(self.p_init_copy) # TODO: FFFIIIXXX self.pz_bounds()
 
         self.bc_prev[:] = self.bc_rhs_prev
         self.bc[:] = self.bc_rhs
         self.bc_ref[:] = self.bc_rhs_ref
-        self.mesh.pz_bounds.resize(self.n_state * self.n_bounds)
-        self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
-        self.pz_bounds[:] = self.pz_bounds_rhs
+        self.set_bounds(self.pz_bounds_rhs)
+
         if self.thermoporoelasticity:
             self.biot_arr[:] = np.tile([idata.rock.porosity,0,0,
                                         0,idata.rock.porosity,0,
