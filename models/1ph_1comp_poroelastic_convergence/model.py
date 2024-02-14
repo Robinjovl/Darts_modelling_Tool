@@ -35,9 +35,9 @@ class Model(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             if self.reservoir.thermoporoelasticity:
-                self.params.linear_type = sim_params.cpu_gmres_fs_cpr  # cpu_gmres_fs_cpr # cpu_superlu
+                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             else:
-                self.params.linear_type = sim_params.cpu_gmres_fs_cpr  # cpu_gmres_fs_cpr # cpu_superlu
+                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             ls1 = linear_solver_params()
@@ -107,6 +107,7 @@ class Model(DartsModel):
 
         if self.discretizer_name == 'mech_discretizer':
             self.engine.set_discretizer(self.reservoir.discr)
+            #self.engine.gravity = self.reservoir.discr.grav_vec.values
 
         if self.reservoir.thermoporoelasticity:
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)
