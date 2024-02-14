@@ -311,7 +311,8 @@ def run_test(args: list = []):
     test_passed = 1
     time = 0.0
     for i in range(len(n_res)):
-        test_passed_cur, time_cur = run_convergence_study(n_res=n_res[i], discretizer=discretizers[i], mode=modes[i])
+        test_passed_cur, time_cur = run_convergence_study(n_res=n_res[i], discretizer=discretizers[i],
+                                                            mode=modes[i], mesh=meshes[i])
         test_passed *= test_passed_cur
         time += time_cur
 
