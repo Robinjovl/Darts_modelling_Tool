@@ -8,7 +8,7 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.mode = mode
         self.mesh_filename = mesh_filename
         self.discretizer_name = discretizer
-        self.physics_type = 'poromechanics'  #TODO
+        self.physics_type = 'poromechanics'  # folder name for vtk output
         super().__init__(n_points=n_points, discretizer=discretizer)
 
     def set_reservoir(self):
@@ -54,7 +54,7 @@ class Model(OnePhaseThermoPoroElasticModel):
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
 
-        self.idata.fluid.compressibility = 0.0  #TODO why zero here
+        self.idata.fluid.compressibility = 0.0
         self.idata.fluid.viscosity = 1e-2
         self.idata.fluid.Mw = 1.0
         self.idata.fluid.density = 978.0
@@ -84,3 +84,15 @@ class Model(OnePhaseThermoPoroElasticModel):
         Xn_ref = np.array(self.engine.Xn_ref, copy=False)
         Xref[:] = 0.0
         Xn_ref[:] = 0.0
+
+    def set_initial_conditions(self):
+        if self.reservoir.thermoporoelasticity:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                           initial_pressure=self.reservoir.p_init,
+                                                           initial_temperature=self.reservoir.t_init,
+                                                           initial_displacement=[0.0, 0.0, 0.0])
+        else:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                           initial_pressure=self.reservoir.p_init,
+                                                           initial_displacement=self.reservoir.u_init)
+        return 0
