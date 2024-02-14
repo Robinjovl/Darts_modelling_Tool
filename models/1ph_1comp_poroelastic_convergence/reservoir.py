@@ -360,45 +360,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-
-    def add_well(self, name, depth):
-        """
-        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
-        """
-        well = ms_well()
-        well.name = name
-        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
-        well.well_head_depth = depth
-        well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
-        well.segment_depth_increment = 1
-        self.wells.append(well)
-        return 0
-    def add_perforation(self, well, res_block, well_index):
-        """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
-        :param well_index: well index (productivity index)
-        :return:
-        """
-        well_block = 0
-        well.perforations = well.perforations + [(well_block, res_block, well_index)]
-        return 0
-
-    def get_normal_to_bound_face(self, b_id):
-        cell = self.unstr_discr.bound_cell_info_dict[b_id]
-        cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
-        cell_id = next(iter(set(cells[0]).intersection(*cells)))
-        for face in self.unstr_discr.faces[cell_id].values():
-            if face.cell_id1 == face.cell_id2 and face.face_id2 == b_id:
-                t_face = cell.centroid - self.unstr_discr.mat_cell_info_dict[cell_id].centroid
-                n = face.n
-                if np.inner(t_face, n) < 0: n = -n
-                return n
     def write_data_field(self, filename, u, s = None):
         r = np.array([cell.centroid for cell in self.unstr_discr.mat_cell_info_dict.values()])
         inds = list(np.arange(len(r)))
