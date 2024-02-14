@@ -11,7 +11,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 class Model(DartsModel):
-    def __init__(self, mesh_file, discretizer='mech_discretizer', mode='poroelastic', n_points=64):
+    def __init__(self, mesh_file, discretizer='mech_discretizer', mode='poroelastic', heat_cond_mult=1., n_points=64):
         super().__init__()
         self.n_points = n_points
         self.timer.node["initialization"].start()
@@ -21,7 +21,8 @@ class Model(DartsModel):
         self.reservoir = UnstructReservoirCustom(timer=self.timer,
                                                    discretizer=self.discretizer_name,
                                                    mode=mode,
-                                                   mesh_file=mesh_file)
+                                                   mesh_file=mesh_file,
+                                                   heat_cond_mult=heat_cond_mult)
         self.set_physics()
 
         self.reservoir.P_VAR = self.engine.P_VAR
@@ -34,9 +35,9 @@ class Model(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             if self.reservoir.thermoporoelasticity:
-                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+                self.params.linear_type = sim_params.cpu_gmres_fs_cpr  # cpu_gmres_fs_cpr # cpu_superlu
             else:
-                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+                self.params.linear_type = sim_params.cpu_gmres_fs_cpr  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             ls1 = linear_solver_params()

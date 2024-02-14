@@ -4,6 +4,14 @@ import numpy as np
 import meshio
 from math import fabs
 
+from matplotlib import pyplot as plt
+from matplotlib import rcParams
+rcParams["text.usetex"]=False
+rcParams["font.sans-serif"] = ["Liberation Sans"]
+rcParams["font.serif"] = ["Liberation Serif"]
+plt.rc('xtick',labelsize=14)
+plt.rc('ytick',labelsize=14)
+
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
@@ -118,9 +126,10 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer', mode='poroelastic', is_last_model=False):
+def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer', mode='poroelastic',
+                        heat_cond_mult=1., is_last_model=False):
     t = timestep * np.ones(n_steps)
-    m = Model(discretizer=discretizer, mode=mode, mesh_file=mesh_file)
+    m = Model(discretizer=discretizer, mode=mode, mesh_file=mesh_file, heat_cond_mult=heat_cond_mult)
     m.params.finalize_mpi = is_last_model
     m.init()
     redirect_darts_output('log.txt')
@@ -138,9 +147,16 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
 
         # m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
         # m.reservoir.write_diff_to_vtk(output_directory, property_array, m.cell_property, ith_step + 1, time)
-    return {'dev': m.reservoir.calc_deviations(m.engine), 'time': m.timer.node['simulation'].get_timer()}
 
-def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
+    ret = {'dev': m.reservoir.calc_deviations(m.engine),
+            'time': m.timer.node['simulation'].get_timer() }
+
+    if m.reservoir.thermoporoelasticity:
+        ret['peclet'] = m.reservoir.calc_peclet_number(time)
+
+    return ret
+
+def run_convergence_study(n_res, discretizer, mode, heat_cond_mult=1., mesh='rect', test_mode=True, last_model=True):
     max_t = 0.1
     timesteps = np.array([0.1, 0.05, 0.025, 0.0125])
     nt = np.array(max_t / timesteps, dtype=np.int32)
@@ -158,18 +174,21 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     devs_seff = []
     devs_v = []
     devs_t = []
+    pecles = []
     time = 0.0
     for i in range(n_res):
         print('Run model with resolution #' + str(i))
 
         mesh_file = mesh_file_template.format(i)
         if mode == 'thermoporoelastic':
+            is_last_model = last_model and (i == n_res - 1)
             res = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
                                                 mesh_file=mesh_file, discretizer=discretizer,
-                                                mode=mode, is_last_model=(i == n_res - 1))
+                                                mode=mode, heat_cond_mult=heat_cond_mult, is_last_model=is_last_model)
             dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t = res['dev']
             time += res['time']
             devs_t.append(dev_t)
+            pecles.append(res['peclet'])
         else:
             res = run_single_resolution(timestep=timesteps[i], n_steps=nt[i],
                                                 mesh_file=mesh_file, discretizer=discretizer,
@@ -188,6 +207,7 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     devs_s = np.array(devs_s)
     devs_seff = np.array(devs_seff)
     devs_v = np.array(devs_v)
+    pecles = np.array(pecles)
 
     x = np.sqrt((timesteps * dx)[:n_res])
     id = np.argsort(x)
@@ -224,27 +244,63 @@ def run_convergence_study(n_res, discretizer, mode, mesh='rect'):
     print(devs_v)
     print('v_order = ' + str(v_order))
 
-    test_passed = 1
-    assert(u_order > 1.0)
-    if u_order < 1.0:
-        test_passed = 0
-    if mode == 'poroelastic':
-        assert(p_order > 1.0)
-        if p_order < 1.0:
+    if test_mode:
+        test_passed = 1
+        assert(u_order > 1.0)
+        if u_order < 1.0:
             test_passed = 0
-        assert (s_order > 0.5)  # and s_eff_order > 0.5) # TODO: fix stresses in thermoporoelastic mode
-        if s_order < 0.5:
-            test_passed = 0
-        if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
-            assert(v_order > 0.5)
-            if v_order < 0.5:
+        if mode == 'poroelastic':
+            assert(p_order > 1.0)
+            if p_order < 1.0:
                 test_passed = 0
-    else:
-        assert(t_order > 1.0)
-        if t_order < 1.0:
-            test_passed = 0
+            assert (s_order > 0.5)  # and s_eff_order > 0.5) # TODO: fix stresses in thermoporoelastic mode
+            if s_order < 0.5:
+                test_passed = 0
+            if discretizer == 'mech_discretizer': # TODO: fix Darcy velocity in mech_operators
+                assert(v_order > 0.5)
+                if v_order < 0.5:
+                    test_passed = 0
+        else:
+            assert(t_order > 1.0)
+            if t_order < 1.0:
+                test_passed = 0
 
-    return test_passed, time
+        return test_passed, time
+    else:
+        assert(mode == 'thermoporoelastic')
+        ret = {'u': devs_u, 'u_order': u_order,
+               't': devs_t, 't_order': t_order,
+                'peclet': pecles }
+        return ret
+
+def run_thermoporoelastic_convergence_study_peclet_number(mesh='rect'):
+    heat_cond_mults = [1.e-7, 1.e-6, 1.e-4, 3.e-4, 1.e-3, 3.e-3, 1.e-2, 3.e-2, 1.e-1, 1, 1.e+2]
+
+    res = []
+    pecles = []
+    u_order = []
+    t_order = []
+    for i, mult in enumerate(heat_cond_mults):
+        is_last_mode = (i == len(heat_cond_mults) - 1)
+        cur_res = run_convergence_study(n_res=4, discretizer='mech_discretizer', mode='thermoporoelastic', mesh=mesh,
+                              test_mode=False, last_model=is_last_mode, heat_cond_mult=mult)
+        res.append(cur_res)
+        pecles.append(np.mean(cur_res['peclet']))
+        u_order.append(cur_res['u_order'])
+        t_order.append(cur_res['t_order'])
+
+    fig, order = plt.subplots(nrows=1, sharex=True, figsize=(6, 4))
+
+    order.semilogx(pecles, u_order, color='r', marker='o', markersize=7, markerfacecolor='none', label='displacements')
+    order.semilogx(pecles, t_order, color='b', marker='o', markersize=7, markerfacecolor='none', label='temperature')
+
+    order.set_xlabel(r'Peclet number', fontsize=16)
+    order.set_ylabel('convergence rate', fontsize=16)
+    order.legend(loc='lower left', prop={'size': 14})
+
+    fig.tight_layout()
+    fig.savefig('conv_peclet_' + str(mesh) + '.png')
+    plt.show()
 
 def run_test(args: list = []):
     n_res = [3, 3, 3, 3, 3]
@@ -266,3 +322,5 @@ def run_test(args: list = []):
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
 # run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
+# run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
+# run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')

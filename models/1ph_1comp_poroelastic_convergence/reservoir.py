@@ -26,7 +26,7 @@ from darts.discretizer import Stiffness as disc_stiffness
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, discretizer, mode, mesh_file):
+    def __init__(self, timer, discretizer, mode, mesh_file, heat_cond_mult=1.):
         thermoporoelasticity = True if mode == 'thermoporoelastic' else False
         super().__init__(timer, discretizer, thermoporoelasticity)
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -35,6 +35,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
         self.mesh_filename = mesh_file
+        self.heat_cond_mult = heat_cond_mult
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
@@ -125,6 +126,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             return dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t
         else:
             return dev_u, dev_p, dev_s, dev_seff, dev_v
+    def calc_peclet_number(self, time):
+        assert(self.thermoporoelasticity)
+
+        per_day_2_per_sec = 86400.0
+        vel = self.r.darcy_velocity_func(self.a / 2, self.a / 2, self.a / 2, time)[:, 0] / self.fluid_viscosity / per_day_2_per_sec
+        hc = np.linalg.norm(self.heat_cond)
+        self.peclet = self.heat_capacity * self.fluid_density * np.linalg.norm(vel) * self.a / hc
+        return self.peclet
+
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -485,19 +495,20 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # params
         self.porosity = 0.1
-        perm = [1.5,    0.5,    0.35,
+        self.perm = [1.5,    0.5,    0.35,
                 0.5,    1.5,    0.45,
                 0.35,   0.45,   1.5]
-        biot = [1.5,    0.1,    0.5,
+        self.biot = [1.5,    0.1,    0.5,
                 0.1,    1.5,    0.15,
                 0.5,    0.15,   1.5]
-        heat_cond = 1.e+6 * np.array([1.5,    0.1,    0.5,
+        self.heat_cond = self.heat_cond_mult * 1.e+6 * \
+                                np.array([1.5,    0.1,    0.5,
                                         0.1,    1.5,    0.15,
                                         0.5,    0.15,   1.5])
-        therm_expn = [1.5,    0.5,    0.35,
+        self.therm_expn = [1.5,    0.5,    0.35,
                       0.5,    1.5,    0.45,
                       0.35,   0.45,   1.5]
-        stf =  [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
+        self.stf =  [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
                 0.0726, 1.276, -0.318, 0.383, 0.108, 0.501,
                 0.263, -0.318, 0.943, -0.183, 0.146, 0.182,
                 0.108, 0.383, -0.183, 1.517, -0.0127, -0.304,
@@ -517,11 +528,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # bulk properties
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            self.discr.perms.append(disc_matrix33(perm))
-            self.discr.biots.append(disc_matrix33(biot))
-            self.discr.stfs.append(disc_stiffness(stf))
-            self.discr.heat_conductions.append(disc_matrix33(heat_cond))
-            self.discr.thermal_expansions.append(disc_matrix33(therm_expn))
+            self.discr.perms.append(disc_matrix33(self.perm))
+            self.discr.biots.append(disc_matrix33(self.biot))
+            self.discr.stfs.append(disc_stiffness(self.stf))
+            self.discr.heat_conductions.append(disc_matrix33(self.heat_cond))
+            self.discr.thermal_expansions.append(disc_matrix33(self.therm_expn))
 
         # mapping boundary connections
         id_sorted = np.argsort(self.adj_matrix_cols)[-self.n_bounds:]
@@ -594,7 +605,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
         # RHS term
-        self.r = RhsThermoporoelastic(stf=stf, biot=biot, perm=perm, th_expn=therm_expn, heat_cond=heat_cond,
+        self.r = RhsThermoporoelastic(stf=self.stf, biot=self.biot, perm=self.perm, th_expn=self.therm_expn, heat_cond=self.heat_cond,
                                 visc=self.fluid_viscosity, grav=self.grav, rho_f=self.fluid_density,
                                 comp_s=0.0, poro0=self.porosity,
                                 th_expn_poro=self.th_expn_poro, heat_capacity=self.heat_capacity)
