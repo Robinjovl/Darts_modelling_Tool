@@ -13,25 +13,6 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.heat_cond_mult = heat_cond_mult
         super().__init__(n_points=n_points, discretizer=discretizer)
 
-        self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.max_i_newton = 10
-
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
-            if self.reservoir.thermoporoelasticity:
-                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            else:
-                self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            self.params.max_i_linear = 5000
-        elif self.discretizer_name == 'pm_discretizer':
-            ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            ls1.tolerance_linear = 1.e-12
-            ls1.max_i_linear = 500
-            self.engine.ls_params.append(ls1)
-
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
                                                  mode=self.mode, mesh_filename=self.mesh_filename)
@@ -72,7 +53,7 @@ class Model(OnePhaseThermoPoroElasticModel):
             self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
             self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
             self.idata.rock.heat_capacity = 1.0
-            self.idata.rock.conductivity = 1.e+6 * np.array([1.5, 0.1, 0.5,
+            self.idata.rock.conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
 
@@ -89,8 +70,6 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.obl.max_t = 100.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
-
-        self.idata.other.heat_cond_mult = self.heat_cond_mult
 
         super().set_input_data()
 

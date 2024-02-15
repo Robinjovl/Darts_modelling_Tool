@@ -35,7 +35,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
         self.mesh_filename = mesh_filename
-        self.heat_cond_mult = idata.other.heat_cond_mult
 
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()

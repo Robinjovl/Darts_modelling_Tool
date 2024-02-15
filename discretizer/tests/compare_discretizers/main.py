@@ -1,6 +1,19 @@
 from reservoir import UnstructReservoir
 import numpy as np
-import os
+import os, sys, time
+
+original_stdout = os.dup(1)
+
+# add path to import
+import os, sys, inspect
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parent_dir = os.path.dirname(current_dir)  # 1 level up
+parent_dir2 = os.path.dirname(parent_dir)  # 2 levels up
+parent_dir3 = os.path.dirname(parent_dir2)  # 3 levels up
+models_dir = os.path.join(parent_dir3, 'models')
+sys.path.insert(0, models_dir)
+
+from for_each_model import abort_redirection, redirect_all_output
 
 def compare(x_1, x_2, name_1, name_2, rel_tol=1e-8, abs_tol=1e-8):
     eps = 1e-12
@@ -107,14 +120,31 @@ def test_compare_discretizers(mesh='rect', thermal=False, abs_tol=1e-8, rel_tol=
         return 1
     return 0
 
-#test_compare_discretizers(mesh='rect', abs_tol=1e-8, rel_tol=1e-8)
-#test_compare_discretizers(mesh='tetra', abs_tol=1e-8, rel_tol=1e-8)
-r = 0
-print('Poroelasticity tests')
-r += test_compare_discretizers(mesh='rect',  thermal=False, abs_tol=1e-8, rel_tol=1e-8)
-r += test_compare_discretizers(mesh='tetra', thermal=False, abs_tol=1e-8, rel_tol=1e-8)
-print('Thermoporoelasticity tests')
-r += test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
-r += test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)
 
-exit(r)
+# erase previous log file if exists
+log_file = os.path.join(os.path.abspath(os.pardir), 'compare_discretizers.log')
+f = open(log_file, "w")
+f.close()
+
+r1 = r2 = 0
+print('Poroelasticity tests...')
+starting_time = time.time()
+log_stream = redirect_all_output(log_file)
+r1 += test_compare_discretizers(mesh='rect',  thermal=False, abs_tol=1e-8, rel_tol=1e-8)
+r1 += test_compare_discretizers(mesh='tetra', thermal=False, abs_tol=1e-8, rel_tol=1e-8)
+ending_time = time.time()
+abort_redirection(log_stream)
+str_status = 'OK' if not r1 else 'FAIL'
+print('Discretizer Poroelasticity tests: ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+
+print('Thermoporoelasticity tests...')
+log_stream = redirect_all_output(log_file)
+starting_time = time.time()
+r2 += test_compare_discretizers(mesh='rect',  thermal=True, abs_tol=1e-8, rel_tol=1e-8)
+r2 += test_compare_discretizers(mesh='tetra', thermal=True, abs_tol=1e-8, rel_tol=1e-8)
+ending_time = time.time()
+abort_redirection(log_stream)
+str_status = 'OK' if not r1 else 'FAIL'
+print('Discretizer Thermoporoelasticity tests: ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+
+exit(r1 + r2)
