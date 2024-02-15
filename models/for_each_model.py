@@ -196,7 +196,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
             abort_redirection(log_stream)
             ending_time = time.time()
             str_status = 'OK' if not ret_value.value else 'FAIL'
-            print('Test ' + dir + ' ' + arg + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+            print('Test ' + dir + ' ' + str(arg[0]) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
 
             n_failed += ret_value.value
             n_tot += 1
