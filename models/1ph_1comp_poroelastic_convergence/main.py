@@ -323,5 +323,5 @@ def run_test(args: list = []):
 #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
 #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
 #run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
-run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
-run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')
+#run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
+#run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')
