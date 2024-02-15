@@ -1,11 +1,11 @@
-from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticModel
+from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M, get_isotropic_stiffness
 from darts.input.input_data import InputData
 
-class Model(OnePhaseThermoPoroElasticModel):
+class Model(THMCModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer', case='mandel', mesh='rect'):
         self.case = case
         self.mesh = mesh

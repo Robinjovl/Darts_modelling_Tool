@@ -1,10 +1,10 @@
-from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticModel
+from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
 
-class Model(OnePhaseThermoPoroElasticModel):
+class Model(THMCModel):
     def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer', heat_cond_mult=1.):
         self.mode = mode
         self.mesh_filename = mesh_filename

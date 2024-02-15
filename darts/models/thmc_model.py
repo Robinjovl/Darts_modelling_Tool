@@ -12,7 +12,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M
 from darts.input.input_data import InputData
 
-class OnePhaseThermoPoroElasticModel(DartsModel):
+class THMCModel(DartsModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer'):
         super().__init__()
         self.set_input_data()
