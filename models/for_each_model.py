@@ -171,7 +171,9 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
     # set working directory to folder which contains tests
     os.chdir(root_path)
 
-    os.makedirs(os.path.join(os.path.abspath(os.pardir), '_logs'))
+    logs_folder = os.path.join(os.path.abspath(os.pardir), '_logs')
+    if not os.path.exists(logs_folder):
+        os.makedirs(logs_folder)
 
     n_failed = 0
     n_tot = 0
@@ -182,7 +184,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
             ret_value = Value("i", 1, lock=False)
 
             # erase previous log file if existed
-            log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(dir) + '_' + str(arg[0]) + '.log')
+            log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
             f = open(log_file, "w")
             f.close()
             redirect_all_output(log_file)
