@@ -129,7 +129,7 @@ def run_timestep_python(m, dt, t):
 def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discretizer', mode='poroelastic',
                         heat_cond_mult=1., is_last_model=False):
     t = timestep * np.ones(n_steps)
-    m = Model(discretizer=discretizer, mode=mode, mesh_file=mesh_file, heat_cond_mult=heat_cond_mult)
+    m = Model(discretizer=discretizer, mode=mode, mesh_filename=mesh_file, heat_cond_mult=heat_cond_mult)
     m.params.finalize_mpi = is_last_model
     m.init()
     redirect_darts_output('log.txt')
@@ -152,7 +152,7 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
             'time': m.timer.node['simulation'].get_timer() }
 
     if m.reservoir.thermoporoelasticity:
-        ret['peclet'] = m.reservoir.calc_peclet_number(time)
+        ret['peclet'] = m.reservoir.calc_peclet_number(m.idata, time)
 
     return ret
 
@@ -318,10 +318,10 @@ def run_test(args: list = []):
 
     return (1 - test_passed), time
 
-# run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
-# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
-# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
-# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
-# run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
-# run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
-# run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')
+#run_convergence_study(n_res=3, discretizer='pm_discretizer', mode='poroelastic')
+#run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='rect')
+#run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='poroelastic', mesh='tetra')
+#run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='rect')
+#run_convergence_study(n_res=3, discretizer='mech_discretizer', mode='thermoporoelastic', mesh='tetra')
+#run_thermoporoelastic_convergence_study_peclet_number(mesh='rect')
+#run_thermoporoelastic_convergence_study_peclet_number(mesh='tetra')

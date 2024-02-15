@@ -1,333 +1,105 @@
-from darts.models.darts_model import DartsModel
-from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
+from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
-from darts.physics.mech.poroelasticity import Poroelasticity
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.properties.flash import SinglePhase
-from darts.physics.properties.basic import ConstFunc
-from darts.physics.properties.density import DensityBasic
-from darts.physics.properties.enthalpy import EnthalpyBasic
+from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M, get_isotropic_stiffness
+from darts.input.input_data import InputData
 
-class Model(DartsModel):
-    def __init__(self, n_points=64, case='mandel', discretizer='mech_discretizer', mesh='rect'):
-        super().__init__()
-        self.n_points = n_points
-        self.timer.node["initialization"].start()
-        self.physics_type = 'poromechanics'
+class Model(OnePhaseThermoPoroElasticModel):
+    def __init__(self, n_points=64, discretizer='mech_discretizer', case='mandel', mesh='rect'):
         self.case = case
+        self.mesh = mesh
         self.discretizer_name = discretizer
+        super().__init__(n_points=n_points, discretizer=discretizer)
 
-        self.reservoir = UnstructReservoirCustom(timer=self.timer, case=case, discretizer=discretizer, mesh=mesh)
-        self.set_physics()
-
-        self.reservoir.P_VAR = self.engine.P_VAR
-        self.reservoir.U_VAR = self.engine.U_VAR
-        if self.case == 'bai':
-            self.reservoir.T_VAR = self.engine.T_VAR
-        self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-
-        self.params.max_i_newton = 10
-
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.tolerance_linear = 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            self.params.max_i_linear = 5000
-        elif self.discretizer_name == 'pm_discretizer':
-            ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
-            ls1.tolerance_linear = 1.e-12
-            ls1.max_i_linear = 500
-            self.engine.ls_params.append(ls1)
-
-        self.timer.node["initialization"].stop()
-    def set_physics(self):
-        zero = 1e-8
-        # Create property containers:
-        components = ['H2O']
-        phases = ['wat']
-        thermal = 0
-        Mw = [18.015]
-
-        self.reservoir.heat_capacity = 167.2 * 1000.0
-        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        hcap.fill(self.reservoir.heat_capacity)
-
-        if self.case == 'bai':
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=zero / 10)
+    def set_reservoir(self):
+        self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
+                                                 discretizer=self.discretizer_name, mesh=self.mesh)
+    def set_input_data(self):
+        case = self.case
+        if case == 'bai':
+            type_hydr = 'thermal'
+            type_mech = 'thermoporoelasticity'
         else:
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=zero / 10, temperature=1.)
+            type_hydr = 'isothermal'
+            type_mech = 'poroelasticity'  # Note: not supported with thermal
+        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+        self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
+        self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
+        self.idata.rock.compressibility = 1.
+        self.idata.fluid.Mw = 18.015
+        self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
 
-        """ properties correlations """
-        property_container.flash_ev = SinglePhase(nc=1)
-        self.reservoir.fluid_density0 = Mw[0]
-        property_container.density_ev = dict([('wat', DensityBasic(compr=self.reservoir.fluid_compressibility,
-                                                                   dens0=self.reservoir.fluid_density0))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(self.reservoir.fluid_viscosity))])
+        if case == 'mandel':
+            self.idata.rock.porosity = 0.375
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.nu = 0.25
+            self.idata.rock.biot = 0.9
+            self.idata.fluid.compressibility = 1.e-5
+            self.idata.fluid.viscosity = 1.0
+        elif case == 'terzaghi':
+            self.idata.rock.porosity = 0.375
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.nu = 0.25
+            self.idata.rock.biot = 0.9
+            self.idata.fluid.compressibility = 1.e-5
+            self.idata.fluid.viscosity = 1.0
+        elif case == 'terzaghi_two_layers':
+            biot_1 = 0.9; biot_2 = 0.01
+            poro_1 = 0.15; poro_2 = 0.001
+            nu_1 = 0.15
+            self.idata.rock.porosity = np.array([poro_1, poro_2])
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 1.
+            self.idata.rock.E = 10000  # in bars
+            self.idata.rock.biot = np.array([biot_1, biot_2])
+            self.idata.fluid.compressibility = 1.e-10
+            self.idata.fluid.viscosity = 1.0
+            self.idata.other.h = np.array([0.25, 0.75])  #TODO add comments
+            # compute nu_2
+            x = (biot_2 / biot_1 * ( 3 * (biot_1 - poro_1) * (1 - biot_1) * (1 - nu_1) / (1 + nu_1) + biot_1 ** 2) -
+                 biot_2 ** 2) / 3 / (biot_2 - poro_2) / (1 - biot_2)
+            nu_2 = (1 - x) / (1 + x)
+            assert (nu_2 < 0.5 and nu_2 > 0)
+            self.idata.rock.nu = np.array([nu_1, nu_2])
+            self.idata.make_prop_arrays()
+        elif case == 'bai':
+            self.idata.rock.porosity = 0.2
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 4.e+6 / 0.9869
+            self.idata.rock.E = 0.06  # in bars
+            self.idata.rock.nu = 0.4
+            self.idata.rock.biot = 1.0
+            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.th_expn = 9.0 * 1.E-7
+            self.idata.rock.th_expn *= self.idata.rock.kd_cur  #TODO explain
+            self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
+            self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
+            self.idata.fluid.compressibility = 0.0  #TODO why zero here
+            self.idata.fluid.viscosity = 1.0
 
-        property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-        # rock compressibility is treated inside engine
-        property_container.rock_compr_ev = ConstFunc(1.0)
-        # create physics
-        if self.case == 'bai':
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.reservoir.heat_capacity, tref=0.0))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                          thermal=True, min_t=-10.0, max_t=100.0,
-                                          discretizer=self.discretizer_name)
-        else:
-            self.physics = Poroelasticity(components, phases, self.timer, n_points=200,
-                                          min_p=-5, max_p=500, min_z=zero/10, max_z=1-zero/10,
-                                          discretizer=self.discretizer_name)
-        self.physics.add_property_region(property_container)
+        self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+        self.idata.other.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
+        self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
-        self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
-        return
+        if case == 'terzaghi_two_layers':
+            # short names
+            b = self.idata.rock.biot; nu = self.idata.rock.nu; E = self.idata.rock.E; M = self.idata.other.M;
+            # some numbers for analytics
+            self.idata.other.m = m = (1 + nu) * (1 - 2 * nu) / E / (1 - nu)
+            self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)
+            self.idata.other.c = TC.darcy_constant * self.idata.rock.permx / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
+            assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
 
-    def init(self):
-        if self.discretizer_name == 'pm_discretizer':
-            self.reservoir.mech_operators = mech_operators()
-            self.reservoir.mech_operators.init(self.reservoir.mesh, self.reservoir.pm,
-                                     self.engine.P_VAR, self.engine.Z_VAR, self.engine.U_VAR,
-                                     self.engine.N_VARS, self.engine.N_OPS, self.engine.NC,
-                                     self.engine.ACC_OP, self.engine.FLUX_OP, self.engine.GRAV_OP)
-            self.reservoir.mech_operators.prepare()
-
-        self.set_boundary_conditions()
-        self.reservoir.init_wells()
-        self.physics.init_wells(self.reservoir.wells, self.engine)
-        self.set_initial_conditions()
-        self.set_well_controls()
-        self.set_op_list()
-        self.reset()  # engine is created here
-        #TODO replace the lines above with this;
-        # remove self.engine arg from self.physics.init_wells as engine is located is in self.physics in the current dev branch
-        # self.reservoir.init_wells()  keep this?
-        #super().init()  # init base model and engine
-
-        # link engine with discretizer
-        if self.discretizer_name == 'mech_discretizer':
-            self.engine.set_discretizer(self.reservoir.discr)
-
-    def add_wells(self):
-        layers_num = 1
-        is_at_corner = False
-        is_wedge = False
-        setback = 1
-        # if is_at_corner:
-        #     self.reservoir.add_well("INJ001", depth=0)
-        #     for kk in range(layers_num):
-        #         self.reservoir.add_perforation(self.reservoir.wells[-1], int(0 + kk),
-        #                                        well_index=self.reservoir.well_index)
-        #
-        #     end_id = self.reservoir.unstr_discr.mat_cells_tot - layers_num
-        #     self.reservoir.add_well("PROD001", depth=0)
-        #     for kk in range(layers_num):
-        #         self.reservoir.add_perforation(self.reservoir.wells[-1], int(end_id + kk),
-        #                                        well_index=self.reservoir.well_index)
-        # else:
-        #     if is_wedge:
-        #         row_num = np.sqrt(self.reservoir.unstr_discr.mat_cells_tot / layers_num / 2)
-        #         id1 = 2 * layers_num * (row_num + 1)
-        #         id2 = self.reservoir.unstr_discr.mat_cells_tot - 2 * layers_num * (row_num + 2)
-        #     else:
-        #         row_num = np.sqrt(self.reservoir.unstr_discr.mat_cells_tot / layers_num)
-        #         #id2 = int(layers_num * row_num * row_num / 2)
-        #         #id2 = self.reservoir.unstr_discr.mat_cells_tot - layers_num * (row_num + 2)
-        #         id1 = layers_num * ((setback + 1) * row_num - (setback + 1))
-        #         id2 = layers_num * row_num * (row_num - (setback + 1)) + layers_num * setback
-        #
-        #     ny = 41
-        #     nx = 61
-        #     id1 = int(ny / 2 * nx + nx / 3)
-        #     id2 = int(ny / 3 * nx + 2 * nx / 3)
-        #
-        #     self.reservoir.add_well("INJ001", depth=0)
-        #     for kk in range(layers_num):
-        #         self.reservoir.add_perforation(self.reservoir.wells[-1], int(id1 + kk),
-        #                                        well_index=self.reservoir.well_index)
-        #     self.reservoir.add_well("PROD001", depth=0)
-        #     for kk in range(layers_num):
-        #         self.reservoir.add_perforation(self.reservoir.wells[-1], int(id2 + kk),
-        #                                        well_index=self.reservoir.well_index)
-
-        # unstructured
-        dist = 1.E+10
-        mid = (np.min(self.reservoir.unstr_discr.mesh_data.points, axis=0) +
-               np.max(self.reservoir.unstr_discr.mesh_data.points, axis=0)) / 2
-        id = -1
-        for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
-            cur_dist = (cell.centroid[0] - mid[0]) ** 2 + (cell.centroid[1] - mid[1]) ** 2 + cell.centroid[2] ** 2
-            if dist > cur_dist:
-                dist = cur_dist
-                id = cell_id
-
-        self.reservoir.add_well("PROD001", depth=0)
-        for kk in range(layers_num):
-            self.reservoir.add_perforation(self.reservoir.wells[-1], int(id + kk),
-                                           well_index=self.reservoir.well_index)
-
-    def set_initial_conditions(self):
-        if self.case == 'bai':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                        initial_pressure=self.reservoir.p_init,
-                                                                initial_temperature=self.reservoir.t_init,
-                                                                initial_displacement=[0.0, 0.0, 0.0])
-        else:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                            initial_pressure=self.reservoir.p_init,
-                                                    initial_displacement=self.reservoir.u_init)
-        return 0
-
-    def set_boundary_conditions(self):
-        """
-        Class method called in the init() class method of parents class
-        :return:
-        """
-        # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
-        # rate) water/oil rate:
-        for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
-                # Add controls for production well:
-                # Specify bhp for particular production well:
-                w.control = self.physics.new_bhp_prod(self.reservoir.p_init - 50)
-                # w.control = self.physics.new_bhp_prod(self.reservoir.p_init)
-            else:
-                # For BHP control in injection well we usually specify pressure and composition (upstream) but here
-                # the method is wrapped such  that we only need to specify bhp pressure (see lambda for more info)
-                #w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
-                w.control = self.physics.new_bhp_inj(self.reservoir.p_init)
-        return 0
-
-    def set_op_list(self):
-        self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
-
-    def get_performance_data(self, is_last_ts: bool = False):
-        """
-        Function to get the needed performance data
-        """
-        perf_data = dict()
-        perf_data['solution'] = np.copy(self.engine.X)
-        perf_data['variables'] = ['ux', 'uy', 'uz', 'p']
-        perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
-
-        if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
-            perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = self.engine.stat.n_newton_wasted
-            perf_data['linear iterations'] = self.engine.stat.n_linear_total
-            perf_data['wasted linear iterations'] = self.engine.stat.n_linear_wasted
-
-            sim = self.timer.node['simulation']
-            jac = sim.node['jacobian assembly']
-            perf_data['simulation time'] = sim.get_timer()
-            perf_data['linearization time'] = jac.get_timer()
-            perf_data['linear solver time'] = sim.node['linear solver solve'].get_timer() + sim.node[
-                'linear solver setup'].get_timer()
-            interp = jac.node['interpolation']
-            perf_data['interpolation incl. generation time'] = interp.get_timer()
-
-        return perf_data
-
-    def save_performance_data(self, data, file_name):
-        import platform
-        import pickle
-        """
-        Function to save performance data for future comparison.
-        :param file_name:
-        :return:
-        """
-        with open(file_name, "wb") as fp:
-            pickle.dump(data, fp, 4)
-
-def load_performance_data(file_name=''):
-    import os
-    import pickle
-    """
-    Function to load the performance pkl file at previous simulation.
-    :param file_name: performance filename
-    """
-    if os.path.exists(file_name):
-        with open(file_name, "rb") as fp:
-            return pickle.load(fp)
-    return 0
-
-def check_performance_data(ref_data, cur_data, prev_fail,
-                           diff_max_tol=1e-6,
-                           diff_max_normalized_tol=1e-4,
-                           rel_diff_tol=1, plot=False, png_suffix=''):
-    fail = 0
-    # the difference lower than eps will not be accounted
-    eps_sol = {'p': 1e-5, 'ux': 1e-5, 'uy': 1e-5, 'uz': 1e-5}
-    get_eps = lambda var_name: eps_sol[var_name] if var_name in eps_sol.keys() else 0.
-    # data = self.get_performance_data()
-    nb = ref_data['reservoir blocks']
-    vars = cur_data['variables']
-    nv = len(vars)
-    # Check final solution - data[0]
-    # Check every variable separately
-    for v in range(nv):
-        sol_et = ref_data['solution'][v:nb * nv:nv]
-        sol_cur = cur_data['solution'][v:nb * nv:nv]
-        sol_range = np.max(sol_et) - np.min(sol_et) + 1.e-12
-        # replace small values in solution with eps to avoid difference in normalized diff
-        sol_et[np.fabs(sol_et) < get_eps(vars[v])] = 0.
-        sol_cur[np.fabs(sol_cur) < get_eps(vars[v])] = 0.
-        diff = sol_cur - sol_et
-        diff_abs = np.abs(diff)
-        diff_max_abs = diff_abs.max()
-        diff_norm = np.linalg.norm(diff)
-        diff_norm_normalized = diff_norm / len(sol_et) / sol_range
-        diff_abs_max_normalized = np.max(diff_abs) / sol_range
-        if diff_max_abs > diff_max_tol and diff_abs_max_normalized > diff_max_normalized_tol:
-            fail += 1
-            print(
-                '#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
-                % (fail, v, vars[v], sol_range, diff_abs_max_normalized, diff_max_normalized_tol, diff_max_abs))
-        if plot:
-            # plot two solutions and difference between them
-            from matplotlib import pyplot as plt
-            fig, (ax1, ax2) = plt.subplots(2, sharex=True)
-            ax1.plot(sol_et, 'r', label='ref')
-            ax1.plot(sol_cur, 'b--', label='cur')
-            ax1.set_title(vars[v])
-            ax1.legend()
-            ax2.plot(diff, 'b')
-            ax2.set_title('diff')
-            plt.savefig(vars[v] + '_' + png_suffix + '.png', dpi=500)
-            plt.clf()
-            plt.close()
-
-
-    for key, value in sorted(cur_data.items()):
-        if key == 'solution' or type(value) != int:
-            continue
-        reference = ref_data[key]
-
-        if reference == 0:
-            if value != 0:
-                print('#%d parameter %s is %d (was 0)' % (fail, key, value))
-                fail += 1
-        else:
-            rel_diff = (value - ref_data[key]) / reference * 100
-            if abs(rel_diff) > rel_diff_tol:
-                print('#%d parameter %s is %d (was %d, %+.2f%%)' % (fail, key, value, reference, rel_diff))
-                fail += 1
-
-        if not fail:
-            return 0
-        else:
-            return 1
+        self.idata.obl.n_points = 500
+        self.idata.obl.zero = 1e-9
+        self.idata.obl.min_p = -5.
+        self.idata.obl.max_p = 500.
+        self.idata.obl.min_t = -10.
+        self.idata.obl.max_t = 100.
+        self.idata.obl.min_z = self.idata.obl.zero
+        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        super().set_input_data()
 
 
 

@@ -1,4 +1,4 @@
-from model import Model, load_performance_data, check_performance_data
+from model import Model
 from darts.engines import *
 import numpy as np
 import meshio
@@ -50,7 +50,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             m.reservoir.update(dt=dt, time=new_time)
             # evaluate and assign transient boundaries or sources / sinks
             if m.case == 'mandel':
-                m.reservoir.update_mandel_boundary(time=new_time)
+                m.reservoir.update_mandel_boundary(time=new_time, idata=m.idata)
             # update transient boundaries or sources / sinks
             m.reservoir.update_trans(dt, m.engine.X)
             m.timer.node["update"].stop()
@@ -161,7 +161,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     is_plk_exist = os.path.isfile(file_name)
     if is_plk_exist:
-        ref_data = load_performance_data(file_name=file_name)
+        ref_data = m.load_performance_data(file_name=file_name)
 
     for ith_step, dt in enumerate(t):
         time += dt
@@ -182,7 +182,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
             else:
                 sol_data_step = data[ith_step]
                 ref_data_step = ref_data[ith_step]
-            failed += check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
+            failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
 
     if not is_plk_exist or overwrite == '1':
@@ -263,16 +263,16 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
                 'time': np.zeros(nt + 1), 'x': x}
         disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
-        pres['analytics'][0] = m.reservoir.mandel_exact_pressure(t=0.0, xc=x)
-        p,ux,uy = m.reservoir.mandel_exact_displacements(t=0.0, xc=xc)
+        pres['analytics'][0] = m.reservoir.mandel_exact_pressure(idata=m.idata, t=0.0, xc=x)
+        p,ux,uy = m.reservoir.mandel_exact_displacements(idata=m.idata, t=0.0, xc=xc)
         disp['analytics'][0] = ux
     elif case == 'terzaghi':
         pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
         disp = {'name': 'u', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
-        pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(t=0.0, xc=x)
-        disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(t=0.0, xc=x)
+        pres['analytics'][0] = m.reservoir.terzaghi_exact_pressure(idata=m.idata, t=0.0, xc=x)
+        disp['analytics'][0] = m.reservoir.terzaghi_exact_displacements(idata=m.idata, t=0.0, xc=x)
     elif case == 'terzaghi_two_layers':
         pres = {'name': 'p', 'darts': np.zeros((nt + 1, nx)), 'analytics': np.zeros((nt + 1, nx)),
                 'time': np.zeros(nt + 1), 'x': x}
@@ -292,14 +292,14 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
         if case == 'mandel':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
-            pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(t=time, xc=x)
-            p,ux,uy = m.reservoir.mandel_exact_displacements(t=time, xc=xc)
+            pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(idata=m.idata, t=time, xc=x)
+            p,ux,uy = m.reservoir.mandel_exact_displacements(idata=m.idata, t=time, xc=xc)
             disp['analytics'][ith_step + 1] = ux
         elif case == 'terzaghi':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
-            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(t=time, xc=x)
-            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(t=time, xc=x)
+            pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(idata=m.idata, t=time, xc=x)
+            disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(idata=m.idata,t=time, xc=x)
         elif case == 'terzaghi_two_layers':
             pres['darts'][ith_step + 1] = X[m.engine.P_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
             disp['darts'][ith_step + 1] = X[m.engine.U_VAR::m.engine.N_VARS][::ny]  # for rectangular grid
@@ -560,17 +560,17 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
 #run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
 #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
-# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
+#run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
 # Wedge (triangular) grid
-# ret = run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
-# run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
+#run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
+#run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='mech_discretizer', mesh='wedge')
 # run(case='mandel', discretizer='pm_discretizer', mesh='wedge')
-# run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
+#run_and_plot(case='bai', discretizer='mech_discretizer', mesh='wedge')
 
 # Unstructured hexahedral grid
-# run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
+#run(case='terzaghi', discretizer='mech_discretizer', mesh='hex')
 # run(case='terzaghi', discretizer='pm_discretizer', mesh='hex')
 # run(case='mandel', discretizer='mech_discretizer', mesh='hex')
 # run(case='mandel', discretizer='pm_discretizer', mesh='hex')

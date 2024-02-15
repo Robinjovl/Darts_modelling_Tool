@@ -15,18 +15,18 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_kd_cur, get_M
-from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech, GeoMechInputData
+from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from darts.discretizer import elem_loc
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
-
+from darts.input.input_data import InputData
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, case='mandel', discretizer='mech_discretizer', mesh='rect'):
+    def __init__(self, timer, idata: InputData, case='mandel', discretizer='mech_discretizer', mesh='rect'):
         thermoporoelasticity = True if case == 'bai' else False
-        super().__init__(timer, discretizer, thermoporoelasticity)
+        super().__init__(timer, discretizer=discretizer, thermoporoelasticity=thermoporoelasticity)
         # define correspondence between the physical tags in msh file and mesh elements types
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,
@@ -36,26 +36,27 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             if discretizer == 'mech_discretizer':
-                self.mandel_north_dirichlet_mech_discretizer(mesh)
+                self.mandel_north_dirichlet_mech_discretizer(idata=idata, mesh=mesh)
             elif discretizer == 'pm_discretizer':
-                self.mandel_north_dirichlet_pm_discretizer(mesh)
+                self.mandel_north_dirichlet_pm_discretizer(idata=idata, mesh=mesh)
         elif case == 'terzaghi':
             if discretizer == 'mech_discretizer':
-                self.terzaghi_mech_discretizer(mesh)
+                self.terzaghi_mech_discretizer(idata=idata, mesh=mesh)
             elif discretizer == 'pm_discretizer':
-                self.terzaghi_pm_discretizer(mesh)
+                self.terzaghi_pm_discretizer(idata=idata, mesh=mesh)
         elif case == 'terzaghi_two_layers':
             if discretizer == 'mech_discretizer':
-                self.terzaghi_two_layers_mech_discretizer(mesh)
+                self.terzaghi_two_layers_mech_discretizer(idata=idata, mesh=mesh)
             elif discretizer == 'pm_discretizer':
-                self.terzaghi_two_layers_pm_discretizer(mesh)
+                self.terzaghi_two_layers_pm_discretizer(idata=idata, mesh=mesh)
         elif case == 'terzaghi_two_layers_no_analytics':
             if discretizer == 'pm_discretizer':
-                self.terzaghi_two_layers_no_analytics_pm_discretizer(mesh)
+                self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata, mesh=mesh)
         elif case == 'bai':
-            self.bai_thermoporoelastic_consolidation(mesh)
+            self.bai_thermoporoelastic_consolidation(idata=idata, mesh=mesh)
 
-        self.init_reservoir_main()
+        self.init_reservoir_main(idata=idata)
+        self.set_pzt_bounds(p=self.p_init, z=None, t=self.t_init)
 
     def get_mesh_filename(self, mesh='rect', suffix = ''):
         if mesh == 'rect':
@@ -66,37 +67,31 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             mesh_filename = 'meshes/hexahedron'
         return mesh_filename + suffix + '.msh'
 
-    def init_tD_pD(self, a=1):
+    def init_tD_pD(self, idata: InputData, a=1):
         '''
         set self.tD and self.pD, they used to get dimensionless solution to compare with analytic solution
         '''
-        MR = 0.9869 * 1.E-15 * self.permx / self.fluid_viscosity / 1.E-3
-        K_dr = self.E / (3 * (1 - 2 * self.nu))
+        MR = 0.9869 * 1.E-15 * idata.rock.permx / idata.fluid.viscosity / 1.E-3
+        K_dr = idata.rock.E / (3 * (1 - 2 * idata.rock.nu))
         self.K_nu = (K_dr + (4 / 3) * self.mu)
-        Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + self.biot ** 2 * self.M)
+        Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + idata.rock.biot ** 2 * self.M)
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(self.F / a) / 2
     # Mandel
-    def mandel_north_dirichlet_mech_discretizer(self, mesh='rect'):
+    def mandel_north_dirichlet_mech_discretizer(self, idata: InputData, mesh='rect'):
         self.mesh_filename = self.get_mesh_filename(mesh)
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.set_uniform_initial_conditions()
-
-        self.porosity = 0.375
-        self.permx = self.permy = self.permz = 10.0 / 9.81
-        self.E = 10000 # in bars
-        self.nu = 0.25
-        self.biot = 0.9
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
-
+        self.set_uniform_initial_conditions(idata=idata)
         self.set_mandel_boundary_conditions()
-        self.init_mech_discretizer()
+        self.init_mech_discretizer(idata=idata)
         # mandel case has a specific setting of the mechanical boundary condition, see update_mandel_boundary()
         self.F = -100.0 * self.a  # vertical load [bar * m]
-        self.init_uniform_properties()
+        self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
+        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
+        self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -107,15 +102,24 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-        self.init_tD_pD(self.a)
+        self.init_tD_pD(idata, self.a)
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
-    def mandel_north_dirichlet_pm_discretizer(self, mesh='rect'):
-        self.set_uniform_initial_conditions()
-        self.porosity = 0.375
-        self.permx = self.permy = self.permz = 10.0 / 9.81
+
+    def set_props_tags(self, idata: InputData, matrix_tags: list):
+        self.props = {}
+        i = 0
+        for m in matrix_tags:
+            self.props[m] = {'h': idata.other.h[i], 'E': idata.rock.E[i], 'nu': idata.rock.nu[i], 'b': idata.rock.biot[i],
+                            'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': idata.rock.kd_cur[i],
+                             'M': idata.other.M[i], 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
+                             'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i], 'stiffness': idata.rock.stiffness[i]}
+            i += 1
+
+    def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
+        self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh)
-        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
+        self.unstr_discr = UnstructDiscretizer(permx=idata.rock.permx, permy=idata.rock.permy, permz=idata.rock.permz, frac_aper=0,
                                                mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
@@ -131,16 +135,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # nu = lam / 2 / (lam + mu)
         # E = lam * (1 + nu) * (1 - 2 * nu) / nu
 
-        self.E = 10000  # in bars
-        self.nu = 0.25
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
-        self.biot = 0.9
-        self.kd_cur = self.E / 3 / (1 - 2 * self.nu)
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
-        self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
-
-        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
+        self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
+        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
+        self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
+                                                    {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
@@ -159,12 +157,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
-        self.pm.visc = 1  # 9.81e-2
 
         self.init_faces_centers_pm_discretizer()
-        self.init_uniform_properties()
+        self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
-        self.init_tD_pD(self.a)
+        self.init_bc_rhs()
+        self.init_tD_pD(idata, self.a)
 
     def set_mandel_boundary_conditions(self, v_north=0.):
         self.boundary_conditions = {}
@@ -194,35 +192,29 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
         self.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER,                         'temp': self.bc_type.NO_FLOW }
 
-    def update_mandel_boundary(self, time):
+    def update_mandel_boundary(self, time, idata: InputData):
         '''
         time-dependent boundary condition from the analytic solution
         :param time: time in days
         '''
-        v_north = self.get_vertical_displacement_north_mandel(time)
+        v_north = self.get_vertical_displacement_north_mandel(time, idata)
         self.set_mandel_boundary_conditions(v_north)
         self.init_bc_rhs()
 
     # Terzaghi
-    def terzaghi_mech_discretizer(self, mesh='rect'):
+    def terzaghi_mech_discretizer(self, idata: InputData, mesh='rect'):
         self.mesh_filename = self.get_mesh_filename(mesh)
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.set_uniform_initial_conditions()
-
-        self.porosity = 0.375
-        self.permx = self.permy = self.permz = 10.0 / 9.81
-        self.E = 10000 # in bars
-        self.nu = 0.25
-        self.biot = 0.9
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
+        self.set_uniform_initial_conditions(idata=idata)
         self.F = -100.0 # bar * m
-
+        self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
+        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
         self.set_terzaghi_boundary_conditions()
-        self.init_mech_discretizer()
-        self.init_uniform_properties()
+        self.init_mech_discretizer(idata=idata)
+        self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -233,17 +225,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-        self.init_tD_pD(self.a)
+        self.init_tD_pD(idata, self.a)
 
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
-    def terzaghi_pm_discretizer(self, mesh='rect'):
-        self.set_uniform_initial_conditions()
-        self.porosity = 0.375
-        self.permx = self.permy = self.permz = 10.0 / 9.81
-
+    def terzaghi_pm_discretizer(self, idata: InputData, mesh='rect'):
+        self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh)
-        self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
+        self.unstr_discr = UnstructDiscretizer(permx=idata.rock.permx, permy=idata.rock.permy, permz=idata.rock.permz, frac_aper=0,
                                                mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
@@ -259,17 +248,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #nu = lam / 2 / (lam + mu)
         #E = lam * (1 + nu) * (1 - 2 * nu) / nu
 
-        self.E = 10000 # in bars
-        self.nu = 0.25
-        self.biot = 0.9
-        self.kd_cur = get_kd_cur(self.E, self.nu)
-        self.fluid_compressibility = 1.e-5
-        self.fluid_viscosity = 1.0
         self.F = -100.0 # bar * m
-        self.lam, self.mu = get_lambda_mu(self.E, self.nu)
-        self.M = get_M(self.biot, self.porosity, self.kd_cur, self.fluid_compressibility)
+        self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
+        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
 
-        self.unstr_discr.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]: {'E': self.E, 'nu': self.nu}})
+        self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
+                                                    {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
@@ -283,22 +267,22 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = True
         self.init_gravity(gravity_on=False)
-        self.pm.visc = 1#9.81e-2
 
         self.init_faces_centers_pm_discretizer()
-        self.init_uniform_properties()
+        self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         self.n_fracs = self.unstr_discr.frac_cells_tot #TODO
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_bounds = self.unstr_discr.bound_cells_tot
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
-        self.init_tD_pD(a=0.5)
+        self.init_tD_pD(idata, a=0.5)
 
     # Two-layer Terzaghi
-    def terzaghi_two_layers_pm_discretizer(self, mesh='rect'):
-        self.set_uniform_initial_conditions()
+    def terzaghi_two_layers_pm_discretizer(self, idata: InputData, mesh='rect'):
+        self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
@@ -307,42 +291,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
 
-        self.fluid_compressibility = 1.e-10
-        self.fluid_viscosity = 1.0
-
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
         self.m1_tag = 99991
         self.m2_tag = 99992
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+        matrix_tags = [self.m1_tag, self.m2_tag]
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=matrix_tags,
                     bnd_xm_tag=991, bnd_xp_tag=992,
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
-        
-        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
-                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
-        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
-             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
-        nu2 = (1 - x) / (1 + x)
-        self.props[self.m2_tag]['nu'] = nu2
-        assert(nu2 < 0.5 and nu2 > 0)
+        self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
 
-        for tag in self.props.keys():
-            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
-            self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], self.fluid_compressibility)
-
-        # some numbers for analytics
-        for tag, p in self.props.items():
-            p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
-            # if tag == m2:
-                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
-                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
-            p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-            p['c'] = TC.darcy_constant * p['perm'] / self.fluid_viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-
-        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
-
-        self.unstr_discr.init_matrix_stiffness(self.props)
+        self.init_matrix_stiffness(self.props)
         self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
@@ -360,7 +320,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.visc = 1.0
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
@@ -400,8 +359,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_no_analytics_pm_discretizer(self, mesh='rect'):
-        self.set_uniform_initial_conditions()
+    def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData, mesh='rect'):
+        self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
@@ -414,21 +373,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # two regions for different properties
         self.m1_tag = 99991
         self.m2_tag = 99992
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+        matrix_tags = [self.m1_tag, self.m2_tag]
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=matrix_tags,
                     bnd_xm_tag=991, bnd_xp_tag=992,
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
 
-        self.visc = 1#9.81e-2
-        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.0, 'poro': 0.0, 'perm': 1e-10 },
-                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1  }     }
-
-        for tag in self.props.keys():
-            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
-            #self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], self.fluid_compressibility)
-
-        self.unstr_discr.init_matrix_stiffness(self.props)
-        self.unstr_discr.physical_tags['matrix'] = [self.m1_tag, self.m2_tag]
+        self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
+        self.init_matrix_stiffness(self.props)
+        self.unstr_discr.physical_tags['matrix'] = matrix_tags
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         self.unstr_discr.physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
         self.unstr_discr.physical_tags['boundary'] = list(self.domain_tags[elem_loc.BOUNDARY])
@@ -440,7 +393,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # init poromechanics discretizer
         self.pm = pm_discretizer()
-        self.pm.visc = self.visc
         self.set_scheme_pm_discretizer()
         self.pm.neumann_boundaries_grad_reconstruction = False
         self.init_gravity(gravity_on=False)
@@ -448,11 +400,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_faces_centers_pm_discretizer()
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_mech_discretizer(self, mesh='rect'):
+    def terzaghi_two_layers_mech_discretizer(self, idata: InputData, mesh='rect'):
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
         self.mesh_data = meshio.read(self.mesh_filename)
 
@@ -460,47 +413,24 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # two regions for different properties
         self.m1_tag = 99991
         self.m2_tag = 99992
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[self.m1_tag, self.m2_tag],
+        matrix_tags = [self.m1_tag, self.m2_tag]
+        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=matrix_tags,
                                                             bnd_xm_tag=991, bnd_xp_tag=992,
                                                             bnd_ym_tag=993, bnd_yp_tag=994,
                                                             bnd_zm_tag=995, bnd_zp_tag=996)
 
-        self.set_uniform_initial_conditions()
-        self.fluid_compressibility = 1.e-10
-        self.fluid_viscosity = 1.0
+        self.set_uniform_initial_conditions(idata=idata)
         self.F = -100.0 # bar * m
-
-        self.props = {      self.m1_tag: { 'h': 0.25, 'E': 10000, 'nu': 0.15, 'b': 0.9, 'poro': 0.15, 'perm': 1 },
-                            self.m2_tag: { 'h': 0.75, 'E': 10000, 'nu': 0.15, 'b': 0.01, 'poro': 0.001, 'perm': 1  }     }
-
-        x = (self.props[self.m2_tag]['b'] / self.props[self.m1_tag]['b'] * (3 * (self.props[self.m1_tag]['b'] - self.props[self.m1_tag]['poro']) * (1 - self.props[self.m1_tag]['b']) * (1 - self.props[self.m1_tag]['nu']) / (1 + self.props[self.m1_tag]['nu']) + self.props[self.m1_tag]['b'] ** 2) -
-             self.props[self.m2_tag]['b'] ** 2) / 3 / (self.props[self.m2_tag]['b'] - self.props[self.m2_tag]['poro']) / (1 - self.props[self.m2_tag]['b'])
-        nu2 = (1 - x) / (1 + x)
-        self.props[self.m2_tag]['nu'] = nu2
-        assert(nu2 < 0.5 and nu2 > 0)
-
-        for tag in self.props.keys():
-            self.props[tag]['kd'] = get_kd_cur(self.props[tag]['E'], self.props[tag]['nu'])
-            self.props[tag]['M'] = get_M(self.props[tag]['b'], self.props[tag]['poro'], self.props[tag]['kd'], self.fluid_compressibility)
-
-        # some numbers for analytics
-        for tag, p in self.props.items():
-            p['m'] = (1 + p['nu']) * (1 - 2 * p['nu']) / p['E'] / (1 - p['nu'])
-            # if tag == m2:
-                # p['kd'] = kd1 * self.props[m1]['b'] * self.props[m1]['m'] / self.props[m2]['b'] / self.props[m2]['m'] / \
-                #               (1 + kd1 * self.props[m1]['b'] * self.props[m1]['m'] * (self.props[m1]['b'] - self.props[m2]['b']))
-            p['skempton'] = p['b'] * p['m'] * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-            p['c'] = TC.darcy_constant * p['perm'] / self.fluid_viscosity * p['M'] / (1 + p['b'] ** 2 * p['m'] * p['M'])
-
-        assert( np.fabs(self.props[self.m1_tag]['skempton'] - self.props[self.m2_tag]['skempton']) < 1.e-6 )
+        self.set_props_tags(idata=idata, matrix_tags=matrix_tags)
 
         self.set_terzaghi_boundary_conditions()
-        self.init_mech_discretizer()
+        self.init_mech_discretizer(idata=idata)
         self.kd_cur = np.zeros(self.n_matrix)
         self.porosity = np.zeros(self.n_matrix)  #TODO: allocate in init_mech_discretizer?
         self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -516,28 +446,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = 1.0
 
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
-    def bai_thermoporoelastic_consolidation(self, mesh='rect'):
+    def bai_thermoporoelastic_consolidation(self, idata: InputData, mesh='rect'):
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_bai')
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.set_uniform_initial_conditions()
-
-        self.porosity = 0.2
-        self.permx = self.permy = self.permz = 4.e+6 / 0.9869
-        self.E = 0.06 # in bars
-        self.nu = 0.4
-        self.biot = 1.0
-        self.fluid_compressibility = 0.0
-        self.fluid_viscosity = 1.0
+        self.set_uniform_initial_conditions(idata=idata)
         self.F = -1.e-5
-        self.th_expn_coef = 9.0 * 1.E-7
-        self.th_conductivity = 0.836 * 86400.0 * 1000
-        self.th_expn_poro = 0.0
-
+        self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
+        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
         self.set_bai_boundary_conditions(p_top = self.p_init, t_top = self.t_init + 50)
-        self.init_mech_discretizer()
-        self.init_uniform_properties()
+        self.init_mech_discretizer(idata=idata)
+        self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
@@ -549,26 +470,26 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     # Mandel analytics
-    def get_params_analytic(self):
+    def get_params_analytic(self, idata: InputData):
         F = np.fabs(self.F)
         K_s = self.lam + 2 * self.mu / 3
-        skempton = self.biot * self.M / (K_s + self.M * self.biot ** 2)
-        nu_s = self.nu
-        nu_u = (3 * self.nu + self.biot * skempton * (1 - 2 * self.nu)) / (3 - self.biot * skempton * (1 - 2 * self.nu))
+        skempton = idata.rock.biot * self.M / (K_s + self.M * idata.rock.biot ** 2)
+        nu_s = idata.rock.nu
+        nu_u = (3 * idata.rock.nu + idata.rock.biot * skempton * (1 - 2 * idata.rock.nu)) / (3 - idata.rock.biot * skempton * (1 - 2 * idata.rock.nu))
         mu_s = self.mu
-        mu_f = self.fluid_viscosity
-        k_s = self.permx / self.fluid_viscosity
+        mu_f = idata.fluid.viscosity
+        k_s = idata.rock.permx / idata.fluid.viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
 
         cy0 = (-F * (1 - nu_s)) / (2 * mu_s * self.a)
         cy1 = F * (1 - nu_u) / (mu_s * self.a)
         return c_f, cy0, cy1, skempton, nu_u, nu_s, k_s
 
-    def get_vertical_displacement_north_mandel(self, t):
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+    def get_vertical_displacement_north_mandel(self, t, idata: InputData):
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata)
 
         # Calculate constants
-        aa_n = self.approximate_roots()[:, np.newaxis]
+        aa_n = self.approximate_roots(idata)[:, np.newaxis]
 
         # Calculate exact north boundary condition
         uy_sum = np.sum(
@@ -579,11 +500,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         north_bc = (cy0 + cy1 * uy_sum) * self.b
         return north_bc
-    def approximate_roots(self) -> np.ndarray:
+    def approximate_roots(self, idata: InputData) -> np.ndarray:
         """
         f(x) = tan(x) - ((1-nu)/(nu_u-nu)) x
         """
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata)
         # Function f(x)
         def f(x):
             y = np.tan(x) - ((1 - nu_s) / (nu_u - nu_s)) * x
@@ -603,19 +524,19 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             x0 += np.pi  # apply a phase change of pi to get the next root
 
         return a_n
-    def mandel_exact_pressure(self, t, xc) -> np.ndarray:
+    def mandel_exact_pressure(self, idata:InputData, t, xc) -> np.ndarray:
         """
         Pressure solution for a given time `t`.
         """
         # Parameters
         F = np.fabs(self.F)
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
 
         if t == 0.0:  # initial condition has its own expression
             p = ((F * skempton * (1 + nu_u)) / (3 * self.a)) * np.ones(xc.size)
         else:
             # Retrieve approximated roots
-            aa_n = self.approximate_roots()[:, np.newaxis]
+            aa_n = self.approximate_roots(idata)[:, np.newaxis]
             # Exact p
             c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
             p_sum_0 = np.sum(
@@ -627,7 +548,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             p = c0 * p_sum_0
 
         return p
-    def mandel_exact_displacements(self, t, xc) -> np.ndarray:
+    def mandel_exact_displacements(self, idata:InputData, t, xc) -> np.ndarray:
         """
         Exact pressure solution for a given time `t`.
 
@@ -641,7 +562,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # Retrieve physical data
         F = np.fabs(self.F)
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         # -----> Compute exact fluid pressure
 
         if t == 0.0:  # initial condition has its own expression
@@ -650,7 +571,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             uy = F / self.mu / self.a * (nu_u - 1) * xc[:, 1] / 2
         else:
             # Retrieve approximated roots
-            aa_n = self.approximate_roots()[:, np.newaxis]
+            aa_n = self.approximate_roots(idata)[:, np.newaxis]
             # Exact p
             c0 = (2 * F * skempton * (1 + nu_u)) / (3 * self.a)
             p_sum_0 = np.sum(
@@ -666,14 +587,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                   (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
                 axis=0,
             )
-            ux = F / self.mu / self.a * (self.nu * xc[:,0] / 2 + ux_sum_0)
+            ux = F / self.mu / self.a * (idata.rock.nu * xc[:,0] / 2 + ux_sum_0)
             # Exact uy
             uy_sum_0 = np.sum(
                 ( np.sin(aa_n) * np.cos(aa_n) /
                   (aa_n - (np.sin(aa_n) * np.cos(aa_n))) ) * np.exp((-(aa_n ** 2) * c_f * t) / (self.a ** 2)),
                 axis=0,
             )
-            uy = F / self.mu / self.a * ((self.nu - 1) * xc[:,1] / 2 - (nu_u - 1) * xc[:,1] * uy_sum_0)
+            uy = F / self.mu / self.a * ((idata.rock.nu - 1) * xc[:,1] / 2 - (nu_u - 1) * xc[:,1] * uy_sum_0)
 
         return p, ux, uy
     # Terzaghi analytics
@@ -692,9 +613,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     * np.exp((-((2 * i - 1) ** 2)) * (np.pi ** 2 / 4) * dimless_t) )
         p = (4 / np.pi) * vertical_load * sum_series
         return p
-    def terzaghi_exact_pressure(self, t, xc) -> np.ndarray:
+    def terzaghi_exact_pressure(self, idata: InputData, t, xc) -> np.ndarray:
         # Parameters
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD
@@ -702,7 +623,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         n = 1000
 
         p0 = vertical_load * skempton * (1 + nu_u) / 3 / (1 - nu_u)
-        c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / self.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
+        c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / idata.rock.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
 
         if dimless_t > 0:
             sum_series = np.zeros_like(xc)
@@ -713,7 +634,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         else:
             p = p0
         return p
-    def terzaghi_exact_displacements(self, t, xc) -> np.ndarray:
+    def terzaghi_exact_displacements(self, idata: InputData, t, xc) -> np.ndarray:
         """Compute exact pressure.
         Args:
             t: Time in seconds.
@@ -721,16 +642,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             Exact pressure for the given time `t`.
         """
         # Retrieve physical data
-        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic()
+        c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         h = self.a
         vertical_load = np.fabs(self.F)
         dimless_t = t# / self.tD
 
         n = 1000
 
-        u0 = -xc * vertical_load * (1  - 2 * self.nu) / 2 / self.mu / (1 - self.nu)
-        c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / self.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
-        coef = 4 * vertical_load * h * (nu_u - self.nu) / np.pi ** 2 / self.mu / (1 - self.nu) / (1 - nu_u)
+        u0 = -xc * vertical_load * (1  - 2 * idata.rock.nu) / 2 / self.mu / (1 - idata.rock.nu)
+        c = TC.darcy_constant * 2 * k_s * self.mu * (1 - nu_s) * (nu_u - nu_s) / idata.rock.biot ** 2 / (1 - nu_u) / (1 - 2 * nu_s) ** 2
+        coef = 4 * vertical_load * h * (nu_u - idata.rock.nu) / np.pi ** 2 / self.mu / (1 - idata.rock.nu) / (1 - nu_u)
 
         if dimless_t > 0:
             sum_series = np.zeros_like(xc)
