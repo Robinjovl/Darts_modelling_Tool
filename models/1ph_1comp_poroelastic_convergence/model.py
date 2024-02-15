@@ -28,6 +28,7 @@ class Model(OnePhaseThermoPoroElasticModel):
 
         self.idata.rock.compressibility = 1.
 
+        self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1
         self.idata.rock.perm = [1.5,    0.5,    0.35,
                                 0.5,    1.5,    0.45,
@@ -76,7 +77,10 @@ class Model(OnePhaseThermoPoroElasticModel):
 
     def init(self):
         super().init()
-            #self.engine.gravity = self.reservoir.discr.grav_vec.values
+        if self.discretizer_name == 'mech_discretizer':
+            self.engine.set_discretizer(self.reservoir.discr)
+            self.engine.gravity = self.reservoir.discr.grav_vec.values
+
 
         if self.reservoir.thermoporoelasticity:
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)

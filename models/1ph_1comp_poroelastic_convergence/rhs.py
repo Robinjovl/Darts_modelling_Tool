@@ -4,12 +4,13 @@ from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 
 class RhsPoroelastic:
     def __init__(self, stf, biot, perm,
-                 visc, grav, rho_f, comp_s, poro0):
+                 visc, grav, rho_f, rho_s, comp_s, poro0):
         self.stf = Matrix(np.array(stf).reshape(6,6))
         self.biot = Matrix(np.array(biot).reshape(3,3))
         self.perm = Matrix(np.array(perm).reshape(3,3))
         self.grav = grav
         self.rho_f = rho_f
+        self.rho_s = rho_s
         self.comp_s = comp_s
         self.poro0 = poro0
         self.visc = visc
@@ -43,7 +44,6 @@ class RhsPoroelastic:
         self.total_stress[3] -= a[1, 2]
         self.total_stress[4] -= a[0, 2]
         self.total_stress[5] -= a[0, 1]
-
         # Flow
         self.poro = self.poro0 + self.comp_s * p + \
             eps[0] * self.biot[0,0] + eps[1] * self.biot[1,1] + eps[2] * self.biot[2,2] + \
@@ -55,7 +55,12 @@ class RhsPoroelastic:
         phi = self.rho_f * self.darcy_velocity / self.visc
         self.flow = diff(phi[0], self.x) + diff(phi[1], self.y) + diff(phi[2], self.z)
 
+        # accumulation in momentum balance
+        eff_density = (1 - self.poro0) * self.rho_s + self.poro0 * self.rho_f
+        self.momentum_acc = -eff_density * self.grav * Matrix([0., 0., 1.0])#(self.poro * self.rho_f + (1 - self.poro) * self.rho_s) * self.grav * Matrix([0.0, 0.0, 1.0])
         # vectorization for faster evaluation
+        self.f_func = lambdify((self.x, self.y, self.z, self.t), self.f, 'numpy')
+        self.momentum_acc_func = lambdify((self.x, self.y, self.z, self.t), self.momentum_acc, 'numpy')
         self.f_func = lambdify((self.x, self.y, self.z, self.t), self.f, 'numpy')
         self.acc_func = lambdify((self.x, self.y, self.z, self.t), self.acc, 'numpy')
         self.flow_func = lambdify((self.x, self.y, self.z, self.t), self.flow, 'numpy')
@@ -65,7 +70,7 @@ class RhsPoroelastic:
 
 class RhsThermoporoelastic:
     def __init__(self, stf, biot, perm, th_expn, heat_cond,
-                 visc, grav, rho_f, comp_s, poro0, th_expn_poro, heat_capacity):
+                 visc, grav, rho_f, rho_s, comp_s, poro0, th_expn_poro, heat_capacity):
         self.stf = Matrix(np.array(stf).reshape(6,6))
         self.biot = Matrix(np.array(biot).reshape(3,3))
         self.perm = Matrix(np.array(perm).reshape(3,3))
@@ -73,6 +78,7 @@ class RhsThermoporoelastic:
         self.heat_cond = Matrix(np.array(heat_cond).reshape(3,3))
         self.grav = grav
         self.rho_f = rho_f
+        self.rho_s = rho_s
         self.th_expn_poro = th_expn_poro
         self.heat_capacity = heat_capacity
         self.comp_s = comp_s
@@ -119,7 +125,6 @@ class RhsThermoporoelastic:
         self.total_stress[3] -= a[1, 2] + b[1, 2]
         self.total_stress[4] -= a[0, 2] + b[0, 2]
         self.total_stress[5] -= a[0, 1] + b[0, 1]
-
         # Flow
         self.poro = self.poro0 + self.comp_s * p
         self.acc = diff(self.poro * self.rho_f, self.t)
@@ -129,6 +134,9 @@ class RhsThermoporoelastic:
         phi = self.rho_f * self.darcy_velocity / self.visc
         self.flow = diff(phi[0], self.x) + diff(phi[1], self.y) + diff(phi[2], self.z)
 
+        # accumulation in momentum balance
+        eff_density = (1 - self.poro0) * self.rho_s + self.poro0 * self.rho_f
+        self.momentum_acc = -eff_density * self.grav * Matrix([0., 0., 1.0])
         # Energy
         internal_energy = self.heat_capacity * t * (1 - self.poro + self.poro * self.rho_f)
         self.energy_acc = diff(internal_energy, self.t)
@@ -138,6 +146,7 @@ class RhsThermoporoelastic:
 
         # vectorization for faster evaluation
         self.f_func = lambdify((self.x, self.y, self.z, self.t), self.f, 'numpy')
+        self.momentum_acc_func = lambdify((self.x, self.y, self.z, self.t), self.momentum_acc, 'numpy')
         self.acc_func = lambdify((self.x, self.y, self.z, self.t), self.acc, 'numpy')
         self.flow_func = lambdify((self.x, self.y, self.z, self.t), self.flow, 'numpy')
         self.energy_acc_func = lambdify((self.x, self.y, self.z, self.t), self.energy_acc, 'numpy')

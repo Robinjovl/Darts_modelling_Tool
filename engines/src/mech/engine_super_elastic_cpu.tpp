@@ -844,16 +844,16 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  }
 				  }
 				  // biot term in porosity in gravitational forces
-				  for (d = 0; d < ND; d++)
+				  /*for (d = 0; d < ND; d++)
 				  {
 					  l_ind = i * N_VARS + U_VAR + d;
 					  l_ind1 = st_id * N_VARS_SQ + (U_VAR + d) * N_VARS;
 					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v] * X[r_ind + T2U[v]];
-						  Jac[l_ind1 + T2U[v]] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v];
+						  RHS[l_ind] -= gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v] * X[r_ind + T2U[v]];
+						  Jac[l_ind1 + T2U[v]] -= gravity[d] * eff_density * biot_vol_strain_tran[r_ind1 + v];
 					  }
-				  }
+				  }*/
 				  //// heat fluxes
 				  if constexpr (THERMAL)
 				  {
@@ -913,14 +913,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  }
 				  }
 				  // biot term in porosity in gravitational forces
-				  for (d = 0; d < ND; d++)
+				  /*for (d = 0; d < ND; d++)
 				  {
 					  l_ind = i * N_VARS + U_VAR + d;
 					  for (v = 0; v < NT; v++)
 					  {
-						  RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_tran[r_ind + v] * cur_bc[T2U[v]];
+						  RHS[l_ind] -= gravity[d] * eff_density * biot_vol_strain_tran[r_ind + v] * cur_bc[T2U[v]];
 					  }
-				  }
+				  }*/
 				  // rock energy
 				  if constexpr (THERMAL)
 				  {
@@ -1031,22 +1031,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  // 4. derivatives of density coming with (gravitational) free term to porosity in gravitational forces
 			  // note that gravitational free term is from Darcy fluxes, gravitational forces are in momentum balance
 			  // for clarity: 
-			  // biot * vol_strain * \rho_{total} + (1 - biot * vol_strain) * \rho_{sk} = (\sum_{stencil, vars} (biot_vol_strain_tran * X) + rho_{total} * biot_vol_strain_rhs) * eff_density +
+			  // biot * vol_strain * \rho_{fluid} + (1 - biot * vol_strain) * \rho_{sk} = (\sum_{stencil, vars} (biot_vol_strain_tran * X) + rho_{fluid} * biot_vol_strain_rhs) * eff_density +
 			  // + \rho_{sk}
-			  for (d = 0; d < ND; d++)
+			  /*for (d = 0; d < ND; d++)
 			  {
 				l_ind = i * N_VARS + U_VAR + d;
-				RHS[l_ind] += V[i] * gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] * 
-							  op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				RHS[l_ind] -= gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
 				l_ind1 = diag_idx + (U_VAR + d) * N_VARS;
 				r_ind2 = (i * N_OPS + GRAV_OP + p) * N_STATE;
 				r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
 				for (v = 0; v < NE; v++)
 				{
-				  Jac[l_ind1 + v] += V[i] * gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] *
+				  Jac[l_ind1 + v] -= gravity[d] * eff_density * biot_vol_strain_rhs[conn_id] *
 							  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[r_ind2 + v] + op_ders_arr[r_ind3 + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 				}
-			  }
+			  }*/
 		  }
 		  // [?] extra loop for gravity in biot for flux
 		  // [6] (saturation ??? ) thermal expansion & fluid gravity for momentum balance
@@ -1203,18 +1202,23 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  {
 			  for (p = 0; p < NP; p++)
 			  {
-				  RHS[i * N_VARS + U_VAR + d] += phi * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
-				  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				  RHS[i * N_VARS + U_VAR + d] -= poro[i] * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				  // Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] -= comp_mult * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+				  // if constexpr (THERMAL)
+					// Jac[diag_idx + (U_VAR + d) * N_VARS + T_VAR] += th_poro[i] * V[i] * gravity[d] * op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p];
+
 				  for (v = 0; v < N_STATE; v++)
 				  {
-					  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR + v] += phi * V[i] * gravity[d] *
+					  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR + v] -= poro[i] * V[i] * gravity[d] *
 						  (op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_STATE + v] + 
 							  op_ders_arr[(i * N_OPS + SAT_OP + p) * N_STATE + v] * op_vals_arr[i * N_OPS + GRAV_OP + p]);
 				  }
 			  }
-			  RHS[i * N_VARS + U_VAR + d] += (1 - phi) * V[i] * gravity[d] * rho_s;
-			  Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] -= comp_mult * V[i] * gravity[d] * rho_s;
-			  RHS[i * N_VARS + U_VAR + d] += V[i] * gravity[d] * rho_s;
+			  RHS[i * N_VARS + U_VAR + d] -= (1 - poro[i]) * V[i] * gravity[d] * rho_s;
+			  
+			  //Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * gravity[d] * rho_s;
+			  //if constexpr (THERMAL)
+				// Jac[diag_idx + (U_VAR + d) * N_VARS + T_VAR] += th_poro[i] * V[i] * gravity[d] * rho_s;*/
 		  }
 		  // [9.4] user-defined part
 		  for (c = 0; c < NE; c++)
