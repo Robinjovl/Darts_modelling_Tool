@@ -53,7 +53,7 @@ class Model(OnePhaseThermoPoroElasticModel):
             self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
             self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
             self.idata.rock.heat_capacity = 1.0
-            self.idata.rock.conductivity = 1.e+6 * np.array([1.5, 0.1, 0.5,
+            self.idata.rock.conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
 
@@ -70,8 +70,6 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.obl.max_t = 100.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
-
-        self.idata.other.heat_cond_mult = self.heat_cond_mult
 
         super().set_input_data()
 
