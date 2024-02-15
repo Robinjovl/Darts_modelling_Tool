@@ -252,11 +252,29 @@ class DartsModel:
         '''
         pass
 
-    def post_newton_iteration(self, dt, t):
-        '''
-        One can override this function to execute custom code after each newton iteration
-        '''
-        pass
+    def check_convergence(self, dt, t, i, well_tolerance_coefficient, max_newt):
+        break_flag = False
+        converged = False
+        self.engine.newton_residual_last_dt = self.engine.calc_newton_residual()
+        max_residual[i] = self.engine.newton_residual_last_dt
+        counter = 0
+        for j in range(i):
+            if abs(max_residual[i] - max_residual[j]) / max_residual[i] < 1e-3:
+                counter += 1
+        if counter > 2:
+            print("Stationary point detected!")
+            break_flag = True
+        self.engine.well_residual_last_dt = self.engine.calc_well_residual()
+        self.engine.n_newton_last_dt = i
+        #  check tolerance if it converges
+        if ((self.engine.newton_residual_last_dt < self.params.tolerance_newton and
+             self.engine.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton) or
+                self.engine.n_newton_last_dt == self.params.max_i_newton):
+            if i > 0:  # min_i_newton
+                if i < max_newt:
+                    converged = True
+                break_flag = True
+        return break_flag, converged
 
     def run_python(self, days: float = None, restart_dt: float = 0, timestep_python: bool = False):
         runtime = days if days is not None else self.runtime
@@ -348,31 +366,15 @@ class DartsModel:
         for i in range(max_newt+1):
             self.engine.run_single_newton_iteration(dt)
             self.apply_rhs_flux(dt)
-            self.engine.newton_residual_last_dt = self.engine.calc_newton_residual()
-            self.post_newton_iteration(i)
-            max_residual[i] = self.engine.newton_residual_last_dt
-            counter = 0
-            for j in range(i):
-                if abs(max_residual[i] - max_residual[j])/max_residual[i] < 1e-3:
-                    counter += 1
-            if counter > 2:
-                print("Stationary point detected!")
+            break_flag, converged = self.check_convergence(dt, t, i, well_tolerance_coefficient, max_newt)
+            if break_flag:
                 break
-
-            self.engine.well_residual_last_dt = self.engine.calc_well_residual()
-            self.engine.n_newton_last_dt = i
-            #  check tolerance if it converges
-            if ((self.engine.newton_residual_last_dt < self.params.tolerance_newton and
-                 self.engine.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton) or
-                    self.engine.n_newton_last_dt == self.params.max_i_newton):
-                if i > 0:  # min_i_newton
-                    break
             r_code = self.engine.solve_linear_equation()
             self.timer.node["newton update"].start()
             self.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
         # End of newton loop
-        converged = self.engine.post_newtonloop(dt, t)
+        converged = self.engine.post_newtonloop(dt, t, converged)
         self.timer.node['simulation'].stop()
         return converged
 

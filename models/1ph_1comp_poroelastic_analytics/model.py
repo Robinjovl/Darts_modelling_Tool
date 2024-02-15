@@ -115,7 +115,10 @@ class Model(OnePhaseThermoPoroElasticModel):
             self.reservoir.update_trans(dt, self.engine.X)
             self.timer.node["update"].stop()
 
-    def post_newton_iteration(self, i):
+    def check_convergence(self, dt, t, i, well_tolerance_coefficient, max_newt):
+        break_flag = False
+        converged = False
+
         res = self.engine.calc_newton_dev()
         self.engine.dev_p = res[0]
         self.engine.dev_u = res[1]
@@ -123,12 +126,25 @@ class Model(OnePhaseThermoPoroElasticModel):
         else:                                       self.engine.dev_g = 0.0
 
         self.engine.newton_residual_last_dt = np.sqrt(self.engine.dev_u ** 2 + self.engine.dev_p ** 2 + self.engine.dev_g ** 2)
-        #self.engine.newton_residual_last_dt = self.engine.calc_newton_residual()
+
         self.engine.well_residual_last_dt = self.engine.calc_well_residual()
+        self.engine.n_newton_last_dt = i
+
         print(str(i) + ': ' + 'rp = ' + str(self.engine.dev_p) + '\t' + 'ru = ' + str(self.engine.dev_u) + '\t' + \
                     'rg = ' + str(self.engine.dev_g) + '\t' + 'rwell = ' + str(self.engine.well_residual_last_dt) + \
               '\t' + 'CFL = ' + str(self.engine.CFL_max))
 
+        #  check tolerance if it converges
+        if ((self.engine.newton_residual_last_dt < self.params.tolerance_newton and
+             self.engine.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton) or
+                self.engine.n_newton_last_dt == self.params.max_i_newton):
+            if i > 0:  # min_i_newton
+                if i < max_newt:
+                    converged = True
+                else:
+                    converged = False
+                break_flag = True
+        return break_flag, converged
 
 
 
