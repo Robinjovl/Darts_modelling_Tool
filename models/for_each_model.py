@@ -3,7 +3,7 @@ import os, sys, shutil
 from pathlib import Path
 
 from multiprocessing import Process, set_start_method, Value
-
+import time
 import importlib
 
 import signal
@@ -187,12 +187,17 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
             log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
             f = open(log_file, "w")
             f.close()
-            redirect_all_output(log_file)
-
+            log_stream = redirect_all_output(log_file)
+            starting_time = time.time()
             p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
+            abort_redirection(log_stream)
+            ending_time = time.time()
+            str_status = 'OK' if not ret_value.value else 'FAIL'
+            print('Test ' + dir + ' ' + arg + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+
             n_failed += ret_value.value
             n_tot += 1
 
