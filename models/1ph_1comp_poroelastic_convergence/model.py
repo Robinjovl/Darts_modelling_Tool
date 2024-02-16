@@ -1,10 +1,10 @@
-from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticModel
+from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.input.input_data import InputData
-from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
+from darts.engines import value_vector, sim_params, mech_operators
 
-class Model(OnePhaseThermoPoroElasticModel):
+class Model(THMCModel):
     def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer', heat_cond_mult=1.):
         self.mode = mode
         self.mesh_filename = mesh_filename
@@ -12,6 +12,13 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.physics_type = 'poromechanics'  # folder name for vtk output
         self.heat_cond_mult = heat_cond_mult
         super().__init__(n_points=n_points, discretizer=discretizer)
+
+    def set_solver_params(self):
+        super().set_solver_params()
+        if self.discretizer_name == 'mech_discretizer':
+            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+        elif self.discretizer_name == 'pm_discretizer':
+            self.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
@@ -28,6 +35,7 @@ class Model(OnePhaseThermoPoroElasticModel):
 
         self.idata.rock.compressibility = 1.
 
+        self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1
         self.idata.rock.perm = [1.5,    0.5,    0.35,
                                 0.5,    1.5,    0.45,
@@ -76,7 +84,10 @@ class Model(OnePhaseThermoPoroElasticModel):
 
     def init(self):
         super().init()
-            #self.engine.gravity = self.reservoir.discr.grav_vec.values
+        if self.discretizer_name == 'mech_discretizer':
+            self.engine.set_discretizer(self.reservoir.discr)
+            self.engine.gravity = self.reservoir.discr.grav_vec.values
+
 
         if self.reservoir.thermoporoelasticity:
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)

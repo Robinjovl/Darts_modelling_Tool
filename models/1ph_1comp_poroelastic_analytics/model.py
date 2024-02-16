@@ -1,16 +1,24 @@
-from darts.models.one_phase_thermoporoelastic import OnePhaseThermoPoroElasticModel
+from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
+from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M, get_isotropic_stiffness
 from darts.input.input_data import InputData
 
-class Model(OnePhaseThermoPoroElasticModel):
+class Model(THMCModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer', case='mandel', mesh='rect'):
         self.case = case
         self.mesh = mesh
         self.discretizer_name = discretizer
         super().__init__(n_points=n_points, discretizer=discretizer)
+
+    def set_solver_params(self):
+        super().set_solver_params()
+        if self.discretizer_name == 'mech_discretizer':
+            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+        elif self.discretizer_name == 'pm_discretizer':
+            self.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -27,6 +35,7 @@ class Model(OnePhaseThermoPoroElasticModel):
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
         self.idata.rock.compressibility = 1.
+        self.idata.rock.density = 2650.
         self.idata.fluid.Mw = 18.015
         self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
 

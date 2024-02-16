@@ -13,6 +13,7 @@ class RockProps():
         self.perm = None  # Permeability tensor, 9 values [mD]
         self.permx = self.permy = self.permz = None  # Permeability [mD]
         self.compressibility = None
+        self.density = None
         
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]

@@ -232,7 +232,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # RHS (force) term
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity) #TODO c * porosity, also see ikd_cur in __init__
+                                rho_s=idata.rock.density, comp_s=self.c * idata.rock.porosity, 
+                                poro0=idata.rock.porosity) #TODO c * porosity, also see ikd_cur in __init__
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
@@ -256,7 +257,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
             self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
-                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
+                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0] - \
+                np.array(self.r.momentum_acc_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
             self.f_prep[self.n_vars * cell_id + self.p_var] = \
                 -self.r.acc_func(c.values[0], c.values[1], c.values[2], time) - \
                 self.r.flow_func(c.values[0], c.values[1], c.values[2], time)
@@ -283,7 +285,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # RHS term
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity)
+                                rho_s=idata.rock.density, comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
@@ -316,7 +318,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         for cell_id in range(self.n_matrix):
             c = self.centroids[cell_id]
             self.f_prep[self.n_vars * cell_id + self.u_var:self.n_vars * cell_id + self.u_var + self.n_dim] = \
-                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
+                -np.array(self.r.f_func(c.values[0], c.values[1], c.values[2], time))[:, 0]  - \
+                    np.array(self.r.momentum_acc_func(c.values[0], c.values[1], c.values[2], time))[:, 0]
             self.f_prep[self.n_vars * cell_id + self.t_var] = \
                 -self.r.energy_acc_func(c.values[0], c.values[1], c.values[2], time) - \
                 self.r.energy_flow_func(c.values[0], c.values[1], c.values[2], time)
@@ -347,7 +350,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                       th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                comp_s=0.0, poro0=idata.rock.porosity,
+                                rho_s=idata.rock.density, comp_s=0.0, poro0=idata.rock.porosity,
                                 th_expn_poro=idata.rock.th_expn_poro, heat_capacity=idata.rock.heat_capacity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))

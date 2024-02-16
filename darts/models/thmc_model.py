@@ -12,7 +12,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M
 from darts.input.input_data import InputData
 
-class OnePhaseThermoPoroElasticModel(DartsModel):
+class THMCModel(DartsModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer'):
         super().__init__()
         self.set_input_data()
@@ -22,13 +22,13 @@ class OnePhaseThermoPoroElasticModel(DartsModel):
         self.reservoir.U_VAR = self.engine.U_VAR
         if self.idata.type_mech == 'thermoporoelasticity':
             self.reservoir.T_VAR = self.engine.T_VAR
-        self.set_params()
+        self.set_solver_params()
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer, thermoporoelasticity=self.idata.type_mech == 'thermal')
 
-    def set_params(self):
+    def set_solver_params(self):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
@@ -69,7 +69,7 @@ class OnePhaseThermoPoroElasticModel(DartsModel):
 
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # rock compressibility is treated inside engine
-        property_container.rock_compr_ev = ConstFunc(self.idata.rock.compressibility)
+        property_container.rock_compr_ev = ConstFunc(1.0)
         # create physics
         if self.idata.type_mech == 'thermoporoelasticity':
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
