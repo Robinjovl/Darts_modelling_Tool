@@ -22,13 +22,13 @@ class THMCModel(DartsModel):
         self.reservoir.U_VAR = self.engine.U_VAR
         if self.idata.type_mech == 'thermoporoelasticity':
             self.reservoir.T_VAR = self.engine.T_VAR
-        self.set_params()
+        self.set_solver_params()
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer, thermoporoelasticity=self.idata.type_mech == 'thermal')
 
-    def set_params(self):
+    def set_solver_params(self):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_global_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
