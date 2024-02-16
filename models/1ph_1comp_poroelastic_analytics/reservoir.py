@@ -33,6 +33,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
 
+        self.case = case
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             if discretizer == 'mech_discretizer':
@@ -200,6 +201,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         v_north = self.get_vertical_displacement_north_mandel(time, idata)
         self.set_mandel_boundary_conditions(v_north)
         self.init_bc_rhs()
+
+    def update(self, dt, time):
+        super().update(dt, time)
+        # evaluate and assign transient boundaries or sources / sinks
+        if self.case == 'mandel':
+            self.update_mandel_boundary(time=time, idata=self.idata)
 
     # Terzaghi
     def terzaghi_mech_discretizer(self, idata: InputData, mesh='rect'):
