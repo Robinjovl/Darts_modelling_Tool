@@ -24,7 +24,6 @@ class RockProps():
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
-            self.kd_cur = None  # Bulk modulus [bar]
         else: # only hydrodynamic
             self.compressibility = 1.   # [1/bar]
 

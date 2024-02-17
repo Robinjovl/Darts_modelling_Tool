@@ -322,10 +322,8 @@ public:
   std::vector<value_t> bc_ref;
   /// [nc * n_bounds] array of pressures and (inflow) fractions at boundaries
   std::vector<value_t> pz_bounds;
-  /// [9 * n_blocks] array of biot coefficients of mesh blocks                        
-  std::vector<value_t> biot;
-  /// [n_blocks] array of drained compressibility of mesh blocks                        
-  std::vector<value_t> drained_compressibility;
+  /// [n_blocks] array of rock compressibility of mesh blocks for mechanical models                        
+  std::vector<value_t> rock_compressibility;
   /// [n_blocks] array of calculated fluxes                        
   std::vector<value_t> flux;
   /// [n_blocks] array of calculated gravity contribution

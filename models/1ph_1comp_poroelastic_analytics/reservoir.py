@@ -14,7 +14,7 @@ from darts.engines import Stiffness as engine_stiffness
 from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face_vector, vector_matrix33, stf_vector, critical_stress
 
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
-from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_kd_cur, get_M
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_bulk_modulus, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
@@ -88,7 +88,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # mandel case has a specific setting of the mechanical boundary condition, see update_mandel_boundary()
         self.F = -100.0 * self.a  # vertical load [bar * m]
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
+        self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
+                                  kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
+                                  cf=idata.fluid.compressibility)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
@@ -108,13 +110,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def set_props_tags(self, idata: InputData, matrix_tags: list):
         self.props = {}
-        i = 0
-        for m in matrix_tags:
+        for i, m in enumerate(matrix_tags):
+            kd = get_bulk_modulus(E=idata.rock.E[i], nu=idata.rock.nu[i])
+            M = get_biot_modulus(biot=idata.rock.biot[i], poro0=idata.rock.porosity[i], kd=kd, cf=idata.rock.compressibility)
             self.props[m] = {'h': idata.other.h[i], 'E': idata.rock.E[i], 'nu': idata.rock.nu[i], 'b': idata.rock.biot[i],
-                            'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': idata.rock.kd_cur[i],
-                             'M': idata.other.M[i], 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
+                             'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': kd,
+                             'M': M, 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
                              'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i], 'stiffness': idata.rock.stiffness[i]}
-            i += 1
 
     def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
@@ -136,7 +138,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # E = lam * (1 + nu) * (1 - 2 * nu) / nu
 
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
+        self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
+                                  kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
+                                  cf=idata.fluid.compressibility)
         self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
                                                     {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -209,7 +213,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.F = -100.0 # bar * m
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
+        self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
+                                  kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
+                                  cf=idata.fluid.compressibility)
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)
@@ -250,8 +256,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.F = -100.0 # bar * m
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
-
+        self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
+                                  kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
+                                  cf=idata.fluid.compressibility)
         self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
                                                     {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
         self.unstr_discr.physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -425,9 +432,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.set_terzaghi_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
-        self.kd_cur = np.zeros(self.n_matrix)
-        self.porosity = np.zeros(self.n_matrix)  #TODO: allocate in init_mech_discretizer?
-        self.biot_mean = np.zeros(9 * (self.n_matrix))
         self.init_heterogeneous_properties()
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
@@ -453,7 +457,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.F = -1.e-5
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.M = get_M(idata.rock.biot, idata.rock.porosity, idata.rock.kd_cur, idata.fluid.compressibility)
         self.set_bai_boundary_conditions(p_top = self.p_init, t_top = self.t_init + 50)
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)

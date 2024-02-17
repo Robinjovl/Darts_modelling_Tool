@@ -550,8 +550,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   const value_t *f = mesh->f.data();
   // other properties
   const value_t *V = mesh->volume.data();
-  const value_t *kd = mesh->drained_compressibility.data();
-  const value_t *biot = mesh->biot.data();
+  const value_t *cs = mesh->rock_compressibility.data();
   const value_t *poro = mesh->poro.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
   const value_t *hcap = mesh->heat_capacity.data();
@@ -1131,9 +1130,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  if (!geomechanics_mode[i])
 		  {
 			r_ind = i * N_VARS;
-			r_ind1 = i * ND * ND;
-			biot_cur = (biot[r_ind1] + biot[r_ind1 + ND + 1] + biot[r_ind1 + 2 * ND + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			comp_mult = cs[i];
 			phi += comp_mult * (X[r_ind + P_VAR] - Xref[r_ind + P_VAR]) - eps_vol_ref[i];
 			phi_n += comp_mult * (Xn[r_ind + P_VAR] - Xn_ref[r_ind + P_VAR]) - eps_vol_ref[i];
 			if (THERMAL)

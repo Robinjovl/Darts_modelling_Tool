@@ -386,8 +386,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 
 	const value_t *f = mesh->f.data();
 	const value_t *V = mesh->volume.data();
-	const value_t *kd = mesh->drained_compressibility.data();
-	const value_t *biot = mesh->biot.data();
+	const value_t *cs = mesh->rock_compressibility.data();
 	const value_t *poro = mesh->poro.data();
 	value_t *pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -599,10 +598,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
-			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
-			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
+			comp_mult = cs[i];
+			phi = poro[i] + cs[i] * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
+			phi_n = poro[i] + cs[i] * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}
 
 		if (FIND_EQUILIBRIUM || geomechanics_mode[i])
@@ -728,8 +726,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	const value_t *rhs_biot = mesh->rhs_biot.data();
 	const value_t *f = mesh->f.data();
 	const value_t *V = mesh->volume.data();
-	const value_t *kd = mesh->drained_compressibility.data();
-	const value_t *biot = mesh->biot.data();
+	const value_t *cs = mesh->rock_compressibility.data();
 	const value_t *poro = mesh->poro.data();
 	value_t *pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -932,8 +929,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			comp_mult = cs[i];
 			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
 			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}
@@ -1060,8 +1056,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 	const value_t* rhs_biot = mesh->rhs_biot.data();
 	const value_t* f = mesh->f.data();
 	const value_t* V = mesh->volume.data();
-	const value_t* kd = mesh->drained_compressibility.data();
-	const value_t* biot = mesh->biot.data();
+	const value_t* cs = mesh->rock_compressibility.data();
 	const value_t* poro = mesh->poro.data();
 	value_t* pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -1249,8 +1244,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			comp_mult = cs[i];
 			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
 			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}

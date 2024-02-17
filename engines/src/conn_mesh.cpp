@@ -489,8 +489,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	depth.assign(n_blocks + n_bounds, 0);
 	heat_capacity.assign(n_blocks, 0);
 	rock_cond.assign(n_blocks, 0);
-	biot.resize(9 * n_blocks);
-	drained_compressibility.resize(n_blocks);
+	rock_compressibility.resize(n_blocks);
 	bc.resize(4 * n_bounds);
 	bc_n.resize(4 * n_bounds);
 	bc_ref.resize(4 * n_bounds);
@@ -548,8 +547,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	depth.assign(n_blocks + n_bounds, 0);
 	heat_capacity.assign(n_blocks, 0);
 	rock_cond.assign(n_blocks, 0);
-	biot.resize(9 * n_blocks);
-	drained_compressibility.resize(n_blocks);
+	rock_compressibility.resize(n_blocks);
 	bc.resize(4 * n_bounds);
 	bc_n.resize(4 * n_bounds);
 	bc_ref.resize(4 * n_bounds);
@@ -610,8 +608,7 @@ conn_mesh::init_pm_mech_discretizer(
   depth.assign(n_blocks + n_bounds, 0);
   heat_capacity.assign(n_blocks, 0);
   rock_cond.assign(n_blocks, 0);
-  biot.resize(9 * n_blocks);
-  drained_compressibility.resize(n_blocks);
+  rock_compressibility.resize(n_blocks);
   bc.resize(n_vars * n_bounds);
   bc_n.resize(n_vars * n_bounds);
   bc_ref.resize(n_vars * n_bounds);
@@ -670,8 +667,7 @@ conn_mesh::init_pme(std::vector<index_t>& block_m,
 	depth.assign(n_blocks + n_bounds, 0);
 	heat_capacity.assign(n_blocks, 0);
 	rock_cond.assign(n_blocks + n_bounds, 0);
-	biot.resize(9 * n_blocks);
-	drained_compressibility.resize(n_blocks);
+	rock_compressibility.resize(n_blocks);
 	th_poro.resize(n_blocks);
 	bc.resize(5 * n_bounds);
 	bc_n.resize(5 * n_bounds);
@@ -738,9 +734,8 @@ conn_mesh::init_pme_mech_discretizer(
   depth.assign(n_blocks + n_bounds, 0);
   heat_capacity.assign(n_blocks, 0);
   rock_cond.assign(n_blocks, 0);
-  biot.resize(9 * n_blocks);
   th_poro.resize(n_blocks);
-  drained_compressibility.resize(n_blocks);
+  rock_compressibility.resize(n_blocks);
   bc.resize(n_vars * n_bounds);
   bc_n.resize(n_vars * n_bounds);
   bc_ref.resize(n_vars * n_bounds);

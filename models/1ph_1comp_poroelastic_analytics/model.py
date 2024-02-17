@@ -3,7 +3,8 @@ from reservoir import UnstructReservoirCustom
 import numpy as np
 from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
-from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M, get_isotropic_stiffness
+from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
+from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
 from darts.input.input_data import InputData
 
 class Model(THMCModel):
@@ -34,7 +35,6 @@ class Model(THMCModel):
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
-        self.idata.rock.compressibility = 1.
         self.idata.rock.density = 2650.
         self.idata.fluid.Mw = 18.015
         self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
@@ -45,6 +45,9 @@ class Model(THMCModel):
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
             self.idata.rock.biot = 0.9
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
         elif case == 'terzaghi':
@@ -53,6 +56,9 @@ class Model(THMCModel):
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
             self.idata.rock.biot = 0.9
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
         elif case == 'terzaghi_two_layers':
@@ -72,6 +78,9 @@ class Model(THMCModel):
             nu_2 = (1 - x) / (1 + x)
             assert (nu_2 < 0.5 and nu_2 > 0)
             self.idata.rock.nu = np.array([nu_1, nu_2])
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.make_prop_arrays()
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
@@ -79,21 +88,23 @@ class Model(THMCModel):
             self.idata.rock.E = 0.06  # in bars
             self.idata.rock.nu = 0.4
             self.idata.rock.biot = 1.0
-            self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.rock.th_expn = 9.0 * 1.E-7
-            self.idata.rock.th_expn *= self.idata.rock.kd_cur  #TODO explain
+            self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
             self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
             self.idata.rock.th_expn_poro = 0.0   # mechanical term in porosity update
             self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
 
-        self.idata.rock.kd_cur = get_kd_cur(self.idata.rock.E, self.idata.rock.nu)
-        self.idata.other.M = get_M(self.idata.rock.biot, self.idata.rock.porosity, self.idata.rock.kd_cur, self.idata.fluid.compressibility)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         if case == 'terzaghi_two_layers':
             # short names
-            b = self.idata.rock.biot; nu = self.idata.rock.nu; E = self.idata.rock.E; M = self.idata.other.M;
+            b = self.idata.rock.biot; nu = self.idata.rock.nu; E = self.idata.rock.E;
+            M = get_biot_modulus(biot=b, poro0=self.idata.rock.porosity, cf=self.idata.fluid.compressibility,
+                                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu));
             # some numbers for analytics
             self.idata.other.m = m = (1 + nu) * (1 - 2 * nu) / E / (1 - nu)
             self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)

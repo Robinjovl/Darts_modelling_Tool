@@ -33,8 +33,6 @@ class Model(THMCModel):
             type_mech = 'poroelasticity'  # Note: not supported with thermal
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
 
-        self.idata.rock.compressibility = 1.
-
         self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1
         self.idata.rock.perm = [1.5,    0.5,    0.35,
@@ -44,7 +42,6 @@ class Model(THMCModel):
         self.idata.rock.nu = 0.4
         self.idata.rock.biot = [1.5,    0.1,    0.5,
                                 0.1,    1.5,    0.15,
-
                                 0.5,    0.15,   1.5]
         self.idata.rock.stiffness = [1.323, 0.0726, 0.263, 0.108, -0.08, -0.239,
                                      0.0726, 1.276, -0.318, 0.383, 0.108, 0.501,
@@ -52,18 +49,19 @@ class Model(THMCModel):
                                      0.108, 0.383, -0.183, 1.517, -0.0127, -0.304,
                                      -0.08, 0.108, 0.146, -0.0127, 1.209, -0.326,
                                      -0.239, 0.501, 0.182, -0.304, -0.326, 1.373]
-        self.idata.rock.kd_cur = 0. # TODO: why parent ask self.th_expn_coef and self.kd_cur?
 
         if self.mode == 'thermoporoelastic':
+            self.idata.rock.compressibility = 0.
             self.idata.rock.th_expn =  [1.5,    0.5,    0.35,
                                         0.5,    1.5,    0.45,
                                         0.35,   0.45,   1.5]
-            self.idata.rock.conductivity = 0.836 * 86400.0 * 1000
             self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
             self.idata.rock.heat_capacity = 1.0
             self.idata.rock.conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
+        else:
+            self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05 
 
         self.idata.fluid.compressibility = 0.0
         self.idata.fluid.viscosity = 1e-2

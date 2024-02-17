@@ -9,7 +9,6 @@ from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
-from darts.reservoirs.unstruct_reservoir_mech import get_kd_cur, get_M
 from darts.input.input_data import InputData
 
 class THMCModel(DartsModel):

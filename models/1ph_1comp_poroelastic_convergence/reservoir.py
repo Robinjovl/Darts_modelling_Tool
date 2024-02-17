@@ -39,7 +39,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Specify elastic properties, mesh & boundaries
         self.timer.node["discretization"] = timer_node()
         self.grav = 9.81e-2  # to make gravity term the same order as orther terms in equation
-        self.c = 1.4503768e-05  #TODO add comments
         if self.discretizer_name == 'pm_discretizer':
             self.convergence_study_setup_pm_discretizer(idata=idata)
         elif self.discretizer_name == 'mech_discretizer':
@@ -56,8 +55,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if self.thermoporoelasticity:
             self.x_new[:, self.t_var] = self.t_init
 
-        self.biot_mean = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
-        self.kd_cur = 0.0 # TODO: replace biot_arr, kd with matrix_compressibility
         if self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.p_ref = self.p_init
             self.unstr_discr.f = self.f_prep
@@ -68,18 +65,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bc_ref[:] = self.bc_rhs_ref
         self.set_bounds(self.pz_bounds_rhs)
 
-        if self.thermoporoelasticity:
-            self.biot_arr[:] = np.tile([idata.rock.porosity,0,0,
-                                        0,idata.rock.porosity,0,
-                                        0,0,idata.rock.porosity], self.n_matrix + self.n_fracs)
-        else:
-            self.biot_arr[:] = np.tile([0,0,0,
-                                        0,0,0,
-                                        0,0,0], self.n_matrix + self.n_fracs)
-        if self.thermoporoelasticity:
-            self.kd[:] = 1.0
-        else:
-            self.kd[:] = 1 / self.c / idata.rock.porosity #TODO 1
         self.p_ref[:] = self.p_init
         self.f[:] = self.f_prep
 
@@ -232,8 +217,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # RHS (force) term
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                rho_s=idata.rock.density, comp_s=self.c * idata.rock.porosity, 
-                                poro0=idata.rock.porosity) #TODO c * porosity, also see ikd_cur in __init__
+                                rho_s=idata.rock.density, comp_s=idata.rock.compressibility,
+                                poro0=idata.rock.porosity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
@@ -285,7 +270,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # RHS term
         self.r = RhsPoroelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
                                 visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                rho_s=idata.rock.density, comp_s=self.c * idata.rock.porosity, poro0=idata.rock.porosity)
+                                rho_s=idata.rock.density, comp_s=idata.rock.compressibility,
+                                poro0=idata.rock.porosity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
@@ -299,7 +285,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_interface_approximations()
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
-
 
     # mech_discretizer: thermoporoelastic
     def update_mech_discretizer_thermoporoelasticity(self, time):
@@ -348,10 +333,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_arrays_boundary_condition()
         # RHS term
         self.r = RhsThermoporoelastic(stf=idata.rock.stiffness, biot=idata.rock.biot, perm=idata.rock.perm,
-                                      th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
-                                visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
-                                rho_s=idata.rock.density, comp_s=0.0, poro0=idata.rock.porosity,
-                                th_expn_poro=idata.rock.th_expn_poro, heat_capacity=idata.rock.heat_capacity)
+                                        th_expn=idata.rock.th_expn, heat_cond=idata.rock.conductivity,
+                                        visc=idata.fluid.viscosity, grav=self.grav, rho_f=idata.fluid.density,
+                                        rho_s=idata.rock.density, comp_s=idata.rock.compressibility,
+                                        poro0=idata.rock.porosity, th_expn_poro=idata.rock.th_expn_poro,
+                                        heat_capacity=idata.rock.heat_capacity)
         self.f_prep = np.zeros(self.n_matrix * self.n_vars)
         self.total_stress_an = np.zeros((self.n_matrix, 6))
         self.effective_stresses_an = np.zeros((self.n_matrix, 6))
