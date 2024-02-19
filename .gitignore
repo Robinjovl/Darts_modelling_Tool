@@ -5,6 +5,8 @@
 darts/*.so
 darts/*.pyd
 darts/*.dll
+darts/bin/
+darts/lib/
 dist/
 sdist/
 eggs/

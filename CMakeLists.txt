@@ -43,7 +43,7 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
-#   GPU: GPU support (not available yet)
+#   GPU: GPU support
 if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
   set(OPENDARTS_CONFIG "ST") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
@@ -51,12 +51,21 @@ elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
     message(FATAL_ERROR "openDARTS MT requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
   endif()
 elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  enable_language(CUDA)
+  find_package(CUDA REQUIRED)
+  # Allow to give the GPU architecture, by default it is sm_70, so the user would have to use the option -D CUDA_ARCHITECTURES=sm_70
+  if(NOT DEFINED CUDA_ARCHITECTURES)
+    set(CUDA_ARCHITECTURES "sm_70")
+  endif()
+  message(STATUS "  -- CMAKE_CUDA_COMPILER: ${CMAKE_CUDA_COMPILER}")
+  message(STATUS "  -- CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES}")
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
 endif()
 
 message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
+
+
 
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
@@ -80,6 +89,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND opendarts_cxx_compiler_flags "/openmp")
     list(APPEND opendarts_cxx_linker_flags "/openmp")
   endif()
+  # TODO: Add GPU flags to support for MSVC
 
   # Compiler specific helper variables 
    
@@ -98,6 +108,10 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
+  elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
+    list(APPEND opendarts_cxx_compiler_flags "-DWITH_GPU;-ldarts_linear_solvers_gpu;-lcusparse;-lcublas;-lcusolver;-lamgxsh;-lgomp")
+    set(opendarts_nvcc_flags "nvcc;-arch=${CUDA_ARCH};--ptxas-options=-v;-allow-unsupported-compiler")
+    #list(APPEND opendarts_cxx_linker_flags "")
   endif()
 
   if(SET_CXX11_ABI_0)
@@ -200,6 +214,13 @@ target_compile_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_compiler_flags}
 )
+
+if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  target_compile_options(opendarts_compiler_gpu_flags 
+    INTERFACE
+    ${opendarts_nvcc_flags}
+  )
+endif()
 
 target_link_options(opendarts_compiler_flags 
   INTERFACE

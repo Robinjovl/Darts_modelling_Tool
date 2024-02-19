@@ -34,6 +34,14 @@ set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_interpolator_exposer.hpp
 )
 
+# If GPU is enabled, add the GPU engines
+if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  list(APPEND OD_ENGINES_PYBIND11_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp
+  )
+endif()
+
 # Define the engines library
 pybind11_add_module(engines
   ${OD_ENGINES_PYBIND11_SRC_FILES}
@@ -81,7 +89,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_PYBIND11_PUB
 
 # Install the library file of engines
 install(TARGETS engines 
-  CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
+  CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG GPU ""
   DESTINATION ./
 )
 

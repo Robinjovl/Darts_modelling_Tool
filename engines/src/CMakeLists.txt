@@ -9,7 +9,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/engines_build_info.cpp.in ${CMAKE_CUR
 # - interpolation
 # - mech
 # - conn_mesh
-# - wells (including stream)
+# - wells
 # - engines
 # - python_interface
 
@@ -62,12 +62,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_GLOBAL_PUBLI
 
 # Install the library file of engines_global
 install(TARGETS engines_global 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_global
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU 
   DESTINATION lib
 )
 
@@ -138,12 +133,7 @@ target_include_directories(engines_build_info
 
 # Install the library file of engines_build_info
 install(TARGETS engines_build_info 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_build_info
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU
   DESTINATION lib
 )
 
@@ -207,12 +197,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_PU
 
 # Install the library file of engines_conn_mesh
 install(TARGETS engines_conn_mesh
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_conn_mesh
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU
   DESTINATION lib
 )
 
@@ -276,12 +261,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_WELLS_PUBLIC
 
 # Install the library file of engines_wells
 install(TARGETS engines_wells 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_wells
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU 
   DESTINATION lib
 )
 
@@ -314,6 +294,34 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
 )
 
+# If GPU is enabled, add the GPU engines
+if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  list(APPEND OD_ENGINES_ENGINES_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu
+  )
+  list(APPEND OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_gpu.tpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_tools.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly.cu.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly_nc3.cu.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/pinned_allocator.h
+  )
+endif()
+
 # Define the engines_engines library
 # This is always a static library since we wish to use it internally only
 add_library(engines_engines OBJECT "")
@@ -329,15 +337,24 @@ target_sources(engines_engines
     ${OD_ENGINES_ENGINES_SRC_FILES}
     ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
 )
-
-target_link_libraries(engines_engines
+if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  target_link_libraries(engines_engines
   PUBLIC
-    opendarts_compiler_flags
+    opendarts_compiler_gpu_flags
     linear_solvers
     engines_interpolator
     Eigen3::Eigen
-)
-
+    CUDA::cudart
+  )
+else()
+  target_link_libraries(engines_engines
+    PUBLIC
+      opendarts_compiler_flags
+      linear_solvers
+      engines_interpolator
+      Eigen3::Eigen
+  )
+endif()
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
 target_include_directories(engines_engines
@@ -352,12 +369,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_ENGINES_PUBL
 
 # Install the library file of engines_engines
 install(TARGETS engines_engines 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_engines
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU
   DESTINATION lib
 )
 

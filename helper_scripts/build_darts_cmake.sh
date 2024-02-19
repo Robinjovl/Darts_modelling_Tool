@@ -1,6 +1,8 @@
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
-set -e  
+set -e
+# Set nocasematch option to make string comparisons case-insensitive
+shopt -s nocasematch
 # ------------------------------------------------------------------------------
 
 ################################################################################
@@ -19,7 +21,7 @@ Help_Info()
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, Gpu]. Example: -d Debug"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
 }
@@ -75,6 +77,10 @@ if [ "$bos_solvers_artifact" == true ] && [ "$testing" == true ]; then
 fi
 if [ "$bos_solvers_artifact" == false ] && [ "$MT" == true ]; then
     # Open-DARTS linear solvers do not support multi-threading
+    MT=false
+fi
+if [ "$config" == "Gpu" ] && [ "$MT" == true ]; then
+    echo "\n Warning: GPU and MT at the same time are incompatible, deactivating MT \n"
     MT=false
 fi
 # ------------------------------------------------------------------------------
@@ -164,6 +170,8 @@ else
     fi
     if [[ "$MT" == true ]]; then
         cmake_options+=" -D OPENDARTS_CONFIG=MT"
+    elif [[ "$config" == "Gpu" ]]; then
+        cmake_options+=" -D OPENDARTS_CONFIG=GPU"
     fi
     if [[ ! -z "$bos_solvers_dir" ]]; then
         cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"

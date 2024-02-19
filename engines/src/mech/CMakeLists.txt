@@ -61,12 +61,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_MECHANICS_PU
 
 # Install the library file of engines_mechanics
 install(TARGETS engines_mechanics 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_mechanics
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU 
   DESTINATION lib
 )
 

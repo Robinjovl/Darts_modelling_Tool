@@ -57,12 +57,7 @@ target_include_directories(discretizer_build_info
 
 # Install the library file of discretizer_build_info
 install(TARGETS discretizer_build_info 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS discretizer_build_info
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU 
   DESTINATION lib
 )
 
@@ -125,12 +120,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PUBLIC_HEAD
 
 # Install the library file of opendarts_discretizer
 install(TARGETS opendarts_discretizer 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS opendarts_discretizer
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU
   DESTINATION lib
 )
 
@@ -179,12 +169,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_LINALG_PUBL
 
 # Install the library file of discretizer_linalg
 install(TARGETS discretizer_linalg 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS discretizer_linalg
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU
   DESTINATION lib
 )
 

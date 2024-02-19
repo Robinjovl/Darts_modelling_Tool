@@ -42,6 +42,13 @@ if %bos_solvers_artifact%==true (
     set MT=false
   )
 )
+if %MT%==true (
+  if /I "%config%"=="Gpu" (
+    echo Warning: GPU and MT at the same time are incompatible, deactivating MT
+    set MT=false
+  )
+)
+
 echo - Report configuration of this script: START
 echo    bos_solvers_dir = %bos_solvers_dir%
 echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
@@ -99,6 +106,8 @@ if %testing%==true (
 )
 if %MT%==true (
   set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=MT
+) else if /I "%config%"=="Gpu" (
+  set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=GPU
 )
 if not %bos_solvers_dir%=="" (
   set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%

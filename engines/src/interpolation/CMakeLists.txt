@@ -63,12 +63,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_INTERPOLATOR
 
 # Install the library file of engines_interpolator
 install(TARGETS engines_interpolator 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS engines_interpolator
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU   
   DESTINATION lib
 )
 

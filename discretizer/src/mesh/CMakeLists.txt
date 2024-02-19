@@ -52,12 +52,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_MESH_PUBLIC
 
 # Install the library file of discretizer_mesh
 install(TARGETS discretizer_mesh
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS discretizer_mesh
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG GPU   
   DESTINATION lib
 )
 # ------------------------------------------------------------------------------
