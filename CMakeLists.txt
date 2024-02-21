@@ -111,8 +111,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
   elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
     list(APPEND opendarts_cxx_compiler_flags "-DWITH_GPU;-ldarts_linear_solvers_gpu;-lcusparse;-lcublas;-lcusolver;-lamgxsh;-lgomp")
-    #set(opendarts_nvcc_flags "nvcc;-arch=${CUDA_ARCHITECTURES};--ptxas-options=-v;-allow-unsupported-compiler")
-    # we may not need these flags. 
+    #set(opendarts_nvcc_flags "nvcc;-arch=${CUDA_ARCHITECTURES};--ptxas-options=-v;-allow-unsupported-compiler") # flags from old MakeFile. 
   endif()
 
   if(SET_CXX11_ABI_0)
@@ -216,12 +215,12 @@ target_compile_options(opendarts_compiler_flags
     ${opendarts_cxx_compiler_flags}
 )
 
-if(${OPENDARTS_CONFIG} STREQUAL "GPU")
-  target_compile_options(opendarts_compiler_gpu_flags 
-    INTERFACE
-    ${opendarts_nvcc_flags}
-  )
-endif()
+# if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+#   target_compile_options(opendarts_compiler_gpu_flags 
+#     INTERFACE
+#     ${opendarts_nvcc_flags}
+#   )
+# endif()
 
 target_link_options(opendarts_compiler_flags 
   INTERFACE

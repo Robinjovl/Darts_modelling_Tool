@@ -25,9 +25,15 @@ target_sources(auxiliary
     ${OD_AUXILIARY_SRC_FILES}
     ${OD_AUXILIARY_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
 )
-
-target_link_libraries(auxiliary opendarts_compiler_flags)
-
+if(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  target_link_libraries(auxiliary 
+  PUBLIC
+    opendarts_compiler_flags
+    CUDA::cudart
+    )
+else()
+  target_link_libraries(auxiliary opendarts_compiler_flags)
+endif()
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
 target_include_directories(auxiliary

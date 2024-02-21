@@ -314,7 +314,7 @@ if(${OPENDARTS_CONFIG} STREQUAL "GPU")
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gpu_tools.h
     ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly.cu.h
     ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly_nc3.cu.h
@@ -348,7 +348,7 @@ if(${OPENDARTS_CONFIG} STREQUAL "GPU")
   )
   # Might be cleaner to add this option WITH_GPU in this way than in the compilation flags
   target_compile_definitions(engines_engines PUBLIC -DWITH_GPU)
-  set_target_properties(engines_engines PROPERTIES CUDA_ARCHITECTURES "70")
+  #set_target_properties(engines_engines PROPERTIES CUDA_ARCHITECTURES "70")
 else()
   target_link_libraries(engines_engines
     PUBLIC
