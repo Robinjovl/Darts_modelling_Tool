@@ -340,12 +340,15 @@ target_sources(engines_engines
 if(${OPENDARTS_CONFIG} STREQUAL "GPU")
   target_link_libraries(engines_engines
   PUBLIC
-    opendarts_compiler_gpu_flags
+    opendarts_cxx_compiler_flags
     linear_solvers
     engines_interpolator
     Eigen3::Eigen
     CUDA::cudart
   )
+  # Might be cleaner to add this option WITH_GPU in this way than in the compilation flags
+  target_compile_definitions(engines_engines PUBLIC -DWITH_GPU)
+  set_target_properties(engines_engines PROPERTIES CUDA_ARCHITECTURES "70")
 else()
   target_link_libraries(engines_engines
     PUBLIC
