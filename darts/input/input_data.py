@@ -104,7 +104,12 @@ class InputData():
                         if sub_obj.__dict__['perm'] is not None:
                             continue
                     if k2 == 'perm':
-                        if sub_obj.__dict__['permx'] is not None and sub_obj.__dict__['permy'] is not None and sub_obj.__dict__['permz'] is not None:
+                        if sub_obj.__dict__['permx'] is not None and \
+                                sub_obj.__dict__['permy'] is not None and \
+                                sub_obj.__dict__['permz'] is not None:
+                            continue
+                    if k2 == 'E' or k2 == 'nu':
+                        if sub_obj.__dict__['stiffness'] is not None:
                             continue
 
                     print('Error in InputData check: property', k, k2, 'is not initialized!')

@@ -38,8 +38,6 @@ class Model(THMCModel):
         self.idata.rock.perm = [1.5,    0.5,    0.35,
                                 0.5,    1.5,    0.45,
                                 0.35,   0.45,   1.5]
-        self.idata.rock.E = 0.06  # in bars
-        self.idata.rock.nu = 0.4
         self.idata.rock.biot = [1.5,    0.1,    0.5,
                                 0.1,    1.5,    0.15,
                                 0.5,    0.15,   1.5]
@@ -60,6 +58,7 @@ class Model(THMCModel):
             self.idata.rock.conductivity = self.heat_cond_mult * 1.e+6 * np.array([1.5, 0.1, 0.5,
                                                              0.1, 1.5, 0.15,
                                                              0.5, 0.15, 1.5])
+            self.idata.rock.compressibility = 0.0
         else:
             self.idata.rock.compressibility = self.idata.rock.porosity * 1.4503768e-05 
 
