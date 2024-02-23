@@ -301,9 +301,9 @@ if(${OPENDARTS_CONFIG} STREQUAL "GPU")
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_gpu.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu
   )
   list(APPEND OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.h
@@ -312,9 +312,9 @@ if(${OPENDARTS_CONFIG} STREQUAL "GPU")
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu.h
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator.cu.h
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_simulator_nc3.cu.h
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_benchmark.cu.h
     ${CMAKE_CURRENT_SOURCE_DIR}/gpu_tools.h
     ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly.cu.h
     ${CMAKE_CURRENT_SOURCE_DIR}/jacobian_assembly_nc3.cu.h

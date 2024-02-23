@@ -14,13 +14,13 @@ unset(thirdparty_missing_components)
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
-#   GPU: GPU support (not available yet)
+#   GPU: GPU support
 if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(BOS_SOLVERS_SUFFIX "") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
   set(BOS_SOLVERS_SUFFIX "_mt") 
 else()
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  set(BOS_SOLVERS_SUFFIX "_gpu")
 endif()
 
 message(STATUS "Building openDARTS ${OPENDARTS_CONFIG}")
