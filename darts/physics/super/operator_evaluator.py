@@ -18,12 +18,10 @@ class OperatorsSuper(OperatorsBase):
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
 
         # extra operators
-        self.RE_INTER_OP = self.KIN_OP + self.ne  # rock internal energy operator - 1
-        self.RE_TEMP_OP = self.RE_INTER_OP + 1  # rock temperature operator - 1
-        self.ROCK_COND = self.RE_INTER_OP + 2  # rock conduction operator - 1
-        self.GRAV_OP = self.RE_INTER_OP + 3  # gravity operator - nph
-        self.PC_OP = self.RE_INTER_OP + 3 + self.nph  # capillary operator - nph
-        self.PORO_OP = self.RE_INTER_OP + 3 + 2 * self.nph  # porosity operator - 1
+        self.TEMP_OP = self.KIN_OP + self.ne  # temperature operator - 1
+        self.GRAV_OP = self.TEMP_OP + 1  # gravity operator - nph
+        self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
+        self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
         self.n_ops = self.PORO_OP + 1
 
     def print_operators(self, state: value_vector, values: value_vector):
@@ -38,12 +36,12 @@ class OperatorsSuper(OperatorsBase):
         for j in range(self.nph):
             idx0, idx1 = self.GRAD_OP + j * self.ne, self.GRAD_OP + (j+1) * self.ne
             print("CHI (diffusion) {}".format(j), values[idx0:idx1])
-        print("DELTA (reaction)", values[self.KIN_OP:self.RE_INTER_OP])
+        print("DELTA (reaction)", values[self.KIN_OP:self.TEMP_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
         print("POROSITY", values[self.PORO_OP])
         if self.thermal:
-            print("ROCK ENERGY, TEMP, COND", values[self.RE_INTER_OP:self.GRAV_OP])
+            print("TEMPERATURE", values[self.TEMP_OP])
         return
 
 
@@ -125,7 +123,6 @@ class ReservoirOperators(OperatorsSuper):
         pressure = state[0]
         temperature = vec_state_as_np[-1]
 
-        rock_energy = self.property.rock_energy_ev.evaluate(temperature=temperature)
         enthalpy, cond, energy_source = self.property.evaluate_thermal(state)
 
         """ Alpha operator represents accumulation term: """
@@ -146,12 +143,8 @@ class ReservoirOperators(OperatorsSuper):
         values[self.KIN_OP + self.nc] = energy_source
 
         """ Additional energy operators """
-        # E1-> rock internal energy
-        values[self.RE_INTER_OP] = rock_energy / self.compr  # (T-T_0), multiplied by rock hcap inside engine
-        # E2-> rock temperature
-        values[self.RE_TEMP_OP] = temperature
-        # E3-> rock conduction
-        values[self.ROCK_COND] = 1 / self.compr  # multiplied by rock cond inside engine
+        # Temperature operator
+        values[self.TEMP_OP] = temperature
 
         return 0
 
