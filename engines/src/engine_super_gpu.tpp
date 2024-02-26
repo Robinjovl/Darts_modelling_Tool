@@ -12,8 +12,8 @@
 #include "engine_super_gpu.hpp"
 
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
-          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t RE_INTER_OP,
-          uint8_t RE_TEMP_OP, uint8_t ROCK_COND, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP,
+          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP,
+          uint8_t TEMP_OP, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP,
           bool THERMAL>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const unsigned int trans_mult_exp,
@@ -79,10 +79,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   {
     if (v == 0)
     {
-      rhs += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+      rhs += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
     }
 
-    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
+    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -225,7 +225,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     // if thermal is enabled, full up the last equation
     if (THERMAL && (c == NE - 1))
     {
-      t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
+      t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
       gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
       if (t_diff < 0)
@@ -233,7 +233,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         // rock heat transfers flows from cell i to j
         if (v == 0)
         {
-          rhs -= gamma_t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
+          rhs -= gamma_t_diff * (1 - poro[i]) * rock_cond[i];
         }
         jac_diag -= gamma_t_diff * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] * (1 - poro[i]) * rock_cond[i];
         if (v == T_VAR)
@@ -315,8 +315,8 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
   //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
-  assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP, RE_INTER_OP,
-                                 RE_TEMP_OP, ROCK_COND, GRAV_OP, PC_OP, PORO_OP, THERMAL>
+  assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP,
+                                 TEMP_OP, GRAV_OP, PC_OP, PORO_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->trans_mult_exp,
                                                      dt, X_d, RHS_d,
                                                      jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
