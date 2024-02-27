@@ -2,7 +2,7 @@ from darts.engines import *
 from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.physics_base import PhysicsBase
 from darts.physics.operators_base import PropertyOperators
-from darts.physics.geothermal.operator_evaluator import *
+from darts.physics.geothermal.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassRateOperators
 
 import numpy as np
 
@@ -67,15 +67,15 @@ class Geothermal(PhysicsBase):
         and :class:`geothermal_rate_custom_evaluator_python` for evaluation of rates.
         """
         for region in self.regions:
-            self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(self.property_containers[region])
+            self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
-        self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
+        self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]])
 
         # create rate operators evaluator
         if self.mass_rate:
-            self.rate_operators = geothermal_mass_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
+            self.rate_operators = MassRateOperators(self.property_containers[self.regions[0]])
         else:
-            self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
+            self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
 
         return
 
