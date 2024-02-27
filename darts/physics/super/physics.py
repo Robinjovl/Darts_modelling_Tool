@@ -59,7 +59,10 @@ class Compositional(PhysicsBase):
             axes_max = value_vector([max_p] + [max_z] * (nc - 1))
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + 2 /*temperature and pressure*/
+        # = NE * (2 * nph + 2) + 3 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 3 * nph + 3
 
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,

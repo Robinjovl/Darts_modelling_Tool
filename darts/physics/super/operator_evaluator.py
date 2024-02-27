@@ -18,11 +18,12 @@ class OperatorsSuper(OperatorsBase):
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
 
         # extra operators
-        self.TEMP_OP = self.KIN_OP + self.ne  # temperature operator - 1
-        self.GRAV_OP = self.TEMP_OP + 1  # gravity operator - nph
+        self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
         self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
         self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
-        self.n_ops = self.PORO_OP + 1
+        self.TEMP_OP = self.PORO_OP + 1  # temperature operator - 1
+        self.PRES_OP = self.TEMP_OP + 1
+        self.n_ops = self.PRES_OP + 1
 
     def print_operators(self, state: value_vector, values: value_vector):
         """Method for printing operators, grouped"""
@@ -42,6 +43,7 @@ class OperatorsSuper(OperatorsBase):
         print("POROSITY", values[self.PORO_OP])
         if self.thermal:
             print("TEMPERATURE", values[self.TEMP_OP])
+        print("PRESSURE", values[self.PRES_OP])
         return
 
 
@@ -110,6 +112,9 @@ class ReservoirOperators(OperatorsSuper):
             values[self.PC_OP + j] = pc[j]
         # E5_> porosity
         values[self.PORO_OP] = phi
+
+        # Pressure operator
+        values[self.PRES_OP] = pressure
 
         if self.thermal:
             self.evaluate_thermal(state, values)
@@ -206,6 +211,9 @@ class WellOperators(OperatorsSuper):
         # E5_> porosity
         values[self.PORO_OP] = phi
 
+        # Pressure operator
+        values[self.PRES_OP] = pressure
+
         if self.thermal:
             self.evaluate_thermal(state, values)
 
@@ -214,6 +222,8 @@ class WellOperators(OperatorsSuper):
         return 0
 
     def evaluate_thermal(self, state: value_vector, values: value_vector):
+        vec_state_as_np = np.asarray(state)
+        values[self.TEMP_OP] = vec_state_as_np[-1]
         return
 
 
@@ -256,7 +266,7 @@ class RateOperators(operator_set_evaluator_iface):
         # step-4
         for j in ph:
             values[j] = rho_m[j] * kr[j] / mu[j]
-            #sat_sc[j] * flux_sum / total_density
+            # values[j] = sat_sc[j] * flux_sum / total_density
 
         # print(state, values)
         return 0
