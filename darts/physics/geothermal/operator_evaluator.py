@@ -9,7 +9,7 @@ class OperatorsGeothermal(OperatorsBase):
 
 
 class ReservoirOperators(OperatorsGeothermal):
-    n_ops = 12
+    n_ops = 10
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -17,7 +17,6 @@ class ReservoirOperators(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
         values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
@@ -28,27 +27,23 @@ class ReservoirOperators(OperatorsGeothermal):
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[3] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
                                           pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[4] = rock_int_energy / pore_volume_factor
         # energy flux
-        values[5] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[6] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[4] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
+        values[5] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
         # fluid conduction
-        values[7] = pc.conduction[0] * pc.saturation[0] + pc.conduction[1] * pc.saturation[1]
-        # rock conduction
-        values[8] = 1 / pore_volume_factor
+        values[6] = pc.conduction[0] * pc.saturation[0] + pc.conduction[1] * pc.saturation[1]
+        # water density
+        values[7] = pc.density[0]
+        # steam density
+        values[8] = pc.density[1]
         # temperature
         values[9] = pc.temperature
-        # water density
-        values[10] = pc.density[0]
-        # steam density
-        values[11] = pc.density[1]
 
         return 0
 
 
 class WellOperators(OperatorsGeothermal):
-    n_ops = 12
+    n_ops = 10
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -56,7 +51,6 @@ class WellOperators(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
         values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
@@ -67,21 +61,17 @@ class WellOperators(OperatorsGeothermal):
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[3] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
                                           pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[4] = rock_int_energy / pore_volume_factor
         # energy flux
-        values[5] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[6] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[4] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
+        values[5] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
         # fluid conduction
-        values[7] = 0.0
-        # rock conduction
-        values[8] = 1 / pore_volume_factor
+        values[6] = 0.0
+        # water density
+        values[7] = pc.density[0]
+        # steam density
+        values[8] = pc.density[1]
         # temperature
         values[9] = pc.temperature
-        # water density
-        values[10] = pc.density[0]
-        # steam density
-        values[11] = pc.density[1]
 
         return 0
 
