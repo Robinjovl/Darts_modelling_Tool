@@ -60,6 +60,13 @@ public:
   // order of variables in transmissibility block
   const static uint8_t U_VAR_T = 0;
   const static uint8_t P_VAR_T = 3;
+  // number of boundary conditions
+  const static uint8_t N_BC_VARS = 1 + THERMAL + ND;
+  // order of boundary conditions
+  const static uint8_t P_BC_VAR = 0;
+  const static uint8_t T_BC_VAR = THERMAL;
+  const static uint8_t U_BC_VAR = 1 + THERMAL;
+
   // dimension of state space
   const static uint8_t N_STATE = NC_ + THERMAL;
 
@@ -86,6 +93,7 @@ public:
   // from transmissibility order of unknowns 
   // to the order of unknowns in simulation
   const static uint8_t T2U[5];
+  const static uint8_t BC2U[5];
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 

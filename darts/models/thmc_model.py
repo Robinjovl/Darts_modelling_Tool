@@ -15,8 +15,8 @@ class THMCModel(DartsModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer'):
         super().__init__()
         self.set_input_data()
-        self.set_reservoir()
         self.set_physics()
+        self.set_reservoir()
         self.reservoir.P_VAR = self.engine.P_VAR
         self.reservoir.U_VAR = self.engine.U_VAR
         if self.idata.type_mech == 'thermoporoelasticity':
@@ -134,14 +134,17 @@ class THMCModel(DartsModel):
 
     def set_initial_conditions(self):
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                        initial_pressure=self.reservoir.p_init,
-                                                                initial_temperature=self.reservoir.t_init,
-                                                                initial_displacement=[0.0, 0.0, 0.0])
+            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
+                                                        uniform_pressure=self.reservoir.p_init,
+                                                        uniform_composition=self.reservoir.z_init,
+                                                        uniform_temperature=self.reservoir.t_init,
+                                                        uniform_displacement=self.reservoir.u_init)
         else:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                            initial_pressure=self.reservoir.p_init,
-                                                    initial_displacement=self.reservoir.u_init)
+            pass
+        self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
+                                                    uniform_pressure=self.reservoir.p_init,
+                                                    uniform_composition=self.reservoir.z_init,
+                                                    uniform_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):

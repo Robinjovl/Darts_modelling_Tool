@@ -38,6 +38,9 @@ template <uint8_t NC, uint8_t NP, bool THERMAL>
 const uint8_t engine_super_elastic_cpu<NC, NP, THERMAL>::T2U[5] = {U_VAR, U_VAR + 1, U_VAR + 2, P_VAR, T_VAR};
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
+const uint8_t engine_super_elastic_cpu<NC, NP, THERMAL>::BC2U[5] = { U_BC_VAR, U_BC_VAR + 1, U_BC_VAR + 2, P_BC_VAR, T_BC_VAR };
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             sim_params *params_, timer_node *timer_)
@@ -601,6 +604,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   value_t CFL_in[NC], CFL_out[NC], darcy_component_fluxes[NE];
   value_t CFL_max_local = 0;
   value_t avg_density, avg_weigthed_density, avg_weigthed_density_n, eff_density;
+  uint8_t* var_map;
   const value_t rho_s = 2650.0;
 
   int connected_with_well;
@@ -687,12 +691,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  r_ind = N_VARS * stencil[conn_st_id];
 				  buf = &X[r_ind];
 				  buf_prev = &Xn[r_ind];
+				  var_map = const_cast<uint8_t*>(T2U);
 			  }
 			  else									// boundary condition
 			  {
-				  r_ind = N_VARS * (stencil[conn_st_id] - n_blocks);
+				  r_ind = N_BC_VARS * (stencil[conn_st_id] - n_blocks);
 				  buf = &bc[r_ind];
 				  buf_prev = &bc_prev[r_ind];
+				  var_map = const_cast<uint8_t*>(BC2U);
 			  }
 
 			  // biot * vol_strains
@@ -700,16 +706,16 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  for (d = 0; d < NT; d++)
 			  {
 				// flux of displacements (u * n)
-				biot_mult += biot_vol_strain_tran[r_ind + d] * buf[T2U[d]];
+				biot_mult += biot_vol_strain_tran[r_ind + d] * buf[var_map[d]];
 				// time derivative of the last flux = flux of matrix mass due to structure movement
-				structural_movement_fluxes[conn_id] += biot_vol_strain_tran[r_ind + d] * (buf[T2U[d]] - buf_prev[T2U[d]]) / dt;
+				structural_movement_fluxes[conn_id] += biot_vol_strain_tran[r_ind + d] * (buf[var_map[d]] - buf_prev[var_map[d]]) / dt;
 			  }
 			  // darcy
 			  p_diff += darcy_tran[conn_st_id] * buf[P_VAR];
 
 			  // heat conduction
 			  if constexpr (THERMAL)
-				t_diff += fourier_tran[conn_st_id] * buf[T_VAR];
+				t_diff += fourier_tran[conn_st_id] * buf[var_map[NT-1]];
 
 			  conn_st_id++;
 		  }
@@ -878,7 +884,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  {
 			  if (stencil[conn_st_id] >= n_blocks)
 			  {
-				  r_ind = N_VARS * (stencil[conn_st_id] - n_blocks);
+				  r_ind = N_BC_VARS * (stencil[conn_st_id] - n_blocks);
 				  cur_bc = &bc[r_ind];
 				  cur_bc_prev = &bc_prev[r_ind];
 				  ref_bc = &bc_ref[r_ind];
@@ -890,14 +896,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  r_ind = conn_st_id * N_HOOKE + d * NT;
 					  for (v = 0; v < NT; v++)
 					  {
-						  hooke_forces[l_ind + d] += hooke_tran[r_ind + v] * (cur_bc[T2U[v]] - ref_bc[T2U[v]]);
+						  hooke_forces[l_ind + d] += hooke_tran[r_ind + v] * (cur_bc[BC2U[v]] - ref_bc[BC2U[v]]);
 					  }
 					  // Biot's forces
 					  biot_forces[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * (cur_bc[P_VAR] - ref_bc[P_VAR]);
 
 					  // Thermal forces
 					  if constexpr (THERMAL)
-						thermal_forces[l_ind + d] += thermal_traction_tran[conn_st_id * N_BIOT + d] * (cur_bc[T_VAR] - ref_bc[T_VAR]);
+						thermal_forces[l_ind + d] += thermal_traction_tran[conn_st_id * N_BIOT + d] * (cur_bc[BC2U[NT - 1]] - ref_bc[BC2U[NT - 1]]);
 				  }
 				  // mass balance
 				  // biot term in accumulation
@@ -908,7 +914,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] += biot_vol_strain_tran[r_ind + v] *
-							  (op_vals_arr[i * N_OPS + ACC_OP + c] * cur_bc[T2U[v]] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * cur_bc_prev[T2U[v]]);
+							  (op_vals_arr[i * N_OPS + ACC_OP + c] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + ACC_OP + c] * cur_bc_prev[BC2U[v]]);
 					  }
 				  }
 				  // biot term in porosity in gravitational forces
@@ -927,7 +933,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[T2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[T2U[v]]);
+							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[BC2U[v]]);
 					  }
 				  }
 			  }

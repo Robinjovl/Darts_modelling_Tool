@@ -166,14 +166,23 @@ class Poroelasticity(PhysicsBase):
 
         return
 
-    # TODO: add composition
-    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list, uniform_temperature=273.15):
+    def set_uniform_initial_conditions(self, mesh, uniform_pressure,
+                                                    uniform_displacement: list,
+                                                    uniform_composition: list = [],
+                                                    uniform_temperature = 273.15):
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
 
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
         pressure.fill(uniform_pressure)
+
+        # set initial composition
+        if self.nc > 1:
+            mesh.composition.resize(nb * (self.nc - 1))
+            composition = np.array(mesh.composition, copy=False)
+            for c in range(self.nc - 1):
+                composition[c::(self.nc - 1)] = uniform_composition[c]
 
         # set initial temperature
         if self.thermal:
@@ -185,8 +194,10 @@ class Poroelasticity(PhysicsBase):
         for i in range(self.n_dim):
             displacement[i::self.n_dim] = uniform_displacement[i]
 
-    # TODO: add composition
-    def set_nonuniform_initial_conditions(self, mesh, initial_pressure, initial_displacement: list, initial_temperature=273.15):
+    def set_nonuniform_initial_conditions(self, mesh, initial_pressure: np.ndarray,
+                                                      initial_displacement: np.ndarray,
+                                                      initial_composition: np.ndarray = None,
+                                                      initial_temperature: np.ndarray = None):
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
         n_res_blocks = mesh.n_res_blocks
@@ -194,6 +205,13 @@ class Poroelasticity(PhysicsBase):
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
         pressure[:n_res_blocks] = initial_pressure
+
+        # set initial composition
+        if self.nc > 1:
+            mesh.composition.resize(nb * (self.nc - 1))
+            composition = np.array(mesh.composition, copy=False)
+            for c in range(self.nc - 1):
+                composition[c::(self.nc - 1)] = initial_composition[c]
 
         # set initial temperature
         if self.thermal:

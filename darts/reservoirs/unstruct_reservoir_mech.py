@@ -135,7 +135,7 @@ class UnstructReservoirMech():
     '''
     Class for Poroelasticity/ThermoPoroElasticity coupled model
     '''
-    def __init__(self, timer, discretizer='mech_discretizer', thermoporoelasticity=False):
+    def __init__(self, timer, discretizer='mech_discretizer', thermoporoelasticity=False, fluid_vars=['p']):
         self.timer = timer
         self.discretizer_name = discretizer
         self.thermoporoelasticity = thermoporoelasticity
@@ -144,26 +144,29 @@ class UnstructReservoirMech():
         self.n_dim = 3
         self.n_dim_sq = self.n_dim * self.n_dim
         self.bc_type = bound_cond()
-    
+        self.cell_property = fluid_vars + ['ux', 'uy', 'uz']
+        ne = len(fluid_vars)
+        nc = ne - thermoporoelasticity
+        self.p_var = self.p_bc_var = 0
+        self.z_var = self.p_var + 1 if nc > 1 else None
+        self.t_var = self.p_var + nc if thermoporoelasticity else None
+        self.t_bc_var = self.p_var + 1 if thermoporoelasticity else None
+        self.u_var = self.p_var + ne
+        self.u_bc_var = self.t_var + 1 if thermoporoelasticity else self.p_var + 1
+
         if thermoporoelasticity:
-            self.cell_property = ['p', 't', 'ux', 'uy', 'uz']
-            self.n_state = 2
-            self.n_vars = 5
-            self.t_var = 1
-            self.u_var = 2
-            self.p_var = 0
             assert (discretizer == 'mech_discretizer')
         else: # poroelasticity
-            if discretizer == 'mech_discretizer':
-                self.p_var = 0
-                self.u_var = 1
-                self.cell_property = ['p', 'ux', 'uy', 'uz']
-            elif discretizer == 'pm_discretizer':
-                self.u_var = 0
-                self.p_var = self.n_dim
+            if discretizer == 'pm_discretizer':
+                self.u_var = self.u_bc_var = 0
+                self.p_var = self.u_bc_var = self.n_dim
+                self.z_var = None
+                self.t_var = None
                 self.cell_property = ['ux', 'uy', 'uz', 'p']
-            self.n_vars = 4
-            self.n_state = 1
+
+        self.n_state = ne
+        self.n_vars = self.n_state + self.n_dim
+        self.n_bc_vars = 1 + thermoporoelasticity + self.n_dim
 
     def init_matrix_stiffness(self, props):
         self.unstr_discr.stiffness = {}
@@ -289,6 +292,8 @@ class UnstructReservoirMech():
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         if self.discretizer_name == 'mech_discretizer':
             self.pz_bounds[self.p_var::self.n_state] = p
+            if self.z_var is not None:
+                self.pz_bounds[self.z_var::self.n_state] = z
             if self.thermoporoelasticity:
                 self.pz_bounds[self.t_var::self.n_state] = t
         elif self.discretizer_name == 'pm_discretizer':
@@ -308,10 +313,10 @@ class UnstructReservoirMech():
                 ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
                 bc = self.boundary_conditions[tag]
                 # flow
-                self.bc_rhs[self.n_vars * ids + self.p_var] = bc['flow']['r']
+                self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc['flow']['r']
                 # energy
                 if self.thermoporoelasticity:
-                    self.bc_rhs[self.n_vars * ids + self.t_var] = bc['temp']['r']
+                    self.bc_rhs[self.n_bc_vars * ids + self.t_bc_var] = bc['temp']['r']
                 # mechanics
                 for id in ids:
                     assert(self.adj_matrix_cols[self.id_sorted[id]] == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
@@ -320,7 +325,7 @@ class UnstructReservoirMech():
                     conn_c = np.array(conn.c.values, copy=False)
                     c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                     if n.dot(conn_c - c1) < 0: n *= -1.0
-                    self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
+                    self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = bc['mech']['rn'] * n + bc['mech']['rt']
         elif self.discretizer_name == 'pm_discretizer':
             self.pm.bc.clear()
             for id in range(len(self.unstr_discr.bound_cell_info_dict)):
@@ -330,15 +335,15 @@ class UnstructReservoirMech():
                 flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[id].prop_id]['flow']
                 bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
                 self.pm.bc.append(matrix(bc, len(bc), 1))
-                self.bc_rhs[self.n_vars * id + self.u_var:self.n_vars * id + self.u_var + self.n_dim] = mech['rn'] * n + mech['rt']
-                self.bc_rhs[self.n_vars * id + self.p_var] = flow['r']
+                self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = mech['rn'] * n + mech['rt']
+                self.bc_rhs[self.n_bc_vars * id + self.p_bc_var] = flow['r']
 
     def init_arrays_boundary_condition(self):
         self.set_vars_pm_discretizer()
 
-        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
+        self.bc_rhs = np.zeros(self.n_bc_vars * self.n_bounds)
+        self.bc_rhs_prev = np.zeros(self.n_bc_vars * self.n_bounds)
+        self.bc_rhs_ref = np.zeros(self.n_bc_vars * self.n_bounds)
         self.pz_bounds_rhs = np.zeros(self.n_state * self.n_bounds)
 
         if self.discretizer_name == 'mech_discretizer':
@@ -414,7 +419,6 @@ class UnstructReservoirMech():
             # self.bc_rhs_prev = np.copy(self.bc_rhs)
             self.pm.bc_prev = self.pm.bc
             self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
-            self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
     def set_boundary_conditions_pm_discretizer(self):
         if self.discretizer_name == 'pm_discretizer':
@@ -525,13 +529,11 @@ class UnstructReservoirMech():
                 self.porosity[cell_id] = poro
                 self.hcap[cell_id] = hcap
 
-    def set_uniform_initial_conditions(self, idata: InputData, u_init=[0., 0., 0.], p_init=0., t_init=0.):  #TODO: check units
+    def set_uniform_initial_conditions(self, idata: InputData, u_init=[0., 0., 0.], p_init=0., t_init=None, z_init=None):  #TODO: check units
         self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
         self.p_init = p_init  # initial pressure [bars]
-        if self.thermoporoelasticity:
-            self.t_init = t_init  # initial temperature [degrees]
-        else:
-            self.t_init = None
+        self.z_init = z_init  # initial composition
+        self.t_init = t_init  # initial temperature [degrees]
 
     def init_reservoir_main(self, idata:InputData):
         # allocate arrays in C++ (conn_mesh)
@@ -594,10 +596,10 @@ class UnstructReservoirMech():
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
         if self.discretizer_name == 'mech_discretizer':
-            if self.n_vars == 4:
-                self.mesh.reverse_and_sort_pm_mech_discretizer()
-            elif self.n_vars == 5:
+            if self.thermoporoelasticity:
                 self.mesh.reverse_and_sort_pme_mech_discretizer()
+            else:
+                self.mesh.reverse_and_sort_pm_mech_discretizer()
         elif self.discretizer_name == 'pm_discretizer':
             self.mesh.reverse_and_sort_pm()
         #self.mesh.init_grav_coef()
