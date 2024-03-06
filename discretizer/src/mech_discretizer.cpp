@@ -824,9 +824,9 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   Matrix C1(ND * ND, ND * ND), T1(ND, ND), G1(ND, ND * ND), T1inv(ND, ND);
   Matrix K1n(ND, 1), gam1(ND, 1);
   Matrix An(ND, ND), At(ND, ND), L(ND, ND), gamma_nnt(ND, ND), gamma_nnt_mult(ND, ND);
-  Matrix coef(ND, ND), mult_p(ND, 1), mult_u(ND, ND), gu_coef(ND, ND * ND);
+  Matrix coef(ND, ND), coef_u(ND, ND), mult_p(ND, 1), mult_u(ND, ND), gu_coef(ND, ND * ND);
   Matrix nblock(ND * ND, ND), nblock_t(ND, ND * ND), tblock(ND * ND, ND * ND);
-  Matrix grad_coef(ND, ND * ND), biot_grad_coef(ND, ND);
+  Matrix grad_coef(ND, ND * ND), biot_grad_coef(ND, ND), hooke_p_grad_coef(ND, ND), hooke_t_grad_coef(ND, ND);
   Matrix vol_strain_u_grad_coef(1, ND * ND), vol_strain_p_grad_coef(1, ND);
   Matrix A1n(ND, 1), C1n(ND, 1), gam1_thermal(ND, 1), mult_thermal(ND, 1), thermal_grad_coef(ND, ND);
   value_t lam1_thermal, A_thermal;
@@ -892,14 +892,16 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   gamma = 1.0 / (n.transpose() * L * n).values[0];
   gamma_nnt = gamma * outer_product(n, n.transpose());
   gamma_nnt_mult = gamma_nnt * (bn * I3 - bt * L);
+  mult_u = At * (bt * I3 + gamma_nnt_mult);
   coef = -T1 / r1 * At * (gamma_nnt_mult - r1 * at * T1inv);
+  coef_u = -T1 / r1 * mult_u;
   mult_p = biots[cell_id1] * n;
-  mult_u = At * (bt * I3 + gamma_nnt * (bn * I3 - bt * L));
   gu_coef = T1 / r1 * make_block_diagonal((y1 - conn_mat).transpose(), ND) + G1;
 
   //// Filling mechanics equations
   grad_coef.values = -(coef * gu_coef).values;
-  biot_grad_coef.values = (coef * outer_product(mult_p, -Ap * bp * (lam1 / r1 * (y1 - conn_mat) + gam1).transpose())).values;
+  biot_grad_coef.values = outer_product(mult_p, -Ap * bp * (lam1 / r1 * (y1 - conn_mat) + gam1).transpose()).values;
+  hooke_p_grad_coef.values = (coef_u * biot_grad_coef).values;
 
   //// Filling flow equation
   vol_strain_u_grad_coef.values = -(mult_p.transpose() * mult_u * gu_coef).values;
@@ -907,11 +909,13 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
 			(lam1 / r1 * (y1 - conn_mat) + gam1)).values;
 
   //// Assembling fluxes
-  flux.hooke = grad_coef * make_block_diagonal(P, ND) * u_grads[cell_id1];
-  flux.biot_traction = biot_grad_coef * P * p_grads[cell_id1];
-  flux.biot_traction.rhs.values += (Ap * bp * (grav_vec * K1n).values[0] * coef * mult_p).values;
-  flux.vol_strain = vol_strain_u_grad_coef * make_block_diagonal(P, ND) * u_grads[cell_id1];
-  flux.vol_strain += vol_strain_p_grad_coef * P * p_grads[cell_id1];
+  flux.hooke = grad_coef * u_grads[cell_id1];
+  flux.hooke += hooke_p_grad_coef * p_grads[cell_id1];
+  flux.hooke.rhs.values += (coef_u * Ap * bp * (grav_vec * K1n).values[0] * mult_p).values;
+  flux.biot_traction = biot_grad_coef * p_grads[cell_id1];
+  flux.biot_traction.rhs.values += (Ap * bp * (grav_vec * K1n).values[0] * mult_p).values;
+  flux.vol_strain = vol_strain_u_grad_coef * u_grads[cell_id1];
+  flux.vol_strain += vol_strain_p_grad_coef * p_grads[cell_id1];
   flux.vol_strain.rhs.values += Ap * (bp * (grav_vec * K1n).values[0]) * (mult_p.transpose() * (mult_u * mult_p)).values[0];
 
   //thermal_traction and fourier
@@ -924,8 +928,10 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
 	  // Extra 'boundary' stuff
 	  A_thermal = 1.0 / (a_thermal + b_thermal / r1 * lam1_thermal);
 	  mult_thermal = th_exps[cell_id1] * n;
-	  thermal_grad_coef.values = (coef * outer_product(mult_thermal, -A_thermal * b_thermal * (lam1_thermal / r1 * (y1 - conn_mat) + gam1_thermal).transpose())).values;
-      flux.thermal_traction = thermal_grad_coef * P * t_grads[cell_id1];
+	  thermal_grad_coef.values = outer_product(mult_thermal, -A_thermal * b_thermal * (lam1_thermal / r1 * (y1 - conn_mat) + gam1_thermal).transpose()).values;
+	  hooke_t_grad_coef.values = (coef_u * thermal_grad_coef).values;
+	  flux.hooke += hooke_t_grad_coef * t_grads[cell_id1];
+      flux.thermal_traction = thermal_grad_coef * t_grads[cell_id1];
   }
 
   // matrix cell contribution
@@ -933,12 +939,14 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   if (res1.first) { id1 = res1.second; }
   else { printf("Gradient within %d cell does not depend on its value!\n", cell_id1);	exit(-1); }
   flux.hooke.a(n_unknowns * id1, { ND, ND }, { (size_t)flux.hooke.a.N, 1 }) += (coef * T1 / r1).values;
-  flux.biot_traction.a(id1, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (coef * mult_p * Ap * bp * lam1 / r1).values;
+  flux.hooke.a(n_unknowns * id1 + ND, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) += (coef_u * mult_p * Ap * bp * lam1 / r1).values;
+  flux.biot_traction.a(id1, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (mult_p * Ap * bp * lam1 / r1).values;
   flux.vol_strain.a(n_unknowns * id1, { ND }, { 1 }) += (mult_u * T1 / r1 * mult_p).values;
   flux.vol_strain.a(0, n_unknowns * id1 + ND) += (mult_p.transpose() * (mult_u * mult_p)).values[0] * Ap * bp * lam1 / r1;
   if constexpr (MODE == THERMOPOROELASTIC)
   {
-	  flux.thermal_traction.a(id1, { ND, 1 }, { (size_t)flux.thermal_traction.a.N, 1 }) += (coef * mult_thermal * A_thermal * b_thermal * lam1_thermal / r1).values;
+	  flux.hooke.a(n_unknowns * id1 + ND + 1, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) += (coef_u * mult_thermal * A_thermal * b_thermal * lam1_thermal / r1).values;
+	  flux.thermal_traction.a(id1, { ND, 1 }, { (size_t)flux.thermal_traction.a.N, 1 }) += (mult_thermal * A_thermal * b_thermal * lam1_thermal / r1).values;
   }
 
   // boundary condition contribution
@@ -946,12 +954,14 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& co
   if (res2.first) { id2 = res2.second; }
   else { printf("Gradient within %d cell does not depend on its value!\n", cell_id2);	exit(-1); }
   flux.hooke.a(n_unknowns * id2, { ND, ND }, { (size_t)flux.hooke.a.N, 1 }) += (-T1 / r1 * At * (gamma_nnt + (I3 - gamma_nnt * L) * P)).values;
-  flux.biot_traction.a(id2, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (Ap * coef * mult_p).values;
+  flux.hooke.a(n_unknowns * id2 + ND, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) += (coef_u * Ap * mult_p).values;
+  flux.biot_traction.a(id2, { ND, 1 }, { (size_t)flux.biot_traction.a.N, 1 }) += (Ap * mult_p).values;
   flux.vol_strain.a(n_unknowns * id2, { ND }, { 1 }) += (mult_p.transpose() * At * (gamma_nnt + (I3 - gamma_nnt * L) * P)).values;
   flux.vol_strain.a(0, n_unknowns * id2 + ND) += Ap * (mult_p.transpose() * (mult_u * mult_p)).values[0];
   if constexpr (MODE == THERMOPOROELASTIC)
   {
-	  flux.thermal_traction.a(id2, { ND, 1 }, { (size_t)flux.thermal_traction.a.N, 1 }) += (A_thermal * coef * mult_thermal).values;
+	  flux.hooke.a(n_unknowns * id2 + ND + 1, { ND, 1 }, { (size_t)flux.hooke.a.N, 1 }) += (coef_u * A_thermal * mult_thermal).values;
+	  flux.thermal_traction.a(id2, { ND, 1 }, { (size_t)flux.thermal_traction.a.N, 1 }) += (A_thermal * mult_thermal).values;
   }
 }
 
