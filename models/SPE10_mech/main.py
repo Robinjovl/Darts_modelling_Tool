@@ -46,7 +46,7 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
             t += dt
             ts = ts + 1
             print("# %d \tT = %f\tDT = %f\tNI = %d\tLI=%d"
-                  % (ts, t, dt, self.e.n_newton_last_dt, self.e.n_linear_last_dt))
+                  % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
 
             dt *= 1.5
             if dt > max_dt:
@@ -62,9 +62,9 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     # update current engine time
     m.e.t = runtime
 
-    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (self.e.stat.n_timesteps_total, self.e.stat.n_timesteps_wasted,
-                                                     self.e.stat.n_newton_total, self.e.stat.n_newton_wasted,
-                                                     self.e.stat.n_linear_total, self.e.stat.n_linear_wasted))
+    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
+                                                     m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
+                                                     m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
 def run_timestep_python(m, dt, t):
     self = m
     max_newt = self.params.max_i_newton
@@ -104,8 +104,6 @@ def run_timestep_python(m, dt, t):
         if i < max_newt:
             converged = 1
 
-        m.reservoir.write_to_vtk(m.output_directory, i + 1, m.engine)
-
     # End of newton loop
     converged = self.e.post_newtonloop(dt, t, converged)
     self.timer.node['simulation'].stop()
@@ -118,12 +116,11 @@ def run(model_folder):
 
     m.timer.node["update"] = timer_node()
 
-    size_report_step = 10.0  # Half Size of the reporting step (when output is writen to .vtk format)
-    # num_report_steps = int(5.0 / size_report_step)
-    max_dt = 1.e-4
+    size_report_step = 100
+    max_dt = size_report_step
     m.max_dt = max_dt
     m.params.max_ts = max_dt
-    first_ts = 1.e-2
+    first_ts = size_report_step
     m.params.first_ts = first_ts
 
     # Properties for writing to vtk format:
@@ -133,7 +130,6 @@ def run(model_folder):
 
     # Run over all reporting time-steps:
     ith_step = 0
-    #for ith_step in range(num_report_steps):
     while m.engine.t < 2000:
         run_python(m=m, days=size_report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)

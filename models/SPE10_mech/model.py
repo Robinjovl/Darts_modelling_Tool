@@ -23,10 +23,9 @@ class Model(THMCModel):
         # call base class constructor
         super().__init__()
 
-
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_superlu
+        self.params.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -49,8 +48,8 @@ class Model(THMCModel):
         self.idata.rock.porosity = 0.375
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 100.0
         self.idata.rock.E = 10000  # in bars
-        self.idata.rock.nu = 0.25
-        self.idata.rock.biot = 0.9
+        self.idata.rock.nu = 0.2
+        self.idata.rock.biot = 1.0
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
@@ -115,25 +114,7 @@ class Model(THMCModel):
     #             w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
     #             # w.control = self.physics.new_rate_inj(5, self.inj, 0)
     #             # w.control = self.physics.new_bhp_inj(450, self.inj)
-    #
-    # def init(self):
-    #     """
-    #     Function to initialize the model, which includes:
-    #     - initialize well (perforation) position
-    #     - initialize well rate parameters
-    #     - initialize reservoir initial conditions
-    #     - initialize well control settings
-    #     - define list of operator interpolators for accumulation-flux regions and wells
-    #     - initialize engine
-    #     """
-    #     self.set_boundary_conditions()
-    #     self.reservoir.init_wells()
-    #     self.physics.init_wells(self.reservoir.wells)
-    #     self.set_initial_conditions()
-    #     self.set_well_controls()
-    #     self.set_op_list()
-    #     self.reset()
-#
+
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):
         # Call base class constructor

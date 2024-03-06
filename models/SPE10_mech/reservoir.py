@@ -29,12 +29,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         p_init = 100
         t_init = 273.15 + 50
-        z_init = [1.e-9] * (self.n_state - 1 - self.thermoporoelasticity)
+        z_init = [0.67] * (self.n_state - 1 - self.thermoporoelasticity)
 
         self.set_uniform_initial_conditions(idata=idata, p_init=p_init, z_init=z_init, t_init=t_init)
         # self.F = -100.0  # bar * m
         self.set_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
+        self.grav = -9.80665e-5
+        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
@@ -49,14 +51,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     def set_boundary_conditions(self):
-        self.F = -100.0
+        self.F = -900.0
         self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.p_init),  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0])}
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,               'mech': self.bc_type.ROLLER}
+        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
 
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
