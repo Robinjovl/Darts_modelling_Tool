@@ -109,8 +109,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder):
-    m = Model(model_folder=model_folder)
+def run(model_folder, physics_type):
+    m = Model(model_folder=model_folder, physics_type=physics_type)
     m.init()
     redirect_darts_output('log.txt')
 
@@ -138,4 +138,5 @@ def run(model_folder):
     m.print_timers()
     m.print_stat()
 
-run(model_folder='meshes/data_10_10_10')
+# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')

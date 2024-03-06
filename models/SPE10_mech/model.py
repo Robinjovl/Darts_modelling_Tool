@@ -6,6 +6,7 @@ from darts.engines import value_vector, sim_params
 import numpy as np
 
 from darts.physics.super.property_container import PropertyContainer
+from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
@@ -15,9 +16,9 @@ from darts.input.input_data import InputData
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
-    def __init__(self, model_folder):
+    def __init__(self, model_folder, physics_type='dead_oil'):
         self.model_folder = model_folder
-        self.physics_type = 'dead_oil'
+        self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
 
         # call base class constructor
@@ -42,8 +43,6 @@ class Model(THMCModel):
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
         self.idata.rock.density = 2650.
-        self.idata.fluid.Mw = 18.015
-        self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
 
         self.idata.rock.porosity = 0.375
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 100.0
@@ -54,8 +53,12 @@ class Model(THMCModel):
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
+
+        # TODO: Only for a single-phase physics
+        self.idata.fluid.Mw = 18.015
         self.idata.fluid.compressibility = 1.e-5
         self.idata.fluid.viscosity = 1.0
+        self.idata.fluid.density = 1014.0
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
@@ -68,28 +71,42 @@ class Model(THMCModel):
         super().set_input_data()
 
     def set_physics(self):
-        """Physical properties"""
-        zero = 1e-13
-        components = ['w', 'o']
-        phases = ['wat', 'oil']
-        self.cell_property = ['pressure'] + ['water']
-        # self.cell_property += ['temperature']
+        if self.physics_type == 'single_phase':
+            Mw = [self.idata.fluid.Mw]
+            components = ['H2O']
+            phases = ['wat']
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=273.15 + 50)
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
+            """ properties correlations """
+            property_container.flash_ev = SinglePhase(nc=1)
+            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
+                                                                       dens0=self.idata.fluid.density))])
+            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
 
-        # Define property evaluators based on custom properties
-        property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                              ('oil', DensityBasic(compr=5e-3, dens0=50))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
-                                                ('oil', ConstFunc(0.03))])
-        property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("gas", 0.1, 0.1)),
-                                               ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
-        property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
-                                               ('oil', EnthalpyBasic(hcap=0.035))])
-        property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
-                                                   ('oil', ConstFunc(1.))])
+            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
+            # rock compressibility is treated inside engine
+            property_container.rock_compr_ev = ConstFunc(1.0)
+        elif self.physics_type == 'dead_oil':
+            components = ['w', 'o']
+            phases = ['wat', 'oil']
+            self.cell_property = ['pressure'] + ['water']
 
-        property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
+            property_container = ModelProperties(phases_name=phases, components_name=components, min_z=self.idata.obl.min_z)
+
+            # Define property evaluators based on custom properties
+            property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
+                                                  ('oil', DensityBasic(compr=5e-3, dens0=50))])
+            property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
+                                                    ('oil', ConstFunc(0.03))])
+            property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("gas", 0.1, 0.1)),
+                                                   ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
+                                                   ('oil', EnthalpyBasic(hcap=0.035))])
+            property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
+                                                       ('oil', ConstFunc(1.))])
+
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         # create physics
         self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
