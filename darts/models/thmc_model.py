@@ -115,6 +115,7 @@ class THMCModel(DartsModel):
         # link engine with discretizer
         if self.discretizer_name == 'mech_discretizer':
             self.engine.set_discretizer(self.reservoir.discr)
+            self.engine.gravity = self.reservoir.discr.grav_vec.values
 
     def add_wells(self):
         layers_num = 1
