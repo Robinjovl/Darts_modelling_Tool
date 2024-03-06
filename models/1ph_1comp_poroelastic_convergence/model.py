@@ -78,24 +78,13 @@ class Model(THMCModel):
 
         super().set_input_data()
 
-
     def init(self):
         super().init()
-        if self.discretizer_name == 'mech_discretizer':
-            self.engine.set_discretizer(self.reservoir.discr)
-            self.engine.gravity = self.reservoir.discr.grav_vec.values
-
-
-        if self.reservoir.thermoporoelasticity:
+        if self.mode == 'thermoporoelastic':
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)
             vol_strain_rhs = np.array(self.reservoir.mesh.vol_strain_rhs, copy=False)
             vol_strain_trans[:] = 0.0
             vol_strain_rhs[:] = 0.0
-
-        Xref = np.array(self.engine.Xref, copy=False)
-        Xn_ref = np.array(self.engine.Xn_ref, copy=False)
-        Xref[:] = 0.0
-        Xn_ref[:] = 0.0
 
     def set_initial_conditions(self):
         if self.reservoir.thermoporoelasticity:
