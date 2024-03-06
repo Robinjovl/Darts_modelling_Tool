@@ -26,9 +26,9 @@ from darts.discretizer import Stiffness as disc_stiffness
 from darts.input.input_data import InputData
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, discretizer, mode, mesh_filename):
+    def __init__(self, timer, idata: InputData, discretizer, mode, mesh_filename, fluid_vars):
         thermoporoelasticity = True if mode == 'thermoporoelastic' else False
-        super().__init__(timer, discretizer, thermoporoelasticity)
+        super().__init__(timer, discretizer, thermoporoelasticity, fluid_vars)
         # define correspondence between the physical tags in msh file and mesh elements types
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,

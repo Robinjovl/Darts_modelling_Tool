@@ -159,7 +159,7 @@ class UnstructReservoirMech():
         else: # poroelasticity
             if discretizer == 'pm_discretizer':
                 self.u_var = self.u_bc_var = 0
-                self.p_var = self.u_bc_var = self.n_dim
+                self.p_var = self.p_bc_var = self.n_dim
                 self.z_var = None
                 self.t_var = None
                 self.cell_property = ['ux', 'uy', 'uz', 'p']

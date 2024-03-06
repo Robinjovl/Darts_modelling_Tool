@@ -24,9 +24,9 @@ from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.input.input_data import InputData
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, case='mandel', discretizer='mech_discretizer', mesh='rect'):
+    def __init__(self, timer, idata: InputData, fluid_vars, case='mandel', discretizer='mech_discretizer', mesh='rect'):
         thermoporoelasticity = True if case == 'bai' else False
-        super().__init__(timer, discretizer=discretizer, thermoporoelasticity=thermoporoelasticity)
+        super().__init__(timer, discretizer=discretizer, fluid_vars=fluid_vars, thermoporoelasticity=thermoporoelasticity)
         # define correspondence between the physical tags in msh file and mesh elements types
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,
@@ -454,7 +454,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_filename = self.get_mesh_filename(mesh, suffix='_bai')
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        self.set_uniform_initial_conditions(idata=idata)
+        p_init = 0.
+        t_init = 0.
+        u_init = [0., 0., 0.]
+
+        self.set_uniform_initial_conditions(idata=idata, u_init=u_init, p_init=p_init, t_init=t_init)
         self.F = -1.e-5
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
         self.set_bai_boundary_conditions(p_top = self.p_init, t_top = self.t_init + 50)

@@ -23,7 +23,7 @@ class Model(THMCModel):
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
-                                                 discretizer=self.discretizer_name, mesh=self.mesh)
+                                                 discretizer=self.discretizer_name, fluid_vars=self.physics.vars, mesh=self.mesh)
     def set_input_data(self):
         case = self.case
         if case == 'bai':

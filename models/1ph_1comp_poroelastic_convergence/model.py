@@ -22,7 +22,7 @@ class Model(THMCModel):
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
-                                                 mode=self.mode, mesh_filename=self.mesh_filename)
+                                                 fluid_vars=self.physics.vars, mode=self.mode, mesh_filename=self.mesh_filename)
 
     def set_input_data(self):
         if self.mode == 'thermoporoelastic':

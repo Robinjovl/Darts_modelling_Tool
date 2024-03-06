@@ -168,8 +168,8 @@ class Poroelasticity(PhysicsBase):
 
     def set_uniform_initial_conditions(self, mesh, uniform_pressure,
                                                     uniform_displacement: list,
-                                                    uniform_composition: list = [],
-                                                    uniform_temperature = 273.15):
+                                                    uniform_composition: list = None,
+                                                    uniform_temperature = None):
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
 

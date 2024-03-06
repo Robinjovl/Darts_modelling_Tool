@@ -25,7 +25,9 @@ class THMCModel(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self, timer):
-        self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer, thermoporoelasticity=self.idata.type_mech == 'thermal')
+        self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,
+                                               thermoporoelasticity=self.idata.type_mech == 'thermal',
+                                               fluid_vars=self.physics.vars)
 
     def set_solver_params(self):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
@@ -140,11 +142,10 @@ class THMCModel(DartsModel):
                                                         uniform_temperature=self.reservoir.t_init,
                                                         uniform_displacement=self.reservoir.u_init)
         else:
-            pass
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                    uniform_pressure=self.reservoir.p_init,
-                                                    uniform_composition=self.reservoir.z_init,
-                                                    uniform_displacement=self.reservoir.u_init)
+            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
+                                                        uniform_pressure=self.reservoir.p_init,
+                                                        uniform_composition=self.reservoir.z_init,
+                                                        uniform_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):

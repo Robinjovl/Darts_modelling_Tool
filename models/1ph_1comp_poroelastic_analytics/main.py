@@ -82,26 +82,24 @@ def run_timestep_python(m, dt, t):
     self = m
     max_newt = self.params.max_i_newton
     self.e.n_linear_last_dt = 0
-    well_tolerance_coefficient = 1e2
     self.timer.node['simulation'].start()
     for i in range(max_newt + 1):
         self.e.run_single_newton_iteration(dt)
         res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
-        self.e.dev_p = res[0]
-        self.e.dev_u = res[1]
-        if len(res) > 2 and res[2] == res[2]:       self.e.dev_g = res[2]
-        else:                                       self.e.dev_g = 0.0
 
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_g ** 2)
-        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
-        self.e.well_residual_last_dt = self.e.calc_well_residual()
-        print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+        if m.reservoir.thermoporoelasticity:
+            self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_e ** 2)
+            dev_e = self.e.dev_e
+            print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
+                        're = ' + str(self.e.dev_e) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+        else:
+            self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2)
+            dev_e = 0.0
+            print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + 'CFL = ' + str(self.e.CFL_max))
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and self.e.dev_g < self.params.tolerance_newton
-           and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
+        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton)
               or self.e.n_newton_last_dt == self.params.max_i_newton):
             if (i > 0):  # min_i_newton
                 if i < max_newt:
