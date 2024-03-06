@@ -605,7 +605,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   value_t CFL_max_local = 0;
   value_t avg_density, avg_weigthed_density, avg_weigthed_density_n, eff_density;
   uint8_t* var_map;
-  const value_t rho_s = 2650.0;
+  value_t rho_s;
 
   int connected_with_well;
 
@@ -628,6 +628,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 	  connected_with_well = 0;
 	  biot_mult = 0.0;
+	  rho_s = op_vals_arr[i * N_OPS + ROCK_DENS]; // rock density
 	  eff_density = 0.0;
 	  for (p = 0; p < NP; p++)
 	  {

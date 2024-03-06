@@ -71,7 +71,7 @@ public:
   const static uint8_t N_STATE = NC_ + THERMAL;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 /*weight*/ + 1;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -89,6 +89,7 @@ public:
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
   const static uint8_t SAT_OP = UPSAT_OP;
+  const static uint8_t ROCK_DENS = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + 1;
   // mapping 
   // from transmissibility order of unknowns 
   // to the order of unknowns in simulation
