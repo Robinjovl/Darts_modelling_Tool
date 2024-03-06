@@ -1,6 +1,6 @@
 import numpy as np
 from darts.physics.properties.flash import Flash
-from darts.physics.properties.basic import CapillaryPressure, Diffusion, RockCompactionEvaluator, RockEnergyEvaluator
+from darts.physics.properties.basic import CapillaryPressure, Diffusion, RockCompactionEvaluator, RockEnergyEvaluator, ConstFunc
 
 
 class PropertyContainer:
@@ -45,6 +45,7 @@ class PropertyContainer:
         self.rel_well_perm_ev = []
         self.rock_energy_ev = RockEnergyEvaluator()
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
+        self.rock_density_ev = ConstFunc(2650.0)
         self.capillary_pressure_ev = CapillaryPressure(self.nph)
         self.diffusion_ev = Diffusion(diff_coeff=diff_coef)
         self.kinetic_rate_ev = {}

@@ -108,6 +108,7 @@ class Model(THMCModel):
 
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
+        property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
         self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                       min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,

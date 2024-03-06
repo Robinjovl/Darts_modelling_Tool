@@ -71,6 +71,7 @@ class THMCModel(DartsModel):
         property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
         # rock compressibility is treated inside engine
         property_container.rock_compr_ev = ConstFunc(1.0)
+        property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
         if self.idata.type_mech == 'thermoporoelasticity':
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])

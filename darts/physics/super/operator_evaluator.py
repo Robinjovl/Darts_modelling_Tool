@@ -110,6 +110,42 @@ class ReservoirOperators(operator_set_evaluator_iface):
         print("ROCK ENERGY", values[(ne + ne * nph + nph + nph * ne + ne):(ne + ne * nph + nph + nph * ne + ne + 3)])
         return
 
+class GeomechanicsReservoirOperators(ReservoirOperators):
+    def __init__(self, property_container, thermal=0):
+        super().__init__(property_container, thermal)  # Initialize base-class
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+        # Composition vector and pressure from state:
+        super().evaluate(state, values)
+
+        nc = self.property.nc
+        nph = self.property.nph
+        nm = self.property.nm
+        ne = nc + self.thermal
+
+        #               al + bt        + gm + dlt + chi     + rock_temp por    + gr/cap  + por
+        rock_density = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
+        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
+        values[rock_density] = self.property.rock_density_ev.evaluate()
+
+        return 0
+
+    def print_operators(self, state, values):
+        """Method for printing operators, grouped"""
+        nc = self.property.nc
+        nph = self.property.nph
+        ne = nc + self.thermal
+        super().print_operators(state, values)
+        rock_density = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
+        print("ROCK DENSITY", values[rock_density])
+        return
+
 class WellOperators(operator_set_evaluator_iface):
     def __init__(self, property_container, thermal=0):
         super().__init__()  # Initialize base-class
@@ -249,7 +285,43 @@ class ReservoirThermalOperators(ReservoirOperators):
 
         return 0
 
-class GeomechanicsReservoirOperators(ReservoirOperators):
+class GeomechanicsReservoirThermalOperators(ReservoirThermalOperators):
+    def __init__(self, property_container, thermal=1):
+        super().__init__(property_container, thermal)  # Initialize base-class
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for the element based physics
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+        # Composition vector and pressure from state:
+        super().evaluate(state, values)
+
+        nc = self.property.nc
+        nph = self.property.nph
+        nm = self.property.nm
+        ne = nc + self.thermal
+
+        #               al + bt        + gm + dlt + chi     + rock_temp por    + gr/cap  + por
+        rock_density = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
+        # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
+        values[rock_density] = self.property.rock_density_ev.evaluate()
+
+        return 0
+
+    def print_operators(self, state, values):
+        """Method for printing operators, grouped"""
+        nc = self.property.nc
+        nph = self.property.nph
+        ne = nc + self.thermal
+        super().print_operators(state, values)
+        rock_density = ne + ne * nph + nph + ne + ne * nph + 3 + 2 * nph + 1
+        print("ROCK DENSITY", values[rock_density])
+        return
+
+class SinglePhaseGeomechanicsReservoirOperators(ReservoirOperators):
     def __init__(self, property_container, thermal=0):
         super().__init__(property_container, thermal=0)
 
@@ -267,7 +339,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
         return 0
 
-class GeomechanicsWellOperators(WellOperators):
+class SinglePhaseGeomechanicsWellOperators(WellOperators):
     def __init__(self, property_container, thermal=0):
         super().__init__(property_container, thermal)  # Initialize base-class
 
