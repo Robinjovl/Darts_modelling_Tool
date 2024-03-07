@@ -26,6 +26,7 @@ class bound_cond:
         # flow
         self.NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
         self.AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
+        self.FLOW = lambda flow: {'a': 0.0, 'b': 1.0, 'r': flow} #TODO normed to area ? units?
 
         # mechanics
         self.ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
@@ -529,11 +530,32 @@ class UnstructReservoirMech():
                 self.porosity[cell_id] = poro
                 self.hcap[cell_id] = hcap
 
-    def set_uniform_initial_conditions(self, idata: InputData, u_init=[0., 0., 0.], p_init=0., t_init=None, z_init=None):  #TODO: check units
-        self.u_init = u_init  # initial displacements U_x, U_y, U_z [m.]
-        self.p_init = p_init  # initial pressure [bars]
-        self.z_init = z_init  # initial composition
-        self.t_init = t_init  # initial temperature [degrees]
+    def set_uniform_initial_conditions(self, idata: InputData):
+        self.u_init = idata.initial.initial_displacements
+        self.p_init = idata.initial.initial_pressure
+        self.z_init = idata.initial.initial_composition
+        if self.thermoporoelasticity:
+            self.t_init = idata.initial.initial_temperature
+        else:
+            self.t_init = None
+
+    def set_initial_conditions_by_gradients(self):
+        mesh = self.reservoir.mesh
+        depth = np.array(mesh.depth, copy=False)
+
+        # set initial pressure
+        pressure = np.array(mesh.pressure, copy=False)
+        pressure[:] = (depth - self.idata.initial.reference_depth_for_pressure) * self.idata.initial.pressure_gradient + \
+                      self.idata.initial.pressure_initial
+
+        temperature = np.array(mesh.temperature, copy=False)
+        temperature[:] = (depth - self.idata.initial.reference_depth_for_temperature) * self.idata.initial.temperature_gradient + \
+                         + self.idata.initial.temperature_initial
+
+        #print('depth:      ', depth.min(), '-', depth.max(), 'm.')
+        #print('pressure:   ', pressure.min(), '-', pressure.max(), 'bars.')
+        #print('temperature:', temperature.min()-273.15, '-', temperature.max()-273.15, 'C.')
+
 
     def init_reservoir_main(self, idata:InputData):
         # allocate arrays in C++ (conn_mesh)

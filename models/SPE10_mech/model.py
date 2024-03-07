@@ -60,6 +60,12 @@ class Model(THMCModel):
         self.idata.fluid.viscosity = 1.0
         self.idata.fluid.density = 1014.0
 
+        self.idata.initial.initial_temperature = 273.15 + 50  # [K]
+        self.idata.initial.initial_pressure = 1000  # [bar]
+        self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+        if self.physics_type == 'dead_oil':
+            self.idata.initial.initial_composition = [0.67]
+
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = 0.0

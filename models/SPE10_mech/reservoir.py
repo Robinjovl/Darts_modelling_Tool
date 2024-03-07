@@ -27,11 +27,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_filename = model_folder + '/spe10.msh'
         self.mesh_data = meshio.read(self.mesh_filename)
 
-        p_init = 100
-        t_init = 273.15 + 50
-        z_init = [0.67] * (self.n_state - 1 - self.thermoporoelasticity)
-
-        self.set_uniform_initial_conditions(idata=idata, p_init=p_init, z_init=z_init, t_init=t_init)
+        self.set_uniform_initial_conditions(idata=idata)
         # self.F = -100.0  # bar * m
         self.set_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
