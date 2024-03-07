@@ -1,6 +1,6 @@
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
-from reservoir import UnstructReservoirCustom
+from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 import numpy as np
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
