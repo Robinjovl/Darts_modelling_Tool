@@ -50,9 +50,11 @@ class InitialSolution():
             self.initial_temperature = None  # [K]
         elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
-            self.temperature_gradient = None  # [C/m]
+            self.temperature_gradient = None  # [K/m]
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/m]
+        self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
+        self.initial_composition = None
 
 class OBLParams():
     '''
@@ -85,7 +87,7 @@ class InputData():
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
         self.obl = OBLParams()
-        #self.initial = InitialSolution() #TODO
+        self.initial = InitialSolution()
         self.other = OtherProps()
         
     def check(self):
@@ -95,10 +97,11 @@ class InputData():
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
+            if k == 'initial':  # do not check initial currently #TODO
+                continue
             for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
-
                     # either perm or permx+permy+permx should be specified
                     if k2 == 'permx' or k2 == 'permy' or k2 == 'permz':
                         if sub_obj.__dict__['perm'] is not None:
@@ -108,10 +111,10 @@ class InputData():
                                 sub_obj.__dict__['permy'] is not None and \
                                 sub_obj.__dict__['permz'] is not None:
                             continue
+                    # if stiffness specified, then allow E and nu non-specified
                     if k2 == 'E' or k2 == 'nu':
                         if sub_obj.__dict__['stiffness'] is not None:
                             continue
-
                     print('Error in InputData check: property', k, k2, 'is not initialized!')
                     assert False
                     

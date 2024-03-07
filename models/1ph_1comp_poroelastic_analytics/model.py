@@ -111,6 +111,11 @@ class Model(THMCModel):
             self.idata.other.c = TC.darcy_constant * self.idata.rock.permx / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
             assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
 
+        self.idata.initial.initial_temperature = 0  # [K]
+        self.idata.initial.initial_pressure = 0  # [bar]
+        self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+        self.idata.initial.initial_composition = None  # not used in this test
+
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = -5.
@@ -119,7 +124,8 @@ class Model(THMCModel):
         self.idata.obl.max_t = 100.
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
-        super().set_input_data()
+
+        super().set_input_data()  # check
 
 
 
