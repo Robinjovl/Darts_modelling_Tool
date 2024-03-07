@@ -142,7 +142,7 @@ class InputData():
             if not hasattr(sub_obj, '__dict__'):
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
-                if k2 == 'compressibility':
+                if k2 == 'compressibility' or (k == 'rock' and k2 == 'density'):
                     continue
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
