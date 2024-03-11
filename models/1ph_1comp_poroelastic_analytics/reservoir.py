@@ -71,7 +71,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         '''
         set self.tD and self.pD, they used to get dimensionless solution to compare with analytic solution
         '''
-        MR = 0.9869 * 1.E-15 * idata.rock.permx / idata.fluid.viscosity / 1.E-3
+        MR = 0.9869 * 1.E-15 * idata.rock.perm / idata.fluid.viscosity / 1.E-3
         K_dr = idata.rock.E / (3 * (1 - 2 * idata.rock.nu))
         self.K_nu = (K_dr + (4 / 3) * self.mu)
         Cv = 1.e+5 * MR * self.M * self.K_nu / (self.K_nu + idata.rock.biot ** 2 * self.M)
@@ -108,20 +108,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
 
-    def set_props_tags(self, idata: InputData, matrix_tags: list):
-        self.props = {}
-        for i, m in enumerate(matrix_tags):
-            kd = get_bulk_modulus(E=idata.rock.E[i], nu=idata.rock.nu[i])
-            M = get_biot_modulus(biot=idata.rock.biot[i], poro0=idata.rock.porosity[i], kd=kd, cf=idata.rock.compressibility)
-            self.props[m] = {'h': idata.other.h[i], 'E': idata.rock.E[i], 'nu': idata.rock.nu[i], 'b': idata.rock.biot[i],
-                             'poro': idata.rock.porosity[i], 'perm': idata.rock.permx[i], 'kd': kd,
-                             'M': M, 'm': idata.other.m[i], 'skempton': idata.other.skempton[i],
-                             'c': idata.other.c[i], 'hcap': idata.rock.heat_capacity[i], 'stiffness': idata.rock.stiffness[i]}
-
     def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh)
-        self.unstr_discr = UnstructDiscretizer(permx=idata.rock.permx, permy=idata.rock.permy, permz=idata.rock.permz, frac_aper=0,
+        self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
@@ -238,7 +228,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def terzaghi_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
         self.mesh_filename = self.get_mesh_filename(mesh)
-        self.unstr_discr = UnstructDiscretizer(permx=idata.rock.permx, permy=idata.rock.permy, permz=idata.rock.permz, frac_aper=0,
+        self.unstr_discr = UnstructDiscretizer(permx=1, permy=1, permz=1, frac_aper=0,
                                                mesh_file=self.mesh_filename)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
@@ -332,34 +322,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_gravity(gravity_on=False)
         self.init_faces_centers_pm_discretizer()
         self.init_heterogeneous_properties()
-
-        self.bc_rhs_ref = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs = np.zeros(self.n_vars * self.n_bounds)
-        self.bc_rhs_prev = np.zeros(self.n_vars * self.n_bounds)
-        self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
-        self.unstr_discr.p_ref = np.zeros(self.n_matrix)
-        self.unstr_discr.p_ref[:] = self.p_init
-        for bound_id in range(self.n_bounds):
-            n = self.get_normal_to_bound_face(bound_id)
-            P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.bound_cell_info_dict[bound_id].prop_id]['flow']
-            #if flow['a'] == 1.0:
-            #    c = self.unstr_discr.bound_cell_info_dict[bound_id].centroid
-            #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
-            #    else: bc.extend([0.0, 1.0, 0.0])
-            #else:
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
-            self.pm.bc.append(matrix(bc, len(bc), 1))
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
-            self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
-            self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
-        #self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc
-        self.unstr_discr.f = np.zeros(self.n_vars * self.n_matrix)
+        self.init_arrays_boundary_condition()
+        self.init_bc_rhs()
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
@@ -481,7 +445,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         nu_u = (3 * idata.rock.nu + idata.rock.biot * skempton * (1 - 2 * idata.rock.nu)) / (3 - idata.rock.biot * skempton * (1 - 2 * idata.rock.nu))
         mu_s = self.mu
         mu_f = idata.fluid.viscosity
-        k_s = idata.rock.permx / idata.fluid.viscosity
+        k_s = idata.rock.perm / idata.fluid.viscosity
         c_f = TC.darcy_constant * (2 * k_s * (skempton ** 2) * mu_s * (1 - nu_s) * (1 + nu_u) ** 2) / ( 9 * mu_f * (1 - nu_u) * (nu_u - nu_s) )
 
         cy0 = (-F * (1 - nu_s)) / (2 * mu_s * self.a)
@@ -737,8 +701,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Retrieve physical data
         h1 = self.a * self.props[self.m1_tag]['h']
         h2 = self.a * self.props[self.m2_tag]['h']
-        b1 = self.props[self.m1_tag]['b']
-        b2 = self.props[self.m2_tag]['b']
+        b1 = self.props[self.m1_tag]['biot']
+        b2 = self.props[self.m2_tag]['biot']
         m1 = self.props[self.m1_tag]['m']
         m2 = self.props[self.m2_tag]['m']
         c2 = self.props[self.m2_tag]['c']

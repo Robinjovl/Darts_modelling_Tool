@@ -30,6 +30,16 @@ class RockProps():
         if type_mech == 'thermoporoelasticity': # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
 
+    def get_permxyz(self):
+        if self.perm is None:
+            return self.permx, self.permy, self.permz
+        else:
+            if np.isscalar(self.perm):
+                return self.perm, self.perm, self.perm
+            else: # tensor
+                return self.perm
+                
+
 class FluidProps():
     '''
     Fluid properties

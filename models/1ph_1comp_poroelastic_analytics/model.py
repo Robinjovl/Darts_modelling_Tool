@@ -40,7 +40,7 @@ class Model(THMCModel):
 
         if case == 'mandel':
             self.idata.rock.porosity = 0.375
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.perm = 10.0 / 9.81
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
             self.idata.rock.biot = 0.9
@@ -51,7 +51,7 @@ class Model(THMCModel):
             self.idata.fluid.viscosity = 1.0
         elif case == 'terzaghi':
             self.idata.rock.porosity = 0.375
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 10.0 / 9.81
+            self.idata.rock.perm = 10.0 / 9.81
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.nu = 0.25
             self.idata.rock.biot = 0.9
@@ -65,7 +65,7 @@ class Model(THMCModel):
             poro_1 = 0.15; poro_2 = 0.001
             nu_1 = 0.15
             self.idata.rock.porosity = np.array([poro_1, poro_2])
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 1.
+            self.idata.rock.perm = 1.
             self.idata.rock.E = 10000  # in bars
             self.idata.rock.biot = np.array([biot_1, biot_2])
             self.idata.fluid.compressibility = 1.e-10
@@ -80,10 +80,13 @@ class Model(THMCModel):
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
+            self.idata.other.kd = get_bulk_modulus(self.idata.rock.E, self.idata.rock.nu)
+            self.idata.other.M = get_biot_modulus(biot=self.idata.rock.biot, poro0=self.idata.rock.porosity,
+                                                  kd=self.idata.other.kd, cf=self.idata.rock.compressibility)
             self.idata.make_prop_arrays()
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 4.e+6 / 0.9869
+            self.idata.rock.perm = 4.e+6 / 0.9869
             self.idata.rock.E = 0.06  # in bars
             self.idata.rock.nu = 0.4
             self.idata.rock.biot = 1.0
@@ -108,7 +111,7 @@ class Model(THMCModel):
             # some numbers for analytics
             self.idata.other.m = m = (1 + nu) * (1 - 2 * nu) / E / (1 - nu)
             self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)
-            self.idata.other.c = TC.darcy_constant * self.idata.rock.permx / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
+            self.idata.other.c = TC.darcy_constant * self.idata.rock.perm / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
             assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
 
         self.idata.initial.initial_temperature = 0  # [K]
