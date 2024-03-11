@@ -427,7 +427,7 @@ class UnstructReservoirMech():
             for key in self.boundary_conditions.keys():
                 self.boundary_conditions[key]['cells'] = []
 
-    def init_gravity(self, gravity_on: bool =False, gravity_coeff: float=None, gravity_direction: str ='z'):
+    def init_gravity(self, gravity_on: bool =False, gravity_coeff: float=None, gravity_direction: str ='z+'):
         '''
         sets gravity vector in discretizer
         '''
@@ -437,14 +437,20 @@ class UnstructReservoirMech():
                 g_coeff = gravitational_constant / 1e5  # convert units
             else:
                 g_coeff = gravity_coeff
+
+            if '-' in gravity_direction: #TODO check/test
+                g_coeff = -g_coeff
         else:
             g_coeff = 0.
-        if gravity_direction == 'x':
+
+        if gravity_direction in ['x+', 'x-']:
             grav_vec = [g_coeff, 0.0, 0.0]
-        elif gravity_direction == 'y':
+        elif gravity_direction in ['y+', 'y-']:
             grav_vec = [0.0, g_coeff, 0.0]
-        elif gravity_direction == 'z':
+        elif gravity_direction in ['z+', 'z-']:
             grav_vec = [0.0, 0.0, g_coeff]
+        else:
+            raise('Unknown gravity_direction', gravity_direction)
         grav_vec = matrix(grav_vec, 1, 3)  # n_dims=3
         if self.discretizer_name == 'mech_discretizer':
             self.discr.grav_vec = grav_vec
@@ -471,16 +477,35 @@ class UnstructReservoirMech():
             for cell_id in range(self.unstr_discr.mat_cells_tot):
                 cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 self.pm.cell_centers.append(matrix(list(cell.centroid), cell.centroid.size, 1))
-                if idata.rock.perm is None:
-                    self.pm.perms.append(engine_matrix33(idata.rock.permx, idata.rock.permy, idata.rock.permz))
+                perm = idata.rock.get_permxyz()
+                if len(perm) == 3: # permx, permy, permz
+                    self.pm.perms.append(engine_matrix33(perm[0], perm[1], perm[2]))
                 else:
-                    self.pm.perms.append(engine_matrix33(idata.rock.perm))
+                    self.pm.perms.append(engine_matrix33(perm)) # tensor
                 self.pm.biots.append(engine_matrix33(idata.rock.biot))
                 self.pm.stfs.append(engine_stiffness(np.array(idata.rock.stiffness).flatten()))
         if self.thermoporoelasticity:
             self.hcap = idata.rock.heat_capacity
         self.porosity = idata.rock.porosity
         self.cs = idata.rock.compressibility
+
+    def set_props_tags(self, idata: InputData, matrix_tags: list):
+        # loop over idata.rock. objects and fill self.props, for example:
+        # if idata.rock.poro=[0.2, 0.1], matrix_tags=[90,91]  =>  props = { 90: {'poro': 0.2}, 91: {'poro': 0.1}}
+        self.props = {}
+        for i, m in enumerate(matrix_tags):
+            self.props[m] = dict()
+            for k1 in idata.__dict__.keys():
+                if k1 not in ['rock', 'other']:
+                    continue
+                sub_obj = idata.__getattribute__(k1)
+                for prop in sub_obj.__dict__.keys():
+                    val = sub_obj.__getattribute__(prop)
+                    if val is not None:
+                        if np.isscalar(val):
+                            self.props[m][prop] = val
+                        else:
+                            self.props[m][prop] = val[i]
 
     def init_heterogeneous_properties(self):
         '''
@@ -496,19 +521,28 @@ class UnstructReservoirMech():
                 tag = self.tags[cell_id]
                 E = self.props[tag]['E']
                 nu = self.props[tag]['nu']
-                biot = self.props[tag]['b']
-                k = self.props[tag]['perm']
+                biot = self.props[tag]['biot']
+                if 'perm' in self.props[tag].keys():
+                    kx = ky = kz = self.props[tag]['perm']
+                else:
+                    kx, ky, kz = self.props[tag]['permx'], self.props[tag]['permy'], self.props[tag]['permz']
                 kd = self.props[tag]['kd']
-                poro = self.props[tag]['poro']
-                hcap = self.props[tag]['hcap']
+                poro = self.props[tag]['porosity']
+                if self.thermoporoelasticity:
+                    hcap = self.props[tag]['heat_capacity']
+                    rcond = self.props[tag]['conductivity']
+                    th_expn = self.props[tag]['th_expn']
                 lam, mu = get_lambda_mu(E, nu)
 
-                self.discr.perms.append(disc_matrix33(k, k, k))
+                self.discr.perms.append(disc_matrix33(kx, ky, kz))
                 self.discr.biots.append(disc_matrix33(biot))
                 self.discr.stfs.append(disc_stiffness(lam, mu))
+                if self.thermoporoelasticity:
+                    self.discr.heat_conductions.append(disc_matrix33(rcond))
+                    self.discr.thermal_expansions.append(disc_matrix33(th_expn))
+                    self.hcap[cell_id] = hcap
                 self.porosity[cell_id] = poro
                 self.cs[cell_id] = get_rock_compressibility(kd=kd, biot=biot, poro0=poro)
-                self.hcap[cell_id] = hcap
         elif self.discretizer_name == 'pm_discretizer':
             self.cs = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
             self.porosity = np.zeros(self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)
@@ -517,18 +551,19 @@ class UnstructReservoirMech():
                 cell = self.unstr_discr.mat_cell_info_dict[cell_id]
                 E = self.props[cell.prop_id]['E']
                 nu = self.props[cell.prop_id]['nu']
-                biot = self.props[cell.prop_id]['b']
-                k = self.props[cell.prop_id]['perm']
+                biot = self.props[cell.prop_id]['biot']
+                if 'perm' in self.props[cell.prop_id].keys():
+                    kx = ky = kz = self.props[cell.prop_id]['perm']
+                else:
+                    kx, ky, kz = self.props[cell.prop_id]['permx'], self.props[cell.prop_id]['permy'], self.props[cell.prop_id]['permz']
                 kd = self.props[cell.prop_id]['kd']
-                poro = self.props[cell.prop_id]['poro']
-                hcap = self.props[cell.prop_id]['hcap']
+                poro = self.props[cell.prop_id]['porosity']
                 lam, mu = get_lambda_mu(E, nu)
                 self.pm.stfs.append(engine_stiffness(lam, mu))
-                self.pm.perms.append(engine_matrix33(k, k, k))
+                self.pm.perms.append(engine_matrix33(kx, ky, kz))
                 self.pm.biots.append(engine_matrix33(biot))
                 self.cs[cell_id] = get_rock_compressibility(kd=kd, biot=biot, poro0=poro)
                 self.porosity[cell_id] = poro
-                self.hcap[cell_id] = hcap
 
     def set_uniform_initial_conditions(self, idata: InputData):
         self.u_init = idata.initial.initial_displacements
