@@ -118,8 +118,6 @@ def run(model_folder, physics_type):
     m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
 
     # intialization:
-    # 1. With flow: find_equilibrium=True and zero_fluid_transmissibilities=True
-    # 2. Without flow: zero_fluid_transmissibilities=False
     m.reservoir.set_equilibrium(zero_fluid_transmissibilities=True)
     m.engine.find_equilibrium = True
     dt_init = 1.e+8

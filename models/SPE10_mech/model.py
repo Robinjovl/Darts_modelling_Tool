@@ -50,9 +50,10 @@ class Model(THMCModel):
         # read properties
         if self.uniform_props:
             porosity = 0.375
-            permeability = 100.0
-            E = 1  # in tens of GPa
+            permeability = 100.0 # [mD]
+            E = 1 # [10 GPa]
             nu = 0.2
+            p_init = 1000 # [bar]
         else:
             porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
                                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
@@ -61,6 +62,8 @@ class Model(THMCModel):
             E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
                                     reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
             nu = 0.2
+            p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
+                                    reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
@@ -84,7 +87,7 @@ class Model(THMCModel):
         self.idata.fluid.density = 1014.0
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
-        self.idata.initial.initial_pressure = 1000  # [bar]
+        self.idata.initial.initial_pressure = p_init  # [bar]
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         if self.physics_type == 'dead_oil':
             self.idata.initial.initial_composition = [0.67]
@@ -148,19 +151,20 @@ class Model(THMCModel):
         self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
         return
 
-    # def set_initial_conditions(self):
-    #     self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=self.p_init,
-    #                                                   uniform_composition=self.ini, uniform_temp=self.init_temp)
-    #
-    # def set_boundary_conditions(self):
-    #     for i, w in enumerate(self.reservoir.wells):
-    #         if w.name[:3] == 'PRD':
-    #             w.control = self.physics.new_bhp_prod(self.p_init - 10)
-    #         elif w.name[:3] == 'INJ':
-    #             # w.control = self.physics.new_rate_inj(200, self.inj, 1)
-    #             w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-    #             # w.control = self.physics.new_rate_inj(5, self.inj, 0)
-    #             # w.control = self.physics.new_bhp_inj(450, self.inj)
+    def set_initial_conditions(self):
+        if self.reservoir.thermoporoelasticity:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                           initial_pressure=self.reservoir.p_init,
+                                                           initial_composition=self.reservoir.z_init,
+                                                           initial_temperature=self.reservoir.t_init,
+                                                           initial_displacement=[0.0, 0.0, 0.0])
+        else:
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                           initial_pressure=self.reservoir.p_init,
+                                                           initial_composition=self.reservoir.z_init,
+                                                           initial_displacement=self.reservoir.u_init)
+        return 0
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):

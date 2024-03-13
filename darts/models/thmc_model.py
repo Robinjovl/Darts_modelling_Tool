@@ -29,6 +29,7 @@ class THMCModel(DartsModel):
         self.reservoir.write_to_vtk(self.output_directory, 0, self.engine)
         self.reservoir.eps_vol_ref = np.array(self.reservoir.mesh.ref_eps_vol, copy=False)
         self.reservoir.eps_vol_ref[:] = self.engine.eps_vol[:]
+        self.engine.t = 0.0
 
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,

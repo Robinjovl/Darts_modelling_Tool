@@ -22,7 +22,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
-        self.set_pzt_bounds(p=self.p_init, z=self.z_init, t=self.t_init)
+        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=self.t_init)
         self.wells = []
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
@@ -30,7 +30,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_data = meshio.read(self.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
-        # self.F = -100.0  # bar * m
         self.set_boundary_conditions()
         self.init_mech_discretizer(idata=idata)
         self.grav = -9.80665e-5
