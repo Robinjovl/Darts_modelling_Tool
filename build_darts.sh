@@ -8,7 +8,7 @@ config=""  # if config=="debug" build debug
 echo -e "\n- Update submodules: START\n"
 rm -rf thirdparty/eigen
 git submodule sync --recursive
-git submodule update --recursive --remote --init
+git submodule update --recursive --init
 
 if [ $# -gt 0 ] # use the first cmd argument if it is passed
 then

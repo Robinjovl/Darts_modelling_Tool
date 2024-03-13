@@ -1,5 +1,5 @@
 rem update submodules
-git submodule update --recursive --remote --init || goto :error
+git submodule update --recursive --init || goto :error
 echo "build_darts arg:" "%1" "%2"
 rem config - for discretizer and solvers
 set config=Release
