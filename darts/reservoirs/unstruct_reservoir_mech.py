@@ -169,7 +169,7 @@ class UnstructReservoirMech():
         self.n_vars = self.n_state + self.n_dim
         self.n_bc_vars = 1 + thermoporoelasticity + self.n_dim
 
-    def set_equilibrium(self, zero_fluid_transmissibilities=False):
+    def set_equilibrium(self, zero_fluid_transmissibilities: bool=False):
         # store original transmissibilities
         self.darcy_tran = np.array(self.mesh.darcy_tran, copy=True)
         self.darcy_rhs = np.array(self.mesh.darcy_rhs, copy=True)
@@ -188,7 +188,7 @@ class UnstructReservoirMech():
             darcy_tran[:] = 0.0
             darcy_rhs[:] = 0.0
 
-    def turn_off_equilibrium(self, zero_fluid_transmissibilities=False):
+    def turn_off_equilibrium(self, zero_fluid_transmissibilities: bool=False):
         vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
         vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
         vol_strain_tran[:] = self.vol_strain_tran
@@ -309,7 +309,6 @@ class UnstructReservoirMech():
             self.bc_ref[:] = self.bc_rhs_ref
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
-
 
     def set_pzt_bounds(self, p, z=None, t=None):
         '''
@@ -458,7 +457,7 @@ class UnstructReservoirMech():
             for key in self.boundary_conditions.keys():
                 self.boundary_conditions[key]['cells'] = []
 
-    def init_gravity(self, gravity_on: bool =False, gravity_coeff: float=None, gravity_direction: str ='z+'):
+    def init_gravity(self, gravity_on: bool=False, gravity_coeff: float=None, gravity_direction: str ='z+'):
         '''
         sets gravity vector in discretizer
         '''
@@ -622,7 +621,6 @@ class UnstructReservoirMech():
         #print('pressure:   ', pressure.min(), '-', pressure.max(), 'bars.')
         #print('temperature:', temperature.min()-273.15, '-', temperature.max()-273.15, 'C.')
 
-
     def init_reservoir_main(self, idata:InputData):
         # allocate arrays in C++ (conn_mesh)
         if self.discretizer_name == 'mech_discretizer':
@@ -650,7 +648,6 @@ class UnstructReservoirMech():
             self.init_pm_discretizer()
         self.init_arrays(idata)
         self.wells = []
-
 
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))

@@ -1,7 +1,9 @@
 import numpy as np
 import os
 import meshio
-from darts.discretizer import elem_type
+from darts.discretizer import elem_type, elem_loc
+from darts.discretizer import matrix33 as disc_matrix33
+from darts.discretizer import Stiffness as disc_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.input.input_data import InputData
@@ -9,7 +11,7 @@ from darts.engines import timer_node, ms_well_vector
 import copy
 
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p']):
+    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False):
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         super().__init__(timer, discretizer='mech_discretizer', thermoporoelasticity=False, fluid_vars=fluid_vars)
         # self.n_vars = n_vars
@@ -18,12 +20,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     bnd_ym_tag=993, bnd_yp_tag=994,
                     bnd_zm_tag=995, bnd_zp_tag=996)
 
-        self.spe10(model_folder=model_folder, idata=idata)
+        self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
         self.set_pzt_bounds(p=self.p_init, z=self.z_init, t=self.t_init)
         self.wells = []
 
-    def spe10(self, idata: InputData, model_folder):
+    def spe10(self, idata: InputData, model_folder, uniform_props=False):
         self.mesh_filename = model_folder + '/spe10.msh'
         self.mesh_data = meshio.read(self.mesh_filename)
 
@@ -33,7 +35,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_mech_discretizer(idata=idata)
         self.grav = -9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
-        self.init_uniform_properties(idata=idata)
+
+        if uniform_props:
+            self.init_uniform_properties(idata=idata)
+        else:
+            self.init_heterogeneous_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
 
@@ -55,6 +61,25 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
+
+    def init_heterogeneous_properties(self, idata: InputData):
+        '''
+        set matrix properties using InputData
+        :return:
+        '''
+        self.porosity = idata.rock.porosity
+        lam, mu = get_lambda_mu(E=idata.rock.E, nu=idata.rock.nu)
+        self.cs = idata.rock.compressibility
+
+        self.hcap = np.zeros(self.n_matrix + self.n_fracs)
+        for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
+                                          self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
+            permx = idata.rock.permx[3 * cell_id]
+            permy = idata.rock.permy[3 * cell_id + 1]
+            permz = idata.rock.permz[3 * cell_id + 2]
+            self.discr.perms.append(disc_matrix33(permx, permy, permz))
+            self.discr.biots.append(disc_matrix33(idata.rock.biot))
+            self.discr.stfs.append(disc_stiffness(lam[cell_id], mu[cell_id]))
 
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
@@ -102,9 +127,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
                 if ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []
+                    if 'E' not in cell_data: cell_data['E'] = []
                     cell_data['perm'].append(np.zeros((len(cell_ids), 9), dtype=np.float64))
+                    cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
+                        stf = np.array(self.discr.stfs[cell_id].values)
+                        la = stf[1]
+                        mu = (stf[0] - la) / 2
+                        E = mu * (3 * la + 2 * mu) / (la + mu)
+                        cell_data['E'][-1][i] = E
 
         # Store solution for each time-step:
         mesh = meshio.Mesh(

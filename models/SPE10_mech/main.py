@@ -117,16 +117,16 @@ def run(model_folder, physics_type):
     # Properties for writing to vtk format:
     m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
 
-    # intialization: may use find_equilibrium and zero_fluid_transmissibilities=True
-    m.reservoir.set_equilibrium(zero_fluid_transmissibilities=False)
-    # m.engine.find_equilibrium = True
+    # intialization:
+    # 1. With flow: find_equilibrium=True and zero_fluid_transmissibilities=True
+    # 2. Without flow: zero_fluid_transmissibilities=False
+    m.reservoir.set_equilibrium(zero_fluid_transmissibilities=True)
+    m.engine.find_equilibrium = True
     dt_init = 1.e+8
     m.params.first_ts = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit()
-    # m.engine.find_equilibrium = False
-    m.reservoir.turn_off_equilibrium(zero_fluid_transmissibilities=False)
-    m.engine.t = 0.0
+    m.engine.find_equilibrium = False
 
     size_report_step = 100
     max_dt = size_report_step

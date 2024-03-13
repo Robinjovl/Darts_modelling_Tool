@@ -2,6 +2,7 @@ from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.engines import value_vector, sim_params
+from darts.tools.keyword_file_tools import load_single_keyword
 
 import numpy as np
 
@@ -16,8 +17,9 @@ from darts.input.input_data import InputData
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil'):
+    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False):
         self.model_folder = model_folder
+        self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
 
@@ -36,19 +38,40 @@ class Model(THMCModel):
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
-                                                 idata=self.idata, model_folder=self.model_folder)
+                                                 idata=self.idata, model_folder=self.model_folder,
+                                                 uniform_props=self.uniform_props)
 
     def set_input_data(self):
+        # figure out nx, ny, nz
+        self.nx, self.ny, self.nz = int(self.model_folder.split('_')[-3]), \
+                                    int(self.model_folder.split('_')[-2]), \
+                                    int(self.model_folder.split('_')[-1])
+
+        # read properties
+        if self.uniform_props:
+            porosity = 0.375
+            permeability = 100.0
+            E = 1  # in tens of GPa
+            nu = 0.2
+        else:
+            porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
+                                        reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+            permeability = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/perm.txt', 'PERM', cache=0).
+                                        reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2).flatten()
+            E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
+                                    reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+            nu = 0.2
+
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
         self.idata.rock.density = 2650.
 
-        self.idata.rock.porosity = 0.375
-        self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 100.0
-        self.idata.rock.E = 10000  # in bars
-        self.idata.rock.nu = 0.2
+        self.idata.rock.porosity = porosity
+        self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
         self.idata.rock.biot = 1.0
+        self.idata.rock.E = 1.e+5 * E
+        self.idata.rock.nu = nu
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
