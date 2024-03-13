@@ -169,6 +169,37 @@ class UnstructReservoirMech():
         self.n_vars = self.n_state + self.n_dim
         self.n_bc_vars = 1 + thermoporoelasticity + self.n_dim
 
+    def set_equilibrium(self, zero_fluid_transmissibilities=False):
+        # store original transmissibilities
+        self.darcy_tran = np.array(self.mesh.darcy_tran, copy=True)
+        self.darcy_rhs = np.array(self.mesh.darcy_rhs, copy=True)
+        self.vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=True)
+        self.vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=True)
+
+        # turn off some terms for evaluation of momentum equilibrium
+        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+        vol_strain_tran[:] = 0.0
+        vol_strain_rhs[:] = 0.0
+
+        if zero_fluid_transmissibilities:
+            darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
+            darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
+            darcy_tran[:] = 0.0
+            darcy_rhs[:] = 0.0
+
+    def turn_off_equilibrium(self, zero_fluid_transmissibilities=False):
+        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+        vol_strain_tran[:] = self.vol_strain_tran
+        vol_strain_rhs[:] = self.vol_strain_rhs
+
+        if zero_fluid_transmissibilities:
+            darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
+            darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
+            darcy_tran[:] = self.darcy_tran
+            darcy_rhs[:] = self.darcy_rhs
+
     def init_matrix_stiffness(self, props):
         self.unstr_discr.stiffness = {}
         self.unstr_discr.stf = {}

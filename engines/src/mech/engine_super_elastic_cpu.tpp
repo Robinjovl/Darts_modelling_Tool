@@ -1151,13 +1151,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  comp_mult = 0.0;
 		  }
 	  }
-	  /*if (FIND_EQUILIBRIUM || geomechanics_mode[i])
+
+	  if (FIND_EQUILIBRIUM || geomechanics_mode[i])
 	  {
 		  for (c = 0; c < NE; c++)
 			  Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + c] = V[i];
 	  }
 	  else
-	  {*/
+	  {
 		  for (c = 0; c < NE; c++)
 		  {
 			  RHS[i * N_VARS + P_VAR + c] += V[i] * (phi * op_vals_arr[i * N_OPS + ACC_OP + c] - phi_n * op_vals_arr_n[i * N_OPS + ACC_OP + c]);
@@ -1169,7 +1170,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 			  //if (!geomechanics_mode[i] && THERMAL)
 			  //	Jac[diag_idx + (P_VAR + c) * N_VARS + T_VAR] -= V[i] * th_poro[i] * op_vals_arr[i * N_OPS + ACC_OP + c];
 		  }
-	  //}
+	  }
 
       // [9.2] add rock energy
       // + rock energy (no rock compressibility included in these computations)

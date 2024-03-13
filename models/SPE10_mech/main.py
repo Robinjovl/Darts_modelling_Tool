@@ -113,8 +113,20 @@ def run(model_folder, physics_type):
     m = Model(model_folder=model_folder, physics_type=physics_type)
     m.init()
     redirect_darts_output('log.txt')
-
     m.timer.node["update"] = timer_node()
+    # Properties for writing to vtk format:
+    m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
+
+    # intialization: may use find_equilibrium and zero_fluid_transmissibilities=True
+    m.reservoir.set_equilibrium(zero_fluid_transmissibilities=False)
+    # m.engine.find_equilibrium = True
+    dt_init = 1.e+8
+    m.params.first_ts = dt_init
+    run_python(m, dt_init, init_step=True)
+    m.reinit()
+    # m.engine.find_equilibrium = False
+    m.reservoir.turn_off_equilibrium(zero_fluid_transmissibilities=False)
+    m.engine.t = 0.0
 
     size_report_step = 100
     max_dt = size_report_step
@@ -122,11 +134,6 @@ def run(model_folder, physics_type):
     m.params.max_ts = max_dt
     first_ts = size_report_step
     m.params.first_ts = first_ts
-
-    # Properties for writing to vtk format:
-    m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
-    # Write to vtk using class methods of unstructured discretizer (uses within meshio write to vtk function):
-    m.reservoir.write_to_vtk(m.output_directory, 0, m.engine)
 
     # Run over all reporting time-steps:
     ith_step = 0
@@ -138,5 +145,5 @@ def run(model_folder, physics_type):
     m.print_timers()
     m.print_stat()
 
-# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
-run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')
+run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+# run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')

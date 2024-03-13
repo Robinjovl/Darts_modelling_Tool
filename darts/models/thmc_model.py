@@ -24,6 +24,12 @@ class THMCModel(DartsModel):
         self.set_solver_params()
         self.timer.node["initialization"].stop()
 
+    def reinit(self):
+        self.reservoir.turn_off_equilibrium()
+        self.reservoir.write_to_vtk(self.output_directory, 0, self.engine)
+        self.reservoir.eps_vol_ref = np.array(self.reservoir.mesh.ref_eps_vol, copy=False)
+        self.reservoir.eps_vol_ref[:] = self.engine.eps_vol[:]
+
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,
                                                thermoporoelasticity=self.idata.type_mech == 'thermal',

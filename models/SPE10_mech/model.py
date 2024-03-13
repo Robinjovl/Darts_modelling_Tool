@@ -32,7 +32,7 @@ class Model(THMCModel):
         self.params.max_ts = 5
         self.params.tolerance_newton = 1e-3
         self.params.tolerance_linear = 1e-6
-        self.params.max_i_newton = 8
+        self.params.max_i_newton = 12
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
