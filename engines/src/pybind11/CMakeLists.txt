@@ -8,6 +8,7 @@ set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear  
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_sequential_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_elastic_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  

@@ -49,7 +49,9 @@ mkdir build
 cd build
 
 cmake -DCMAKE_INSTALL_PREFIX=..\darts -DENABLE_TESTING=OFF %bos_solvers_option% ..
+
 msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 || goto :error
+
 msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 || goto :error
 
 cd ..

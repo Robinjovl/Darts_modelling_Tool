@@ -1,6 +1,6 @@
-darts-linear-solvers built on Jan 26 2024 15:02:02 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
-darts-engines built on Jan 26 2024 15:02:01 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
-darts-discretizer built on Jan 26 2024 15:02:02 by shahr@Calmking from debc197feab3b468796bcb4389d9fb14f8ac27d2
+darts-linear-solvers built on Mar 14 2024 05:28:21 by shahr@Calmking from c26b952291cc866ce710f5c368c9678002aef645
+darts-engines built on Mar 14 2024 05:28:21 by shahr@Calmking from c26b952291cc866ce710f5c368c9678002aef645
+darts-discretizer built on Mar 14 2024 05:28:21 by shahr@Calmking from c26b952291cc866ce710f5c368c9678002aef645
 Processing mesh: 1000 reservoir blocks, 4 well blocks, 1003 connections
 2-phase 3-component isothermal flow with kinetic reaction and diffusion CPU engine
 Sim params: 

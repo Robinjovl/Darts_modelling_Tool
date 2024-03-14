@@ -102,7 +102,8 @@ class Compositional(PhysicsBase):
             if self.thermal:
                 return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                #return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
 
     def define_well_controls(self):
         # define well control factories
