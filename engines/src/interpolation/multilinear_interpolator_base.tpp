@@ -134,3 +134,147 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
 
   return 0;
 }
+
+
+// ======================
+
+
+template <typename index_t, typename value_t>
+multilinear_interpolator_base_dynamic<index_t, value_t>::multilinear_interpolator_base_dynamic(operator_set_evaluator_iface* supporting_point_evaluator,
+    const std::vector<int>& axes_points,
+    const std::vector<double>& axes_min,
+    const std::vector<double>& axes_max, 
+    const uint8_t N_DIMS_, 
+    const uint8_t N_OPS_)
+    : interpolator_base(supporting_point_evaluator, axes_points, axes_min, axes_max),
+    axes_min_internal(axes_min),
+    axes_max_internal(axes_max),
+    axes_step_internal(axes_step),
+    axes_step_inv_internal(axes_step_inv)
+{
+    N_DIMS = N_DIMS_;
+    N_OPS = N_OPS_;
+    N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
+
+    // memory allocation (needed only for dynamic version of the itors)
+    //point_data_t;
+    //point_axes_index_t;
+    //hypercube_data_t;
+    //hypercube_points_index_t;
+    //point_data_t.resize(N_OPS);
+    //point_axes_index_t.resize(N_DIMS);
+    //hypercube_data_t.resize(N_VERTS * N_OPS);
+    //hypercube_points_index_t.resize(N_VERTS);
+
+    if (n_points_total_fp > std::numeric_limits<index_t>::max())
+    {
+        std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
+            ") exceeds the limit in index type (" + std::to_string(std::numeric_limits<index_t>::max()) + ")\n";
+        throw std::range_error(error);
+    }
+    axis_point_mult.resize(N_DIMS);
+    axis_hypercube_mult.resize(N_DIMS);
+    axis_point_mult[N_DIMS - 1] = 1;
+    axis_hypercube_mult[N_DIMS - 1] = 1;
+    for (int i = N_DIMS - 2; i >= 0; --i)
+    {
+        axis_point_mult[i] = axis_point_mult[i + 1] * this->axes_points[i + 1];
+        axis_hypercube_mult[i] = axis_hypercube_mult[i + 1] * (this->axes_points[i + 1] - 1);
+    }
+}
+
+template <typename index_t, typename value_t>
+void multilinear_interpolator_base_dynamic<index_t, value_t>::get_point_coordinates(index_t point_index, point_coordinates_t& coordinates)
+{
+    auto remainder_idx = point_index;
+    for (auto i = 0; i < N_DIMS; ++i)
+    {
+        index_t axis_idx = remainder_idx / axis_point_mult[i];
+        remainder_idx = remainder_idx % axis_point_mult[i];
+        coordinates[i] = this->axes_min[i] + this->axes_step[i] * axis_idx;
+    }
+}
+
+template <typename index_t, typename value_t>
+void multilinear_interpolator_base_dynamic<index_t, value_t>::get_hypercube_points(index_t hypercube_idx, hypercube_points_index_t& hypercube_points)
+{
+    auto remainder_idx = hypercube_idx;
+    auto pwr = N_VERTS;
+    //hypercube_points.fill(0);
+    fill(hypercube_points.begin(), hypercube_points.end(), 0);
+
+    for (auto i = 0; i < N_DIMS; ++i)
+    {
+
+        index_t axis_idx = remainder_idx / axis_hypercube_mult[i];
+        remainder_idx = remainder_idx % axis_hypercube_mult[i];
+
+        pwr /= 2;
+
+        for (auto j = 0; j < N_VERTS; ++j)
+        {
+            auto zero_or_one = (j / pwr) % 2;
+            hypercube_points[j] += (axis_idx + zero_or_one) * axis_point_mult[i];
+        }
+    }
+}
+
+template <typename index_t, typename value_t>
+int multilinear_interpolator_base_dynamic<index_t, value_t>::interpolate(const std::vector<double>& point, std::vector<double>& values)
+{
+    // let it be a but less efficient but general,
+    // use the same routine and compute derivatives as well, despite we don`t need them.
+    std::vector<double> derivatives(N_OPS * N_DIMS);
+
+    if (point.size() != N_DIMS)
+    {
+        printf("Inconsistence in interpolation! Point size = %d should be equal to N_DIMS = %d\n", point.size(), N_DIMS);
+    }
+
+    interpolate_with_derivatives(point.data(), values.data(), &derivatives[0]);
+
+    return 0;
+}
+
+template <typename index_t, typename value_t>
+int multilinear_interpolator_base_dynamic<index_t, value_t>::interpolate_with_derivatives(const double* point,
+    double* values,
+    double* derivatives)
+{
+    index_t hypercube_idx = 0;
+    std::vector<value_t> axis_low(N_DIMS);
+    std::vector<value_t> mult(N_DIMS);
+
+    for (int i = 0; i < N_DIMS; ++i)
+    {
+        int axis_idx = get_axis_interval_index_low_mult<value_t>(point[i],
+            this->axes_min_internal[i], this->axes_max_internal[i], this->axes_step_internal[i],
+            this->axes_step_inv_internal[i], axes_points[i],
+            &axis_low[i], &mult[i]);
+        hypercube_idx += axis_idx * axis_hypercube_mult[i];
+    }
+    const hypercube_data_t& hypercube = this->get_hypercube_data(hypercube_idx);
+    interpolate_point_with_derivatives_dynamic<value_t>(point, hypercube.data(),
+        &axis_low[0], &mult[0], this->axes_step_inv_internal.data(), N_DIMS, N_OPS,
+        values,
+        derivatives);
+
+    return 0;
+}
+
+template <typename index_t, typename value_t>
+int multilinear_interpolator_base_dynamic<index_t, value_t>::interpolate_with_derivatives(const std::vector<double>& points, const std::vector<int>& points_idxs,
+    std::vector<double>& values, std::vector<double>& derivatives)
+{
+#pragma omp parallel for
+    for (int i = 0; i < points_idxs.size(); i++)
+    {
+
+        index_t offset = points_idxs[i];
+        interpolate_with_derivatives(points.data() + offset * N_DIMS,
+            values.data() + offset * N_OPS,
+            derivatives.data() + offset * N_OPS * N_DIMS);
+    }
+
+    return 0;
+}

@@ -243,6 +243,67 @@ __forceinline__ __host__ __device__ void interpolate_point_with_derivatives(cons
   }
 }
 
+//===========================================================================
+template <typename value_t>
+__forceinline__ __host__ __device__ void interpolate_point_with_derivatives_dynamic(const double* axis_values,
+    const value_t* body_data,
+    const value_t* axis_low,
+    const value_t* axis_mult,
+    const value_t* axis_step_inv,
+    const uint16_t N_DIMS, const uint16_t N_OPS,
+    // OUTPUT:
+    double* interp_values, double* interp_derivs)
+{
+    const uint16_t N_VERTS = 1 << N_DIMS;
+    uint16_t pwr = N_VERTS / 2; // distance between high and low values
+    std::vector<value_t> workspace((2 * N_VERTS - 1) * N_OPS);
+
+    // copy operator values for all vertices
+    for (int i = 0; i < N_VERTS * N_OPS; ++i)
+    {
+        workspace[i] = body_data[i];
+    }
+
+    for (int i = 0; i < N_DIMS; ++i)
+    {
+        //printf ("i = %d, N_VERTS = %d, New offset: %d\n", i, N_VERTS, 2 * N_VERTS - (N_VERTS>>i));
+
+        for (int j = 0; j < pwr; ++j)
+        {
+            for (int op = 0; op < N_OPS; ++op)
+            {
+                // update own derivative
+                workspace[(2 * N_VERTS - (N_VERTS >> i) + j) * N_OPS + op] = (workspace[(j + pwr) * N_OPS + op] - workspace[j * N_OPS + op]) * axis_step_inv[i];
+            }
+
+            // update all dependent derivatives
+            for (int k = 0; k < i; k++)
+            {
+                for (int op = 0; op < N_OPS; ++op)
+                {
+                    workspace[(2 * N_VERTS - (N_VERTS >> k) + j) * N_OPS + op] = workspace[(2 * N_VERTS - (N_VERTS >> k) + j) * N_OPS + op] + axis_mult[i] * (workspace[(2 * N_VERTS - (N_VERTS >> k) + j + pwr) * N_OPS + op] - workspace[(2 * N_VERTS - (N_VERTS >> k) + j) * N_OPS + op]);
+                }
+            }
+
+            for (int op = 0; op < N_OPS; ++op)
+            {
+                // interpolate value
+                workspace[j * N_OPS + op] = workspace[j * N_OPS + op] + (axis_values[i] - axis_low[i]) * workspace[(2 * N_VERTS - (N_VERTS >> i) + j) * N_OPS + op];
+            }
+        }
+        pwr /= 2;
+    }
+    for (int op = 0; op < N_OPS; ++op)
+    {
+        interp_values[op] = workspace[op];
+        for (int i = 0; i < N_DIMS; ++i)
+        {
+            interp_derivs[op * N_DIMS + i] = workspace[(2 * N_VERTS - (N_VERTS >> i)) * N_OPS + op];
+        }
+    }
+}
+//===========================================================================
+
 template <typename value_t, uint16_t N_DIMS, uint16_t N_OPS>
 __forceinline__ __host__ __device__ void interpolate_operator_with_derivatives(const double *axis_values,
                                                                                const value_t *body_data,
