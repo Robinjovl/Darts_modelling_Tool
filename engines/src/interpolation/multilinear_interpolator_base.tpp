@@ -156,16 +156,6 @@ multilinear_interpolator_base_dynamic<index_t, value_t>::multilinear_interpolato
     N_OPS = N_OPS_;
     N_VERTS = (1 << N_DIMS); ///< number of vertexes in interpolation hypercube - N_DIMS-th power of 2
 
-    // memory allocation (needed only for dynamic version of the itors)
-    //point_data_t;
-    //point_axes_index_t;
-    //hypercube_data_t;
-    //hypercube_points_index_t;
-    //point_data_t.resize(N_OPS);
-    //point_axes_index_t.resize(N_DIMS);
-    //hypercube_data_t.resize(N_VERTS * N_OPS);
-    //hypercube_points_index_t.resize(N_VERTS);
-
     if (n_points_total_fp > std::numeric_limits<index_t>::max())
     {
         std::string error = "Error: The total requested amount of points (" + std::to_string(n_points_total_fp) +
@@ -200,7 +190,7 @@ void multilinear_interpolator_base_dynamic<index_t, value_t>::get_hypercube_poin
 {
     auto remainder_idx = hypercube_idx;
     auto pwr = N_VERTS;
-    //hypercube_points.fill(0);
+    hypercube_points.resize(N_VERTS);
     fill(hypercube_points.begin(), hypercube_points.end(), 0);
 
     for (auto i = 0; i < N_DIMS; ++i)

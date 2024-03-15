@@ -138,6 +138,8 @@ multilinear_adaptive_cpu_interpolator_dynamic<index_t, value_t>::get_point_data(
 {
     auto item = point_data.find(point_index);
     typename multilinear_adaptive_cpu_interpolator_dynamic<index_t, value_t>::point_data_t new_point;
+    new_point.resize(N_OPS);
+
     if (item == point_data.end())
     {
         this->timer->node["body generation"].node["point generation"].start();
@@ -176,7 +178,7 @@ multilinear_adaptive_cpu_interpolator_dynamic<index_t, value_t>::get_hypercube_d
         this->timer->node["body generation"].start();
         hypercube_points_index_t points;
         typename multilinear_adaptive_cpu_interpolator_dynamic<index_t, value_t>::hypercube_data_t new_hypercube;
-
+        new_hypercube.resize(N_VERTS * N_OPS);
         this->get_hypercube_points(hypercube_index, points);
 
         for (int i = 0; i < this->N_VERTS; ++i)
