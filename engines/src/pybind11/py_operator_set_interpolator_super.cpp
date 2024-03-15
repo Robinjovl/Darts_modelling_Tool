@@ -56,19 +56,20 @@ void pybind_operator_set_interpolator_super(py::module &m)
 
 void pybind_operator_set_interpolator_super_dynamic(py::module& m)
 {
+	using namespace pybind11::literals;
 	//std::string long_name = "Operator set interpolator with " + i_typename + " index type and " + f_typename + " value type for " + std::to_string(N_OPS) + " operators in " + std::to_string(N_DIMS) + "-dimensional parameter space";
 
 	py::class_<multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>,
-		operator_set_gradient_evaluator_iface>(m, "multilinear_adaptive_cpu_interpolator_dynamic_i_d", "") 
-		.def(py::init<operator_set_evaluator_iface*, std::vector<index_t>&, std::vector<value_t>&, std::vector<value_t>&, int, int >(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
-		//.def("evaluate_with_derivatives", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::evaluate_with_derivatives,
-		//	"Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
-		//.def("init_timer_node", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::init_timer_node,
-		//	"Initialize timer", "timer_node"_a)
+		operator_set_gradient_evaluator_iface>(m, "multilinear_adaptive_cpu_interpolator_dynamic_i_d", "") //TODO add long_name
+		.def(py::init<operator_set_evaluator_iface*, std::vector<index_t>&, std::vector<value_t>&, std::vector<value_t>&, int, int >(), py::keep_alive<1, 2>()) 
+		.def("evaluate_with_derivatives", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::evaluate_with_derivatives,
+			"Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
+		.def("init_timer_node", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::init_timer_node,
+			"Initialize timer", "timer_node"_a)
 		.def("init", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::init, "Initialize interpolator")
 		.def("write_to_file", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::write_to_file, "Write interpolator data to file")
-		//.def("evaluate", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::evaluate,
-		//	"Evaluate operators", "state"_a, "values"_a)
+		.def("evaluate", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::evaluate,
+			"Evaluate operators", "state"_a, "values"_a)
 		.def_readwrite("point_data", &multilinear_adaptive_cpu_interpolator_dynamic<uint32_t, double>::point_data);
 }
 #endif //PYBIND11_ENABLED
