@@ -28,7 +28,7 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+        self.params.linear_type = sim_params.cpu_gmres_fs_cpr # cpu_gmres_fs_cpr # cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -82,9 +82,9 @@ class Model(THMCModel):
 
         # TODO: Only for a single-phase physics
         self.idata.fluid.Mw = 18.015
-        self.idata.fluid.compressibility = 1.e-5
+        self.idata.fluid.compressibility = 1.45e-5
         self.idata.fluid.viscosity = 1.0
-        self.idata.fluid.density = 1014.0
+        self.idata.fluid.density = 666.854632
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
         self.idata.initial.initial_pressure = p_init  # [bar]
@@ -108,12 +108,13 @@ class Model(THMCModel):
             components = ['H2O']
             phases = ['wat']
             property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=273.15 + 50)
+                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=300.0)
 
             """ properties correlations """
             property_container.flash_ev = SinglePhase(nc=1)
             property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                       dens0=self.idata.fluid.density))])
+                                                                       dens0=self.idata.fluid.density,
+                                                                       p0=350.0))])
             property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
 
             property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
