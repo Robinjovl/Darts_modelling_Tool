@@ -127,8 +127,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []
                     if 'E' not in cell_data: cell_data['E'] = []
+                    if 'poro' not in cell_data: cell_data['poro'] = []
                     cell_data['perm'].append(np.zeros((len(cell_ids), 9), dtype=np.float64))
                     cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
+                    cell_data['poro'].append(np.array(self.mesh.poro, copy=False))
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
                         stf = np.array(self.discr.stfs[cell_id].values)
