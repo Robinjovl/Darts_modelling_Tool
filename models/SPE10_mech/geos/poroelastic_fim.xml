@@ -17,8 +17,11 @@
         lineSearchAction="None"
 		    maxAllowedResidualNorm="1.0e+22"
         newtonMaxIter="6"/>
+      <!--LinearSolverParameters
+        directParallel="0"/-->
       <LinearSolverParameters
-        directParallel="0"/>
+        solverType="gmres"
+        preconditionerType="mgr"/>
     </SinglePhasePoromechanicsReservoir>
     
     <SinglePhasePoromechanics
@@ -123,7 +126,7 @@
   <Outputs>
     <VTK
       name="vtkOutput"
-      fieldNames="{ initialPressure, skeleton_bulkModulus }"/>
+      fieldNames="{ skeleton_bulkModulus }"/>
     <Restart
       name="restartOutput"/>
   </Outputs>

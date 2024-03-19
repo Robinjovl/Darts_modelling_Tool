@@ -8,14 +8,7 @@
       regionAttribute="CellEntityIds"
       fieldsToImport="{ bulkModulus, permeability, porosity, biotCoefficient }"
       fieldNamesInGEOSX="{ skeleton_bulkModulus, rockPerm_permeability, rockPorosity_referencePorosity, rockPorosity_biotCoefficient }"
-      file="input/data_10_10_10/geos_input.vtu"/>
-    <!--VTKMesh 
-      name="mesh"
-      logLevel="5"
-      regionAttribute="CellEntityIds"
-      fieldsToImport="{ permeability, porosity }"
-      fieldNamesInGEOSX="{ rockPerm_permeability, rockPorosity_referencePorosity }"
-      file="input/data_10_10_10/geos_input.vtu"/-->
+      file="input/data_40_80_40/geos_input.vtu"/>
   </Mesh>
 
   <Geometry>  
@@ -137,89 +130,15 @@
       tractionType="normal"
       scale="-90.0e6"      
       setNames="{ zpos }"/>  
-	<!-- properties -->  
-	<!--FieldSpecification
-      name="permx"
-      component="0"
-      initialCondition="1"
-      setNames="{ all }"
-      objectPath="ElementRegions/Domain"
-      fieldName="rockPermeability_permeability"
-      functionName="permxFunc"
-      scale="9.869233e-16"/>
-    <FieldSpecification
-      name="permy"
-      component="1"
-      initialCondition="1"
-      setNames="{ all }"
-      objectPath="ElementRegions/Domain"
-      fieldName="rockPermeability_permeability"
-      functionName="permyFunc"
-      scale="9.869233e-16"/>
-    <FieldSpecification
-      name="permz"
-      component="2"
-      initialCondition="1"
-      setNames="{ all }"
-      objectPath="ElementRegions/Domain"
-      fieldName="rockPermeability_permeability"
-      functionName="permzFunc"
-      scale="9.869233e-16"/>
-    <FieldSpecification
-      name="referencePorosity"
-      initialCondition="1"
-      setNames="{ all }"
-      objectPath="ElementRegions/Domain"
-      fieldName="rockPorosity_referencePorosity"
-      functionName="poroFunc"
-      scale="1.0"/>
-	<FieldSpecification
-      name="youngModulus"
-      initialCondition="1"
-      setNames="{ all }"
-      objectPath="ElementRegions/Domain"
-      fieldName="rockYoungModulus_youngModulus"
-      functionName="youngFunc"
-      scale="1.0"/-->
   </FieldSpecifications>
 
   <Functions>
-	<TableFunction
+	<!--TableFunction
       name="pressure0"
       inputVarNames="{ elementCenter }"
       coordinateFiles="{ input/data_10_10_10/z.geos }"
       voxelFile="input/data_10_10_10/ref_pres.geos"
-      interpolation="linear"/>
-	<!--TableFunction 
-      name="permxFunc"
-      inputVarNames="{ elementCenter }"
-      coordinateFiles="{input/data_10_10_10/xlin.geos,input/data_10_10_10/ylin.geos,input/data_10_10_10/zlin.geos}"
-      voxelFile="input/data_10_10_10/permx.geos"
-      interpolation="linear" />
-    <TableFunction 
-      name="permyFunc"
-      inputVarNames="{ elementCenter }"
-      coordinateFiles="{input/data_10_10_10/xlin.geos,input/data_10_10_10/ylin.geos,input/data_10_10_10/zlin.geos}"
-      voxelFile="input/data_10_10_10/permy.geos"
-      interpolation="linear" />
-    <TableFunction 
-      name="permzFunc"
-      inputVarNames="{ elementCenter }"
-      coordinateFiles="{input/data_10_10_10/xlin.geos,input/data_10_10_10/ylin.geos,input/data_10_10_10/zlin.geos}"
-      voxelFile="input/data_10_10_10/permz.geos"
-      interpolation="linear" />
-    <TableFunction 
-      name="poroFunc"
-      inputVarNames="{ elementCenter }"
-      coordinateFiles="{input/data_10_10_10/xlin.geos,input/data_10_10_10/ylin.geos,input/data_10_10_10/zlin.geos}"
-      voxelFile="input/data_10_10_10/poro.geos"
-      interpolation="linear" />
-	<TableFunction 
-      name="youngFunc"
-      inputVarNames="{ elementCenter }"
-      coordinateFiles="{input/data_10_10_10/xlin.geos,input/data_10_10_10/ylin.geos,input/data_10_10_10/zlin.geos}"
-      voxelFile="input/data_10_10_10/young.geos"
-      interpolation="linear" /-->
+      interpolation="linear"/-->
   </Functions>
   
 </Problem>
