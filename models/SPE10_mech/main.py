@@ -76,14 +76,15 @@ def run_timestep_python(m, dt, t):
         res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
         self.e.dev_p = res[0]
         self.e.dev_u = res[1]
-        if len(res) > 2 and res[2] == res[2]:       self.e.dev_g = res[2]
-        else:                                       self.e.dev_g = 0.0
+        dev_e = 0
+        if self.reservoir.thermoporoelasticity:
+            self.e.dev_e = res[2]
+            dev_e = res[2]
 
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_g ** 2)
-        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
+        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
         self.e.well_residual_last_dt = self.e.calc_well_residual()
         print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+                    're = ' + str(dev_e) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
@@ -118,12 +119,12 @@ def run(model_folder, physics_type):
     m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
 
     # intialization:
-    m.reservoir.set_equilibrium(zero_fluid_transmissibilities=True)
+    m.reservoir.set_equilibrium(zero_conduction=True)
     m.engine.find_equilibrium = True
     dt_init = 1.e+8
     m.params.first_ts = dt_init
     run_python(m, dt_init, init_step=True)
-    m.reinit()
+    m.reinit(zero_conduction=True)
     m.engine.find_equilibrium = False
 
     size_report_step = 100
@@ -143,5 +144,15 @@ def run(model_folder, physics_type):
     m.print_timers()
     m.print_stat()
 
-run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+run(model_folder='meshes/data_10_10_10', physics_type='single_phase_thermal')
 # run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')
+
+# run(model_folder='meshes/data_20_40_40', physics_type='single_phase')
+# run(model_folder='meshes/data_20_40_40', physics_type='single_phase_thermal')
+# run(model_folder='meshes/data_20_40_40', physics_type='dead_oil')
+
+
+# run(model_folder='meshes/data_40_80_40', physics_type='single_phase')
+# run(model_folder='meshes/data_40_80_40', physics_type='single_phase_thermal')
+# run(model_folder='meshes/data_40_80_40', physics_type='dead_oil')

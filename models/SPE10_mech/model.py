@@ -22,13 +22,14 @@ class Model(THMCModel):
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
+        self.thermal = True if self.physics_type == 'single_phase_thermal' else False
 
         # call base class constructor
         super().__init__()
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr # cpu_gmres_fs_cpr # cpu_superlu
+        self.params.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -65,6 +66,7 @@ class Model(THMCModel):
             p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
                                     reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
+
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
         self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
@@ -79,6 +81,12 @@ class Model(THMCModel):
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
+
+        self.idata.rock.th_expn = 9.0 * 1.E-7
+        self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
+        self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
+        self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+        self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
         # TODO: Only for a single-phase physics
         self.idata.fluid.Mw = 18.015
@@ -103,23 +111,48 @@ class Model(THMCModel):
         super().set_input_data()
 
     def set_physics(self):
+        p_ref = 350.0
+        t_ref = 300.0
+
         if self.physics_type == 'single_phase':
             Mw = [self.idata.fluid.Mw]
             components = ['H2O']
             phases = ['wat']
             property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=300.0)
+                                                   Mw=Mw, min_z=self.idata.obl.min_z, temperature=t_ref)
 
             """ properties correlations """
             property_container.flash_ev = SinglePhase(nc=1)
             property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
                                                                        dens0=self.idata.fluid.density,
-                                                                       p0=350.0))])
+                                                                       p0=p_ref))])
             property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
 
             property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
             # rock compressibility is treated inside engine
             property_container.rock_compr_ev = ConstFunc(1.0)
+        elif self.physics_type == 'single_phase_thermal':
+            components = ['H2O']
+            phases = ['wat']
+            Mw = [self.idata.fluid.Mw]
+
+            property_container = PropertyContainer(phases_name=phases, components_name=components,
+                                                   Mw=Mw, min_z=self.idata.obl.min_z)
+
+            """ properties correlations """
+            property_container.flash_ev = SinglePhase(nc=1)
+            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
+                                                                       dens0=self.idata.fluid.density,
+                                                                       p0=p_ref))])
+            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
+
+            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
+            # rock compressibility is treated inside engine
+            property_container.rock_compr_ev = ConstFunc(1.0)
+
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
+            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
         elif self.physics_type == 'dead_oil':
             components = ['w', 'o']
             phases = ['wat', 'oil']
@@ -146,6 +179,7 @@ class Model(THMCModel):
         self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                       min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                       min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+                                      thermal=self.thermal, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 

@@ -13,7 +13,9 @@ import copy
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False):
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
-        super().__init__(timer, discretizer='mech_discretizer', thermoporoelasticity=False, fluid_vars=fluid_vars)
+        thermoporoelasticity = True if 'temperature' in fluid_vars else False
+        super().__init__(timer, discretizer='mech_discretizer',
+                         thermoporoelasticity=thermoporoelasticity, fluid_vars=fluid_vars)
         # self.n_vars = n_vars
         self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
                     bnd_xm_tag=991, bnd_xp_tag=992,
@@ -22,8 +24,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
-        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=self.t_init)
+        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=np.mean(self.t_init))
         self.wells = []
+
+    def get_reservoir_temperature(self, depths):
+        top = -3608.832
+        bot = -3657.6
+        t_top = 300.0
+        t_bot = 350.0
+        temp_grad = (t_bot - t_top) / (bot - top)
+        return t_top + temp_grad * (depths - top)
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
         self.mesh_filename = model_folder + '/spe10.msh'
@@ -35,17 +45,25 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.grav = -9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
 
+        # specify initial temperature
+        if self.thermoporoelasticity:
+            self.depths = np.array([c.values[2] for c in self.centroids])
+            self.t_init = self.get_reservoir_temperature(self.depths[:self.n_matrix])
+
         if uniform_props:
             self.init_uniform_properties(idata=idata)
         else:
             self.init_heterogeneous_properties(idata=idata)
         self.init_arrays_boundary_condition()
-        self.init_bc_rhs()
+        self.update_boundary_conditions()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
         self.timer.node["discretization"].start()
-        self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
+        if self.thermoporoelasticity:
+            self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
+        else:
+            self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
         self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
         self.discr.calc_interface_approximations()
         self.discr.calc_cell_centered_stress_velocity_approximations()
@@ -60,6 +78,32 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
+
+        if self.thermoporoelasticity:
+            for key, bc in self.boundary_conditions.items():
+                bc['temp'] = self.bc_type.AQUIFER(0.0)
+
+    def update_boundary_conditions(self):
+        for tag in self.domain_tags[elem_loc.BOUNDARY]:
+            ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+            bc = self.boundary_conditions[tag]
+            # flow
+            self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc['flow']['r']
+            # energy
+            if self.thermoporoelasticity:
+                self.bc_rhs[self.n_bc_vars * ids + self.t_bc_var] = \
+                    self.get_reservoir_temperature(self.depths[ids + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]])
+            # mechanics
+            for id in ids:
+                assert (self.adj_matrix_cols[self.id_sorted[id]] == id +
+                        self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
+                if n.dot(conn_c - c1) < 0: n *= -1.0
+                self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
+                    bc['mech']['rn'] * n + bc['mech']['rt']
 
     def init_heterogeneous_properties(self, idata: InputData):
         '''
@@ -79,6 +123,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.discr.perms.append(disc_matrix33(permx, permy, permz))
             self.discr.biots.append(disc_matrix33(idata.rock.biot))
             self.discr.stfs.append(disc_stiffness(lam[cell_id], mu[cell_id]))
+            if self.thermoporoelasticity:
+                self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
+                self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
 
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
