@@ -150,8 +150,8 @@ class Model(THMCModel):
             # rock compressibility is treated inside engine
             property_container.rock_compr_ev = ConstFunc(1.0)
 
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
+            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
         elif self.physics_type == 'dead_oil':
             components = ['w', 'o']

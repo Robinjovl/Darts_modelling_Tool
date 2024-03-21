@@ -54,11 +54,11 @@
     <CellElementRegion
       name="Domain"
       cellBlocks="{ 99991_hexahedra }"
-      materialList="{ fluid, porousRock }"/>
+      materialList="{ fluid, porousRock, thermalCond }"/>
   </ElementRegions>
 
   <Constitutive>
-    <CompressibleSinglePhaseFluid
+    <ThermalCompressibleSinglePhaseFluid
       name="fluid"
       defaultDensity="666.854632"
       defaultViscosity="0.001"
@@ -66,43 +66,58 @@
       referenceDensity="666.854632"
       compressibility="1.45e-10"
       referenceViscosity="0.001"
-      viscosibility="0.0"/>
+      viscosibility="0.0"
+      referenceTemperature="300.0"
+      specificHeatCapacity="1.672e2"
+      referenceInternalEnergy="0.001"/>
     <PorousElasticIsotropic
       name="porousRock"
       solidModelName="skeleton"
       porosityModelName="rockPorosity"
-      permeabilityModelName="rockPerm"/>
+      permeabilityModelName="rockPerm"
+      solidInternalEnergyModelName="rockInternalEnergy"/>
     <ElasticIsotropic
       name="skeleton"
       defaultDensity="2650"
       defaultBulkModulus="5.e9"
-      defaultPoissonRatio="0.25"/>
+      defaultPoissonRatio="0.25"
+      defaultDrainedLinearTEC="3e-7"/>
     <ConstantPermeability
       name="rockPerm"
       permeabilityComponents="{ 9.8e-13, 9.8e-13, 9.8e-13 }"/>
     <BiotPorosity
       name="rockPorosity"
       grainBulkModulus="1.e27"
-      defaultReferencePorosity="0.2"/>
+      defaultReferencePorosity="0.2"
+      defaultPorosityTEC="3e-7"/>
+    <!-- thermal properties -->
+    <SinglePhaseConstantThermalConductivity
+      name="thermalCond"
+      thermalConductivityComponents="{ 836, 836, 836 }"/>
+    <SolidInternalEnergy
+      name="rockInternalEnergy"
+      volumetricHeatCapacity="1.672e5"
+      referenceTemperature="300.0"
+      referenceInternalEnergy="0.0"/>
   </Constitutive>
 
   <FieldSpecifications>
 
-    <!--FieldSpecification 
-      name="initialPressure"
+    <FieldSpecification 
+      name="initialTemperature"
       initialCondition="1"
       setNames="{all}"
       objectPath="ElementRegions/Domain"
-      fieldName="pressure"
-	    functionName="pressure0"
-      scale="1.0e5"/-->
+      fieldName="temperature"
+	    functionName="temperature0"
+      scale="1.0"/>
     <HydrostaticEquilibrium
       name="equil"
       objectPath="ElementRegions"      
       datumElevation="-3608.832"
       datumPressure="331.4586867729831e+5"/>
 
-	<!-- boundary conditions --> 
+	  <!-- boundary conditions --> 
     <FieldSpecification
       name="xconstraint"
       objectPath="nodeManager"
@@ -124,21 +139,73 @@
       component="2"
       scale="0.0"
       setNames="{ zneg }"/>
-	<Traction
+	  <Traction
       name="zconstraint1"
       objectPath="faceManager"
       tractionType="normal"
       scale="-90.0e6"      
-      setNames="{ zpos }"/>  
+      setNames="{ zpos }"/>
+    <!-- temperature -->
+    <FieldSpecification
+      name="sideTemperature"
+      objectPath="faceManager"
+      fieldName="temperature"
+	    functionName="temperature_side"
+      scale="350.0"
+      setNames="{ xneg, xpos, yneg, ypos }"/>
+    <FieldSpecification
+      name="botTemperature"
+      objectPath="faceManager"
+      fieldName="temperature"
+      scale="350.0"
+      setNames="{ zneg }"/>
+    <FieldSpecification
+      name="topTemperature"
+      objectPath="faceManager"
+      fieldName="temperature"
+      scale="300.0"
+      setNames="{ zpos }"/>
+    <!-- pressure -->
+    <FieldSpecification
+      name="sidePressure"
+      objectPath="faceManager"
+      fieldName="pressure"
+	    functionName="pressure_side"
+      scale="1.e+5"
+      setNames="{ xneg, xpos, yneg, ypos }"/>
+    <FieldSpecification
+      name="botPressure"
+      objectPath="faceManager"
+      fieldName="pressure"
+      scale="334.6485e+5"
+      setNames="{ zneg }"/>
+    <FieldSpecification
+      name="topPressure"
+      objectPath="faceManager"
+      fieldName="pressure"
+      scale="331.4585e+5"
+      setNames="{ zpos }"/>
   </FieldSpecifications>
 
   <Functions>
-	<!--TableFunction
-      name="pressure0"
+	  <TableFunction
+      name="temperature0"
       inputVarNames="{ elementCenter }"
-      coordinateFiles="{ input/data_10_10_10/z.geos }"
-      voxelFile="input/data_10_10_10/ref_pres.geos"
-      interpolation="linear"/-->
+      coordinateFiles="{ input/xm.geos, input/ym.geos, input/z.geos }"
+      voxelFile="input/ref_temp.geos"
+      interpolation="linear"/>
+    <TableFunction
+      name="temperature_side"
+      inputVarNames="{ faceCenter }"
+      coordinateFiles="{ input/xm.geos, input/ym.geos, input/z.geos }"
+      voxelFile="input/ref_temp.geos"
+      interpolation="linear"/>
+    <TableFunction
+      name="pressure_side"
+      inputVarNames="{ faceCenter }"
+      coordinateFiles="{ input/xm.geos, input/ym.geos, input/z.geos }"
+      voxelFile="input/ref_pressure.geos"
+      interpolation="linear"/>
   </Functions>
   
 </Problem>
