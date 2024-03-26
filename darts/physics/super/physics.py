@@ -84,10 +84,12 @@ class Compositional(PhysicsBase):
 
         return
 
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    def set_engine(self, engine, discr_type: str = 'tpfa', platform: str = 'cpu'):
         """
-        Function to set :class:`engine_super` object.
+        Function to set :class:`engine_super` object to fully impelicite or sequential
 
+        :param engine: type of engine, fully implicite or sequential
+        :type engine : str
         :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
@@ -102,8 +104,10 @@ class Compositional(PhysicsBase):
             if self.thermal:
                 return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                #return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
-                return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
+                if engine == 'FI':
+                    return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                elif engine == 'SEQ':
+                    return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
 
     def define_well_controls(self):
         # define well control factories

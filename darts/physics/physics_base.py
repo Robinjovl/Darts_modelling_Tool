@@ -91,12 +91,14 @@ class PhysicsBase:
             self.created_itors = []
             atexit.register(self.write_cache)
 
-    def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
+    def init_physics(self, engine, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
                      verbose: bool = False):
         """
         Function to initialize all contained objects within the Physics object.
 
+        :param engine: type of engine, fully implicite or sequential
+        :type engine : str
         :param discr_type: Discretization type, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
@@ -112,7 +114,7 @@ class PhysicsBase:
         """
         # Define operators, set engine, set interpolators and define well controls
         self.set_operators()
-        self.engine = self.set_engine(discr_type, platform)
+        self.engine = self.set_engine(engine, discr_type, platform)
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
         self.define_well_controls()
         return

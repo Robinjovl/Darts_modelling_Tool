@@ -22,7 +22,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.001, mult_ts=1, max_ts=1, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -33,7 +33,7 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nx = 1000
+        nx = 5
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10,
                                          permx=100, permy=100, permz=10, poro=0.3, depth=1000)
         return
