@@ -97,11 +97,10 @@ class CPG_Reservoir(ReservoirBase):
 
         mpfa_tran = np.array(self.discretizer.flux_vals, copy=False)
         mpfa_tranD = np.array(self.discretizer.flux_vals_thermal, copy=False)
-        ids = np.array(self.discretizer.get_one_way_tpfa_transmissibilities())
-        cell_m = np.array(self.discretizer.cell_m)[ids]
-        cell_p = np.array(self.discretizer.cell_p)[ids]
-        tran = mpfa_tran[::2][ids]
-        tranD = mpfa_tranD[1::2][ids]
+        cell_m = np.array(self.discretizer.cell_m)
+        cell_p = np.array(self.discretizer.cell_p)
+        tran = mpfa_tran[::2]
+        tranD = mpfa_tranD[1::2]
 
         # self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
         if self.faultfile is not None:

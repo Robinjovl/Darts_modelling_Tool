@@ -214,21 +214,26 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags& tags)
 			counter += static_cast<index_t>(half_trans[i].size());
 			flux_rhs.push_back(Transmissibility * DARCY_CONSTANT * dot(grav_vec, (mesh->centroids[mesh->conns[i].elem_id2] - mesh->centroids[mesh->conns[i].elem_id1]) ) );
 
-			cell_m.push_back(mesh->conns[i].elem_id2);
-			cell_p.push_back(mesh->conns[i].elem_id1);
-			flux_stencil.push_back(mesh->conns[i].elem_id1);
-			flux_stencil.push_back(mesh->conns[i].elem_id2);
+			if (mesh->mesh_type != mesh::MESH_TYPE::CPG) {
+				cell_m.push_back(mesh->conns[i].elem_id2);
+				cell_p.push_back(mesh->conns[i].elem_id1);
+				flux_stencil.push_back(mesh->conns[i].elem_id1);
+				flux_stencil.push_back(mesh->conns[i].elem_id2);
 
-			flux_vals.push_back(-1 * Transmissibility * DARCY_CONSTANT);
-			flux_vals.push_back(Transmissibility* DARCY_CONSTANT);
-			flux_offset.push_back(counter);
-			counter += static_cast<index_t>(half_trans[i].size());
-			flux_rhs.push_back(-Transmissibility * DARCY_CONSTANT * dot(grav_vec, (mesh->centroids[mesh->conns[i].elem_id2] - mesh->centroids[mesh->conns[i].elem_id1])));
+				flux_vals.push_back(-1 * Transmissibility * DARCY_CONSTANT);
+				flux_vals.push_back(Transmissibility * DARCY_CONSTANT);
+				flux_offset.push_back(counter);
+				counter += static_cast<index_t>(half_trans[i].size());
+				flux_rhs.push_back(-Transmissibility * DARCY_CONSTANT * dot(grav_vec, (mesh->centroids[mesh->conns[i].elem_id2] - mesh->centroids[mesh->conns[i].elem_id1])));
+			}
 
+			if (mesh->mesh_type != mesh::MESH_TYPE::CPG) {
+				flux_vals_thermal.push_back(-1 * Transmissibility_thermal);
+				flux_vals_thermal.push_back(Transmissibility_thermal);
+			}
 			flux_vals_thermal.push_back(-1 * Transmissibility_thermal);
 			flux_vals_thermal.push_back(Transmissibility_thermal);
-			flux_vals_thermal.push_back(-1 * Transmissibility_thermal);
-			flux_vals_thermal.push_back(Transmissibility_thermal);
+
 #ifdef DEBUG_TRANS
 			cell_i_idx.push_back(mesh->conns[i].elem_id1);
 			cell_j_idx.push_back(mesh->conns[i].elem_id2);
