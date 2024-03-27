@@ -51,7 +51,7 @@ class DartsModel:
 
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
-    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False):
+    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', engine: str = 'FI', verbose: bool = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -69,7 +69,7 @@ class DartsModel:
 
         # Initialize physics and Engine object
         assert self.reservoir is not None, "Physics object has not been defined"
-        self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose)
+        self.physics.init_physics(discr_type=discr_type, platform=platform, engine=engine, verbose=verbose)
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
@@ -316,7 +316,6 @@ class DartsModel:
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
-        P= self.physics.engine.X[::3] # Shahram
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:

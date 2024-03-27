@@ -45,7 +45,7 @@ public:
   const static uint8_t T_VAR = NC;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux beta star*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 + NP /*Lambda*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -62,6 +62,7 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
+  const static uint8_t LAMB_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + NP;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
