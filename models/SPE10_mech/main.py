@@ -88,7 +88,7 @@ def run_timestep_python(m, dt, t):
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and self.e.dev_g < self.params.tolerance_newton
+        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and self.e.dev_e < self.params.tolerance_newton
            and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
               or self.e.n_newton_last_dt == self.params.max_i_newton):
             if (i > 0):  # min_i_newton
