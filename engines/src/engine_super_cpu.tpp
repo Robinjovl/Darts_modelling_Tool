@@ -126,7 +126,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
       for (uint8_t c = 0; c < NE; c++)
       {
-        RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+        RHS[i * N_VARS + c] = acc_multiplier * PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 
         // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
         if (i < mesh->n_res_blocks)
@@ -134,7 +134,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
         for (uint8_t v = 0; v < N_VARS; v++)
         {
-          Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
+          Jac[diag_idx + c * N_VARS + v] = acc_multiplier * PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
 
           // Include derivatives for reaction term if part of reservoir cells:
           if (i < mesh->n_res_blocks)

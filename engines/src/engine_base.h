@@ -78,6 +78,8 @@ public:
         dg_dx_n = 0;
         dg_dT_general = 0;
         dT_du = 0;
+
+		acc_multiplier = 1.0;
 	};
 
 	~engine_base()
@@ -254,8 +256,8 @@ public:
 
 	std::string engine_name;
 
-
-
+	/// @brief multiplier in front of accumulation terms, zero for initialization
+	value_t acc_multiplier;
 
 
 
