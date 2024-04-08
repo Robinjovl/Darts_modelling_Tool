@@ -18,6 +18,8 @@ set(OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_static_cpu_interpolator.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_cpu_interpolator.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_cpu_interpolator.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_nested_cpu_interpolator.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_adaptive_nested_cpu_interpolator.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_base.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/multilinear_interpolator_common.h
