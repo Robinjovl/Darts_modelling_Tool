@@ -616,7 +616,7 @@ class FluidFlower(Shape):
                        Curve(318, curve_type='line', points=[287, 257]),
                        Curve(319, curve_type='line', points=[199, 202]),
                        Curve(320, curve_type='line', points=[193, 1]),
-                       Curve(321, curve_type='line', points=[34, 219]),
+                       Curve(321, curve_type='line', points=[34, 219])
                       ]
 
         # spe11a curve surfaces
