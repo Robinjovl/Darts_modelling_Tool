@@ -614,8 +614,9 @@ class FluidFlower(Shape):
                        Curve(316, curve_type='line', points=[255, 256]),
                        Curve(317, curve_type='line', points=[256, 287]),
                        Curve(318, curve_type='line', points=[287, 257]),
-                       Curve(319, curve_type='line', points=[258, 261]),
-                       Curve(320, curve_type='line', points=[259, 260]),
+                       Curve(319, curve_type='line', points=[199, 202]),
+                       Curve(320, curve_type='line', points=[193, 1]),
+                       Curve(321, curve_type='line', points=[34, 219]),
                       ]
 
         # spe11a curve surfaces
@@ -686,8 +687,10 @@ class FluidFlower(Shape):
         self.physical_points = {}
 
         self.physical_curves = {
-            # 'left': [319],
-            # 'right': [320]
+            # 'lower left': [319],
+            # 'upper left': [320],
+            # 'lower right': [12],
+            # 'upper right': [321]
         }
 
         self.physical_surfaces = {}
