@@ -99,7 +99,7 @@ class DartsModel:
         self.reservoir.set_wells(verbose)
         return
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+    def set_initial_conditions_(self, initial_values: dict = None, gradient: dict = None):
         """
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
 
@@ -144,6 +144,29 @@ class DartsModel:
                 values.fill(initial_value)
 
         return
+
+
+    def set_initial_conditions(self):
+        """
+        Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
+
+        :param initial_values: Map of scalars/arrays of initial values for each primary variable, keys are the variables
+        :type initial_values: dict
+        :param gradient: Map of scalars of gradients for initial values
+        :type gradient: dict
+        """
+
+        nv = self.physics.n_vars
+        depth = np.array(self.reservoir.mesh.depth, copy=False)
+        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * nv)
+        values = np.array(self.reservoir.mesh.composition, copy=False)
+
+        for j in range(nv):
+            array = np.interp(depth, self.tbl_depth, self.tbl_state[:, j])
+            values[j::nv] = array
+
+        return
+
 
     def set_boundary_conditions(self):
         """
