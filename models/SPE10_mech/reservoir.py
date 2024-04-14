@@ -7,7 +7,7 @@ from darts.discretizer import Stiffness as disc_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.input.input_data import InputData
-from darts.engines import timer_node, ms_well_vector
+from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
 
 class UnstructReservoirCustom(UnstructReservoirMech):
@@ -127,6 +127,35 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
 
+    def add_well(self, name, depth):
+        """
+        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
+        :param name:
+        :param depth:
+        :return:
+        """
+        well = ms_well()
+        well.name = name
+        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
+        well.well_head_depth = depth
+        well.well_body_depth = depth
+        well.segment_transmissibility = 1e5
+        well.segment_depth_increment = 1
+        self.wells.append(well)
+        return 0
+
+    def add_perforation(self, well, res_block, well_index):
+        """
+        Class method which ads perforation to each (existing!) well
+        :param well: data object which contains data of the particular well
+        :param res_block: reservoir block in which the well has a perforation
+        :param well_index: well index (productivity index)
+        :return:
+        """
+        well_block = 0
+        well.perforations = well.perforations + [(well_block, res_block, well_index, 0.0)]
+        return 0
+
     def write_to_vtk(self, output_directory, ith_step, engine):
         """
         Class method which writes output of unstructured grid to VTK format
@@ -177,7 +206,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     if 'poro' not in cell_data: cell_data['poro'] = []
                     cell_data['perm'].append(np.zeros((len(cell_ids), 9), dtype=np.float64))
                     cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
-                    cell_data['poro'].append(np.array(self.mesh.poro, copy=False))
+                    cell_data['poro'].append(np.array(self.mesh.poro, copy=False)[:self.n_matrix])
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
                         stf = np.array(self.discr.stfs[cell_id].values)

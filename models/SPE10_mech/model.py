@@ -29,7 +29,7 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+        self.params.linear_type = sim_params.cpu_gmres_fs_cpr # cpu_gmres_fs_cpr # cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -182,9 +182,75 @@ class Model(THMCModel):
                                       thermal=self.thermal, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
-
         self.engine = self.physics.init_physics(discretizer=self.discretizer_name, platform='cpu')
+
         return
+
+    def set_wells(self):
+        centroids = np.array([np.array([c.values[0], c.values[1]]) for
+                              c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
+        l_min = np.min(self.reservoir.mesh_data.points, axis=0)
+        l_max = np.max(self.reservoir.mesh_data.points, axis=0)
+
+        well_coords = np.array([[l_max[0] / 2, l_max[1] / 2]])
+        well_names = ['PRD1']
+        self.well_cell_ids = []
+        well_init_depth = l_min[2]
+        nodes = np.array(self.reservoir.discr_mesh.nodes, copy=False)
+        elems = np.array(self.reservoir.discr_mesh.elems, copy=False)
+        for i, coord in enumerate(well_coords):
+            ids = ((centroids[:, 0] - coord[0]) ** 2 + (centroids[:, 1] - coord[1]) ** 2).argsort()
+            self.well_cell_ids.append(ids[:self.nz])
+            # adding well
+            self.reservoir.add_well(well_names[i], depth=well_init_depth)
+            # adding perforations
+            for cell_id in ids[:self.nz]:
+                cell = elems[cell_id]
+                pt_ids = self.reservoir.discr_mesh.elem_nodes[cell.pts_offset:cell.pts_offset + cell.n_pts]
+                pts = np.array([nodes[id].values for id in pt_ids])
+                # Calculate well_index (very primitive way....):
+                rw = 0.1
+                dx = np.max(pts, axis=0)[0] - np.min(pts, axis=0)[0]
+                dy = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[1]
+                dz = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[2]
+                mean_perm_xx = self.idata.rock.permx[cell_id]
+                mean_perm_yy = self.idata.rock.permy[cell_id]
+                mean_perm_zz = self.idata.rock.permz[cell_id]
+                rp_z = 0.28 * np.sqrt((mean_perm_yy / mean_perm_xx) ** 0.5 * dx ** 2 +
+                                      (mean_perm_xx / mean_perm_yy) ** 0.5 * dy ** 2) / \
+                       ((mean_perm_xx / mean_perm_yy) ** 0.25 + (mean_perm_yy / mean_perm_xx) ** 0.25)
+                wi_x = 0.0
+                wi_y = 0.0
+                wi_z = 2 * np.pi * np.sqrt(mean_perm_xx * mean_perm_yy) * dz / np.log(rp_z / rw)
+                well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
+                # add perforation
+                self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
+
+    def set_boundary_conditions(self):
+        self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
+        # self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, [0.0], 0)
+
+    def set_boundary_conditions_after_initialization(self):
+        """
+        Class method called in the init() class method of parents class
+        :return:
+        """
+        # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
+        # rate) water/oil rate:
+
+        for i, w in enumerate(self.reservoir.wells):
+            p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
+            if i == 0:
+                # Add controls for production well:
+                # Specify bhp for particular production well:
+                w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
+                # w.control = self.physics.new_bhp_prod(self.reservoir.p_init)
+            else:
+                # For BHP control in injection well we usually specify pressure and composition (upstream) but here
+                # the method is wrapped such  that we only need to specify bhp pressure (see lambda for more info)
+                #w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
+                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50)
+        return 0
 
     def set_initial_conditions(self):
         if self.reservoir.thermoporoelasticity:
@@ -199,7 +265,6 @@ class Model(THMCModel):
                                                            initial_composition=self.reservoir.z_init,
                                                            initial_displacement=self.reservoir.u_init)
         return 0
-
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):

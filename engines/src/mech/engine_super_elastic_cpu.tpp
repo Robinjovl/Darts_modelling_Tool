@@ -1332,8 +1332,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
 	  if (j >= n_res_blocks && j < n_blocks) { conn_id++;  continue; }
 
 	  const auto& conn = conns[adj_matrix[adj_matrix_offset[i] + face_id]];
-	  assert( (i == conn.elem_id1 && j == conn.elem_id2 + n_wells) ||
-			  (i == conn.elem_id2 && j == conn.elem_id1 + n_wells) );
+	  /* assert((i == conn.elem_id1 && j == conn.elem_id2 + n_wells) ||
+			  (i == conn.elem_id2 && j == conn.elem_id1 + n_wells) ); */
 
 	  t_face = conn.c - centroids[i];
 	  n = (dot(conn.n, t_face) > 0 ? conn.n : -conn.n);

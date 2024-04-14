@@ -172,19 +172,6 @@ class THMCModel(DartsModel):
         Class method called in the init() class method of parents class
         :return:
         """
-        # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
-        # rate) water/oil rate:
-        for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
-                # Add controls for production well:
-                # Specify bhp for particular production well:
-                w.control = self.physics.new_bhp_prod(self.reservoir.p_init - 50)
-                # w.control = self.physics.new_bhp_prod(self.reservoir.p_init)
-            else:
-                # For BHP control in injection well we usually specify pressure and composition (upstream) but here
-                # the method is wrapped such  that we only need to specify bhp pressure (see lambda for more info)
-                #w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
-                w.control = self.physics.new_bhp_inj(self.reservoir.p_init)
         return 0
 
     def set_op_list(self):

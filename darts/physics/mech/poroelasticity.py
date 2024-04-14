@@ -125,6 +125,19 @@ class Poroelasticity(PhysicsBase):
 
         return engine
 
+    def define_well_controls(self):
+        # define well control factories
+        # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
+        self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
+        self.new_rate_inj = lambda rate, inj_stream, iph: rate_inj_well_control(self.phases, iph, self.n_vars,
+                                                                                self.n_vars, rate, value_vector(inj_stream),
+                                                                                self.rate_itor)
+        # Production wells:
+        self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
+        self.new_rate_prod = lambda rate, iph: rate_prod_well_control(self.phases, iph, self.n_vars,
+                                                                      self.n_vars, rate, self.rate_itor)
+        return
+
     def init_wells(self, wells, engine):
         """""
         Function to initialize the well rates for each well
@@ -133,10 +146,8 @@ class Poroelasticity(PhysicsBase):
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            # TODO
-            # w.init_rate_parameters(self.n_components, self.rate_phases, self.rate_itor)
-            w.init_mech_rate_parameters(engine.N_VARS, engine.P_VAR, self.n_components, self.rate_phases,
-                                        self.rate_itor)
+            w.init_mech_rate_parameters(engine.N_VARS, engine.P_VAR, self.n_vars, self.phases,
+                                        self.rate_itor)#, self.thermal)
 
     def set_operators(self, regions):
         """

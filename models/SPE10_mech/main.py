@@ -127,16 +127,17 @@ def run(model_folder, physics_type):
     m.reinit(zero_conduction=True)
     m.engine.find_equilibrium = False
 
-    size_report_step = 100
+    size_report_step = 1
     max_dt = size_report_step
     m.max_dt = max_dt
     m.params.max_ts = max_dt
     first_ts = size_report_step
     m.params.first_ts = first_ts
+    m.set_boundary_conditions_after_initialization()
 
     # Run over all reporting time-steps:
     ith_step = 0
-    while m.engine.t < 2000:
+    while m.engine.t < 20:
         run_python(m=m, days=size_report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.engine)
         ith_step += 1

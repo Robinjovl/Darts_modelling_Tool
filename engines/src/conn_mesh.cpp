@@ -766,7 +766,7 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
   tblock_pos[P_VAR * n_vars + P_VAR] = trans;
   tblock_neg[P_VAR * n_vars + P_VAR] = -trans;
   // for mech_discretizer output
-  vector<value_t> hooke_zeros(n_dim * n_vars, 0.0), vec3d_rhs(n_dim, 0.0);
+  vector<value_t> hooke_zeros(n_dim * n_vars, 0.0), vec_3d(n_dim, 0.0), vec_nvars(n_vars);
 
   // m -> p
   one_way_block_m.push_back(block_m);
@@ -815,21 +815,21 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec_3d.begin(), vec_3d.end());
 	// biot traction
-	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot.insert(one_way_biot.end(), vec_3d.begin(), vec_3d.end());
+	one_way_biot.insert(one_way_biot.end(), vec_3d.begin(), vec_3d.end());
+	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec_3d.begin(), vec_3d.end());
 	// biot volumetric strain
-	one_way_vol_strain.push_back(0.0);
-	one_way_vol_strain.push_back(0.0);
+	one_way_vol_strain.insert(one_way_vol_strain.end(), vec_nvars.begin(), vec_nvars.end());
+	one_way_vol_strain.insert(one_way_vol_strain.end(), vec_nvars.begin(), vec_nvars.end());
 	one_way_vol_strain_rhs.push_back(0.0);
   }
   if (one_way_thermal_traction.size())
   {
 	// thermal traction
-	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec_3d.begin(), vec_3d.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec_3d.begin(), vec_3d.end());
 	// Fourier (heat conduction)
 	one_way_fourier.push_back(0.0);
 	one_way_fourier.push_back(0.0);
@@ -883,21 +883,21 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
 	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
-	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_hooke_rhs.insert(one_way_hooke_rhs.end(), vec_3d.begin(), vec_3d.end());
 	// biot traction
-	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_biot.insert(one_way_biot.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_biot.insert(one_way_biot.end(), vec_3d.begin(), vec_3d.end());
+	one_way_biot.insert(one_way_biot.end(), vec_3d.begin(), vec_3d.end());
+	one_way_biot_rhs.insert(one_way_biot_rhs.end(), vec_3d.begin(), vec_3d.end());
 	// biot volumetric strain
-	one_way_vol_strain.push_back(0.0);
-	one_way_vol_strain.push_back(0.0);
+	one_way_vol_strain.insert(one_way_vol_strain.end(), vec_nvars.begin(), vec_nvars.end());
+	one_way_vol_strain.insert(one_way_vol_strain.end(), vec_nvars.begin(), vec_nvars.end());
 	one_way_vol_strain_rhs.push_back(0.0);
   }
   if (one_way_thermal_traction.size())
   {
 	// thermal traction
-	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
-	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec3d_rhs.begin(), vec3d_rhs.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec_3d.begin(), vec_3d.end());
+	one_way_thermal_traction.insert(one_way_thermal_traction.end(), vec_3d.begin(), vec_3d.end());
 	// Fourier (heat conduction)
 	one_way_fourier.push_back(0.0);
 	one_way_fourier.push_back(0.0);
@@ -1731,9 +1731,6 @@ conn_mesh::reverse_and_sort_pm_mech_discretizer()
   }
   offset.back() = s_acc;
 
-  assert(block_m == one_way_block_m);
-  assert(block_p == one_way_block_p);
-
   n_conns = n_two_way_conns;
 
   // take stencil for contact into account
@@ -2047,9 +2044,6 @@ conn_mesh::reverse_and_sort_pme_mech_discretizer()
 	}
   }
   offset.back() = s_acc;
-
-  assert(block_m == one_way_block_m);
-  assert(block_p == one_way_block_p);
 
   n_conns = n_two_way_conns;
 
@@ -2582,6 +2576,10 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	//depth.resize(depth.size() + dofs_num);
 	if (displacement.size())
 		displacement.resize(displacement.size() + 3 * dofs_num);
+	if (ref_pressure.size())
+	  ref_pressure.resize(ref_pressure.size() + dofs_num);
+	if (ref_temperature.size())
+	  ref_temperature.resize(ref_temperature.size() + dofs_num);
 
 	heat_capacity.resize(heat_capacity.size() + dofs_num);
 	//rock_cond.resize(well_head_idx + n_bounds);
