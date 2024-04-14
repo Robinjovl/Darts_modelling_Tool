@@ -108,12 +108,19 @@ class THMCModel(DartsModel):
                                      self.engine.ACC_OP, self.engine.FLUX_OP, self.engine.GRAV_OP)
             self.reservoir.mech_operators.prepare()
 
-        self.set_boundary_conditions()
+        self.set_wells()
+
+        # TODO: move init_physics here for consistence with DartsModel
+        # assert self.physics is not None, "Physics object has not been defined"
+        # self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose)
+
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells, self.engine)
+
+        self.set_op_list()
+        self.set_boundary_conditions()
         self.set_initial_conditions()
         self.set_well_controls()
-        self.set_op_list()
         self.reset()  # engine is created here
         #TODO replace the lines above with this;
         # remove self.engine arg from self.physics.init_wells as engine is located is in self.physics in the current dev branch
@@ -124,6 +131,9 @@ class THMCModel(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.engine.set_discretizer(self.reservoir.discr)
             self.engine.gravity = self.reservoir.discr.grav_vec.values
+
+    def set_wells(self):
+        pass
 
     def add_wells(self):
         layers_num = 1
