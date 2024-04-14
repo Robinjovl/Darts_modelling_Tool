@@ -53,8 +53,7 @@ class Model(THMCModel):
             porosity = 0.375
             permeability = 100.0 # [mD]
             E = 1 # [10 GPa]
-            nu = 0.2
-            p_init = 1000 # [bar]
+            p_init = 300 # [bar]
         else:
             porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
                                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
@@ -62,10 +61,10 @@ class Model(THMCModel):
                                         reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2).flatten()
             E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
                                     reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-            nu = 0.2
-            p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
-                                    reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
+        nu = 0.2
+        p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
+                                reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
@@ -213,9 +212,10 @@ class Model(THMCModel):
                 dx = np.max(pts, axis=0)[0] - np.min(pts, axis=0)[0]
                 dy = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[1]
                 dz = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[2]
-                mean_perm_xx = self.idata.rock.permx[cell_id]
-                mean_perm_yy = self.idata.rock.permy[cell_id]
-                mean_perm_zz = self.idata.rock.permz[cell_id]
+                perm = np.array(self.reservoir.discr.perms[cell_id].values, copy=False)
+                mean_perm_xx = perm[0]
+                mean_perm_yy = perm[4]
+                mean_perm_zz = perm[8]
                 rp_z = 0.28 * np.sqrt((mean_perm_yy / mean_perm_xx) ** 0.5 * dx ** 2 +
                                       (mean_perm_xx / mean_perm_yy) ** 0.5 * dy ** 2) / \
                        ((mean_perm_xx / mean_perm_yy) ** 0.25 + (mean_perm_yy / mean_perm_xx) ** 0.25)
