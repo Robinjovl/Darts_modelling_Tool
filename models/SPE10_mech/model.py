@@ -51,9 +51,9 @@ class Model(THMCModel):
         # read properties
         if self.uniform_props:
             porosity = 0.375
-            permeability = 100.0 # [mD]
+            permeability = 10.0 # [mD]
             E = 1 # [10 GPa]
-            p_init = 300 # [bar]
+            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
         else:
             porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
                                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
@@ -61,6 +61,8 @@ class Model(THMCModel):
                                         reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2).flatten()
             E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
                                     reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+            p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
+                            reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
         nu = 0.2
         p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
