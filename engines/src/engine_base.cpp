@@ -1819,7 +1819,7 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
-void engine_base::apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX)
+void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
@@ -1877,7 +1877,7 @@ void engine_base::apply_composition_correction_(std::vector<value_t>& X, std::ve
 }
 
 
-void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
+void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double sum_z, new_z, last_z, neg_z;
 	index_t nb = mesh->n_blocks;
