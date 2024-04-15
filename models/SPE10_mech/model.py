@@ -211,7 +211,7 @@ class Model(THMCModel):
                 rw = 0.1
                 dx = np.max(pts, axis=0)[0] - np.min(pts, axis=0)[0]
                 dy = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[1]
-                dz = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[2]
+                dz = np.max(pts, axis=0)[2] - np.min(pts, axis=0)[2]
                 perm = np.array(self.reservoir.discr.perms[cell_id].values, copy=False)
                 mean_perm_xx = perm[0]
                 mean_perm_yy = perm[4]
