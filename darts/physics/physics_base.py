@@ -174,17 +174,17 @@ class PhysicsBase:
             self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='reservoir %d interpolation' % region)
+                                                                  timer_name='reservoir %d interpolation' % region, region=str(region))
 
             self.property_itor[region] = self.create_interpolator(self.property_operators[region], n_ops=self.n_ops,
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='property %d interpolation' % region)
+                                                                  timer_name='property %d interpolation' % region, region=str(region))
 
         self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
                                                         timer_name='wellbore interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                        precision=itor_precision)
+                                                        precision=itor_precision, region='-1')
 
         self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.nph,
                                                   timer_name='well controls interpolation',
@@ -209,7 +209,7 @@ class PhysicsBase:
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, timer_name: str, n_ops: int,
                             algorithm: str = 'multilinear', mode: str = 'adaptive',
-                            platform: str = 'cpu', precision: str = 'd'):
+                            platform: str = 'cpu', precision: str = 'd', region: str = ''):
         """
         Create interpolator object according to specified parameters
 
@@ -233,6 +233,9 @@ class PhysicsBase:
             'd' (default) - supporting points are stored and interpolation is performed using double precision;
             's' - supporting points are stored and interpolation is performed using single precision
         :type precision: str
+        :type region: str
+        :param region: str(region index) for reservoir operator, str(-1) for well operator, '' for others
+        needed to make different filenames for cache as self.wellbore_operators has the same type ReservoirOperators
         """
         # verify then inputs are valid
         assert len(self.n_axes_points) == self.n_vars
@@ -270,7 +273,7 @@ class PhysicsBase:
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = "%s_%s_%s_%d_%d" % (type(evaluator).__name__, mode, precision, n_dims, n_ops)
+            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (type(evaluator).__name__, mode, precision, n_dims, n_ops, region)
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
@@ -285,6 +288,7 @@ class PhysicsBase:
                 with open(itor_cache_filename, "rb") as fp:
                     print("Reading cached point data for ", type(itor).__name__)
                     itor.point_data = pickle.load(fp)
+                    print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
             if mode == 'adaptive':
                 # for adaptive itors, delay obl data save moment, because
@@ -333,7 +337,7 @@ class PhysicsBase:
         self.cache = False
         for itor, filename in self.created_itors:
             with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__)
+                print("Writing point data for ", type(itor).__name__, len(itor.point_data), 'points to', filename)
                 pickle.dump(itor.point_data, fp, protocol=4)
 
     def __del__(self):

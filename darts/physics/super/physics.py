@@ -155,6 +155,41 @@ class Compositional(PhysicsBase):
             for c in range(self.nc - 1):  # Denis
                 composition[c::(self.nc - 1)] = uniform_composition[c]
 
+    def set_nonuniform_initial_conditions(self, mesh: conn_mesh,
+                                        input_pressure, input_composition, input_temperature = None):
+        """
+        Function to set non-uniform initial conditions.
+
+        :param mesh: Mesh object
+        :type mesh: conn_mesh
+        :param input_pressure: Array of pressures
+        :param input_composition: Array of compositions
+        :param input_temperature: Array of temperatures, default is None for isothermal
+        """
+        assert isinstance(mesh, conn_mesh)
+        nb = mesh.n_blocks
+
+        """ Uniform Initial conditions """
+        # set initial pressure
+        pressure = np.array(mesh.pressure, copy=False)
+        pressure[:] = input_pressure
+
+        # if thermal, set initial temperature
+        if input_temperature is not None:
+            temperature = np.array(mesh.temperature, copy=False)
+            temperature[:] = input_temperature
+
+        # set initial composition
+        mesh.composition.resize(nb * (self.nc - 1))
+        composition = np.array(mesh.composition, copy=False)
+        # composition[:] = np.array(uniform_composition)
+        if self.nc == 2:
+            for c in range(self.nc - 1):
+                composition[c::(self.nc - 1)] = input_composition[:]
+        else:
+            for c in range(self.nc - 1):  # Denis
+                composition[c::(self.nc - 1)] = input_composition[c]
+
     def init_wells(self, wells):
         """
         Function to initialize the well rates for each well.
