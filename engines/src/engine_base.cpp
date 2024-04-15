@@ -1819,7 +1819,7 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
-void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+void engine_base::apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
@@ -1877,7 +1877,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 }
 
 
-void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
+void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double sum_z, new_z, last_z, neg_z;
 	index_t nb = mesh->n_blocks;
@@ -1886,14 +1886,14 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 
 	for (index_t i = 0; i < nb; i++)
 	{
-		last_z = 1 - min_zc;
+		last_z = 1;
 		neg_z = min_zc;
 		c_min = -1;
 		for (char c = 0; c < nc - 1; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 			last_z -= new_z; // keep track of last component
-
+			// find smallest component < min_z
 			if (new_z < neg_z)
 			{
 				neg_z = new_z;
@@ -1901,22 +1901,22 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 			}
 		}
 
-		if (last_z < neg_z) // first check if last component is the smallest < min_z
+		if (last_z < neg_z) // check if last component is the smallest < min_z
 		{
 			double last_dz = 0;
 			for (char c = 0; c < nc - 1; c++)
 				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
 			last_z -= last_dz; // find old_z = new_z - dX for last component
 
-			// compute fracture of update to be at min_zc
-			double frac = -(min_zc - last_z) / (last_dz); 
+			// compute fraction of update to be at min_zc
+			double frac = (min_zc - last_z) / (last_dz); 
 			for (char c = 0; c < nc - 1; c++)
 				dX[i * n_vars + z_var + c] *= frac; 
 			n_corrected++;
 		}
 		else if (c_min >= 0)
 		{
-			// compute fracture of update to be at min_zc 
+			// compute fraction of update to be at min_zc 
 			double frac = -(min_zc - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
 			// correct update to be at min_zc for the smallest component
 			for (char c = 0; c < nc - 1; c++)
