@@ -79,7 +79,7 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
-                                             diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
+                                             rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
@@ -89,6 +89,8 @@ class Model(CICDModel):
                                                 ('wat', ConstFunc(1))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('wat', PhaseRelPerm("wat"))])
+        property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(nc) * 1e-9)),
+                                                ('wat', ConstFunc(np.ones(nc) * 1e-9))])
 
         property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
@@ -242,10 +244,9 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0., rock_comp=1e-6, solid_dens=[], temperature=None):
+    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, solid_dens=[], temperature=None):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, diff_coef=diff_coef,
+        super().__init__(phases_name, components_name, Mw, min_z=min_z,
                          rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):

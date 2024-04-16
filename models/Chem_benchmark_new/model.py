@@ -182,6 +182,9 @@ class Model(CICDModel):
                              ('wat', ConstFunc(1))])
         rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                             ('wat', PhaseRelPerm("wat"))])
+        diff_coef = 1e-9 * 60 * 60 * 24
+        diffusion_ev = dict([('gas', ConstFunc(np.ones(nc) * diff_coef)),
+                             ('wat', ConstFunc(np.ones(nc) * diff_coef))])
 
         kinetic_rate_ev = {}
         kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne, self.combined_ions)
@@ -202,13 +205,13 @@ class Model(CICDModel):
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 min_z=self.zero / 10, diff_coef=1e-9 * 60 * 60 * 24,
-                                                 rock_comp=1e-7, solid_dens=[2000])
+                                                 min_z=self.zero / 10, rock_comp=1e-7, solid_dens=[2000])
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
             property_container.viscosity_ev = viscosity_ev
             property_container.rel_perm_ev = rel_perm_ev
+            property_container.diffusion_ev = diffusion_ev
             property_container.kinetic_rate_ev = deepcopy(kinetic_rate_ev)  # deepcopy because mass source BC doesn't work otherwise
 
             if not custom_physics:
@@ -419,14 +422,13 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0.0, rock_comp=1e-6, solid_dens=None, temperature=1.):
+    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, solid_dens=None, temperature=1.):
         # Call base class constructor
         # Cm = 0
         # super().__init__(phases_name, components_name, Mw, Cm, min_z, diff_coef, rock_comp, solid_dens)
         if solid_dens is None:
             solid_dens = []
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, diff_coef=diff_coef,
+        super().__init__(phases_name, components_name, Mw, min_z=min_z,
                          rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):
