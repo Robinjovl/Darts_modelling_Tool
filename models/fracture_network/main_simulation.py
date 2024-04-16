@@ -31,9 +31,9 @@ def run_simulation(input_data):
     m.init(verbose=True)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
-    size_report_step = 30  # Size of the reporting step (when output is writen to .vtk format)
-    num_report_steps = 12*50   # Number of reporting steps (see above)
-    output_vtk_period = 12
+    size_report_step = 60  # Size of the reporting step 
+    num_report_steps = 12*5   # Number of reporting steps (see above)
+    output_vtk_period = 12  # output each output_vtk_period-th step results to tk
 
     m.output_to_vtk(ith_step=0, output_directory=output_directory)
 

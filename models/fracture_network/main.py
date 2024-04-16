@@ -32,9 +32,6 @@ def test(case, overwrite='0'):
     return 0, 0.0
 
 if __name__ == "__main__":
-    cases_list = ['case_1']
-    #cases_list = ['case_1_burden']
-    #cases_list = ['case_1_burden_2']
     #cases_list = ['whitby']
     #cases_list = ['case_3']
     #cases_list = ['case_4']
