@@ -358,8 +358,9 @@ class DartsModel:
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
-                if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.params.stationary_point_tolerance:
-                    counter += 1
+                if abs(max_residual[i]) > 1e-20:
+                    if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.params.stationary_point_tolerance:
+                        counter += 1
             if counter > 2:
                 if verbose:
                     print("Stationary point detected!")

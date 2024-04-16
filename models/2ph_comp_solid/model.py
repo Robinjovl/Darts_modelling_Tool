@@ -79,7 +79,7 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
-                                             diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
+                                             diff_coef=1e-9, rock_comp=1e-7, min_z=self.zero/10, solid_dens=[2000])
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
@@ -94,7 +94,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero / 10, max_z=1 - self.zero / 10)
+                                     min_z=self.zero / 100, max_z=1 - self.zero / 100)
         self.physics.add_property_region(property_container)
 
         return

@@ -131,7 +131,6 @@ public:
 	virtual void average_operator(std::vector<value_t> &av_op);
 
 	virtual void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
-	virtual void apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX);
 
 	void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 	virtual void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);

@@ -70,7 +70,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=100, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
+                                     n_points=100, min_p=1, max_p=200, min_z=zero / 100, max_z=1 - zero / 100)
         self.physics.add_property_region(property_container)
 
         return

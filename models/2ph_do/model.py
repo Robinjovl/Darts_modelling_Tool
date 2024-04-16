@@ -61,7 +61,7 @@ class Model(CICDModel):
 
         # create physics
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
+                                     n_points=400, min_p=0, max_p=1000, min_z=zero/100, max_z=1 - zero/100)
         self.physics.add_property_region(property_container)
 
         return

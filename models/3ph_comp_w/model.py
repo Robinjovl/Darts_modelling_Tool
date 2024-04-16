@@ -21,7 +21,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=1e-5, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -48,13 +48,13 @@ class Model(CICDModel):
     def set_physics(self):
         """Physical properties"""
         # Create property containers:
-        zero = 1e-8
+        zero = 1e-12
         components = ['CO2', 'C1', 'H2S', 'H2O']
         phases = ['gas', 'oil', 'wat']
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        self.inj_stream = [1.0 - 2 * zero, zero, zero]
+        self.inj_stream = [1.0 - 3 * zero, zero, zero]
         self.ini_stream = [0.1, 0.2, 0.6 - zero]
 
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)

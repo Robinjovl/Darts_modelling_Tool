@@ -73,7 +73,7 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
-        zero = self.physics.axes_min[1]
+        zero = self.physics.axes_min[1] * 10
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
