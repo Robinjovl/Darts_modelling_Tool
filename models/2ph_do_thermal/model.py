@@ -45,7 +45,7 @@ class Model(CICDModel):
 
     def set_physics(self):
         """Physical properties"""
-        zero = 1e-13
+        zero = 1e-10
         components = ['w', 'o']
         phases = ['wat', 'oil']
 
@@ -71,7 +71,7 @@ class Model(CICDModel):
         # create physics
         thermal = True
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
+                                     n_points=400, min_p=0, max_p=1000, min_z=zero/100, max_z=1-zero/100,
                                      min_t=273.15 + 20, max_t=273.15 + 200, thermal=thermal)
         self.physics.add_property_region(property_container)
 

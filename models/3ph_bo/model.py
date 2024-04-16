@@ -54,7 +54,7 @@ class Model(CICDModel):
     def set_physics(self):
         """Physical properties"""
         # Create property containers:
-        zero = 1e-12
+        zero = 1e-10
         components = ['g', 'o', 'w']
         phases = ['gas', 'oil', 'wat']
 
@@ -82,7 +82,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=5000, min_p=1, max_p=450, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=5000, min_p=1, max_p=450, min_z=zero/100, max_z=1-zero/100)
         self.physics.add_property_region(property_container)
 
         return

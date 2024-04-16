@@ -194,14 +194,14 @@ class Model(CICDModel):
         num_well_blocks = int(self.ny / 2)
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/100, max_z=1-self.zero/100,
                                          cache=0, volume=delta_volume, num_wells=num_well_blocks)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
             self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/100, max_z=1-self.zero/100)
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
