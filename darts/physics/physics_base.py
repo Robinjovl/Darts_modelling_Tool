@@ -307,6 +307,8 @@ class PhysicsBase:
             itor_cache_signature_hash = str(hashlib.md5(itor_cache_signature.encode()).hexdigest())
             itor_cache_filename = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
 
+            if hasattr(self, 'cache_dir'):
+                itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
             # if cache file exists, read it
             if os.path.exists(itor_cache_filename):
                 with open(itor_cache_filename, "rb") as fp:
@@ -359,9 +361,13 @@ class PhysicsBase:
         # In either case it should only be invoked by the earliest call (which can be 1 or 2 depending on situation)
         # Switch cache off to prevent the second call
         self.cache = False
-        for itor, filename in self.created_itors:
+        for itor, fname in self.created_itors:
+            if hasattr(self, 'cache_dir'):
+                filename = os.path.join(self.cache_dir, fname)
+            else:
+                filename = fname
             with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, len(itor.point_data), 'points to', filename)
+                print("Writing point data for ", type(itor).__name__)
                 pickle.dump(itor.point_data, fp, protocol=4)
 
     def __del__(self):
