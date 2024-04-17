@@ -75,9 +75,7 @@ public:
      * @param[out]  derivatives   Interpolation gradients
      * @return 0 if interpolation is successful
      */
-  int interpolate_with_derivatives(const double *point,
-                                   double *values,
-                                   double *derivatives);
+  virtual int interpolate_with_derivatives(const double *point, double *values, double *derivatives);
 
   /**
      * @brief Compute interpolation and its gradient for all operators at every specified point
@@ -88,7 +86,7 @@ public:
      * @param[out]  derivatives   Interpolation gradients
      * @return 0 if interpolation is successful
      */
-  int interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
+  virtual int interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
                                    std::vector<double> &values, std::vector<double> &derivatives) override;
 
 protected:
