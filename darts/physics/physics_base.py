@@ -362,10 +362,10 @@ class PhysicsBase:
         # Switch cache off to prevent the second call
         self.cache = False
         for itor, fname in self.created_itors:
+            filename = fname
             if hasattr(self, 'cache_dir'):
-                filename = os.path.join(self.cache_dir, fname)
-            else:
-                filename = fname
+                if os.path.basename(fname) == fname: # could already have a folder in fname
+                    filename = os.path.join(self.cache_dir, fname)
             with open(filename, "wb") as fp:
                 print("Writing point data for ", type(itor).__name__)
                 pickle.dump(itor.point_data, fp, protocol=4)
