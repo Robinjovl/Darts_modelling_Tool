@@ -95,7 +95,7 @@ class Model(CICDModel, OptModuleSettings):
         Mw = [44.01, 16.04, 18.015]
         nc = len(components)
 
-        self.inj_stream = [1.0 - 2 * zero, zero]
+        self.inj_stream = [1.0 - 20 * zero, 10*zero]
         self.ini_stream = [0.1, 0.2]
 
         """ properties correlations """
