@@ -203,12 +203,16 @@ class PhysicsBase:
         :type axes_points: list
         """
         for region in self.regions:
-            self.acc_flux_itor[region].init_nested(nested_lvl, axes_points)
-            self.property_itor[region].init_nested(nested_lvl, axes_points)
+            if self.acc_flux_itor[region].__class__.__name__.split('_')[2] == 'nested':
+                self.acc_flux_itor[region].init_nested(nested_lvl, axes_points)
+            if self.property_itor[region].__class__.__name__.split('_')[2] == 'nested':
+                self.property_itor[region].init_nested(nested_lvl, axes_points)
 
-        self.acc_flux_w_itor.init_nested(nested_lvl, axes_points)
+        if self.acc_flux_w_itor.__class__.__name__.split('_')[2] == 'nested':
+            self.acc_flux_w_itor.init_nested(nested_lvl, axes_points)
 
-        self.rate_itor.init_nested(nested_lvl, axes_points)
+        if self.rate_itor.__class__.__name__.split('_')[2] == 'nested':
+            self.rate_itor.init_nested(nested_lvl, axes_points)
 
         return
 
