@@ -92,7 +92,7 @@ class SolidFlash(Flash):
         # Evaluate flash for normalized composition
         error_output = self.flash.evaluate(pressure, temperature, zc_norm)
         nu = np.array(self.flash.getnu())
-        x = np.array(self.flash.getx())
+        x = np.array(self.flash.getx()).reshape(self.np_fl, self.nc_fl)
 
         # Re-normalize solids and append to nu, x
         NU = np.zeros(self.np_fl + self.np_sol)
@@ -109,6 +109,3 @@ class SolidFlash(Flash):
         self.x = X
 
         return error_output
-
-    def fugacity(self, pressure, temperature, x, eos_name):
-        return self.flash.fugacity(pressure, temperature, x, eos_name)

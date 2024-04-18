@@ -179,7 +179,7 @@ class Model(CICDModel, OptModuleSettings):
                 else:
                     w.control = self.physics.new_bhp_prod(50)
 
-            CICDModel.run(self, ts)
+            CICDModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 self.export_vtk(file_name)

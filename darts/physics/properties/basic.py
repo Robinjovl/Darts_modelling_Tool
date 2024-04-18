@@ -138,14 +138,6 @@ class CapillaryPressure_VG:  # Van Genuchten
         return Pc
 
 
-class Diffusion:
-    def __init__(self, diff_coeff=0.):
-        self.D = diff_coeff
-
-    def evaluate(self):
-        return self.D
-
-
 class RockCompactionEvaluator:
     def __init__(self, pref=1., compres=1.45e-5):
         self.Pref = pref

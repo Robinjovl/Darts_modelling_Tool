@@ -99,9 +99,22 @@ namespace mesh
 	struct pair_xor_hash
 	{
 		template <class T1, class T2>
-		std::size_t operator() (const std::pair<T1, T2> &pair) const {
-			return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+		std::size_t operator() (const std::pair<T1, T2> &pair) const 
+		{
+		  return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
 		}
+	};
+	struct pair_cantor_hash 
+	{
+	  std::uint64_t operator()(const std::pair<index_t, index_t>& p) const 
+	  {
+		// Ensure the pair is ordered
+		index_t a = std::min(p.first, p.second);
+		index_t b = std::max(p.first, p.second);
+
+		// Apply the Cantor pairing function
+		return static_cast<std::uint64_t>((0.5 * (a + b) * (a + b + 1)) + b);
+	  }
 	};
 	struct integer_set_hash
 	{

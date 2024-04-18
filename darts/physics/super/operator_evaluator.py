@@ -95,8 +95,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Chi operator for diffusion """
         for j in self.ph:
-            for i in range(self.nc):
-                values[self.GRAD_OP + j * self.ne + i] = self.property.diff_coef * self.x[j][i] * self.rho_m[j]
+            D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
+            for i in range(nc_fl):
+                values[self.GRAD_OP + j * self.ne + i] = D[i] * self.x[j][i] * self.rho_m[j]
 
         """ Delta operator for reaction """
         for i in range(self.nc):

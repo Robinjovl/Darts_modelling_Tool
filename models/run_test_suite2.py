@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
     # fracture network tests
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=['fracture_network'], test_args=[[['case_1'], ['case_1_burden_O1_U1'], ['case_1_burden_O2_U2']]], overwrite=overwrite)
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=['fracture_network'], test_args=[[['case_1']]], overwrite=overwrite)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 

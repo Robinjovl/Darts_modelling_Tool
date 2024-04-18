@@ -63,7 +63,7 @@ if %clean_mode%==true (
 if %skip_req%==false (
   echo - Update submodules: START
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO
-  git submodule update --recursive --remote --init || goto :error
+  git submodule update --recursive --init || goto :error
   echo - Update submodules: DONE!
 
   echo - Install requirements: START

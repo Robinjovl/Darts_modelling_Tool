@@ -24,6 +24,7 @@ Welcome to DARTS documentation!
    :caption: FOR DEVELOPERS
    
    for_developers/darts_gitlab_setup.md
+   for_developers/configure_hardware.md
 
 .. toctree::
    :maxdepth: 2

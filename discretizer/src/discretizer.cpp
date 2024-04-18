@@ -2013,7 +2013,7 @@ vector<index_t> Discretizer::get_one_way_tpfa_transmissibilities() const
 {
 	assert(cell_m.size());
 
-	unordered_set<pair<index_t, index_t>, mesh::pair_xor_hash, mesh::one_way_connection_comparator> conn_set;
+	unordered_set<pair<index_t, index_t>, mesh::pair_cantor_hash, mesh::one_way_connection_comparator> conn_set;
 	unordered_set<pair<index_t, index_t>>::const_iterator it;
 	pair<index_t, index_t> ids;
 	vector<index_t> res;

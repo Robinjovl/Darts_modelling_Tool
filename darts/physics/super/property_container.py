@@ -2,12 +2,12 @@ import numpy as np
 from darts.engines import value_vector
 from darts.physics.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
-from darts.physics.properties.basic import ConstFunc, Diffusion, RockCompactionEvaluator, RockEnergyEvaluator
+from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
 
 
 class PropertyContainer(PropertyBase):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0., rock_comp=1e-6, solid_dens=None, rate_ann_mat=None, temperature=None):
+                 rock_comp=1e-6, solid_dens=None, rate_ann_mat=None, temperature=None):
 
         # This class contains all the property evaluators required for simulation
         self.components_name = components_name
@@ -35,8 +35,6 @@ class PropertyContainer(PropertyBase):
             self.thermal = True
             self.temperature = None
 
-        self.diff_coef = diff_coef
-
         # Allocate (empty) evaluators for functions
         self.density_ev = {}
         self.viscosity_ev = {}
@@ -48,7 +46,7 @@ class PropertyContainer(PropertyBase):
         self.rock_energy_ev = RockEnergyEvaluator()
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
         self.capillary_pressure_ev = ConstFunc(np.zeros(self.nph))
-        self.diffusion_ev = Diffusion(diff_coeff=diff_coef)
+        self.diffusion_ev = {ph: ConstFunc(np.zeros(self.nc)) for ph in phases_name}
         self.kinetic_rate_ev = {}
         self.energy_source_ev = []
         self.flash_ev: Flash = 0
@@ -148,7 +146,7 @@ class PropertyContainer(PropertyBase):
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         error_output = self.flash_ev.evaluate(pressure, temperature, zc)
         self.nu = np.array(self.flash_ev.getnu())
-        self.x = np.array(self.flash_ev.getx())
+        self.x = np.array(self.flash_ev.getx()).reshape(self.nph, self.nc)
 
         ph = []
         for j in range(self.nph):

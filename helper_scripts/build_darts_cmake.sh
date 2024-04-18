@@ -101,7 +101,7 @@ else
         # clean-up previous versions.
         rm -rf thirdparty/eigen thirdparty/pybind11
         git submodule sync --recursive
-        git submodule update --recursive --remote --init
+        git submodule update --recursive --init
         echo -e "\n- Update submodules: DONE! \n"
 
         # Install requirements
