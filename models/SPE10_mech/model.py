@@ -65,8 +65,7 @@ class Model(THMCModel):
                             reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
 
         nu = 0.2
-        p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
-                                reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
@@ -193,7 +192,7 @@ class Model(THMCModel):
         l_min = np.min(self.reservoir.mesh_data.points, axis=0)
         l_max = np.max(self.reservoir.mesh_data.points, axis=0)
 
-        well_coords = np.array([[l_max[0] / 2, l_max[1] / 2]])
+        well_coords = np.array([[l_max[0] / 2 - 2, l_max[1] / 2 - 2]])
         well_names = ['PRD1']
         self.well_cell_ids = []
         well_init_depth = l_min[2]

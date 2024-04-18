@@ -42,8 +42,6 @@ void pybind_mesh_conn(py::module &m)
 	  .def("init_pm_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
 		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pm_mech_discretizer)
-	  .def("init_pme", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
-		  std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t, index_t)) & conn_mesh::init_pme)
 	  .def("init_pme_mech_discretizer", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
 		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
@@ -56,7 +54,6 @@ void pybind_mesh_conn(py::module &m)
 	  .def("reverse_and_sort_mpfa", &conn_mesh::reverse_and_sort_mpfa)
 	  .def("reverse_and_sort_mpsa", &conn_mesh::reverse_and_sort_mpsa)
 	  .def("reverse_and_sort_pm", &conn_mesh::reverse_and_sort_pm)
-	  .def("reverse_and_sort_pme", &conn_mesh::reverse_and_sort_pme)
 	  .def("reverse_and_sort_pm_mech_discretizer", &conn_mesh::reverse_and_sort_pm_mech_discretizer)
 	  .def("reverse_and_sort_pme_mech_discretizer", &conn_mesh::reverse_and_sort_pme_mech_discretizer)
 	  .def("init_poro", &conn_mesh::init_poro)
