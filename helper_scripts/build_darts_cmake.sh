@@ -111,8 +111,8 @@ else
         cd thirdparty
         mkdir -p build/eigen
         cd build/eigen
-        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  
-        make install -j $NT &> ../../../make_eigen.log
+        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
+        make install -j $NT &>> ../../../make_eigen.log
         cd ../../
 
         echo -e "\n-- Install SuperLU \n"
