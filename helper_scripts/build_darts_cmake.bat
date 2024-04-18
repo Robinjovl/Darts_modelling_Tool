@@ -74,12 +74,12 @@ if %skip_req%==false (
   mkdir eigen
   cd eigen
   cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/ || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% > make_eigen.log || goto :error
   cd ..\..
 
   echo -- Install SuperLU
   cd SuperLU_5.2.1
-  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% || goto :error
+  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > make_superlu.log || goto :error
   cd ..\..
   echo - Install requirements: DONE!
 )
@@ -108,7 +108,7 @@ echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% || goto :error
+msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > make_darts.log || goto :error
 msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% || goto :error
 
 if %testing%==true ctest -C %config% 
@@ -129,10 +129,10 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python setup.py build bdist_wheel --plat-name=win-amd64 || goto :error
+  python setup.py build bdist_wheel --plat-name=win-amd64 > build_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install .[cpg]
+python -m pip install .[cpg] > install_wheel.log
 
 echo ************************************************************************
 echo   Building python package open-darts: DONE!

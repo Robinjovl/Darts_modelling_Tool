@@ -254,6 +254,7 @@ build-windows-3.7-ODLS:
     artifacts:
       paths:
         - './dist/*.whl'
+        - '*.log'
       expire_in: 1 week
       
 ###################################################################################
@@ -280,6 +281,7 @@ build-windows-3.7-ODLS:
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8
     artifacts:
       paths:
+        - '*.log'
         - '.\dist\*.whl'
       expire_in: 1 week
 
