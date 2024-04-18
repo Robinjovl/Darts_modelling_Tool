@@ -24,7 +24,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
-        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=np.mean(self.t_init))
+        t1 = None
+        if thermoporoelasticity:
+            t1 = np.mean(self.t_init)
+        self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1)
         self.wells = []
 
     def get_reservoir_temperature(self, depths):
