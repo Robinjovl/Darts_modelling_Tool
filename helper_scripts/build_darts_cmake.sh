@@ -111,7 +111,7 @@ else
         cd thirdparty
         mkdir -p build/eigen
         cd build/eigen
-        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  2>&1 make_eigen.log
+        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  2>&1 > make_eigen.log
         make install -j $NT
         cd ../../
 
@@ -126,8 +126,8 @@ else
   	        cp make_gcc_linux.inc make.inc
         fi
 
-        make -j $NT 2>&1 make_superlu.log
-        make install -j $NT 2>&1 make_superlu.log
+        make -j $NT 2>&1 > make_superlu.log
+        make install -j $NT 2>&1 > make_superlu.log
         cd ../../
 
         if [[ "$bos_solvers_artifact" == true ]]; then
@@ -173,7 +173,7 @@ else
     cmake $cmake_options ..
 
     # Build and install openDARTS
-    make install -j $NT 2>&1 make_darts.log
+    make install -j $NT 2>&1 > make_darts.log
 
     # Test
     if [[ "$testing" == true ]]; then
@@ -196,12 +196,12 @@ else
     # build darts.whl
     if [[ "$wheel" == true ]]; then
         python3 setup.py clean
-        python3 setup.py build bdist_wheel 2>&1 build_wheel.log
+        python3 setup.py build bdist_wheel 2>&1 > build_wheel.log
         echo "-- Python wheel generated! \n"
     fi
 
     # installing python package
-    python3 -m pip install . 2>&1 install_wheel.log
+    python3 -m pip install . 2>&1 > install_wheel.log
 
     echo "\n************************************************************************"
     echo "| Building python package open-darts: DONE! "
