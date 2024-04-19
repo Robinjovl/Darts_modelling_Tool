@@ -1324,7 +1324,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
 	fill(std::begin(cur_effective_tractions), std::end(cur_effective_tractions), 0.0);
 	fill(std::begin(cur_darcy_fluxes), std::end(cur_darcy_fluxes), 0.0);
 	counter = 0;
-	for (index_t face_id = 0; block_m[conn_id] == i && conn_id < n_conns;)
+	for (index_t face_id = 0; conn_id < n_conns && block_m[conn_id] == i;)
 	{
 	  j = block_p[conn_id];
 
