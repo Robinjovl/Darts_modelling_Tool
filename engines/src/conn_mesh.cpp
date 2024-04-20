@@ -1467,9 +1467,11 @@ conn_mesh::reverse_and_sort_pm()
 	index_t f_acc = 0, s_acc = 0, conn_id, conn_counter = 0, size;
 	vector<index_t> ind;
 	const bool is_face_unknowns_delivered = (one_way_tran_face.size() == one_way_tran_biot.size());
-	rhs.resize(n_blocks * n_vars);
-	rhs_biot.resize(n_blocks * n_vars);
-	rhs_face.resize(n_blocks * n_vars);
+	rhs.resize(n_two_way_conns * n_vars);
+	rhs_biot.resize(n_two_way_conns * n_vars);
+	if (one_way_rhs_face.size())
+	  rhs_face.resize(n_two_way_conns * n_vars);
+	
 	for (index_t i = 0; i < n_blocks; i++)
 	{
 		const auto& cur_cell = t_idxs[i];
@@ -1482,7 +1484,8 @@ conn_mesh::reverse_and_sort_pm()
 			// copy rhs
 			copy_n(one_way_rhs.begin() + n_vars * conn_id, n_vars, rhs.begin() + conn_counter * n_vars);
 			copy_n(one_way_rhs_biot.begin() + n_vars * conn_id, n_vars, rhs_biot.begin() + conn_counter * n_vars);
-			copy_n(one_way_rhs_face.begin() + n_vars * conn_id, n_vars, rhs_face.begin() + conn_counter * n_vars);
+			if (one_way_rhs_face.size())
+			  copy_n(one_way_rhs_face.begin() + n_vars * conn_id, n_vars, rhs_face.begin() + conn_counter * n_vars);
 
 			size = one_way_offset[conn_id + 1] - one_way_offset[conn_id];
 			ind.resize(size);
