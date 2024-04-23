@@ -17,7 +17,7 @@ multilinear_static_nested_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
                                           const std::vector<int> &axes_points,
                                           const std::vector<double> &axes_min,
                                           const std::vector<double> &axes_max,
-                                          const index_t _nest_lvl = 0)
+                                          const index_t _nest_lvl)
     : multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max),
       nest_lvl(_nest_lvl)
 {
@@ -62,11 +62,11 @@ int multilinear_static_nested_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>:
         for (int i = 0; i < N_DIMS; i++)
         {
           axis_low[i] = axis_idx[i] * this->axes_step_internal[i] + this->axes_min_internal[i];
-          axis_high[i] = (axis_idx[i] + 1) * this->axes_step_internal[i] + axes_min_internal[i];
+          axis_high[i] = (axis_idx[i] + 1) * this->axes_step_internal[i] + this->axes_min_internal[i];
         }
 
         // need to find axes_min, axes_max for a given hypercube
-        hc_interp = new multilinear_static_nested_cpu_interpolator(supporting_point_evaluator, nested_axes_points, 
+        hc_interp = new multilinear_static_nested_cpu_interpolator(this->supporting_point_evaluator, nested_axes_points, 
                                                                     axis_low, axis_high, nest_lvl + 1);
         hc_interp->init();
       }
@@ -88,7 +88,7 @@ template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
 const typename multilinear_static_nested_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t& multilinear_static_nested_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const index_t hypercube_index)
 {
 
-  return hypercube_data[hypercube_index];
+  return this->hypercube_data[hypercube_index];
 }
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
@@ -119,9 +119,9 @@ int multilinear_static_nested_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>:
   {
     int axis_idx = get_axis_interval_index_low_mult<value_t>(point[i],
       this->axes_min_internal[i], this->axes_max_internal[i], this->axes_step_internal[i],
-      this->axes_step_inv_internal[i], axes_points[i],
+      this->axes_step_inv_internal[i], this->axes_points[i],
       &axis_low[i], &mult[i]);
-    hypercube_idx += axis_idx * axis_hypercube_mult[i];
+    hypercube_idx += axis_idx * this->axis_hypercube_mult[i];
   }
   active_hypercube_counter[hypercube_idx]++;
 
