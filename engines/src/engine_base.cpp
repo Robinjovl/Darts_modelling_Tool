@@ -1819,6 +1819,67 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
+
+#if 0
+void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
+{
+	double sum_z, new_z;
+	index_t nb = mesh->n_blocks;
+	bool z_corrected;
+	index_t n_corrected = 0;
+
+	for (index_t i = 0; i < nb; i++)
+	{
+		sum_z = 0;
+		z_corrected = false;
+
+		// check all but one composition in grid block
+		for (char c = 0; c < nc - 1; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+			if (new_z < min_zc)
+			{
+				new_z = min_zc;
+				z_corrected = true;
+			}
+			else if (new_z > 1 - min_zc)
+			{
+				new_z = 1 - min_zc;
+				z_corrected = true;
+			}
+			sum_z += new_z;
+		}
+		// check the last composition
+		new_z = 1 - sum_z;
+		if (new_z < min_zc)
+		{
+			new_z = min_zc;
+			z_corrected = true;
+		}
+		sum_z += new_z;
+
+		if (z_corrected)
+		{
+			// normalize compositions and set appropriate update
+			for (char c = 0; c < nc - 1; c++)
+			{
+				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+
+				new_z = std::max(min_zc, new_z);
+				new_z = std::min(1 - min_zc, new_z);
+
+				new_z = new_z / sum_z;
+				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
+			}
+			n_corrected++;
+		}
+	}
+	if (n_corrected)
+		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+}
+
+#else
+
 void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double sum_z, new_z, last_z, neg_z;
@@ -1870,6 +1931,7 @@ void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vec
 	if (n_corrected)
 		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
+#endif
 
 void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
