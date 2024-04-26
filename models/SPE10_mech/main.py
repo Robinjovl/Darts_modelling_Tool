@@ -88,7 +88,7 @@ def run_timestep_python(m, dt, t):
 
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and self.e.dev_e < self.params.tolerance_newton
+        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton
            and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
               or self.e.n_newton_last_dt == self.params.max_i_newton):
             if (i > 0):  # min_i_newton
@@ -111,7 +111,7 @@ def run_timestep_python(m, dt, t):
     return converged
 
 def run(model_folder, physics_type):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=True)
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
     m.init()
     redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
@@ -145,8 +145,8 @@ def run(model_folder, physics_type):
     m.print_timers()
     m.print_stat()
 
-# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
-run(model_folder='meshes/data_20_40_40', physics_type='single_phase_thermal')
+run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+# run(model_folder='meshes/data_10_10_10', physics_type='single_phase_thermal')
 # run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')
 
 # run(model_folder='meshes/data_20_40_40', physics_type='single_phase')
