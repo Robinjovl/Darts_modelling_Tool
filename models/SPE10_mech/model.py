@@ -53,7 +53,7 @@ class Model(THMCModel):
             porosity = 0.375
             permeability = 10.0 # [mD]
             E = 1 # [10 GPa]
-            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
+            # p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
         else:
             porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
                                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
@@ -61,11 +61,9 @@ class Model(THMCModel):
                                         reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2).flatten()
             E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
                                     reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-            p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
-                            reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-
+        p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
+                        reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
         nu = 0.2
-
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
         self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
@@ -192,8 +190,8 @@ class Model(THMCModel):
         l_min = np.min(self.reservoir.mesh_data.points, axis=0)
         l_max = np.max(self.reservoir.mesh_data.points, axis=0)
 
-        well_coords = np.array([[l_max[0] / 2 - 2, l_max[1] / 2 - 2]])
-        well_names = ['PRD1']
+        well_coords = np.array([[l_max[0] / 2 - 2, l_max[1] / 2 - 200], [l_max[0] / 2 - 2, l_max[1] / 2 + 200]])
+        well_names = ['PRD1', 'INJ1']
         self.well_cell_ids = []
         well_init_depth = l_min[2]
         nodes = np.array(self.reservoir.discr_mesh.nodes, copy=False)
@@ -229,7 +227,8 @@ class Model(THMCModel):
 
     def set_boundary_conditions(self):
         self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
-        # self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, [0.0], 0)
+        if len(self.reservoir.wells) > 1:
+            self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, [1.0 - self.idata.obl.zero], 0)
 
     def set_boundary_conditions_after_initialization(self):
         """
@@ -242,15 +241,9 @@ class Model(THMCModel):
         for i, w in enumerate(self.reservoir.wells):
             p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
             if i == 0:
-                # Add controls for production well:
-                # Specify bhp for particular production well:
                 w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
-                # w.control = self.physics.new_bhp_prod(self.reservoir.p_init)
             else:
-                # For BHP control in injection well we usually specify pressure and composition (upstream) but here
-                # the method is wrapped such  that we only need to specify bhp pressure (see lambda for more info)
-                #w.control = self.physics.new_bhp_inj(self.reservoir.p_init + 10)
-                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50)
+                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, [1.0 - self.idata.obl.zero])
         return 0
 
     def set_initial_conditions(self):
