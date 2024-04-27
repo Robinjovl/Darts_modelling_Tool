@@ -19,6 +19,7 @@ using std::string;
 using std::vector;
 using std::set;
 using std::pair;
+using std::find;
 using std::distance;
 using std::chrono::steady_clock;
 using std::chrono::duration_cast;
@@ -206,17 +207,18 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	index_t nebr_id, counter = 0, offset = 0, node_id;
 	size_t len;
 	
-	// set of connections to check if particular one was already created
-	unordered_set<std::pair<index_t, index_t>, pair_xor_hash, one_way_connection_comparator> conn_set;
-	conn_set.reserve(MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
+	// vector of cell's indices pairs to check if particular one was already created
+	vector<vector<index_t>> conn_set(num_of_elements, vector<index_t>(MAX_CONNS_PER_ELEM_GMSH, -1));
+	std::vector<size_t> conn_set_size(num_of_elements, 0);
+	vector<index_t>::const_iterator it1, it2;
+	vector<index_t>::iterator it1_end, it2_end;
+
 	conns.reserve(MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 	// vector to store the result of intersections
 	vector<index_t> intersect;
 	intersect.reserve(4 * ND * num_of_elements * 2 * MAX_PTS_PER_3D_ELEM_GMSH);
 	conn_nodes.reserve(4 * MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 
-	unordered_set<std::pair<index_t,index_t>>::const_iterator it;
-	pair<index_t, index_t> ids;
 	ElemConnectionTable::const_iterator conn_type_it;
 
 	// fault nodes
@@ -241,11 +243,16 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 				if (nebr_id == i) continue;
 				//cout << "node_id=" << node_id << ", nebr_id=" << nebr_id << "\n";
 				const auto& el2 = elems[nebr_id];
+				auto& id1 = conn_set[el1.elem_id];
+				size_t& id_size1 = conn_set_size[el1.elem_id];
+				auto& id2 = conn_set[el2.elem_id];
+				size_t& id_size2 = conn_set_size[el2.elem_id];
+				it1_end = id1.begin() + id_size1;
+				it2_end = id2.begin() + id_size2;
+				it1 = find(id1.begin(), it1_end, el2.elem_id);
+				it2 = find(id2.begin(), it2_end, el1.elem_id);
 
-				ids.first = el1.elem_id;		
-				ids.second = el2.elem_id;
-				it = conn_set.find(ids);
-				if (it == conn_set.end())
+				if (it1 == it1_end && it2 == it2_end)
 				{
 #if 0 // debug
 						int *e1 = elem_nodes_sorted.data();
@@ -306,7 +313,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 								fault_nodes.insert(set<index_t>(intersect.end() - len, intersect.end()));
 							}
 
-							conn_set.insert(ids);
+							id1[id_size1++] = el2.elem_id;
 							offset += conn.n_pts;
 
 							conn.type = conn_type_it->second;
@@ -329,7 +336,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 							conn.calculate_area(nodes, conn_nodes);
 							conn.area *= ( init_apertures[el1.elem_id - region_ranges[FRACTURE].first] + init_apertures[el2.elem_id - region_ranges[FRACTURE].first] ) / 2.0;
 							conn.calculate_normal(nodes, conn_nodes, elems, elem_nodes);
-							conn_set.insert(ids);
+							id1[id_size1++] = el2.elem_id;
 							offset += conn.n_pts;
 
 							conn.type = CONN_TYPE_TABLE.at( { el1.loc, el2.loc } );
