@@ -208,11 +208,11 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	
 	// set of connections to check if particular one was already created
 	unordered_set<std::pair<index_t, index_t>, pair_xor_hash, one_way_connection_comparator> conn_set;
-	conn_set.reserve(ND * num_of_elements);
-	conns.reserve(ND * num_of_elements);
+	conn_set.reserve(MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
+	conns.reserve(MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 	// vector to store the result of intersections
 	vector<index_t> intersect;
-	intersect.reserve(4 * ND * num_of_elements);
+	intersect.reserve(4 * ND * num_of_elements * 2 * MAX_PTS_PER_3D_ELEM_GMSH);
 	conn_nodes.reserve(4 * MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 
 	unordered_set<std::pair<index_t,index_t>>::const_iterator it;

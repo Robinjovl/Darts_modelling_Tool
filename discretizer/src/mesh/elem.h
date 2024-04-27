@@ -26,6 +26,7 @@ namespace mesh
 	/***********	Elements	***************/
 	const index_t MAX_PTS_PER_3D_ELEM = 500;//normally is 8 but for the faults (CPG) might be greater //TODO: this could be optimized by getting max number for the particular case and dynamically allocating the corresponding arrays
 	const index_t MAX_PTS_NUM_PER_2D_ELEM = 50;
+	const index_t MAX_PTS_PER_3D_ELEM_GMSH = 8;
 	const index_t MIN_CONNS_PER_ELEM = 1;
 	const index_t MAX_CONNS_PER_ELEM_GMSH = 8;
 	const index_t MAX_CONNS_PER_ELEM = 500;//normally is 6 but for the faults (CPG) might be greater //TODO: this could be optimized by getting max number for the particular case and dynamically allocating the corresponding arrays
