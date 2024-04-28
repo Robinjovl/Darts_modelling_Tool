@@ -153,7 +153,7 @@ class UnstructReservoirMech():
         self.t_var = self.p_var + nc if thermoporoelasticity else None
         self.t_bc_var = self.p_var + 1 if thermoporoelasticity else None
         self.u_var = self.p_var + ne
-        self.u_bc_var = self.t_var + 1 if thermoporoelasticity else self.p_var + 1
+        self.u_bc_var = self.t_bc_var + 1 if thermoporoelasticity else self.p_bc_var + 1
 
         if thermoporoelasticity:
             assert (discretizer == 'mech_discretizer')

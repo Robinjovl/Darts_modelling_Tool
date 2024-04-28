@@ -145,15 +145,12 @@ def run(model_folder, physics_type):
     m.print_timers()
     m.print_stat()
 
-run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
+# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
 # run(model_folder='meshes/data_10_10_10', physics_type='single_phase_thermal')
 # run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')
+# run(model_folder='meshes/data_10_10_10', physics_type='dead_oil_thermal')
 
 # run(model_folder='meshes/data_20_40_40', physics_type='single_phase')
 # run(model_folder='meshes/data_20_40_40', physics_type='single_phase_thermal')
 # run(model_folder='meshes/data_20_40_40', physics_type='dead_oil')
-
-
-# run(model_folder='meshes/data_40_80_40', physics_type='single_phase')
-# run(model_folder='meshes/data_40_80_40', physics_type='single_phase_thermal')
-# run(model_folder='meshes/data_40_80_40', physics_type='dead_oil')
+run(model_folder='meshes/data_20_40_40', physics_type='dead_oil_thermal')

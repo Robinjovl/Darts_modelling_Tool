@@ -22,7 +22,11 @@ class Model(THMCModel):
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
-        self.thermal = True if self.physics_type == 'single_phase_thermal' else False
+        if self.physics_type == 'single_phase_thermal' or \
+            self.physics_type == 'dead_oil_thermal':
+            self.thermal = True
+        else:
+            self.thermal = False
 
         # call base class constructor
         super().__init__()
@@ -95,7 +99,7 @@ class Model(THMCModel):
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
         self.idata.initial.initial_pressure = p_init  # [bar]
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-        if self.physics_type == 'dead_oil':
+        if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             self.idata.initial.initial_composition = [0.67]
 
         self.idata.obl.n_points = 400
@@ -151,7 +155,7 @@ class Model(THMCModel):
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-        elif self.physics_type == 'dead_oil':
+        elif self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             components = ['w', 'o']
             phases = ['wat', 'oil']
             self.cell_property = ['pressure'] + ['water']
@@ -169,7 +173,6 @@ class Model(THMCModel):
                                                    ('oil', EnthalpyBasic(hcap=0.035))])
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
                                                        ('oil', ConstFunc(1.))])
-
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
@@ -228,7 +231,14 @@ class Model(THMCModel):
     def set_boundary_conditions(self):
         self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
         if len(self.reservoir.wells) > 1:
-            self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, [1.0 - self.idata.obl.zero], 0)
+            inj = []
+            if self.physics_type == 'single_phase_thermal':
+                inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+            elif self.physics_type == 'dead_oil':
+                inj = [1.0 - self.idata.obl.zero]
+            elif self.physics_type == 'dead_oil_thermal':
+                inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+            self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, inj, 0)
 
     def set_boundary_conditions_after_initialization(self):
         """
@@ -244,6 +254,15 @@ class Model(THMCModel):
                 w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
             else:
                 w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, [1.0 - self.idata.obl.zero])
+
+                inj = []
+                if self.physics_type == 'single_phase_thermal':
+                    inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+                elif self.physics_type == 'dead_oil':
+                    inj = [1.0 - self.idata.obl.zero]
+                elif self.physics_type == 'dead_oil_thermal':
+                    inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25]
+                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, inj)
         return 0
 
     def set_initial_conditions(self):
