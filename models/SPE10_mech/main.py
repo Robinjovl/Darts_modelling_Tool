@@ -116,7 +116,7 @@ def run(model_folder, physics_type):
     redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
-    m.output_directory = 'sol_cpp' + model_folder.split('data')[-1]
+    m.output_directory = 'sol_cpp_' + physics_type + model_folder.split('data')[-1]
 
     # intialization:
     m.reservoir.set_equilibrium(zero_conduction=True)
