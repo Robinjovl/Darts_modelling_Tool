@@ -717,6 +717,12 @@ class FluidFlower(Shape):
             point.xyz[2] *= scale_factor_y
         return
 
+    def convert_to_spe11c(self):
+        """
+        Function to convert spe11b 2D geometry to spe11c 3D geometry
+        """
+
+        return
     def plot_shape_2D(self):
         """
         Function to plot FluidFlower with extra
@@ -727,13 +733,13 @@ class FluidFlower(Shape):
         colours = ['blue', 'mediumseagreen', 'lightskyblue', 'orchid', 'dodgerblue', 'darkcyan']
 
         # Plot wells, sensors and boxes
-        wells = [[0.925, 0.0, 0.32942],
-                 [1.72806, 0.0, 0.72757]]
-        sensors = [[1.53, 0., 0.53],
-                   [1.73, 0., 1.13]]
-        boxes = [[[1.13, 2.83], [0., 0.], [0.03, 0.63]],
-                 [[0.03, 1.13], [0., 0.], [0.63, 1.23]],
-                 [[1.13, 2.63], [0., 0.], [0.13, 0.43]]]
+        wells = [[2700., 0.0, 300.],
+                 [5100., 0.0, 700.]]
+        sensors = [[4500., 0., 500.],
+                   [5100., 0., 1100.]]
+        boxes = [[[3300., 8300.], [0., 1.], [0., 600.]],
+                 [[100., 3300.], [0., 1.], [600., 1200.]],
+                 [[3300., 7800.], [0., 1.], [100., 400.]]]
 
         ii = 0
         for i, well in enumerate(wells):
