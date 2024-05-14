@@ -253,8 +253,6 @@ class Model(THMCModel):
             if i == 0:
                 w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
             else:
-                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, [1.0 - self.idata.obl.zero])
-
                 inj = []
                 if self.physics_type == 'single_phase_thermal':
                     inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
