@@ -70,10 +70,7 @@ class Model(THMCModel):
         nu = 0.2
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
-        self.idata.rock.heat_capacity = 167.2 * 1000.0 # [kJ/m3/K]
-        self.idata.rock.conductivity = 181.44  # [kJ/m/day/K]  #TODO why it was not there before
         self.idata.rock.density = 2650.
-
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
         self.idata.rock.biot = 1.0
