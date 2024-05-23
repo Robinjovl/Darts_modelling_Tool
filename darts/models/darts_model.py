@@ -56,7 +56,7 @@ class DartsModel:
 
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
-    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False):
+    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,  verbose: bool = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -88,6 +88,7 @@ class DartsModel:
         self.set_well_controls()
         self.reset()
 
+        self.restart = restart
         if restart:
             self.load_restart_data(self.output_folder)
 
@@ -674,7 +675,7 @@ class DartsModel:
 
         dataset.to_netcdf(output_filename + '.nc')
 
-    def output_to_vtk(self, ith_step: int, output_directory: str, output_properties: list = None):
+    def output_to_vtk(self, ith_step: int, output_directory: str, binary_filename: str, output_properties: list = None):
         """
         Function to export results at timestamp t into `.vtk` format.
 
