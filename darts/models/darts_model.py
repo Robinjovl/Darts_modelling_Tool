@@ -80,7 +80,7 @@ class DartsModel:
         # Initialize well objects
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells)
-        self.configure_output(output_folder, restart)
+        self.configure_output(self.output_folder, restart)
 
         self.set_op_list()
         self.set_boundary_conditions()
@@ -89,7 +89,7 @@ class DartsModel:
         self.reset()
 
         if restart:
-            self.load_restart_data(output_folder)
+            self.load_restart_data(self.output_folder)
 
     def reset(self):
         """
