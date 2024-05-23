@@ -127,7 +127,7 @@ class DartsModel:
                 cell_ids_dataset = dynamic_group.create_dataset("cell_id", shape=(nb,), dtype=np.int32)
                 cell_ids_dataset[:] = cell_ids
                 dynamic_group.create_dataset("X", shape=(0, nb, self.physics.n_vars),
-                                             maxshape=(None, nb, self.physics.n_vars))
+                                             maxshape=(None, nb, self.physics.n_vars), dtype=np.float64)
 
             # add variable names
             dt = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
