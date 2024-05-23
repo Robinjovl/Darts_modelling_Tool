@@ -172,19 +172,18 @@ class DartsModel:
         self.configure_h5_output(filename=well_output_path, cell_ids=self.id_well_data,
                             add_static_data=True, description='Well data')
 
-    def load_restart_data(self, filename: str = 'restart/solution.h5'):
+    def load_restart_data(self, filename: str = 'output/solution.h5'):
         """
         Function to load data from previous simulation and uses them for following simulation.
         :param output_folder: restart_data filename
         :type output_folder: str
         """
         time, cell_id, X, var_names = self.read_specific_data(filename)
-        sol = np.float64(X.flatten())
+        sol = np.float64(X[-1].flatten())
 
-        self.physics.engine.t = time
+        self.physics.engine.t = time[-1]
         self.physics.engine.X = value_vector(sol)
         self.physics.engine.Xn = value_vector(sol)
-        # self.physics.engine.op_vals_arr_n = value_vector(arr_n) ## what is this??? beta?
 
     def set_wells(self, verbose: bool = False):
         """
