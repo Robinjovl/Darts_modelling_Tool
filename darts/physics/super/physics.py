@@ -1,4 +1,5 @@
 import numpy as np
+#from darts.models.darts_model import EngineType # Engine_change
 from darts.engines import *
 from darts.physics.physics_base import PhysicsBase
 
@@ -43,6 +44,7 @@ class Compositional(PhysicsBase):
         :param cache: Switch to cache operator values
         :type cache: bool
         """
+        #self.engine = EngineType().engine # Engine_change
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
@@ -84,7 +86,7 @@ class Compositional(PhysicsBase):
 
         return
 
-    def set_engine(self, engine, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
         """
         Function to set :class:`engine_super` object to fully impelicite or sequential
 
@@ -104,10 +106,10 @@ class Compositional(PhysicsBase):
             if self.thermal:
                 return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                if engine == 'FI':
-                    return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
-                elif engine == 'SEQ':
-                    return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
+                #if self.engine == 'FI': # Engine_change
+                return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                #elif self.engine == 'SEQ':
+                #return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
 
     def define_well_controls(self):
         # define well control factories

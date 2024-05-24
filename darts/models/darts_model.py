@@ -2,6 +2,7 @@ from math import fabs
 import pickle
 import os
 import numpy as np
+import csv
 
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.physics_base import PhysicsBase
@@ -10,7 +11,7 @@ from darts.engines import timer_node, sim_params, value_vector, index_vector, op
 from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
-
+#ENGINE_TYPE = 'FI' # Engine_change
 
 class DartsModel:
     """
@@ -26,6 +27,7 @@ class DartsModel:
     reservoir: ReservoirBase
     physics: PhysicsBase
 
+    #def __init__(self, engine): # Engine_change
     def __init__(self):
         """"
         Initialize DartsModel class.
@@ -35,6 +37,8 @@ class DartsModel:
         :ivar params: Object to set simulation parameters
         :type params: :class:`darts.engines.sim_params`
         """
+        #if engine == 'SEQ': # Engine_change
+        #    ENGINE_TYPE = 'SEQ' # Engine_change
         # print out build information
         engines_pbi()
         discretizer_pbi()
@@ -51,7 +55,7 @@ class DartsModel:
 
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
-    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', engine: str = 'FI', verbose: bool = False):
+    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -69,7 +73,7 @@ class DartsModel:
 
         # Initialize physics and Engine object
         assert self.reservoir is not None, "Physics object has not been defined"
-        self.physics.init_physics(discr_type=discr_type, platform=platform, engine=engine, verbose=verbose)
+        self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose)
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
@@ -316,6 +320,12 @@ class DartsModel:
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
+        P = np.array(self.physics.engine.X[::3])
+        t = np.array(self.physics.engine.t)
+        #csv_file_path = 'vectors_data.csv' #save pressure data
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow( np.insert(P, 0, t))
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -453,3 +463,12 @@ class DartsModel:
     def __del__(self):
         for name in list(vars(self).keys()):
             delattr(self, name)
+
+
+#class EngineType: # Engine_change
+#    _instance = None
+ #   def __new__(cls):
+#        if cls._instance is None:
+#            cls._instance = super().__new__(cls)
+#            cls._instance.engine = ENGINE_TYPE
+ #       return cls._instance

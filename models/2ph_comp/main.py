@@ -51,7 +51,7 @@ if __name__ == '__main__':
     SEQ = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     #FI.init()
-    SEQ.init(engine='SEQ')
+    SEQ.init()
 
     if True:
         SEQ.run(1000)

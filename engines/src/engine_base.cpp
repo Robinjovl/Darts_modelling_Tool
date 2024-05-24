@@ -2489,7 +2489,9 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
 
-	//Jacobian->write_matrix_to_file("jac_tpfa.txt");
+	Jacobian->write_matrix_to_file("jac_tpfa.txt");
+
+
 
 #ifdef WITH_GPU
 	if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)

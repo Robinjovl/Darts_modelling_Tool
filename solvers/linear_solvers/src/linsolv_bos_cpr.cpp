@@ -119,7 +119,7 @@ namespace opendarts
       
       return 0.0;
     }
-    
+    template class linsolv_bos_cpr<1>;
     template class linsolv_bos_cpr<2>;
     template class linsolv_bos_cpr<3>;
     template class linsolv_bos_cpr<4>;
