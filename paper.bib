@@ -29,6 +29,21 @@ keywords = {Geothermal simulation, Adaptive Mesh Refinement, Unstructured grid, 
 abstract = {A coupled description of flow and thermal-reactive transport is spanning a wide range of scales in space and time, which often introduces a significant complexity for the modelling of such processes. Subsurface reservoir heterogeneity with complex multi-scale features increases the modelling complexity even further. Traditional multiscale techniques are usually focused on the accuracy of the pressure solution and often ignore the transport. Improving the transport solution can however be quite significant for the performance of the simulation, especially in complex applications related to thermal-compositional flow. The use of an Adaptive Mesh Refinement enables the grid to adapt dynamically during the simulation, which facilitates the efficient use of computational resources. This is especially important in applications with thermal flow and transport where the region requires high-resolution calculations as often localized in space. In this work, the aim is to develop an Adaptive Mesh Refinement framework for geothermal reservoir simulation. The approach uses a multi-level connection list and can be applied to fully unstructured grids. The adaptivity of the grid in the developed framework is based on a hierarchical connectivity list. First, the fine-scale model is constructed, which accurately approximates all reservoir heterogeneity. Next, a global flow-based upscaling is applied, where an unstructured partitioning of the original grid is created. Once the full hierarchy of levels is constructed, the simulation is started at the coarsest grid. Grid space refinement criteria is based on the local changes and can be adjusted for specific models and governing physics. The multi-level connectivity lists are redefined at each timestep and used as an input for the next. The developed Adaptive Mesh Refinement framework was implemented in Delft Advanced Research Terra Simulator which uses the Operator-Based Linearization technique. The performance of the proposed approach is illustrated for several challenging geothermal applications of practical interest.}
 }
 
+@article{Hoop2022,
+author = {de Hoop, S. and Voskov, D. V. and Bertotti, G. and Barnhoorn, A.},
+title = {An Advanced Discrete Fracture Methodology for Fast, Robust, and Accurate Simulation of Energy Production From Complex Fracture Networks},
+journal = {Water Resources Research},
+volume = {58},
+number = {5},
+pages = {e2021WR030743},
+keywords = {efficient discrete fracture methodology, complex fracture networks, geothermal energy, two-phase flow, uncertainty, topology},
+doi = {10.1029/2021WR030743},
+url = {https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2021WR030743},
+eprint = {https://agupubs.onlinelibrary.wiley.com/doi/pdf/10.1029/2021WR030743},
+abstract = {Abstract Fracture networks are abundant in subsurface applications (e.g., geothermal energy production, CO2 sequestration). Fractured reservoirs often have a very complex structure, making modeling flow and transport in such networks slow and unstable. Consequently, this limits our ability to perform uncertainty quantification and increases development costs and environmental risks. This study provides an advanced methodology for simulation based on Discrete Fracture Model approach. The preprocessing framework results in a fully conformal, uniformly distributed grid for realistic 2D fracture networks at a required level of precision. The simplified geometry and topology of the resulting network are compared with input (i.e., unchanged) data to evaluate the preprocessing influence. The resulting mesh-related parameters, such as volume distributions and orthogonality of control volume connections, are analyzed. Furthermore, changes in fluid-flow response related to preprocessing are evaluated using a high-enthalpy two-phase flow geothermal simulator. The simplified topology directly improves meshing results and, consequently, the accuracy and efficiency of numerical simulation. The main novelty of this work is the introduction of an automatic preprocessing framework allowing us to simplify the fracture network down to required level of complexity and addition of a fracture aperture correction capable of handling heterogeneous aperture distributions, low connectivity fracture networks, and sealing fractures. The graph-based framework is fully open-source and explicitly resolves small-angle intersections within the fracture network. A rigorous analysis of changes in the static and dynamic impact of the preprocessing algorithm demonstrates that explicit fracture representation can be computationally efficient, enabling their use in large-scale uncertainty quantification studies.},
+year = {2022}
+}
+
 @article{Khait2017,
 title = {Operator-based linearization for general purpose reservoir simulation},
 journal = {Journal of Petroleum Science and Engineering},
@@ -104,6 +119,15 @@ abstract = {A new approach for the linearization of governing equations that des
 	journal = {Transport in Porous Media},
 	doi = {10.1007/s11242-023-01984-8},
 	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85164963301&doi=10.1007%2fs11242-023-01984-8&partnerID=40&md5=450c35cea2ae8f02fac567d14dcaf318}
+}
+
+@article{fluidflower2023,
+  title={The FluidFlower Validation Benchmark Study for the Storage of CO 2},
+  author={Flemisch, Bernd and Nordbotten, Jan M and Fern{\o}, Martin and Juanes, Ruben and Both, Jakub W and Class, Holger and Delshad, Mojdeh and Doster, Florian and Ennis-King, Jonathan and Franc, Jacques and others},
+  journal={Transport in Porous Media},
+  pages={1--48},
+  year={2023},
+  publisher={Springer}
 }
 
 @ARTICLE{Lyu2021,
