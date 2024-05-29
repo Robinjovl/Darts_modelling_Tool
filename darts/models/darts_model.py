@@ -424,7 +424,7 @@ class DartsModel:
         """
         # Initialize property_array
         n_vars = self.physics.n_vars
-        n_props = self.physics.property_operators[0].n_ops
+        n_props = self.physics.property_operators[next(iter(self.physics.property_operators))].n_ops
         tot_props = n_vars + n_props
         nb = self.reservoir.mesh.n_res_blocks
         property_array = np.zeros((tot_props, nb))
@@ -458,7 +458,7 @@ class DartsModel:
         :type output_properties: list
         """
         # Find index of properties to output
-        tot_props = self.physics.vars + self.physics.property_operators[0].props_name
+        tot_props = self.physics.vars + self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
         if output_properties is None:
             # If None, all variables and properties from property_operators will be passed
             prop_idxs = {prop: i for i, prop in enumerate(tot_props)}
