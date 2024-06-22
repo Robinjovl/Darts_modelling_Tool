@@ -2,6 +2,7 @@ from math import fabs
 import pickle
 import os
 import numpy as np
+import pandas as pd
 import csv
 
 from darts.reservoirs.reservoir_base import ReservoirBase
@@ -243,7 +244,14 @@ class DartsModel:
         ts = 0
 
         while t < stop_time:
-            converged = self.run_timestep(dt, t, verbose)
+            # here I should implement the loop over p
+            # converged = self.run_timestep_pressure(dt, t, verbose)
+            # if converged:
+            # ...
+
+            # calculation of total-velocity
+
+            converged = self.run_timestep_concentration(dt, t, verbose)
 
             if converged:
                 t += dt
@@ -274,7 +282,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run_timestep(self, dt: float, t: float, verbose: bool = True):
+    def run_timestep_concentration(self, dt: float, t: float, verbose: bool = True):
         """
         Method to solve Newton loop for specified timestep
 
@@ -317,15 +325,35 @@ class DartsModel:
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
+            ############ temporary reading pressures
+            csv_file_path = 'vectors_data_originalP.csv'
+            data = pd.read_csv(csv_file_path)
+            matrix = data.values
+            t = np.array(self.physics.engine.t)
+            if t > 0.015:
+                P = matrix[-1, 1:]
+            elif t < 0.001:
+                P = [50,50,50,50,50,140,140,50,50]
+            elif np.isin(t, matrix[:, 0]):
+                indices = (np.where(matrix[:, 0] == t)[0])[0]
+                P = matrix[indices, 1:]
+            else:
+                indices = np.searchsorted(matrix[:, 0], t) - 1
+                P = matrix[indices, 1:]
+            #for i in range(9):
+                #self.physics.engine.X[3 * i] = P[i]
+            print(self.physics.engine.X)
+
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
-        P = np.array(self.physics.engine.X[::3])
-        t = np.array(self.physics.engine.t)
+        ################# temporary saving pressures
+        #P = np.array(self.physics.engine.X[::3])
+        #t = np.array(self.physics.engine.t)
         #csv_file_path = 'vectors_data.csv' #save pressure data
-        with open(csv_file_path, 'a', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile)
-            csv_writer.writerow( np.insert(P, 0, t))
+        #with open(csv_file_path, 'a', newline='') as csvfile:
+        #    csv_writer = csv.writer(csvfile)
+        #    csv_writer.writerow( np.insert(P, 0, t))
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -352,6 +380,7 @@ class DartsModel:
         :param t: current time [days]
         :type t: float
         """
+
         if type(self).set_rhs_flux is DartsModel.set_rhs_flux:
             # If the function has not been overloaded, pass
             return

@@ -113,7 +113,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
     { // loop over grid blocks
 
       // initialize the CFL_in and CFL_out
-        for (uint8_t c = 0; c < NC; c++)
+        for (uint8_t c = 1; c < NC; c++)
         {
             CFL_out[c] = 0;
             CFL_in[c] = 0;
@@ -126,24 +126,23 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
         // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
         for (uint8_t c = 1; c < NE; c++)
         {
-            RHS[i * N_VARS + c - 1] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c - 1] - op_vals_arr_n[i * N_OPS + ACC_OP + c - 1]); // acc operators only
+            RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c ] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 
             // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
             if (i < mesh->n_res_blocks)
-                RHS[i * N_VARS + c - 1] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c - 1] * kin_fac[i]; // kinetics
+                RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
 
             for (uint8_t v = 0; v < N_VARS; v++)
             {
-                Jac[diag_idx + (c - 1) * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c - 1) * N_VARS + v]; // der of accumulation term
-
+                Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
                 // Include derivatives for reaction term if part of reservoir cells:
                 if (i < mesh->n_res_blocks)
                 {
-                    Jac[diag_idx + (c - 1) * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c - 1) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+                    Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
                 }
             }
         }
-
+        Jac[diag_idx] = 1;
         // index of first entry for block i in CSR cols array
         index_t csr_idx_start = rows[i];
         // index of last entry for block i in CSR cols array
@@ -224,23 +223,23 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
                     // mass and energy outflow with effect of gravity and capillarity
                     for (uint8_t c = 1; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c - 1];
+                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
 
-                        if ((c - 1) < NC)
-                            CFL_out[c - 1] -= phase_p_diff * c_flux; // subtract negative value of flux
+                        if (c < NC)
+                            CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
 
-                        RHS[i * N_VARS + c - 1] -= phase_p_diff * c_flux; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[diag_idx + (c - 1) * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c - 1) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c - 1]);
-                            Jac[diag_idx + (c - 1) * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + (c - 1) * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
+                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
+                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
+                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
 
                             if (v == 0)
                             {
-                                Jac[jac_idx + (c - 1) * N_VARS + v] -= c_flux;
-                                Jac[diag_idx + (c - 1) * N_VARS + v] += c_flux;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux;
+                                Jac[diag_idx + c * N_VARS + v] += c_flux;
                             }
                         }
                     }
@@ -250,22 +249,22 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
                     // mass and energy inflow with effect of gravity and capillarity
                     for (uint8_t c = 1; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c - 1];
+                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
 
                         if (c < NC)
-                            CFL_in[c - 1] += phase_p_diff * c_flux;
+                            CFL_in[c] += phase_p_diff * c_flux;
 
-                        RHS[i * N_VARS + c - 1] -= phase_p_diff * c_flux; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[jac_idx + (c - 1) * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c - 1) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c - 1]);
-                            Jac[diag_idx + (c - 1) * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + (c - 1) * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
+                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
+                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
+                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
                             if (v == 0)
                             {
-                                Jac[diag_idx + (c - 1) * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
-                                Jac[jac_idx + (c - 1) * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
+                                Jac[diag_idx + c * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
                             }
                         }
                     }
@@ -284,22 +283,22 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
                 {
                     for (uint8_t p = 0; p < NP; p++)
                     {
-                        value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c - 1] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c - 1];
+                        value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
 
                         if (grad_con < 0)
                         {
                             // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
                             value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[i * N_OPS + UPSAT_OP + p];
 
-                            RHS[i * N_VARS + c - 1] -= diff_mob_ups_m * grad_con; // diffusion term
+                            RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
                             // Add diffusion terms to Jacobian:
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
-                                Jac[diag_idx + (c - 1) * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c - 1) * N_VARS + v];
-                                Jac[jac_idx + (c - 1) * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c - 1) * N_VARS + v];
+                                Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                                Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                                Jac[diag_idx + (c - 1) * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v];
+                                Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v];
                             }
                         }
                         else
@@ -307,15 +306,15 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
                             // Diffusion flows from cell j to i (high to low), use upstream quantity from cell j for density and saturation:
                             value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[j * N_OPS + UPSAT_OP + p];
 
-                            RHS[i * N_VARS + c - 1] -= diff_mob_ups_m * grad_con; // diffusion term
+                            RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
                             // Add diffusion terms to Jacobian:
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
-                                Jac[diag_idx + (c - 1) * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c - 1) * N_VARS + v];
-                                Jac[jac_idx + (c - 1) * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c - 1) * N_VARS + v];
+                                Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                                Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
-                                Jac[jac_idx + (c - 1) * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v];
+                                Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v];
                             }
                         }
                     }
@@ -377,10 +376,10 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
         {
             for (uint8_t c = 1; c < NC; c++)
             {
-                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c - 1]) > 1e-4)
+                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
                 {
-                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c - 1]));
-                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c - 1]));
+                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
                 }
             }
         }
@@ -487,7 +486,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
         diag_idx = N_VARS_SQ * diag_ind[i];
 
         // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
-        for (uint8_t c = 0; c < NE; c++)
+        for (uint8_t c = 1; c < NE; c++)
         {
             for (uint8_t v = 0; v < N_VARS; v++)
             {
@@ -609,7 +608,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
                 if (phase_p_diff < 0)
                 {
                     // mass and energy outflow with effect of gravity and capillarity
-                    for (uint8_t c = 0; c < NE; c++)
+                    for (uint8_t c = 1; c < NE; c++)
                     {
                         //value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
 
@@ -623,7 +622,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
                 else
                 {
                     // mass and energy inflow with effect of gravity and capillarity
-                    for (uint8_t c = 0; c < NE; c++)
+                    for (uint8_t c = 1; c < NE; c++)
                     {
                         //value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
 
@@ -644,7 +643,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
             if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
             {
                 // Add diffusion term to the residual:
-                for (uint8_t c = 0; c < NE; c++)
+                for (uint8_t c = 1; c < NE; c++)
                 {
                     for (uint8_t p = 0; p < NP; p++)
                     {
@@ -708,7 +707,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
             conn_idx++;
 
             //set the values of non-diagonal elements to zero
-            /*for (uint8_t c = 0; c < N_VARS; c++)
+            /*for (uint8_t c = 1; c < N_VARS; c++)
             {
               for (uint8_t v = 0; v < N_VARS; v++)
               {
@@ -840,7 +839,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
 //  residual = 0;
 //  for (int i = 0; i < mesh->n_blocks; i++)
 //  {
-//    for (int c = 0; c < NC; c++)
+//    for (int c = 1; c < NC; c++)
 //    {
 //      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
 //      if (res > residual)

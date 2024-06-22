@@ -54,7 +54,7 @@ if __name__ == '__main__':
     SEQ.init()
 
     if True:
-        SEQ.run(1000)
+        SEQ.run(10)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         SEQ.print_timers()
@@ -71,9 +71,9 @@ if __name__ == '__main__':
 
 
     if True:
-        Xn = np.array(n.physics.engine.X, copy=False)
-        nc = FI.physics.nc + n.physics.thermal
-        nb = FI.reservoir.mesh.n_res_blocks
+        Xn = np.array(SEQ.physics.engine.X, copy=False)
+        nc = SEQ.physics.nc + SEQ.physics.thermal
+        nb = SEQ.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
