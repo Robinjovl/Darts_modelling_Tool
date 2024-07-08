@@ -25,6 +25,8 @@ authors:
   - name: Gabriel Serrão Seabra
     orcid: 0009-0002-0558-8117
     affiliation: "1, 4"
+  - name: Yuan Chen
+  - affiliation: 1
   - name: Mark Khait
     affiliation: 5
   - name: Xiaocong Lyu
