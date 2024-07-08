@@ -46,13 +46,13 @@ affiliations:
    index: 3
  - name: Petrobras, Petr\'oleo Brasileiro S.A., Rio de Janeiro, Brazil
    index: 4
- - name: 
+ - name: Stone Ridge Technology S.R.L., Milan, Italy
    index: 5
- - name: 
+ - name: State Key Laboratory of Petroleum Resources and Prospecting, China University of Petroleum, Beijing, China
    index: 6   
  - name: Guangzhou Institute of Energy Conversion, Chinese Academy of Sciences, Guangzhou, China
    index: 7
- - name: 
+ - name: ALTEN, The Netherlands
    index: 8   
  - name: Delft Institute of Applied Mathematics, Delft University of Technology
    index: 9
