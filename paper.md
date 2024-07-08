@@ -10,33 +10,33 @@ authors:
   - name: Denis Voskov
     orcid: 0000-0002-5399-1755
     affiliation: "1, 2" # (Multiple affiliations must be quoted)
-  - name: Xiaocong Lyu
-    affiliation: 1
-  - name: Stephan de Hoop
-    affiliation: 1
-  - name: Mark Khait
+  - name: Ilshat Saifullin
+    orcid: 0009-0001-0089-8629 
     affiliation: 1
   - name: Aleks Novikov
     affiliation: 1
   - name: Michiel Wapperom
     affiliation: 1
     orcid: 0000-0003-3432-4233
-  - name: Ilshat Saifullin
-    orcid: 0009-0001-0089-8629 
-    affiliation: 1
-  - name: Xiaoming Tian
-    affiliation: "1, 5"
-    orcid: 0000-0003-0642-6064
-  - name: Gabriel Serrão Seabra
-    orcid: 0009-0002-0558-8117
-    affiliation: "1, 6"
   - name: Luisa Orozco
     orcid: 0000-0002-9153-650X
     affiliation: 3
     corresponding: true # (This is how to denote the corresponding author)
+  - name: Gabriel Serrão Seabra
+    orcid: 0009-0002-0558-8117
+    affiliation: "1, 4"
+  - name: Mark Khait
+    affiliation: 5
+  - name: Xiaocong Lyu
+    affiliation: 6
+  - name: Xiaoming Tian
+    affiliation: 7
+    orcid: 0000-0003-0642-6064
+  - name: Stephan de Hoop
+    affiliation: 8
   - name: Artur Palha
     orcid: 0000-0002-3217-0747
-    affiliation: 4
+    affiliation: 9
 affiliations:
  - name: Department of Geoscience and Engineering, TU Delft, Delft, Netherlands
    index: 1
@@ -44,12 +44,19 @@ affiliations:
    index: 2
  - name: Netherlands eScience Center, Amsterdam, The Netherlands
    index: 3
- - name: Delft Institute of Applied Mathematics, Delft University of Technology
-   index: 4
- - name: Guangzhou Institute of Energy Conversion, Chinese Academy of Sciences, Guangzhou, China
-   index: 5
  - name: Petrobras, Petr\'oleo Brasileiro S.A., Rio de Janeiro, Brazil
-   index: 6
+   index: 4
+ - name: 
+   index: 5
+ - name: 
+   index: 6   
+ - name: Guangzhou Institute of Energy Conversion, Chinese Academy of Sciences, Guangzhou, China
+   index: 7
+ - name: 
+   index: 8   
+ - name: Delft Institute of Applied Mathematics, Delft University of Technology
+   index: 9
+
 date: 1 April 2024
 bibliography: paper.bib
 ---
