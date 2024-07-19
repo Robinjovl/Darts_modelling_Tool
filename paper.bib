@@ -15,52 +15,45 @@
   url          = {https://doi.org/10.5281/zenodo.8046982}
 }
 
-@article{Ahusborde2024,
-author = {Ahusborde, Etienne and Amaziane, Brahim and de Hoop, Stephan and El Ossmani, Mustapha and Flauraud, Eric and Hamon, François P. and Kern, Michel and Socié, Adrien and Su, Danyang and Mayer, K. Ulrich and Tóth, Michal and Voskov, Denis},
-title = {A benchmark study on reactive two-phase flow in porous media: Part II - results and discussion},
-year = {2024},
-journal = {Computational Geosciences},
-doi = {10.1007/s10596-024-10269-y},
+@ARTICLE{Ahusborde2024,
+	author = {Ahusborde, Etienne and Amaziane, Brahim and de Hoop, Stephan and El Ossmani, Mustapha and Flauraud, Eric and Hamon, François P. and Kern, Michel and Socié, Adrien and Su, Danyang and Mayer, K. Ulrich and Tóth, Michal and Voskov, Denis},
+	title = {A benchmark study on reactive two-phase flow in porous media: Part II - results and discussion},
+	year = {2024},
+	journal = {Computational Geosciences},
+	volume = {28},
+	number = {3},
+	pages = {395 – 412},
+	doi = {10.1007/s10596-024-10269-y},
 }
 
-@article{Hoop2021,
-title = {Accurate geothermal and chemical dissolution simulation using adaptive mesh refinement on generic unstructured grids},
-journal = {Advances in Water Resources},
-volume = {154},
-pages = {103977},
-year = {2021},
-issn = {0309-1708},
-doi = {10.1016/j.advwatres.2021.103977},
-url = {https://www.sciencedirect.com/science/article/pii/S0309170821001329},
-author = {Stephan de Hoop and Elodie Jones and Denis Voskov},
-keywords = {Geothermal simulation, Adaptive Mesh Refinement, Unstructured grid, DARTS},
-abstract = {A coupled description of flow and thermal-reactive transport is spanning a wide range of scales in space and time, which often introduces a significant complexity for the modelling of such processes. Subsurface reservoir heterogeneity with complex multi-scale features increases the modelling complexity even further. Traditional multiscale techniques are usually focused on the accuracy of the pressure solution and often ignore the transport. Improving the transport solution can however be quite significant for the performance of the simulation, especially in complex applications related to thermal-compositional flow. The use of an Adaptive Mesh Refinement enables the grid to adapt dynamically during the simulation, which facilitates the efficient use of computational resources. This is especially important in applications with thermal flow and transport where the region requires high-resolution calculations as often localized in space. In this work, the aim is to develop an Adaptive Mesh Refinement framework for geothermal reservoir simulation. The approach uses a multi-level connection list and can be applied to fully unstructured grids. The adaptivity of the grid in the developed framework is based on a hierarchical connectivity list. First, the fine-scale model is constructed, which accurately approximates all reservoir heterogeneity. Next, a global flow-based upscaling is applied, where an unstructured partitioning of the original grid is created. Once the full hierarchy of levels is constructed, the simulation is started at the coarsest grid. Grid space refinement criteria is based on the local changes and can be adjusted for specific models and governing physics. The multi-level connectivity lists are redefined at each timestep and used as an input for the next. The developed Adaptive Mesh Refinement framework was implemented in Delft Advanced Research Terra Simulator which uses the Operator-Based Linearization technique. The performance of the proposed approach is illustrated for several challenging geothermal applications of practical interest.}
+@ARTICLE{Hoop2021,
+	author = {Hoop, Stephan de and Jones, Elodie and Voskov, Denis},
+	title = {Accurate geothermal and chemical dissolution simulation using adaptive mesh refinement on generic unstructured grids},
+	year = {2021},
+	journal = {Advances in Water Resources},
+	volume = {154},
+	doi = {10.1016/j.advwatres.2021.103977},
 }
 
-@article{Hoop2022,
-author = {de Hoop, S. and Voskov, D. V. and Bertotti, G. and Barnhoorn, A.},
-title = {An Advanced Discrete Fracture Methodology for Fast, Robust, and Accurate Simulation of Energy Production From Complex Fracture Networks},
-journal = {Water Resources Research},
-volume = {58},
-number = {5},
-pages = {e2021WR030743},
-keywords = {efficient discrete fracture methodology, complex fracture networks, geothermal energy, two-phase flow, uncertainty, topology},
-doi = {10.1029/2021WR030743},
-url = {https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2021WR030743},
-eprint = {https://agupubs.onlinelibrary.wiley.com/doi/pdf/10.1029/2021WR030743},
-abstract = {Abstract Fracture networks are abundant in subsurface applications (e.g., geothermal energy production, CO2 sequestration). Fractured reservoirs often have a very complex structure, making modeling flow and transport in such networks slow and unstable. Consequently, this limits our ability to perform uncertainty quantification and increases development costs and environmental risks. This study provides an advanced methodology for simulation based on Discrete Fracture Model approach. The preprocessing framework results in a fully conformal, uniformly distributed grid for realistic 2D fracture networks at a required level of precision. The simplified geometry and topology of the resulting network are compared with input (i.e., unchanged) data to evaluate the preprocessing influence. The resulting mesh-related parameters, such as volume distributions and orthogonality of control volume connections, are analyzed. Furthermore, changes in fluid-flow response related to preprocessing are evaluated using a high-enthalpy two-phase flow geothermal simulator. The simplified topology directly improves meshing results and, consequently, the accuracy and efficiency of numerical simulation. The main novelty of this work is the introduction of an automatic preprocessing framework allowing us to simplify the fracture network down to required level of complexity and addition of a fracture aperture correction capable of handling heterogeneous aperture distributions, low connectivity fracture networks, and sealing fractures. The graph-based framework is fully open-source and explicitly resolves small-angle intersections within the fracture network. A rigorous analysis of changes in the static and dynamic impact of the preprocessing algorithm demonstrates that explicit fracture representation can be computationally efficient, enabling their use in large-scale uncertainty quantification studies.},
-year = {2022}
+@ARTICLE{Hoop2022,
+	author = {de Hoop, S. and Voskov, D.V. and Bertotti, G. and Barnhoorn, A.},
+	title = {An Advanced Discrete Fracture Methodology for Fast, Robust, and Accurate Simulation of Energy Production From Complex Fracture Networks},
+	year = {2022},
+	journal = {Water Resources Research},
+	volume = {58},
+	number = {5},
+	doi = {10.1029/2021WR030743},
 }
 
-@article{Hoop2024,
-author = {de Hoop, Stephan and Voskov, Denis and Ahusborde, Etienne and Amaziane, Brahim and Kern, Michel},
-title = {A benchmark study on reactive two-phase flow in porous media: Part I - model description},
-year = {2024},
-journal = {Computational Geosciences},
-volume = {28},
-number = {1},
-pages = {175 – 189},
-doi = {10.1007/s10596-024-10268-z},
+@ARTICLE{Ahusborde2024395,
+	author = {Ahusborde, Etienne and Amaziane, Brahim and de Hoop, Stephan and El Ossmani, Mustapha and Flauraud, Eric and Hamon, François P. and Kern, Michel and Socié, Adrien and Su, Danyang and Mayer, K. Ulrich and Tóth, Michal and Voskov, Denis},
+	title = {A benchmark study on reactive two-phase flow in porous media: Part II - results and discussion},
+	year = {2024},
+	journal = {Computational Geosciences},
+	volume = {28},
+	number = {3},
+	pages = {395 – 412},
+	doi = {10.1007/s10596-024-10269-y},
 }
 
 @article{Khait2017,
@@ -71,10 +64,6 @@ pages = {990-998},
 year = {2017},
 issn = {0920-4105},
 doi = {10.1016/j.petrol.2017.08.009},
-url = {https://www.sciencedirect.com/science/article/pii/S0920410516310907},
-author = {Mark Khait and Denis V. Voskov},
-keywords = {Nonlinear solvers, Physics coarsening, Operator-based linearization},
-abstract = {General purpose reservoir simulation is based on the solution of governing equations describing mass and energy transfer in the subsurface. The solution process requires the linearization of strongly nonlinear governing equations. Usually, a Newton-based method is used for the linearization. This method demands the assembly of Jacobian and residual for a fully coupled system of equations. Recently, a new linearization approach was proposed and tested for binary systems. The key idea of the Operator Based Linearization (OBL) approach is to transform the discretized mass and energy conservation equations to an operator form which separates space-dependent and state-dependent properties of governing equations. This transformation provides the opportunity to approximate the representation of exact physics (physical properties) of a problem. Specifically, each term of the conservation equations is presented as the product of two different operators. The first operator depends on the current physical state of a system and contains fluid properties, such as density, viscosity, relative permeability, etc. The second operator captures both spatially altered properties, such as permeability, and the rest of state variables, such as pressure in the discrete approximation of gradient. All state-dependent operators are uniformly parametrized within the physical space of the problem (pressure-composition intervals). During simulation process, a multi-linear interpolation is applied to approximate the first type of operators, while the second type of operators is processed based on conventional approach. In this work, we extended the approach to thermal systems with an arbitrary number of components. Besides, we significantly improved the performance of OBL employing adaptive parametrization technique. We tested the approach for truly multi-component thermal systems of practical interest. The computational performance, accuracy, and robustness of a new method were demonstrated against the conventional approach.}
 }
 
 @article{Khait2018,
@@ -86,11 +75,8 @@ abstract = {General purpose reservoir simulation is based on the solution of gov
     pages = {522-534},
     year = {2018},
     month = {01},
-    abstract = "{The nonlinear nature of flow and transport in porous media requires a linearization of the governing numerical-model equations. We propose a new linearization approach and apply it to complex thermal/compositional problems. The key idea of the approach is the transformation of discretized mass- and energy-conservation equations to an operator form with separate space-dependent and state-dependent components. The state-dependent operators are parameterized using a uniformly distributed mesh in parameter space. Multilinear interpolation is used during simulation for a continuous reconstruction of state-dependent operators that are used in the assembly of the Jacobian and residual of the nonlinear problem. This approach approximates exact physics of a simulation problem, which is similar to an approximate representation of space and time discretization performed in conventional simulation. Maintaining control of the error in approximate physics, we perform an adaptive parameterization to improve the performance and flexibility of the method. In addition, we extend the method to compositional problems with buoyancy. We demonstrate the robustness and convergence of the approach using problems of practical interest.}",
     issn = {1086-055X},
     doi = {10.2118/182685-PA},
-    url = {https://doi.org/10.2118/182685-PA},
-    eprint = {https://onepetro.org/SJ/article-pdf/23/02/522/2114971/spe-182685-pa.pdf},
 }
 
 @phdthesis{NovikovThesis,
@@ -121,9 +107,6 @@ abstract = {General purpose reservoir simulation is based on the solution of gov
     number={1},
     pages={243-265},
     doi={10.1007/s10596-020-10002-5},
-    url={https://www.scopus.com/inward/record.uri?eid=2-s2.0-85092590568&doi=10.1007%2fs10596-020-10002-5&partnerID=40&md5=1b47847607e6ab67783156a9bd01ddcc},
-    document_type={Article},
-    source={Scopus},
 } 
 
 @article{Tian2024,
@@ -134,24 +117,16 @@ pages = {102849},
 year = {2024},
 issn = {0375-6505},
 doi = {10.1016/j.geothermics.2023.102849},
-url = {https://www.sciencedirect.com/science/article/pii/S0375650523002043},
-author = {Xiaoming Tian and Oleg Volkov and Denis Voskov},
-keywords = {History matching, Principal Component Analysis, DARTS, Adjoint method, Geothermal energy},
-abstract = {In this study, we present an efficient and flexible adjoint-based framework for history matching and forecasting geothermal energy extraction at a large scale. In this framework, we applied the Principal Component Analysis to reduce the parameter space for representing the complex geological model. The adjoint method is implemented for gradient calculation to speed up the history-matching iteration process. Operator-based linearization (OBL) used in this framework makes the calculation of the physical state and its derivatives very efficient and facilitates the matrix assembly in the adjoint method. This study primarily focuses on history matching based on combined observation of well production and in-situ electromagnetic measurements to predict the temperature front. However, different types of misfit terms can be added to the objective function based on practical considerations. For example, our history-matching case studies include model misfit terms applied for regularization purposes. The measurement data is extracted from the true model, and realistic measurement errors are considered. Also, in this work, we propose an optimal weighting strategy for the terms of the objective function to balance their sensitivity with respect to the model control variables. The high efficiency of the framework is demonstrated for the geothermal doublet model implemented at the heterogeneous reservoir with multiple realizations. The framework allows for generating posterior Randomized Maximum Likelihood (RML) estimates of the entire ensemble of the realizations with a reasonable computational cost. Results show that the framework can achieve reliable history-matching results based on the doublets production data and the reservoir electromagnetic measurement.}
 }
 
-@article{Voskov2017,
-title = {Operator-based linearization approach for modeling of multiphase multi-component flow in porous media},
-journal = {Journal of Computational Physics},
-volume = {337},
-pages = {275-288},
-year = {2017},
-issn = {0021-9991},
-doi = {10.1016/j.jcp.2017.02.041},
-url = {https://www.sciencedirect.com/science/article/pii/S0021999117301444},
-author = {Denis V. Voskov},
-keywords = {Operator-based linearization, Compositional simulation, Nonlinear solvers, Compositional space parametrization},
-abstract = {A new approach for the linearization of governing equations that describe flow and transport in porous media is proposed in this work. It is based on an approximate representation of the exact physics of the problem, which is similar to an approximate representation of space and time discretization performed in conventional simulation. The governing equations are introduced as a combination of operators, dependent on spatially altered properties and operators, fully controlled by nonlinear properties of fluid and rock. Next, a parametrization in the physics space of the problem is introduced. The property-based operators are approximated using direct interpolation in the space of nonlinear unknowns. The discrete version of the governing equations is constructed as a combination of operators that approximate both nonlinear physics and discretization in time and space. This approach is applied to the reservoir simulation of miscible and immiscible displacement processes. The performance of the method demonstrates a convergence of simulation results by resolution in physical space with the improved performance.}
+@ARTICLE{Voskov2017,
+	author = {Voskov, Denis V.},
+	title = {Operator-based linearization approach for modeling of multiphase multi-component flow in porous media},
+	year = {2017},
+	journal = {Journal of Computational Physics},
+	volume = {337},
+	pages = {275-288},
+	doi = {10.1016/j.jcp.2017.02.041},
 }
 
 @ARTICLE{Wang2020,
@@ -161,7 +136,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	journal = {Applied Energy},
 	volume = {264},
 	doi = {10.1016/j.apenergy.2020.114693},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85080027157&doi=10.1016%2fj.apenergy.2020.114693&partnerID=40&md5=171862622c0f573875a79f103774d086}
 }
 
 @ARTICLE{Wapperom2023,
@@ -170,7 +144,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	year = {2023},
 	journal = {Transport in Porous Media},
 	doi = {10.1007/s11242-023-01984-8},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85164963301&doi=10.1007%2fs11242-023-01984-8&partnerID=40&md5=450c35cea2ae8f02fac567d14dcaf318}
 }
 
 @article{fluidflower2023,
@@ -192,7 +165,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	number = {4},
 	pages = {1858 – 1878},
 	doi = {10.2118/205378-PA},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85111055687&doi=10.2118%2f205378-PA&partnerID=40&md5=cf0b3732f43f3e15ca80fd43edf4165c}
 }
 
 @ARTICLE{Novikov2022,
@@ -202,7 +174,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	journal = {Journal of Computational Physics},
 	volume = {469},
 	doi = {10.1016/j.jcp.2022.111598},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85138047091&doi=10.1016%2fj.jcp.2022.111598&partnerID=40&md5=3389b21b7266c5d56d6c3ffe4c04d601}
 }
 
 @CONFERENCE{Khait2021,
@@ -211,7 +182,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	year = {2021},
 	journal = {SPE Reservoir Simulation Symposium Proceedings},
 	doi = {10.2118/204000-MS},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85179601797&doi=10.2118%2f204000-MS&partnerID=40&md5=1ee8c0771ce05d27c35a9e8922f7c71a}
 }
 
 @ARTICLE{Wang2023,
@@ -221,7 +191,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	journal = {Geothermics},
 	volume = {114},
 	doi = {10.1016/j.geothermics.2023.102773},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85165034641&doi=10.1016%2fj.geothermics.2023.102773&partnerID=40&md5=faea06ba81bed23deb63d8f839faf3d8}
 }
 
 @CONFERENCE{Tian2023,
@@ -230,7 +199,6 @@ abstract = {A new approach for the linearization of governing equations that des
 	year = {2023},
 	journal = {Society of Petroleum Engineers - SPE Reservoir Simulation Conference, RSC 2023},
 	doi = {10.2118/212169-MS},
-	url = {https://www.scopus.com/inward/record.uri?eid=2-s2.0-85151735717&doi=10.2118%2f212169-MS&partnerID=40&md5=972a31b57d5e168791fd32781d401ea3}
 }
 
 @article{ADGPRS2018,
@@ -253,10 +221,6 @@ pages = {395-429},
 year = {2001},
 issn = {0375-6505},
 doi = {10.1016/S0375-6505(01)00005-0},
-url = {https://www.sciencedirect.com/science/article/pii/S0375650501000050},
-author = {Michael J. O'Sullivan and Karsten Pruess and Marcelo J. Lippmann},
-keywords = {Geothermal systems, Modeling, Simulation, Reservoir},
-abstract = {Computer modeling of geothermal systems has become a mature technology with application to more than 100 fields world-wide. Large complex three-dimensional models having computational meshes with more than 4000 blocks are now used routinely. Researchers continue to carry out fundamental research on modeling techniques and physical processes in geothermal systems. The new advances are adopted quickly by the geothermal industry and have also found application in related areas such as nuclear waste storage, environmental remediation and studies of the vadose (unsaturated) zone. The current state-of-practice, recent advances and emerging trends in geothermal reservoir simulation are reviewed.}
 }
 
 @book{MRST2019, 
@@ -266,7 +230,6 @@ publisher={Cambridge University Press},
 author={Lie, Knut-Andreas},
 year={2019},
 doi = {10.1017/9781108591416},
-url = {https://doi.org/10.1017/9781108591416}
 }
 
 @software{GEOS,
@@ -306,5 +269,4 @@ url = {https://doi.org/10.1017/9781108591416}
   publisher    = {Zenodo},
   version      = {v0.2.1-alpha},
   doi          = {10.5281/zenodo.7151032},
-  url          = {https://doi.org/10.5281/zenodo.7151032}
 }
