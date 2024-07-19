@@ -27,7 +27,7 @@ using namespace opendarts::linear_solvers;
 
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-class engine_sequential_cpu : public engine_base
+class engine_sequentialp_cpu : public engine_base
 {
 
 public:
@@ -78,7 +78,7 @@ public:
   const uint8_t get_n_comps() { return NC; };
   const uint8_t get_z_var() { return Z_VAR; };
 
-  engine_sequential_cpu()
+  engine_sequentialp_cpu()
   {
     if (THERMAL)
     {
@@ -103,6 +103,6 @@ public:
 public:
 };
 
-#include "engine_sequential_cpu.tpp"
+#include "engine_sequentialp_cpu.tpp"
 
 #endif

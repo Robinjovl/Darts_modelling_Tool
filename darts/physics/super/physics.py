@@ -1,5 +1,4 @@
 import numpy as np
-#from darts.models.darts_model import EngineType # Engine_change
 from darts.engines import *
 from darts.physics.physics_base import PhysicsBase
 
@@ -18,7 +17,7 @@ class Compositional(PhysicsBase):
     - Defining initial and boundary conditions
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
-                 min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
+                 min_p: float, max_p: float, min_z: float, max_z: float, engine: str, min_t: float = None, max_t: float = None,
                  thermal: bool = False, cache: bool = False):
         """
         This is the constructor of the Compositional Physics class.
@@ -44,7 +43,7 @@ class Compositional(PhysicsBase):
         :param cache: Switch to cache operator values
         :type cache: bool
         """
-        #self.engine = EngineType().engine # Engine_change
+        self.engine = engine
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
@@ -106,10 +105,12 @@ class Compositional(PhysicsBase):
             if self.thermal:
                 return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
-                #if self.engine == 'FI': # Engine_change
-                return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
-                #elif self.engine == 'SEQ':
-                #return eval("engine_sequential_%s%d_%d" % (platform, self.nc, self.nph))()
+                if self.engine == 'FI':
+                    return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+                elif self.engine == 'P_SEQ':
+                    return eval("engine_sequentialp_%s%d_%d" % (platform, self.nc, self.nph))()
+                elif self.engine == 'C_SEQ':
+                    return eval("engine_sequentialc_%s%d_%d" % (platform, self.nc, self.nph))()
 
     def define_well_controls(self):
         # define well control factories

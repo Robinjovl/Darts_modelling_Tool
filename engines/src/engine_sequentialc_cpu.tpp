@@ -8,7 +8,7 @@
 #include <iomanip>
 #include <math.h>
 
-#include "engine_sequential_cpu.hpp"
+#include "engine_sequentialc_cpu.hpp"
 #include "conn_mesh.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
@@ -32,7 +32,7 @@ using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS    
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_sequential_cpu<NC, NP, THERMAL>::init(conn_mesh* mesh_, std::vector<ms_well*>& well_list_,
+int engine_sequentialc_cpu<NC, NP, THERMAL>::init(conn_mesh* mesh_, std::vector<ms_well*>& well_list_,
     std::vector<operator_set_gradient_evaluator_iface*>& acc_flux_op_set_list_,
     sim_params* params_, timer_node* timer_)
 {
@@ -69,7 +69,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::init(conn_mesh* mesh_, std::vector<m
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
+int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
     index_t n_blocks = mesh->n_blocks;
     index_t n_conns = mesh->n_conns;
@@ -411,7 +411,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, 
 
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
+int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
     index_t n_blocks = mesh->n_blocks;
     index_t n_conns = mesh->n_conns;
@@ -830,7 +830,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
 
 //template<uint8_t NC, uint8_t NP, , bool THERMAL>
 //double
-//engine_sequential_cpu<NC, NP, THERMAL>::calc_newton_residual()
+//engine_sequentialc_cpu<NC, NP, THERMAL>::calc_newton_residual()
 //{
 //  double residual = 0, res;
 //
@@ -857,7 +857,7 @@ int engine_sequential_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt
 //}
 
 // compositional, kinetic (H2O, CO2, Ca+2, CO3-2, CaCO3):
-//template class engine_sequential_cpu<2, 2, 1>;
-//template struct recursive_instantiator_nc_np<engine_sequential_cpu, 2, MAX_NC, 1>;
-//template struct recursive_instantiator_nc_np<engine_sequential_cpu, 2, MAX_NC, 2>;
+//template class engine_sequentialc_cpu<2, 2, 1>;
+//template struct recursive_instantiator_nc_np<engine_sequentialc_cpu, 2, MAX_NC, 1>;
+//template struct recursive_instantiator_nc_np<engine_sequentialc_cpu, 2, MAX_NC, 2>;
 //te

@@ -14,7 +14,8 @@ void pybind_engine_nce_g_cpu(py::module &);
 void pybind_engine_nc_cg_cpu(py::module &);
 void pybind_engine_nc_cg_gpu(py::module &);
 void pybind_engine_super_cpu(py::module &);
-void pybind_engine_sequential_cpu(py::module&);
+void pybind_engine_sequentialc_cpu(py::module&);
+void pybind_engine_sequentialp_cpu(py::module&);
 #ifndef WITH_GPU
 void pybind_engine_super_mp_cpu(py::module &);
 #endif //WITH_GPU
@@ -96,7 +97,8 @@ PYBIND11_MODULE(engines, m)
   pybind_contact(m);
   pybind_engine_nce_g_cpu(m);
   pybind_engine_super_cpu(m);
-  pybind_engine_sequential_cpu(m);
+  pybind_engine_sequentialc_cpu(m);
+  pybind_engine_sequentialp_cpu(m);
 #ifndef WITH_GPU
   pybind_engine_super_mp_cpu(m);
 #endif //WITH_GPU

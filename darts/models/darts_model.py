@@ -12,7 +12,7 @@ from darts.engines import timer_node, sim_params, value_vector, index_vector, op
 from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
-#ENGINE_TYPE = 'FI' # Engine_change
+
 
 class DartsModel:
     """
@@ -28,7 +28,7 @@ class DartsModel:
     reservoir: ReservoirBase
     physics: PhysicsBase
 
-    #def __init__(self, engine): # Engine_change
+
     def __init__(self):
         """"
         Initialize DartsModel class.
@@ -38,8 +38,6 @@ class DartsModel:
         :ivar params: Object to set simulation parameters
         :type params: :class:`darts.engines.sim_params`
         """
-        #if engine == 'SEQ': # Engine_change
-        #    ENGINE_TYPE = 'SEQ' # Engine_change
         # print out build information
         engines_pbi()
         discretizer_pbi()
@@ -55,6 +53,8 @@ class DartsModel:
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
+        self.instances = []
+
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False):
         """
@@ -244,14 +244,8 @@ class DartsModel:
         ts = 0
 
         while t < stop_time:
-            # here I should implement the loop over p
-            # converged = self.run_timestep_pressure(dt, t, verbose)
-            # if converged:
-            # ...
 
-            # calculation of total-velocity
-
-            converged = self.run_timestep_concentration(dt, t, verbose)
+            converged = self.run_timestep(dt, t, verbose)
 
             if converged:
                 t += dt
@@ -282,7 +276,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run_timestep_concentration(self, dt: float, t: float, verbose: bool = True):
+    def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
         Method to solve Newton loop for specified timestep
 
@@ -325,6 +319,7 @@ class DartsModel:
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
+            """
             ############ temporary reading pressures
             csv_file_path = 'vectors_data_originalP.csv'
             data = pd.read_csv(csv_file_path)
@@ -342,18 +337,22 @@ class DartsModel:
                 P = matrix[indices, 1:]
             #for i in range(9):
                 #self.physics.engine.X[3 * i] = P[i]
-            print(self.physics.engine.X)
-
+            #print(self.physics.engine.X)
+            """
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
+        """
         ################# temporary saving pressures
-        #P = np.array(self.physics.engine.X[::3])
-        #t = np.array(self.physics.engine.t)
-        #csv_file_path = 'vectors_data.csv' #save pressure data
-        #with open(csv_file_path, 'a', newline='') as csvfile:
-        #    csv_writer = csv.writer(csvfile)
-        #    csv_writer.writerow( np.insert(P, 0, t))
+        P = np.array(self.physics.engine.X[::3])
+        t = np.array(self.physics.engine.t)
+        csv_file_path = 'vectors_data.csv' #save pressure data
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow( np.insert(P, 0, t))
+        """
+        #print('X', np.array(self.physics.engine.X))
+
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -493,11 +492,64 @@ class DartsModel:
         for name in list(vars(self).keys()):
             delattr(self, name)
 
+    def add_model(self, model):
+        self.instances.append(model)
 
-#class EngineType: # Engine_change
-#    _instance = None
- #   def __new__(cls):
-#        if cls._instance is None:
-#            cls._instance = super().__new__(cls)
-#            cls._instance.engine = ENGINE_TYPE
- #       return cls._instance
+    def run_seq(self, days: float = None, restart_dt: float = 0., verbose: bool = True):
+        # get current engine time
+        t = self.physics.engine.t
+        stop_time = t + days
+
+        # same logic as in engine.run
+        if fabs(t) < 1e-15:
+            dt = self.params.first_ts
+        elif restart_dt > 0.:
+            dt = restart_dt
+        else:
+            dt = min(self.prev_ts * self.params.mult_ts, self.params.max_ts)
+
+        ts = 0
+        while t < stop_time:
+
+            # Pressure loop
+            #print('X_P before', self.physics.engine.X)
+            converged_P = self.instances[0].run_timestep(dt, t, verbose)
+            P = np.array(self.physics.engine.X[::3])
+            #print('X_P after', self.physics.engine.X)
+            # Concentration loop
+            for i in range(len(P)):
+                self.instances[1].physics.engine.X[3 * i] = P[i]
+            converged_C = self.instances[1].run_timestep(dt, t, verbose)
+            for i in range(len(self.physics.engine.X)):
+                if i % 3 != 0:
+                    self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
+            #print(self.instances[0].physics.engine.X)
+
+            if converged_P and converged_C:
+                t += dt
+                ts += 1
+                if verbose:
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
+
+                dt = min(dt * self.params.mult_ts, self.params.max_ts)
+
+                if t + dt > stop_time:
+                    dt = stop_time - t
+                else:
+                    self.prev_ts = dt
+
+            else:
+                dt /= self.params.mult_ts
+                if verbose:
+                    print("Cut timestep to %2.3f" % dt)
+                if dt < self.params.min_ts:
+                    break
+        # update current engine time
+        self.physics.engine.t = stop_time
+
+        if verbose:
+            print("TS = %d(%d), NI = %d(%d), LI = %d(%d)"
+                  % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
+                     self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
+                     self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))

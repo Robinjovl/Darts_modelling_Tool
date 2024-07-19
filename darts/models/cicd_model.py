@@ -5,11 +5,8 @@ import os
 
 
 class CICDModel(DartsModel):
-
-    #def __init__(self, enginetype):  # Engine_change
-    #    super().__init__(enginetype)
     def __init__(self):
-        super().__init__()
+       super().__init__()
 
     # overwrite key to save results over existed
     # diff_norm_normalized_tol defines tolerance for L2 norm of final solution difference , normalized by amount of blocks and variable range

@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.operators_base import PropertyOperators as props
+
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -47,31 +47,35 @@ if __name__ == '__main__':
 
 
     redirect_darts_output('run.log')
-    n = Model()
+    pressure = Model('P_SEQ')
+    concentration = Model('C_SEQ')
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
-    n.init()
+    pressure.init()
+    concentration.init()
+    pressure.add_model(pressure)
+    pressure.add_model(concentration)
 
     if True:
-        n.run(10)
+        pressure.run_seq(days=10)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
-        n.print_timers()
-        n.print_stat()
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
+        pressure.print_timers()
+        pressure.print_stat()
+        time_data = pd.DataFrame.from_dict(pressure.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        pressure.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
         time_data.to_excel(writer, 'Sheet1')
         writer.close()
     else:
-        n.load_restart_data()
+        FI.load_restart_data()
         time_data = pd.read_pickle("darts_time_data.pkl")
 
 
     if True:
-        Xn = np.array(n.physics.engine.X, copy=False)
-        nc = n.physics.nc + n.physics.thermal
-        nb = n.reservoir.mesh.n_res_blocks
+        Xn = np.array(pressure.physics.engine.X, copy=False)
+        nc = pressure.physics.nc + pressure.physics.thermal
+        nb = pressure.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
@@ -80,7 +84,7 @@ if __name__ == '__main__':
             plt.savefig(str(i) + '.png')
     else:
         #plot_sol(n)
-        n.print_and_plot('sim_data')
+        FI.print_and_plot('sim_data')
 
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
