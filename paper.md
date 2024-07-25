@@ -13,7 +13,7 @@ authors:
   - name: Ilshat Saifullin
     orcid: 0009-0001-0089-8629 
     affiliation: 1
-  - name: Aleks Novikov
+  - name: Aleksei Novikov
     affiliation: 1
   - name: Michiel Wapperom
     affiliation: 1
