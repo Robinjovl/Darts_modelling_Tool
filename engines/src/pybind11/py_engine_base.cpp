@@ -41,6 +41,12 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 		.def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
 		.def_readwrite("print_linear_system", &engine_base::print_linear_system) \
+		.def_readwrite("PV", &engine_base::PV) \
+		.def_readwrite("RV", &engine_base::RV) \
+		.def_readwrite("jac_vals", &engine_base::jac_vals) \
+		.def_readwrite("jac_rows", &engine_base::jac_rows) \
+		.def_readwrite("jac_cols", &engine_base::jac_cols) \
+		.def_readwrite("jac_diags", &engine_base::jac_diags) \
 		.def("add_value_to_Q", &engine_base::add_value_to_Q)  \
 		.def("clear_Q", &engine_base::clear_Q)  \
 		.def("calc_adjoint_gradient_dirac_all", &engine_base::calc_adjoint_gradient_dirac_all, py::call_guard<py::gil_scoped_release>())  \

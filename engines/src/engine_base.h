@@ -9,6 +9,7 @@
 #include "globals.h"
 #include "conn_mesh.h"
 #include "interpolator_base.hpp"
+#include "pybind11/py_globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -264,7 +265,21 @@ public:
 
 	std::string engine_name;
 
+	// to expose jacobian as BCSR matrix
+	py::array_t<value_t> jac_vals;
+	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
+	void expose_jacobian(size_t n_vars_sq)
+	{
+	  value_t* values = Jacobian->get_values();
+	  index_t* rows = Jacobian->get_rows_ptr();
+	  index_t* cols = Jacobian->get_cols_ind();
+	  index_t* diag_ind = Jacobian->get_diag_ind();
 
+	  jac_vals = get_raw_array(values, n_vars_sq * rows[mesh->n_blocks]);
+	  jac_rows = get_raw_array(rows, mesh->n_blocks + 1);
+	  jac_cols = get_raw_array(cols, rows[mesh->n_blocks]);
+	  jac_diags = get_raw_array(diag_ind, mesh->n_blocks);
+	};
 
 
 
