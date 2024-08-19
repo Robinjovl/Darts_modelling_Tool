@@ -1,4 +1,7 @@
 import numpy as np
+import jax
+import jax.numpy as jnp
+
 from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
@@ -134,60 +137,66 @@ class ReservoirOperators(OperatorsSuper):
 
         return 0
 
-    def evaluate_thermal(self, state: value_vector, values: value_vector):
-        """
-        Method to evaluate operators for energy conservation equation
+class ReservoirOperatorsJAX(ReservoirOperators):
+    def evaluate_jax(self, state):
+        values = jnp.zeros(self.n_ops)
 
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        vec_state_as_np = np.asarray(state)
+        # Evaluate isothermal properties at current state
         pressure = state[0]
-        temperature = vec_state_as_np[-1]
+        props = self.property.evaluate_jax(state)
+        compr = self.property.rock_compr_ev.evaluate(pressure)
 
-        # Evaluate thermal properties at current state
-        self.property.evaluate_thermal(state)
-        rock_energy = self.property.rock_energy_ev.evaluate(temperature=temperature)
+        density_tot = jnp.sum(props['saturation'][:self.np_fl] * props['molar_density'][:self.np_fl])
+        zc = jnp.append(state[1:self.nc], 1 - jnp.sum(state[1:self.nc]))
+        phi_f = 1. - jnp.sum(zc[self.nc_fl:])
 
-        """ Alpha operator represents accumulation term: """
+        # Construct operators
+        # Alpha operator for fluid and solid components
+        fluid_acc = compr * density_tot * zc[:self.nc_fl]
+        solid_acc = compr * props['molar_density'][self.np_fl:self.np_fl+self.ns] * zc[self.nc_fl:self.nc]
+        values = values.at[self.ACC_OP : self.ACC_OP + self.nc_fl].set(fluid_acc)
+        values = values.at[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns].set(solid_acc)
+
+        # Beta operator for flux terms
         for j in self.property.ph:
-            # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-            values[self.ACC_OP + self.nc] += (self.compr * self.phi_f * self.property.sat[j] * self.property.dens_m[j]
-                                              * self.property.enthalpy[j])
+            for i in range(self.nc_fl):
+                flux_index = self.FLUX_OP + j * self.ne + i
+                flux_value = (self.property.x[j][i] * props['molar_density'][j] * \
+                              props['relative_permeability'][j] / props['viscosity'][j])
+                values = values.at[flux_index].set(flux_value)
+
+        # Gamma operator for diffusion, including solid components
+        for j in self.property.ph:
+            upsat_value = compr * phi_f * props['saturation'][j]
+            values = values.at[self.UPSAT_OP + j].set(upsat_value)
+
+        # Including solid conductive flux saturation
         for i in range(self.ns):
-            # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-            j = self.np_fl + i
-            values[self.ACC_OP + self.nc] += (self.compr * self.phi_s * self.property.sat[j] * self.property.dens_m[j]
-                                              * self.property.enthalpy[j])
-        # Enthalpy to internal energy conversion
-        values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
+            upsat_solid_index = self.UPSAT_OP + self.np_fl + i
+            upsat_solid_value = compr * zc[self.nc_fl + i]
+            values = values.at[upsat_solid_index].set(upsat_solid_value)
 
-        """ Beta operator represents flux term: """
+        # Chi operator for diffusion
         for j in self.property.ph:
-            # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kJ/m3.bar.day)
-            values[self.FLUX_OP + j * self.ne + self.nc] = (self.property.enthalpy[j] * self.property.dens_m[j] *
-                                                            self.property.kr[j] / self.property.mu[j])
+            for i in range(self.nc_fl):
+                diff_index = self.GRAD_OP + j * self.ne + i
+                D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()  # This must be JAX compatible
+                diff_value = D[i] * self.property.x[j][i] * props['molar_density'][j]
+                values = values.at[diff_index].set(diff_value)
 
-        """ Chi operator for temperature in conduction """
-        for j in range(self.nph):
-            # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
-            values[self.GRAD_OP + j * self.ne + self.nc] = temperature * self.property.cond[j]
+        # Delta operator for reaction
+        for i in range(self.nc):
+            values = values.at[self.KIN_OP + i].set(self.property.mass_source[i])
 
-        """ Delta operator for reaction """
-        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
-        values[self.KIN_OP + self.nc] = self.property.energy_source
+        # Gravity and Capillarity operators
+        for j in self.property.ph:
+            values = values.at[self.GRAV_OP + j].set(props['density'][j])
+            values = values.at[self.PC_OP + j].set(props['capillary_pressure'][j])
 
-        """ Additional energy operators """
-        # E1-> rock internal energy
-        values[self.RE_INTER_OP] = rock_energy / self.compr  # (T-T_0), multiplied by rock hcap inside engine
-        # E2-> rock temperature
-        values[self.RE_TEMP_OP] = temperature
-        # E3-> rock conduction
-        values[self.ROCK_COND] = 1 / self.compr  # multiplied by rock cond inside engine
+        # Fluid porosity
+        values = values.at[self.PORO_OP].set(phi_f)
 
-        return 0
-
+        return values
 
 class MassFluxOperators(OperatorsSuper):
     def __init__(self, property_container: PropertyContainer, thermal: bool):

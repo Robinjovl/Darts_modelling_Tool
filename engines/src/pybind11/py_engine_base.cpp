@@ -41,6 +41,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 		.def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
 		.def_readwrite("print_linear_system", &engine_base::print_linear_system) \
+		.def_readwrite("python_assembly", &engine_base::python_assembly) \
 		.def_readwrite("PV", &engine_base::PV) \
 		.def_readwrite("RV", &engine_base::RV) \
 		.def_readwrite("jac_vals", &engine_base::jac_vals) \

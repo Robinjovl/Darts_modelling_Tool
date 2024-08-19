@@ -81,6 +81,7 @@ public:
         dT_du = 0;
 
 		print_linear_system = false;
+		python_assembly = false;
 		output_counter = 0;
 	};
 
@@ -266,6 +267,7 @@ public:
 	std::string engine_name;
 
 	// to expose jacobian as BCSR matrix
+	bool python_assembly;
 	py::array_t<value_t> jac_vals;
 	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
 	void expose_jacobian(size_t n_vars_sq)
@@ -777,51 +779,54 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	dt = params->first_ts;
 	prev_usual_dt = dt;
 
-	// initialize arrays for every operator set
-	block_idxs.resize(acc_flux_op_set_list.size());
-	op_axis_min.resize(acc_flux_op_set_list.size());
-	op_axis_max.resize(acc_flux_op_set_list.size());
-
-	// initialize arrays for every operator set
-
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (!python_assembly)
 	{
+	  // initialize arrays for every operator set
+	  block_idxs.resize(acc_flux_op_set_list.size());
+	  op_axis_min.resize(acc_flux_op_set_list.size());
+	  op_axis_max.resize(acc_flux_op_set_list.size());
+
+	  // initialize arrays for every operator set
+
+	  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	  {
 		block_idxs[r].clear();
 		op_axis_min[r].resize(n_vars);
 		op_axis_max[r].resize(n_vars);
 		for (int j = 0; j < n_vars; j++)
 		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
+		  op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
+		  op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
 		}
-	}
+	  }
 
-	// create a block list for every operator set
-	index_t idx = 0;
-	for (auto op_region : mesh->op_num)
-	{
+	  // create a block list for every operator set
+	  index_t idx = 0;
+	  for (auto op_region : mesh->op_num)
+	  {
 		block_idxs[op_region].emplace_back(idx++);
-	}
+	  }
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
-	op_vals_arr_n = op_vals_arr;
+	  op_vals_arr_n = op_vals_arr;
 
-	time_data.clear();
-	time_data_report.clear();
 
-	if (params->log_transform == 0)
-	{
+	  if (params->log_transform == 0)
+	  {
 		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
 		max_zc = 1 - min_zc * params->obl_min_fac;
 		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
-	}
-	else if (params->log_transform == 1)
-	{
+	  }
+	  else if (params->log_transform == 1)
+	  {
 		min_zc = exp(acc_flux_op_set_list[0]->get_axis_min(z_var)) * params->obl_min_fac; //log based composition
 		max_zc = exp(acc_flux_op_set_list[0]->get_axis_max(z_var));						  //log based composition
+	  }
 	}
 
+	time_data.clear();
+	time_data_report.clear();
 
 
 

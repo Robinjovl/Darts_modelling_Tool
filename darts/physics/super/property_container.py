@@ -1,4 +1,6 @@
 import numpy as np
+import jax.numpy as jnp
+from jax import grad, jit
 from darts.engines import value_vector
 from darts.physics.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
@@ -268,3 +270,129 @@ class PropertyContainer(PropertyBase):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
+
+class PropertyContainerJAX(PropertyContainer):
+    def __init__(self, phases_name: list, components_name: list, Mw: list, nc_sol: int = 0, np_sol: int = 0,
+                 min_z: float = 1e-11, rock_comp: float = 1e-6, rate_ann_mat=None, temperature: float = None):
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, nc_sol=nc_sol, np_sol=np_sol,
+                         min_z=min_z, rock_comp=rock_comp, rate_ann_mat=rate_ann_mat, temperature=temperature)
+
+    def comp_out_of_bounds(self, vec_composition):
+        # Check if composition sum is above 1 or element comp below 0, i.e. if point is unphysical:
+        temp_sum = 0
+        count_corr = 0
+        check_vec = np.zeros((len(vec_composition),))
+
+        for ith_comp, zi in enumerate(vec_composition):
+            if zi < self.min_z:
+                #print(vec_composition)
+                vec_composition[ith_comp] = self.min_z
+                count_corr += 1
+                check_vec[ith_comp] = 1
+            elif zi > 1 - self.min_z:
+                #print(vec_composition)
+                vec_composition[ith_comp] = 1 - self.min_z
+                temp_sum += vec_composition[ith_comp]
+            else:
+                temp_sum += vec_composition[ith_comp]
+
+        for ith_comp, zi in enumerate(vec_composition):
+            if check_vec[ith_comp] != 1:
+                vec_composition[ith_comp] = zi / temp_sum * (1 - count_corr * self.min_z)
+        return vec_composition
+
+    def get_state(self, state):
+        pressure = state[0]
+        zc = jnp.append(state[1:self.nc], 1 - jnp.sum(state[1:self.nc]))
+        zc = self.comp_out_of_bounds(zc)
+
+        temperature = state[-1] if self.thermal else self.temperature
+        return pressure, temperature, zc
+
+    def compute_saturation(self, nu, dens_m):
+        Vtot = jnp.sum(nu / dens_m)
+        sat = (nu / dens_m) / Vtot
+        return sat
+
+    def run_flash(self, pressure, temperature, zc):
+        # Normalize fluid compositions
+        if self.ns > 0:
+            norm = 1. - jnp.sum(zc[self.nc_fl:])
+            zc_norm = zc[:self.nc_fl] / norm
+        else:
+            zc_norm = zc[:self.nc_fl]
+
+        # Evaluates flash, then uses getter for nu and x
+        # Assuming flash_ev.evaluate returns a structure compatible with JAX, or is a dummy for illustration
+        error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+        flash_results = self.flash_ev.get_flash_results()
+
+        # Convert results to JAX arrays if not already
+        nu = jnp.array(flash_results.nu)
+        x = jnp.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+
+        # Determine active phases
+        active_phases = jnp.where(nu > 0)[0]
+
+        # For cases where there's exactly one phase, we might directly use zc to define x
+        x = jax.lax.cond(len(active_phases) == 1,
+                         lambda _: jnp.where(nu > 0, zc_norm, x),  # Only update x for the active phase
+                         lambda _: x,
+                         operand=None)
+
+        return active_phases, nu, x
+
+    def evaluate_mass_source(self, pressure, temperature, zc, x):
+        """
+        Evaluate the mass source terms without modifying class state.
+
+        Args:
+            pressure (float): Pressure state variable.
+            temperature (float): Temperature state variable.
+            zc (array): Composition state array.
+            x (array): Mole fractions or other state-dependent properties.
+
+        Returns:
+            float: Total mass source term calculated.
+            array: Derivatives of mass sources with respect to reactions.
+        """
+        dX = jnp.zeros(len(self.kinetic_rate_ev))
+        mass_source = 0.0
+
+        for j, reaction in self.kinetic_rate_ev.items():
+            dm, dX_j = reaction.evaluate(pressure, temperature, x, zc[self.nc_fl + j])
+            dX = dX.at[j].set(dX_j)
+            mass_source += dm
+
+        return mass_source, dX
+
+    def evaluate_jax(self, state):
+        """
+        Class methods which evaluates the state operators for the element based physics
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+
+        :return: updated value for operators, stored in values
+        """
+        # Composition vector and pressure from state:
+        pressure, temperature, zc = self.get_state(state)
+
+        self.clean_arrays()
+
+        ph, nu, x = self.run_flash(pressure, temperature, zc)
+
+        dens = jnp.zeros_like(self.dens)
+        dens_m = jnp.zeros_like(self.dens_m)
+        mu = jnp.zeros_like(self.mu)
+        for j in ph:
+            M = jnp.sum(self.Mw[:self.nc_fl] * x[j])
+            dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, x[j])
+            dens_m[j] = dens[j] / M
+            mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, x[j], dens[j])
+
+        sat = self.compute_saturation(nu, dens_m)
+        pc = self.capillary_pressure_ev.evaluate(sat)
+        kr = jnp.array([self.rel_perm_ev[self.phases_name[j]].evaluate(sat[j]) for j in ph])
+        mass_source, dX = self.evaluate_mass_source(pressure, temperature, zc, x)
+
+        return {'sat': sat, 'pc': pc, 'kr': kr, 'mass_source': mass_source}

@@ -93,7 +93,7 @@ class PhysicsBase:
 
     def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
-                     verbose: bool = False):
+                     verbose: bool = False, jax_support: bool = False):
         """
         Function to initialize all contained objects within the Physics object.
 
@@ -111,9 +111,12 @@ class PhysicsBase:
         :type verbose: bool
         """
         # Define operators, set engine, set interpolators and define well controls
+        self.jax_support = jax_support
         self.set_operators()
         self.engine = self.set_engine(discr_type, platform)
-        self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
+        self.engine.python_assembly = jax_support
+        if not self.jax_support:
+            self.set_interpolators(platform, itor_type, itor_mode, itor_precision)
         self.define_well_controls()
         return
 

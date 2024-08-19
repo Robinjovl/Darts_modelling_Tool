@@ -1,5 +1,6 @@
 import numpy as np
-
+import jax.numpy as jnp
+from jax import lax
 
 class ConstFunc:
     def __init__(self, value):
@@ -27,8 +28,8 @@ class PhaseRelPerm:
             self.n = n
         else:  # water
             self.kre = kre
-            self.sr = 0
-            self.sr1 = 0
+            self.sr = sgr
+            self.sr1 = swc
             self.n = n
 
     def evaluate(self, sat):
@@ -42,6 +43,30 @@ class PhaseRelPerm:
 
         return kr
 
+    def evaluate_jax(self, sat):
+        # Use jax.numpy and jax.lax to handle conditionals
+        def saturated(_):
+            return self.kre  # Saturated permeability
+
+        def below_res_sat(_):
+            return 0.0  # Below residual saturation
+
+        def intermediate(_):
+            # General Brooks-Corey equation
+            return self.kre * ((sat - self.sr) / (1 - self.Sgr - self.Swc)) ** self.n
+
+        # Use lax.cond with the updated function signatures
+        return lax.cond(
+            sat >= 1 - self.sr1,
+            saturated,  # True branch function
+            lambda _: lax.cond(
+                sat <= self.sr,
+                below_res_sat,  # True branch function
+                intermediate,  # False branch function
+                None  # Operand for the inner lax.cond
+            ),
+            None  # Operand for the outer lax.cond
+        )
 
 class PhaseRelPerm_VG:  # Van Genuchten
     def __init__(self, phase, swc=0.20, sgr=0, kre=1., n=4.367):

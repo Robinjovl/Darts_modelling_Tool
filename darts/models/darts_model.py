@@ -51,6 +51,7 @@ class DartsModel:
         self.output_folder = 'output'
         self.sol_filename = "solution.h5"
         self.well_filename = 'well_data.h5'
+        self.python_assembly = False
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
@@ -91,14 +92,15 @@ class DartsModel:
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
         self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose,
-                                  itor_mode=itor_mode, itor_type=itor_type)
+                                  itor_mode=itor_mode, itor_type=itor_type, jax_support=self.python_assembly)
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
         # Initialize well objects
         self.reservoir.init_wells()
-        self.physics.init_wells(self.reservoir.wells)
-        self.init_well_rates()
+        if not self.python_assembly:
+            self.physics.init_wells(self.reservoir.wells)
+            self.init_well_rates()
 
         if output_folder is not None:
             self.output_folder = output_folder
@@ -106,7 +108,8 @@ class DartsModel:
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_initial_conditions()
-        self.set_well_controls()
+        if not self.python_assembly:
+            self.set_well_controls()
         self.reset()
 
         # self.restart = restart
@@ -294,9 +297,11 @@ class DartsModel:
 
         Operator list is in order [acc_flux_itor[0], ..., acc_flux_itor[n-1], acc_flux_w_itor]
         """
-        self.op_list = [self.physics.acc_flux_itor[region] for region in self.physics.regions] + [self.physics.acc_flux_w_itor]
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
-        self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
+        self.op_list = []
+        if not self.python_assembly:
+            self.op_list = [self.physics.acc_flux_itor[region] for region in self.physics.regions] + [self.physics.acc_flux_w_itor]
+            self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
 
     def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
