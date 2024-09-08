@@ -31,6 +31,7 @@ class engine_sequentialp_cpu : public engine_base
 {
 
 public:
+
   // number of components
   const static uint8_t NC_ = NC;
   // number of phases
@@ -43,6 +44,14 @@ public:
   const static uint8_t P_VAR = 0;
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
+
+  const static uint8_t N_Pintervals = 200;
+  csr_matrix_base* Jacobian_WR;
+  csr_matrix_base* Jacobian_Wl;
+  std::vector<value_t> Pr_op_ders_arr_n;
+  std::vector<value_t> Pl_op_ders_arr_n;
+  linsolv_iface* linear_solver_WR;
+  linsolv_iface* linear_solver_Wl;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
   //const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux beta star*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 + NP /*Lambda*/;
@@ -88,6 +97,8 @@ public:
     {
       engine_name = std::to_string(NP) + "-phase " + std::to_string(NC) + "-component isothermal flow with kinetic reaction and diffusion CPU engine";
     }
+    Jacobian_WR = 0;
+    Jacobian_Wl = 0;
   };
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,

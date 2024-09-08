@@ -342,17 +342,18 @@ class DartsModel:
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
-        """
+
         ################# temporary saving pressures
-        P = np.array(self.physics.engine.X[::3])
+        """
+        P = np.array(self.physics.engine.X)
         t = np.array(self.physics.engine.t)
         csv_file_path = 'vectors_data.csv' #save pressure data
         with open(csv_file_path, 'a', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow( np.insert(P, 0, t))
-        """
-        #print('X', np.array(self.physics.engine.X))
 
+        #print('X', np.array(self.physics.engine.X))
+        """
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -512,10 +513,9 @@ class DartsModel:
         while t < stop_time:
 
             # Pressure loop
-            #print('X_P before', self.physics.engine.X)
             converged_P = self.instances[0].run_timestep(dt, t, verbose)
             P = np.array(self.physics.engine.X[::3])
-            #print('X_P after', self.physics.engine.X)
+            #print('X_P', self.physics.engine.X)
             # Concentration loop
             for i in range(len(P)):
                 self.instances[1].physics.engine.X[3 * i] = P[i]
@@ -524,7 +524,11 @@ class DartsModel:
                 if i % 3 != 0:
                     self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
             #print(self.instances[0].physics.engine.X)
-
+            #XX = np.array(self.instances[0].physics.engine.X)
+            #csv_file_path = 'vectors_data.csv'  # save pressure data
+            #with open(csv_file_path, 'a', newline='') as csvfile:
+            #    csv_writer = csv.writer(csvfile)
+            #    csv_writer.writerow(np.insert(XX, 0, t))
             if converged_P and converged_C:
                 t += dt
                 ts += 1
