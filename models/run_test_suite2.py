@@ -31,6 +31,16 @@ for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
             test_args.append([case, discr_name, mesh])
 test_args = [test_args, [['']]]
 
+test_dirs_dfn = ['fracture_network']
+test_cases_dfn = ['case_1']
+if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
+    test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
+    test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+test_args_dfn = []
+for case in test_cases_dfn:
+    test_args_dfn.append([case])
+test_args_dfn = [test_args_dfn]
+
 accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_mpfa']  # for adjoint test
 
 def check_performance(mod):
@@ -124,7 +134,7 @@ if __name__ == '__main__':
 
     # fracture network tests
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=['fracture_network'], test_args=[[['case_1']]], overwrite=overwrite)
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
