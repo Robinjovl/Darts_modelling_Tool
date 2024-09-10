@@ -310,8 +310,7 @@ build-windows-3.7-ODLS:
 .build-linux-gpu:
     stage: build
     tags:
-        - linux
-        - gpu
+        - linux_gpu
     before_script:
         - echo 'before build-linux-gpu'
         - module load cuda/23.5
