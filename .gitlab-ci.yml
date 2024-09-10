@@ -66,7 +66,16 @@ build-linux-3.7:
         PY_VER: '3.7'        # for python image selection in .build-linux
         PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
         ODLS: '-a'
-        
+
+build-linux-3.9-gpu: 
+    rules:
+        - if: $TEST_ALL == "1"   
+    extends: .build-linux-gpu
+    variables:
+        PY_VER: '3.9'       # for python image selection in .build-linux
+        PY_SUF: 'cp39-cp39' # for python path selection in .build-linux-dockcross
+        ODLS: '-a'
+
 ###################################################################################
 build-linux-3.12-ODLS:
     rules: 
@@ -289,6 +298,29 @@ build-windows-3.7-ODLS:
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 week
+      when: always
+      
+###################################################################################
+     
+.build-linux-gpu:
+    stage: build
+    tags:
+        - linux
+        - gpu
+    before_script:
+        - echo 'before build-linux-gpu'
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3
+        - conda create -n darts_gitlab_gpu python=3.9 --yes
+        - conda activate darts_gitlab_gpu
+    script:
+        - echo "build *.so on linux GPU started with ODLS=$ODLS"
+        - ./helper_scripts/build_install_darts_gpu.sh
     artifacts:
       paths:
         - './dist/*.whl'
