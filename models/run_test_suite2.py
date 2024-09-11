@@ -89,7 +89,7 @@ if __name__ == '__main__':
     package_pbi()
 
     # set single thread in case of MT version to match the performance characteristics
-    os.environ['OMP_NUM_THREADS'] = '4'
+    os.environ['OMP_NUM_THREADS'] = '1'
 
     overwrite = '0'
     if os.getenv('UPLOAD_PKL') == '1':
