@@ -66,8 +66,6 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::init(conn_mesh* mesh_, std::vector<
 
     engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
     linear_solver_Wn = 0;
-    //Pn_1.resize(mesh_->n_blocks * N_VARS, 0);
-    //Wn_1.resize(mesh_->n_blocks * NC, 0);
     op_ders_arr_n.resize(mesh_->n_blocks * N_VARS * n_ops, 0);
     return 0;
 }
@@ -115,10 +113,8 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     //---------------------------------------Weights Calculation-------------------------------
 
     std::vector<value_t> Wn(NC * n_blocks, 0);
-    //std::vector<value_t> Pn(n_blocks * N_VARS, 0);
-    
     std::vector<value_t> b(NC * n_blocks, 0);
-    //std::vector<value_t> dWdp(NC * n_blocks, 1);
+
     for (index_t i = 0; i < n_blocks; ++i)
     {
         b[i * NC] = 1;
@@ -169,32 +165,13 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     linear_solver_Wn->init(Jacobian_Wn, params->max_i_linear, params->tolerance_linear);
     r_code = linear_solver_Wn->setup(Jacobian_Wn);
     r_code = linear_solver_Wn->solve(&b[0], &Wn[0]);
-    /*
-    bool all_zero = true; 
-
-    for (const auto& val : Wn_1) {
-        if (val != 0) {
-            all_zero = false;
-            break;
-        }
-    }
-    
+    value_t ww;
     for (index_t i = 0; i < n_blocks; ++i)
-        for (index_t k = 0; k < N_VARS; ++k)
-            Pn[i * N_VARS + k] = X[i * N_VARS];
-    
-    if (!all_zero)
     {
-        
-        for (size_t i = 0; i < (N_VARS)*n_blocks; ++i)
-        {
-            dWdp[i] = (Wn[i] - Wn_1[i])/(Pn[i] - Pn_1[i]) ;
-        }
+        ww = Wn[i * NE];
+        Wn[i * NE] = Wn[i * NE + 2];
+        Wn[i * NE + 2] = ww;
     }
-    
-    Wn_1 = Wn;
-    Pn_1 = Pn;
-    */
     op_ders_arr_n = op_ders_arr;
      //-----------------------------------------------------------------------------
 

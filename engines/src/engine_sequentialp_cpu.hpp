@@ -48,8 +48,6 @@ public:
   std::vector<value_t> op_ders_arr_n;
   csr_matrix_base* Jacobian_Wn;
   linsolv_iface* linear_solver_Wn;
-  //std::vector<value_t> Pn_1;
-  //std::vector<value_t> Wn_1;
 
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity

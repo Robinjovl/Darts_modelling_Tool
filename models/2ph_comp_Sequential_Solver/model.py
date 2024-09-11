@@ -33,7 +33,7 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nx = 20
+        nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10,
                                          permx=100, permy=100, permz=10, poro=0.3, depth=1000)
         return
