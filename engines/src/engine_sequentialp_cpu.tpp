@@ -165,13 +165,16 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     linear_solver_Wn->init(Jacobian_Wn, params->max_i_linear, params->tolerance_linear);
     r_code = linear_solver_Wn->setup(Jacobian_Wn);
     r_code = linear_solver_Wn->solve(&b[0], &Wn[0]);
-    value_t ww;
-    for (index_t i = 0; i < n_blocks; ++i)
+
+    std::vector<value_t> Wn_reorder(NC * n_blocks);
+    for (size_t i = 0; i < n_blocks; ++i)
     {
-        ww = Wn[i * NE];
-        Wn[i * NE] = Wn[i * NE + 2];
-        Wn[i * NE + 2] = ww;
+        for (size_t j = 0; j < NC; ++j) 
+        {
+            Wn_reorder[i * NC + j] = Wn[i * NC + (NC - 1 - j)];
+        }
     }
+    Wn = Wn_reorder;
     op_ders_arr_n = op_ders_arr;
      //-----------------------------------------------------------------------------
 
