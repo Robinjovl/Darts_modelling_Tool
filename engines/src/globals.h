@@ -167,7 +167,7 @@ public:
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 
-  index_t phase_existence_tolerance;    // tolerance defining presence of phase in a cell
+  value_t phase_existence_tolerance;    // tolerance defining presence of phase in a cell
 };
 
 class linear_solver_params
