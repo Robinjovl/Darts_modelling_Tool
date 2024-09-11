@@ -10,7 +10,7 @@ cd ../..
 
 # compile discretizer using the Makefile (no GPU)
 cd discretizer
-# set +e # turn off set -e
+set +e # temporarily turn off set -e
 make release -j 20 USE_OPENDARTS_LINEAR_SOLVERS=false > ../make_discretizer.log
 # sometimes the command above fails for file discretizer_build_info.cpp.in, so run it twice
 make release USE_OPENDARTS_LINEAR_SOLVERS=false 2>&1 >> ../make_discretizer.log
