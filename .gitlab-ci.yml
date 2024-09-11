@@ -733,11 +733,12 @@ test-windows-3.7-ODLS:
         - python -m pip install --upgrade pip
         - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         - pip install ./dist/*.whl
+        - export LD_LIBRARY_PATH=`python -c "import os;import darts;print(os.path.dirname(darts.__file__))"`:$LD_LIBRARY_PATH  # help to find discretizer.so when import engines
     script:
         # run simulation fot test models set
         - cd models
-        # passing additional argument to trigger verbose check performance
-        - python run_test_suite2.py LOG gpu
+        # passing additional argument LOG to trigger verbose check performance
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG gpu
         - echo "run_test_suite2 returned" $?
         - ./upload_pkl.sh "$CI_COMMIT_SHORT_SHA" $ODLS
         - cd ..
