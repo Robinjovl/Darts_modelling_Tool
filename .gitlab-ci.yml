@@ -72,6 +72,7 @@ build-linux-3.9-gpu:
         - if: $TEST_GPU == "1"   
     extends: .build-linux-gpu
     variables:
+        GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.9'       # for python image selection in .build-linux
         PY_SUF: 'cp39-cp39' # for python path selection in .build-linux-dockcross
         ODLS: '-a'
