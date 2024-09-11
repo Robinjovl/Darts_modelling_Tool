@@ -102,6 +102,7 @@ if __name__ == '__main__':
     os.environ['OMP_NUM_THREADS'] = '1'
 
     # cpu/gpu
+    platform = 'cpu'
     if len(sys.argv) > 2:
         platform = sys.argv[2]
 
@@ -125,7 +126,7 @@ if __name__ == '__main__':
         n_total_mainpy += 1
         os.chdir(mdir)
         import subprocess
-        mrun = subprocess.run(["python", "main.py"], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
+        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
         rcode = mrun.returncode
         n_failed_mainpy += rcode
         if not rcode:
@@ -138,13 +139,13 @@ if __name__ == '__main__':
 
     # discretizer tests
     n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite)
+    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite)
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 

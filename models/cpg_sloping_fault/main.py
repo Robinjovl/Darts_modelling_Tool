@@ -7,12 +7,13 @@ import matplotlib.pyplot as plt
 import time
 import os
 
-def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=False):
+def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=False,
+        platform='gpu'):
     print('Test started', 'physics_type:', physics_type, 'discr_type:', discr_type, 'case:', case)
     redirect_darts_output(os.path.join(out_dir, 'run.log'))
     m = Model(physics_type=physics_type, discr_type=discr_type, case=case, grid_out_dir=out_dir)
 
-    m.init(output_folder=out_dir)
+    m.init(output_folder=out_dir, platform=platform)
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
     if export_vtk:
@@ -58,14 +59,14 @@ def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : floa
 
 #####################################################
 
-def run_test(args: list = []):
+def run_test(args: list = [], platform='cpu'):
     if len(args) > 1:
-        return test(case=args[0], physics_type=args[1])
+        return test(case=args[0], physics_type=args[1], platform=platform)
     else:
         print('Not enough arguments provided')
         return 1, 0.0
 
-def test(case: str, physics_type : str):
+def test(case: str, physics_type : str, platform='cpu'):
     dt = 365.25
     n_time_steps = 20
 
@@ -100,7 +101,8 @@ def test(case: str, physics_type : str):
             out_dir = discr_type + '_results_' + case
             failed, sim_time, results[discr_type] = run(physics_type=physics_type, case=case,
                                                         discr_type=discr_type, out_dir=out_dir,
-                                                        dt=dt, n_time_steps=n_time_steps, export_vtk=export_vtk)
+                                                        dt=dt, n_time_steps=n_time_steps, export_vtk=export_vtk,
+                                                        platform='cpu')
             end = time.perf_counter()
     elif mode == 'compare':
         for discr_type in discr_types_list:

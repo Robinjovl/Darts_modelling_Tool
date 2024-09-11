@@ -481,7 +481,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
 
     m.print_timers()
 
-def run_test(args: list = []):
+def run_test(args: list = [], platform='cpu'):
     if len(args) > 3:
         return test(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
     else:
