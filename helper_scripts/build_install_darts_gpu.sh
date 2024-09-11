@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # get linear solvers binary compiled with GPU and include files
-cd lib
+cd engines/lib
 mkdir darts_linear_solvers && cd darts_linear_solvers && mkdir lib && mkdir include && cd ..
 cp -r /oahu/data/open-darts-gitlab-runner-data/darts-linear-solvers-gpu/lib darts_linear_solvers/lib
 cp -r /oahu/data/open-darts-gitlab-runner-data/darts-linear-solvers-gpu/include darts_linear_solvers/include
-cd ..
+cd ../..
 
 # compile discretizer using the Makefile (no GPU)
 cd discretizer
