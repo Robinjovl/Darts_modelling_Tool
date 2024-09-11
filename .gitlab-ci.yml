@@ -314,7 +314,7 @@ build-windows-3.7-ODLS:
     before_script:
         - echo 'before build-linux-gpu'
         - module load cuda/23.5
-        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
         - conda create -n darts_gitlab_gpu python=3.9 --yes
         - conda activate darts_gitlab_gpu
     script:
