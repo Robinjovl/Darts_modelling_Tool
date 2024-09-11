@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <vector>
-#include "matrix.hpp"
+#include "matrix.h"
 
 #define SUM_N(N) ((N + 1) / 2 * N)
 

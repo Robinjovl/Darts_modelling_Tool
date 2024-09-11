@@ -16,8 +16,9 @@ void pybind_engine_nc_cg_gpu(py::module &);
 void pybind_engine_super_cpu(py::module &);
 #ifndef WITH_GPU
 void pybind_engine_super_mp_cpu(py::module &);
-#endif //WITH_GPU
 void pybind_engine_super_elastic_cpu(py::module &);
+#endif //WITH_GPU
+
 void pybind_engine_super_gpu(py::module &);
 void pybind_well_controls(py::module &);
 void pybind_ms_well(py::module &);
@@ -97,8 +98,8 @@ PYBIND11_MODULE(engines, m)
   pybind_engine_super_cpu(m);
 #ifndef WITH_GPU
   pybind_engine_super_mp_cpu(m);
-#endif //WITH_GPU
   pybind_engine_super_elastic_cpu(m);
+#endif //WITH_GPU
 
   pybind_well_controls(m);
   pybind_ms_well(m);

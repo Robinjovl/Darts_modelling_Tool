@@ -1,8 +1,60 @@
-# 1.0.6 [2024]
+# 1.1.4 [07-09-2024]
+- Generalize super engine physics for solid formulation[(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/112)
+- Python 3.12 support
+- Recover the well control and constraints in case of switching between BHP and rate control
+- Fix local build script for Windows: don't turn off OpenMP if '-b' is specified
+
+# 1.1.3 [13-07-2024]
+- Support for *.h5
+	- Save well states of well blocks to 'output/well_data.h5': [save well data](https://gitlab.com/open-darts/open-darts/-/blob/v1.1.3/darts/models/darts_model.py#L450)
+	- Save states of all reservoir blocks to 'output/solution.h5': [save solution data](https://gitlab.com/open-darts/open-darts/-/blob/v1.1.3/darts/models/darts_model.py#L463)
+- Breaking changes:\
+	{- Before, input states in the `DartsModel output_properties()` function were read from engine.X}\
+	{+ Now, input states in the `DartsModel output_properties()` are read from a user specified time-step in 'solution.h5'}\
+	{- Before, the properties_list in the `DartsModel output_properties()` function contained variable names and property names'}\
+	{+ Now, the 'properties_list' contains only the property names}\
+    {- Before `DartsModel output_to_vtk()` function returned a single *.vtk file}\
+    {+ Now, by default `DartsModel output_to_vtk()` returns a *.vtk file for every timestep contained in 'solution.h5'}
+- Two examples of models that use the new output_functions: [example](https://gitlab.com/open-darts/darts-models/-/tree/development/publications/24_geothermal_chapter/basic_1d.py) 1, [example](https://gitlab.com/open-darts/darts-models/-/tree/development/publications/24_geothermal_chapter/basic_3d.py) 2
+- Molar and phase volumetric well rate calculators.
+- Support of restarts.
+- Molar and phase volumetric well rate calculators.
+- Support of restarts.
+
+
+# 1.1.2 [12-06-2024]
+- Thermo-hydro-mechanical-compositional (THMC) modeling:
+ 	- Coupled Multi-Point Stress and Multi-Point Flux Approximations
+ 	- Fully implicit thermo-poroelasticity resolved with collocated FVM and coupled with compositional multiphase transport
+	- Tests to compare to Mandel, Terzaghi, two-layer Terzaghi and Bai analytics [(link))](https://gitlab.com/open-darts/open-darts/-/tree/development/models/1ph_1comp_poroelastic_analytics)
+	- [Convergence test](https://gitlab.com/open-darts/open-darts/-/tree/development/models/1ph_1comp_poroelastic_convergence)
+	- Interface to block-partitioned preconditioner
+- Improved performance of discretization (C++)
+- [InputData class](https://gitlab.com/open-darts/open-darts/-/blob/development/darts/input/input_data.py) added and used in THM tests
+- C++ standard is changed from 14 to 20
+- Discretizer binary type changed from shared to static library
+- Enable linking to external library (iterative solvers) compiled in debug mode if compiling openDARTS in debug mode.
+- Improve documentation on multi-thread version.
+- Add `opmcpg` as a main dependency.
+
+# 1.1.1 [15-03-2024]
+
+# 1.1.0 [16-02-2024]
 - Migrated to cmake build system [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/58). We kept the old Visual Studio projects, but they will be removed later.
-- Well rates in SuperEngine ("Compositional") are defined in reservoir conditions now, the units are Kmol/day
+- Well rates in SuperEngine ("Compositional") are defined in reservoir conditions now, the units are kmol/day
+- VTK output unified for all the reservoir classes [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/79)
+- Discrete Fracture mesh generation tool and model added [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/79)
+- Windows build script supports optional arguments  [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/82)
+- Removed python exposures [(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/74)
 - Breaking changes:
     - The function `darts_model run_python()` is renamed to `run()`.
+	- Changes in unstructured mesh processing. It is required to specify tags in mesh file for all control elements now  (matrix, fractures and optionally boundary faces). 
+	- Changes in vtk output:\
+	    {- Before: input properties were saved to the first timestep vtk file -}\
+        {+ Now: input properties saved to the separate "mesh.vtk" file +}\
+		{- Struct/CPG: DartsModel.export_vtk(file_name, local_cell_data, global_cell_data, vars_data_dtype, export_grid_data) -}\
+		{- Unstruct: UnstructReservoir.output_to_vtk(output_directory, output_filename, property_data, ith_step) -}\
+        {+ DartsModel.output_to_vtk(ith_step, output_directory, output_properties) +}
 	- No need to call `super().set_physics(physics)`, `super().set_reservoir()` and `super().set_physics()` in user's model: \
 	    {- reservoir = UnstructReservoir(...) -}\
 		{- super().set_reservoir(reservoir)-}\

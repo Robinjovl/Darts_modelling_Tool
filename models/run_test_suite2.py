@@ -9,7 +9,7 @@ from darts.engines import sim_params
 model_dir = r'.'
 
 accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
-                 '2ph_geothermal', '2ph_geothermal_mass_flux',
+                 '2ph_do_thermal_mpfa', '2ph_geothermal', '2ph_geothermal_mass_flux',
                  '3ph_comp_w', '3ph_do', '3ph_bo',
                  'Uniform_Brugge',
                  'Chem_benchmark_new',
@@ -18,26 +18,36 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
                  'CoaxWell'
                  ]
 
-test_dirs = ['1ph_1comp_poroelastic_analytics']
-test_args = [
-                [['terzaghi', 'non_stabilized', 'rect'],
-                ['terzaghi', 'non_stabilized', 'wedge'],
-                ['terzaghi', 'non_stabilized', 'hex'],
-                ['terzaghi', 'stabilized', 'rect'],
-                ['terzaghi', 'stabilized', 'wedge'],
-                ['terzaghi', 'stabilized', 'hex'],
-                ['mandel', 'non_stabilized', 'rect'],
-                ['mandel', 'non_stabilized', 'wedge'],
-                ['mandel', 'non_stabilized', 'hex'],
-                ['mandel', 'stabilized', 'rect'],
-                ['mandel', 'stabilized', 'wedge'],
-                ['mandel', 'stabilized', 'hex'],
-                ['terzaghi_two_layers', 'non_stabilized', 'rect'],
-                ['terzaghi_two_layers', 'non_stabilized', 'wedge']]
-            ]
+test_dirs_mech = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
+test_args_mech = []
+for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
+    for discr_name in ['mech_discretizer', 'pm_discretizer']:
+        if case == 'bai' and discr_name == 'pm_discretizer':
+            continue # is not supported by poroelastic as bai is thermoporoelasticity
+        for mesh in ['rect', 'wedge', 'hex']:
+            if case == 'terzaghi_two_layers' and mesh == 'hex':
+                continue
+            test_args_mech.append([case, discr_name, mesh])
+test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-accepted_dirs_adjoint = ['Adjoint_super_engine']  # for adjoint test
+test_dirs_cpg = ['cpg_sloping_fault']
+test_args_cpg = []
+for case in ['case_40', 'case_43', 'case_40_actnum', 'generate_5x3x4', 'generate_51x51x1']:
+    for physics_type in ['geothermal']:#, 'dead_oil']:
+        test_args_cpg.append([case, physics_type])
+test_args_cpg = [test_args_cpg]
 
+test_dirs_dfn = ['fracture_network']
+test_cases_dfn = ['case_1']
+if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
+    test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
+    test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+test_args_dfn = []
+for case in test_cases_dfn:
+    test_args_dfn.append([case])
+test_args_dfn = [test_args_dfn]
+
+accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_mpfa']  # for adjoint test
 
 def check_performance(mod):
     pkl_suffix = ''
@@ -98,8 +108,11 @@ if __name__ == '__main__':
     n_failed = n_total = 0
 
     # run tests accepted_dirs/model.py with comparison of pkl files
-    n_failed = for_each_model(model_dir, check_performance, accepted_dirs)
-    n_total = len(accepted_dirs)
+    n_failed_m = n_total_m = 0
+    n_failed_m = for_each_model(model_dir, check_performance, accepted_dirs)
+    n_total_m = len(accepted_dirs)
+    n_failed += n_failed_m
+    n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
     n_failed_mainpy = n_total_mainpy = 0
@@ -121,33 +134,39 @@ if __name__ == '__main__':
 
     # discretizer tests
     n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=['cpg_sloping_fault'], test_args=[[['40'],['43']]], overwrite=overwrite)
+    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
+    # fracture network tests
+    n_total_dfn = n_failed_dfn = 0
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite)
+    n_failed += n_failed_dfn
+    n_total += n_total_dfn
+
     # poromechanic tests
     n_total_mech = n_failed_mech = 0
-    # n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs, test_args, overwrite)
+    n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
     n_failed += n_failed_mech
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
     n_failed_adj = n_total_adj = 0
     import time
-    starting_time = time.time()
     n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
     n_total_adj = len(accepted_dirs_adjoint)
-    ending_time = time.time()
-    if not n_failed_adj:
-        print('OK, \t%.2f s' % (ending_time - starting_time))
-    else:
-        print('FAIL, \t%.2f s' % (ending_time - starting_time))
     n_failed += n_failed_adj
     n_total += n_total_adj
     # test for adjoint ------------------end---------------------------------
 
     n_passed = n_total - n_failed
-    print("Passed", n_passed, "of", n_total, "models. ")
+    print("Passed", n_passed, "of", n_total, "tests ")
+    print('n_failed_model=', n_failed_m)
+    print('n_failed_mainpy=', n_failed_mainpy)
+    print('n_failed_discr=', n_failed_discr)
+    print('n_failed_dfn=', n_failed_dfn)
+    print('n_failed_mech=', n_failed_mech)
+    print('n_failed_adj=', n_failed_adj)
     
     if len(sys.argv) == 1:
         input("Press Enter to continue...") # pause the screen

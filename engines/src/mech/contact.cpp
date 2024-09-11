@@ -1017,6 +1017,7 @@ int contact::solve_explicit_scheme(std::vector<value_t>& RHS, std::vector<value_
 				dX[l_id + d] += jac(d, c) * RHS[l_id + c];
 		}
 	}
+	return 0;
 }
 int contact::add_to_jacobian_slip(index_t id, value_t dt, vector<value_t>& RHS)
 {

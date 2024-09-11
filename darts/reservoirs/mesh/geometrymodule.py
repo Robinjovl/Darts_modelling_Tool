@@ -20,7 +20,7 @@ import math
 # The following parent class contains all the definitions for the (currently) supported geometric objects for
 # unstructured reservoir (typically when imported from GMSH, but should be generalizable to any type of mesh):
 class ControlVolume:
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type):
+    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id):
         """
         Class constructor for the parents class ControlVolume
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -42,6 +42,8 @@ class ControlVolume:
         self.calculate_depth()  # Class method which calculates the depth (center) of the control volume
         self.calculate_nodes_to_face()  # Class method which finds the array containing the nodes of each face of the CV
         self.calculate_volume()  # Class method which calculates the volume of the CV
+
+        self.prop_id = prop_id
 
     def calculate_centroid(self):
         """
@@ -110,11 +112,10 @@ class Hexahedron(ControlVolume):
         :param permeability: permeability of control volume [mD]
         """
         # Call parent class constructor:
-        super(Hexahedron, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
         self.permeability = permeability  # Can be scalar or vector with [Kx, Ky, Kz]
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -191,11 +192,10 @@ class Wedge(ControlVolume):
         :param permeability: permeability of control volume [mD]
         """
         # Call parent class constructor:
-        super(Wedge, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
         self.permeability = permeability  # Can be scalar or vector with [Kx, Ky, Kz]
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -279,11 +279,10 @@ class Pyramid(ControlVolume):
         :param permeability: permeability of control volume [mD]
         """
         # Call parent class constructor:
-        super(Pyramid, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
         self.permeability = permeability     # Can be scalar or vector with [Kx, Ky, Kz]
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -368,11 +367,10 @@ class Tetrahedron(ControlVolume):
         :param permeability: permeability of control volume [mD]
         """
         # Call parent class constructor:
-        super(Tetrahedron, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
         self.permeability = permeability     # Can be scalar or vector with [Kx, Ky, Kz]
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -428,11 +426,10 @@ class Cylinder(ControlVolume):
         self.center_coords = center
         self.radius = radius
 
-        super(Cylinder, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
         self.permeability = permeability  # Can be scalar or vector with [Kx, Ky, Kz]
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -554,7 +551,7 @@ class Cylinder(ControlVolume):
 
 
 class Quadrangle(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture, prop_id = -1):
+    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
         """
         Class constructor for the child class Quadrangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -564,12 +561,11 @@ class Quadrangle(ControlVolume):
         :param prop_id: identifier of corresponding property
         """
         # Call parent class constructor:
-        super(Quadrangle, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
         self.permeability = 1 / 12 * (self.frac_aperture ** 2) * 1E15
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -617,7 +613,7 @@ class Quadrangle(ControlVolume):
 
 
 class Triangle(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture, prop_id = -1):
+    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
         """
         Class constructor for the child class Triangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -627,12 +623,11 @@ class Triangle(ControlVolume):
         :param prop_id: identifier of corresponding property
         """
         # Call parent class constructor:
-        super(Triangle, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
         self.permeability = 1/12 * (self.frac_aperture ** 2) * 1E15
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -674,7 +669,7 @@ class Triangle(ControlVolume):
 
 
 class Line(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture, prop_id = -1):
+    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
         """
         Class constructor for the child class Quadrangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -684,12 +679,11 @@ class Line(ControlVolume):
         :param prop_id: identifier of corresponding property
         """
         # Call parent class constructor:
-        super(Line, self).__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type)
+        super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
         self.permeability = 1 / 12 * (self.frac_aperture ** 2) * 1E15
-        self.prop_id = prop_id
 
     def calculate_nodes_to_face(self):
         """
@@ -729,7 +723,6 @@ class Line(ControlVolume):
         return intsect_cells_of_face
 
 
-
 class FType(Enum):
     MAT = 0
     BORDER = 1
@@ -737,6 +730,8 @@ class FType(Enum):
     MAT_TO_FRAC = 3
     FRAC = 4
     FRAC_BOUND = 5
+
+
 class Face:
     def __init__(self, cell_id1, face_id1, cell_id2, face_id2, pts_id, pts, id, type, f_aper = 0, n = 0):
         """

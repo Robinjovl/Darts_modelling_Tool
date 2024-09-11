@@ -20,7 +20,6 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def("post_explicit", &engine_pm_cpu::post_explicit) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \
-		.def_readwrite("print_linear_system", &engine_pm_cpu::PRINT_LINEAR_SYSTEM) \
 		.def_readwrite("time_dependent_discretization", &engine_pm_cpu::TIME_DEPENDENT_DISCRETIZATION) \
 		.def_readwrite("explicit_scheme", &engine_pm_cpu::EXPLICIT_SCHEME) \
 		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \

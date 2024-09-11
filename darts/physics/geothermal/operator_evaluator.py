@@ -198,3 +198,15 @@ class geothermal_mass_rate_custom_evaluator_python(OperatorsGeothermal):
                     pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
         
         return 0
+
+class MassFluxOperators(OperatorsGeothermal):
+    n_ops = 1
+
+    def evaluate(self, state, values):
+        pc = self.property
+        pc.evaluate(state)
+
+        """ Beta operator here represents mass flux term: """
+        values[0] = pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+
+        return 0

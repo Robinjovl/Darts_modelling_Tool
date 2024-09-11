@@ -3,6 +3,8 @@
 
 # First the source files (private headers should also go here)
 set(DISCRETIZER_PYBIND11_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_approximation.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_mech_discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_elem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_linalg.cpp
@@ -12,6 +14,7 @@ set(DISCRETIZER_PYBIND11_SRC_FILES
 
 # Then the public headers
 set(DISCRETIZER_PYBIND11_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_mech_discretizer.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_discretizer.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_elem.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_global.h

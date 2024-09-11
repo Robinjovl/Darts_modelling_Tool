@@ -26,7 +26,7 @@ class UnstructReservoir(ReservoirBase):
     :param cache: Switch to load/save cache of discretization
     :type cache: bool
     """
-    physical_tags = {'matrix': [], 'boundary': [], 'fracture': [], 'fracture_shape': [], 'output': []}
+    physical_tags = {'matrix': [], 'fracture': [], 'boundary': [], 'fracture_boundary': [], 'output': []}
 
     def __init__(self, timer: timer_node, mesh_file: str, permx, permy, permz, poro, rcond=0, hcap=0,
                  frac_aper=0, op_num=0, cache: bool = False):
@@ -43,17 +43,24 @@ class UnstructReservoir(ReservoirBase):
         self.hcap = hcap
         self.op_num = op_num
 
+        # parameters for optional fracture aperture computation depending on principal stresses
+        self.sh_max = None
+        self.sh_min = None
+        self.sh_max_azimuth = None
+        self.sigma_c = None
+
     def discretize(self, verbose: bool = False) -> conn_mesh:
         # Construct instance of Unstructured Discretization class:
         self.discretizer = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=self.physical_tags,
-                                               permx=self.permx, permy=self.permy, permz=self.permz,
-                                               frac_aper=self.frac_aper, verbose=verbose)
+                                               verbose=verbose)
 
         # Use class method load_mesh to load the GMSH file specified above:
-        self.discretizer.load_mesh()
+        self.discretizer.load_mesh(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=self.frac_aper,
+                                   cache=False)
 
-        # Calculate cell information of each geometric element in the .msh file:
-        self.discretizer.calc_cell_information()
+        if self.frac_aper is not None and self.sh_max is not None:
+            self.discretizer.calc_frac_aper_by_stress(self.frac_aper, self.sh_max, self.sh_min, self.sh_max_azimuth,
+                                                      self.sigma_c)
 
         # Store volumes and depth to single numpy arrays:
         self.discretizer.store_volume_all_cells()
@@ -75,8 +82,9 @@ class UnstructReservoir(ReservoirBase):
         np.array(mesh.rock_cond, copy=False)[:] = self.rcond
         np.array(mesh.heat_capacity, copy=False)[:] = self.hcap
         np.array(mesh.op_num, copy=False)[:] = self.op_num
-        np.array(mesh.depth, copy=False)[:] = self.discretizer.depth_all_cells
-        np.array(mesh.volume, copy=False)[:] = self.discretizer.volume_all_cells
+        n_elements = self.discretizer.mat_cells_tot + self.discretizer.frac_cells_tot
+        np.array(mesh.depth, copy=False)[:] = self.discretizer.depth_all_cells[:n_elements]
+        np.array(mesh.volume, copy=False)[:] = self.discretizer.volume_all_cells[:n_elements]
 
         return mesh
 
@@ -103,86 +111,7 @@ class UnstructReservoir(ReservoirBase):
         self.volume[self.right_boundary_cells] = self.volume[self.right_boundary_cells] * 1e8
         return
 
-    def calc_boundary_cells(self, boundary_data):
-        """
-        Class method which calculates constant boundary values at a specif constant x,y,z-coordinate
-
-        :param boundary_data: dictionary with the boundary location (X,Y,Z, and location)
-        :return:
-        """
-        # Specify boundary cells, simply set specify the single coordinate which is not-changing and its value:
-        # First boundary:
-        index = []  # Dynamic list containing indices of the nodes (points) which lay on the boundary:
-        if boundary_data['first_boundary_dir'] == 'X':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 0] == boundary_data['first_boundary_val']
-        elif boundary_data['first_boundary_dir'] == 'Y':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 1] == boundary_data['first_boundary_val']
-        elif boundary_data['first_boundary_dir'] == 'Z':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 2] == boundary_data['first_boundary_val']
-
-        # Convert dynamic list to numpy array:
-        left_boundary_points = np.array(list(compress(range(len(index)), index)))
-
-        # Second boundary (same as above):
-        index = []
-        if boundary_data['second_boundary_dir'] == 'X':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 0] == boundary_data['second_boundary_val']
-        elif boundary_data['second_boundary_dir'] == 'Y':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 1] == boundary_data['second_boundary_val']
-        elif boundary_data['second_boundary_dir'] == 'Z':
-            # Check if first coordinate of points is on the boundary:
-            index = self.discretizer.mesh_data.points[:, 2] == boundary_data['second_boundary_val']
-
-        right_boundary_points = np.array(list(compress(range(len(index)), index)))
-
-        # Find cells containing boundary cells, for wedges or hexahedrons, the boundary cells must contain,
-        # on the X or Y boundary four nodes exactly!
-        #     0------0          0
-        #    /     / |         /  \
-        #  0------0  0        0----0
-        #  |      | /         |    |
-        #  0------0           0----0
-        # Hexahedron       Wedge (prism)
-        # Create loop over all matrix cells which are of the geometry 'matrix_cell_type'
-        left_count = 0  # Counter for number of left matrix cells on the boundary
-        left_boundary_cells = {}  # Dictionary with matrix cells on the left boundary
-        for geometry in self.discretizer.geometries_in_mesh_file:
-            if geometry in self.discretizer.available_matrix_geometries:
-                # Matrix geometry found, check if any matrix control volume has exactly 4 nodes which intersect with
-                # the left_boundary_points list:
-                for ith_cell, ith_row in enumerate(
-                        self.discretizer.mesh_data.cells_dict[geometry]):
-
-                    if len(set.intersection(set(ith_row), set(left_boundary_points))) == 4:
-                        # Store cell since it is on the left boundary:
-                        left_boundary_cells[left_count] = ith_cell
-                        left_count += 1
-
-        right_count = 0
-        right_boundary_cells = {}
-        for geometry in self.discretizer.geometries_in_mesh_file:
-            if geometry in self.discretizer.available_matrix_geometries:
-                # Matrix geometry found, check if any matrix control volume has exactly 4 nodes which intersect with
-                # the right_boundary_points list:
-                for ith_cell, ith_row in enumerate(
-                        self.discretizer.mesh_data.cells_dict[geometry]):
-                    if len(set.intersection(set(ith_row), set(right_boundary_points))) == 4:
-                        # Store cell since it is on the left boundary:
-                        right_boundary_cells[right_count] = ith_cell
-                        right_count += 1
-
-        self.left_boundary_cells = np.array(list(left_boundary_cells.values()), dtype=int) + \
-                                   self.discretizer.fracture_cell_count
-        self.right_boundary_cells = np.array(list(right_boundary_cells.values()), dtype=int) + \
-                                    self.discretizer.fracture_cell_count
-        return 0
-
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
+    def add_perforation(self, well_name: str, cell_index: int, well_radius: float = 0.1524,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
@@ -192,13 +121,16 @@ class UnstructReservoir(ReservoirBase):
 
         perf_indices = np.array(well.perforations, dtype=int)
         # cell_index has index=1 in perforation element: (well_block, cell_index, well_index, well_indexD)
-        perf_indices = perf_indices[:, 1] if len(well.perforations) > 1 else []
+        perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
         if cell_index in perf_indices:
             print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
             exit()
 
-        # well.well_head_depth = np.array(self.mesh.depth, copy=False)[cell_index]
-        # well.well_body_depth = well.well_head_depth
+        #  update well depth
+        perf_indices = np.append(perf_indices, cell_index).astype(int)  # add current cell to previous perforation list
+        # set well depth to the top perforation depth 
+        well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()  
+        well.well_body_depth = well.well_head_depth
 
         if well_index is None or well_indexD is None:
             # calculate well index and get local index of reservoir block
@@ -240,56 +172,153 @@ class UnstructReservoir(ReservoirBase):
                 idx = j
         return idx
 
-    def output_to_vtk(self, output_directory: str, output_filename: str, property_data: dict, ith_step: int):
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         """
-        Class method which writes output of unstructured grid to VTK format
+        Method to initialize objects required for output of unstructured reservoir into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
 
-        :param output_directory: directory of output files
-        :param property_array: np.array containing all cell properties (N_cells x N_prop)
-        :param cell_property: list with property names (visible in ParaView (format strings)
-        :param ith_step: integer containing the output step
-        :return:
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
+        self.vtk_initialized = True
+        self.discretizer.find_vtk_output_cells()
+
+        if export_grid_data:
+            mesh_geom_dtype = np.float32
+            matrix_props = {'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
+                            'hcap': self.hcap, 'rcond': self.rcond, 'op_num': self.op_num,
+                            }
+            # order of values in volume_all_cells: FRACTURE MATRIX
+            matrix_props['volume'] = np.array(self.mesh.volume, copy=False)
+            # order of values in depth_all_cells: FRACTURE MATRIX BOUNDARY
+            matrix_props['depth'] = np.array(self.mesh.depth, copy=False)
+            matrix_props['center_x'] = self.discretizer.centroid_all_cells[:, 0]
+            matrix_props['center_y'] = self.discretizer.centroid_all_cells[:, 1]
+            matrix_props['center_z'] = self.discretizer.centroid_all_cells[:, 2]
+            frac_props = {'frac_aper': self.frac_aper}
+
+            # Create empty lists for each geometry type - {**{}} operator merges dictionaries
+            output_nodes = self.discretizer.vtk_output_nodes_to_cells['matrix'] if not self.discretizer.frac_cells_tot \
+                else {**self.discretizer.vtk_output_nodes_to_cells['fracture'], **self.discretizer.vtk_output_nodes_to_cells['matrix']}
+            output_idxs = self.discretizer.vtk_output_cell_idxs
+            geometries = output_nodes.keys()
+            props = {**matrix_props, **frac_props}.keys() if self.discretizer.frac_cells_tot else matrix_props.keys()
+            cell_data = {key: [[] for geometry in geometries] for key in props}
+
+            # Loop over matrix cell properties
+            for prop, data in matrix_props.items():
+                ith_geometry = 0
+
+                # Fill fracture cells with zeros
+                for geometry, cell_idxs in output_idxs['fracture'].items():
+                    cell_data[prop][ith_geometry] += [0.] * len(cell_idxs)
+                    ith_geometry += 1
+                # Fill matrix cells with data
+                for geometry, cell_idxs in output_idxs['matrix'].items():
+                    if np.isscalar(data):
+                        if type(data) is int:
+                            cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs))).tolist()
+                        elif type(data) is float:
+                            cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)).tolist()
+                    else:
+                        cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
+                    ith_geometry += 1
+
+            # Loop over fracture cell properties
+            if self.discretizer.frac_cells_tot:
+                for prop, data in frac_props.items():
+                    ith_geometry = 0
+
+                    # Fill fracture cells with data
+                    for geometry, cell_idxs in output_idxs['fracture'].items():
+                        if np.isscalar(data):
+                            if type(data) is int:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs))).tolist()
+                            elif type(data) is float:
+                                cell_data[prop][ith_geometry] += (data * np.ones(len(cell_idxs), dtype=mesh_geom_dtype)).tolist()
+                        else:
+                            cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
+                        ith_geometry += 1
+                    # Fill matrix cells with zeros
+                    for geometry, cell_idxs in output_idxs['matrix'].items():
+                        cell_data[prop][ith_geometry] += [0.] * len(cell_idxs)
+                        ith_geometry += 1
+
+            # Distinguish fracture cells from matrix cells
+            cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
+            ith_geometry = 0
+            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs['fracture'].items():
+                cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(
+                    len(cell_idxs)).tolist()  # fill fracture cells with zeros
+                ith_geometry += 1
+            for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs['matrix'].items():
+                cell_data['matrix_cell_bool'][ith_geometry] += np.ones(
+                    len(cell_idxs)).tolist()  # fill matrix cells with ones
+                ith_geometry += 1
+
+            mesh = meshio.Mesh(
+                points=self.discretizer.mesh_data.points,  # list of point coordinates
+                cells=output_nodes,  # list of cell geometries and idxs for reporting
+                # Each item in cell data must match the cells array
+                cell_data=cell_data
+            )
+
+            print('Writing mesh data to VTK file')
+            meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
+
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+        """
+        Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param prop_idxs: Dictionary of properties with data array indices for output
+        :type prop_idxs: dict
+        :param data: Data for output
+        :type data: np.ndarray
         """
         # First check if output directory already exists:
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        os.makedirs(output_directory, exist_ok=True)
+        if not self.vtk_initialized:
+            self.init_vtk(output_directory, export_grid_data=True)
 
-        # Allocate empty new cell_data_dict dictionary:
-        cell_data_dict = dict()
+        # Create empty lists for each geometry type - {**{}} operator merges dictionaries
+        output_nodes = self.discretizer.vtk_output_nodes_to_cells['matrix'] if not self.discretizer.frac_cells_tot \
+            else {**self.discretizer.vtk_output_nodes_to_cells['fracture'], **self.discretizer.vtk_output_nodes_to_cells['matrix']}
+        output_idxs = self.discretizer.vtk_output_cell_idxs['matrix'] if not self.discretizer.frac_cells_tot \
+            else {**self.discretizer.vtk_output_cell_idxs['fracture'], **self.discretizer.vtk_output_cell_idxs['matrix']}
+        geometries = output_nodes.keys()
+        cell_data = {key: [[] for geometry in geometries] for key in prop_idxs.keys()}
 
-        for ith_prop in range(len(cell_property)):
-            cell_data_dict[cell_property[ith_prop]] = []
-            left_bound = 0
-            right_bound = 0
-            for ith_geometry in self.mesh_data.cells_dict:
-                left_bound = right_bound
-                right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data_dict[cell_property[ith_prop]].append(list(property_array[left_bound:right_bound, ith_prop]))
+        # Distinguish fracture cells from matrix cells
+        cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
+        ith_geometry = 0
+        for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs['fracture'].items():
+            cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(len(cell_idxs)).tolist()  # fill fracture cells with zeros
+            ith_geometry += 1
+        for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs['matrix'].items():
+            cell_data['matrix_cell_bool'][ith_geometry] += np.ones(len(cell_idxs)).tolist()  # fill matrix cells with ones
+            ith_geometry += 1
 
-        cell_data_dict['matrix_cell_bool'] = []
-        left_bound = 0
-        right_bound = 0
-        for ith_geometry in self.mesh_data.cells_dict:
-            left_bound = right_bound
-            right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-
-            if (ith_geometry in self.available_fracture_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.zeros(((right_bound - left_bound),))))
-
-            elif (ith_geometry in self.available_matrix_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'].append(list(np.ones(((right_bound - left_bound),))))
+        # Loop over output properties
+        for prop, idx in prop_idxs.items():
+            # Loop over fracture and matrix cells (in that order)
+            for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
+                cell_data[prop][ith_geometry] += data[idx, cell_idxs].tolist()
 
         # Temporarily store mesh_data in copy:
-        # Mesh = meshio.read(self.mesh_file)
-
         mesh = meshio.Mesh(
-            # Mesh.points,
-            # Mesh.cells_dict.items(),
-            self.mesh_data.points,  # list of point coordinates
-            self.mesh_data.cells_dict.items(),  # list of
+            points=self.discretizer.mesh_data.points,  # list of point coordinates
+            cells=output_nodes,  # list of cell geometries and idxs for reporting
             # Each item in cell data must match the cells array
-            cell_data=cell_data_dict)
+            cell_data=cell_data
+        )
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
-        return 0

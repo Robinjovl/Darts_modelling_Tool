@@ -54,6 +54,7 @@ class PropertyOperators(OperatorsBase):
             _ = self.property.evaluate_thermal(state)
 
         for i, prop in enumerate(self.props_name):
-            values[i] = self.props[prop]()
+            output = self.props[prop]()
+            values[i] = output if not np.isnan(output) else 0.
 
         return 0

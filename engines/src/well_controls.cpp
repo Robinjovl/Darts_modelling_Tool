@@ -116,7 +116,7 @@ value_t volume_rate_well_control::check_constraint_violation, (value_t dt, std::
 
 #endif
 
-int rate_inj_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans, 
+int rate_inj_well_control::add_to_jacobian(value_t /*dt*/, index_t well_head_idx, value_t segment_trans,
 	index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t * jacobian_row, std::vector<value_t>& RHS)
 {
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];

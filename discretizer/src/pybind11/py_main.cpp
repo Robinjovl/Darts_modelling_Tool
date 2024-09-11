@@ -7,7 +7,9 @@ namespace py = pybind11;
 void pybind_elem(py::module &m);
 void pybind_mesh(py::module &m);
 void pybind_discretizer(py::module &m);
+void pybind_mech_discretizer(py::module &m);
 void pybind_linalg(py::module &m);
+void pybind_approximation(py::module& m);
 
 
 void print_build_info()
@@ -44,4 +46,6 @@ PYBIND11_MODULE(discretizer, m)
 	pybind_linalg(m);
 	pybind_mesh(m);
 	pybind_discretizer(m);
+	pybind_mech_discretizer(m);
+	pybind_approximation(m);
 }

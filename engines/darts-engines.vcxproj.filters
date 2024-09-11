@@ -196,7 +196,7 @@
     <ClInclude Include="src\mech\engine_super_elastic_cpu.hpp">
       <Filter>mech</Filter>
     </ClInclude>
-    <ClInclude Include="src\mech\matrix.hpp">
+    <ClInclude Include="src\mech\matrix.h">
       <Filter>mech</Filter>
     </ClInclude>
     <ClInclude Include="src\mech\mech_operators.hpp">

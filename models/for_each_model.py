@@ -3,10 +3,11 @@ import os, sys, shutil
 from pathlib import Path
 
 from multiprocessing import Process, set_start_method, Value
-
+import time
 import importlib
 
 import signal
+import time
 
 original_stdout = os.dup(1)
 
@@ -64,12 +65,7 @@ def spawn_process_function_adjoint(model_path, model_procedure, ret_value):
         print(err)
 
 def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths=[], timeout=120):
-    # if __name__ == '__main__':
-
     set_start_method('spawn')
-
-    # null = open(os.devnull, 'w')
-    # orig_stdout = sys.stdout
 
     # set working directory to folder which contains tests
     os.chdir(root_path)
@@ -119,11 +115,17 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
         for x in accepted_paths:
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
+            starting_time = time.time()
             p = Process(target=spawn_process_function_adjoint, args=(x, model_procedure, ret_value), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
             n_fails += ret_value.value
+            ending_time = time.time()
+            if not ret_value.value:
+                print('OK, \t%.2f s' % (ending_time - starting_time))
+            else:
+                print('FAIL, \t%.2f s' % (ending_time - starting_time))
     else:
         for x in p.iterdir():
             if x.is_dir() and (str(x)[0] != '.'):
@@ -173,10 +175,12 @@ def run_single_test(dir, module_name, args, ret_value):
 
 
 def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
-    # set_start_method('spawn')
-
     # set working directory to folder which contains tests
     os.chdir(root_path)
+
+    logs_folder = os.path.join(os.path.abspath(os.pardir), '_logs')
+    if not os.path.exists(logs_folder):
+        os.makedirs(logs_folder)
 
     n_failed = 0
     n_tot = 0
@@ -185,10 +189,22 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
         for arg in test_args[i]:
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
+
+            # erase previous log file if existed
+            log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
+            f = open(log_file, "w")
+            f.close()
+            log_stream = redirect_all_output(log_file)
+            starting_time = time.time()
             p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
+            abort_redirection(log_stream)
+            ending_time = time.time()
+            str_status = 'OK' if not ret_value.value else 'FAIL'
+            print('Test ' + dir + ' ' + '_'.join(arg) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+
             n_failed += ret_value.value
             n_tot += 1
 
