@@ -129,6 +129,9 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     '''
     print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
     import platform
+    
+    from darts.engines import set_num_threads
+    set_num_threads(1)
 
     nt = 20
     max_dt = 200
