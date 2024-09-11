@@ -325,7 +325,7 @@ build-windows-3.7-ODLS:
       paths:
         - './dist/*.whl'
         - '*.log'
-      expire_in: 1 week
+      expire_in: 1 day
       when: always
       
 ###################################################################################
