@@ -65,14 +65,10 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::init(conn_mesh* mesh_, std::vector<
 
 
     engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
-    acc_flux_op_set_list = acc_flux_op_set_list_; // let the assemble_jacobian_array have access to acc_flux_op_set_list_
-    uint8_t n_ops = get_n_ops();
-    Pr_op_ders_arr_n.resize(mesh_->n_blocks * N_VARS * n_ops, 0);
-    Pl_op_ders_arr_n.resize(mesh_->n_blocks * N_VARS * n_ops, 0);
-    linear_solver_WR = 0;
-    linear_solver_Wl = 0;
-
-
+    linear_solver_Wn = 0;
+    //Pn_1.resize(mesh_->n_blocks * N_VARS, 0);
+    //Wn_1.resize(mesh_->n_blocks * NC, 0);
+    op_ders_arr_n.resize(mesh_->n_blocks * N_VARS * n_ops, 0);
     return 0;
 }
 
@@ -110,7 +106,7 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
 #endif //_OPENMP
 
-    index_t j, diag_idx, jac_idx, diag_idx_WR, diag_idx_Wl;
+    index_t j, diag_idx, jac_idx, diag_idx_Wn;
     value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
     value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
@@ -118,164 +114,88 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     int connected_with_well;
     //---------------------------------------Weights Calculation-------------------------------
 
-    value_t P_min = acc_flux_op_set_list[0]->get_axis_min(0);
-    value_t P_max = acc_flux_op_set_list[0]->get_axis_max(0);
-    value_t P_interval = (P_max - P_min) / N_Pintervals;
-    std::vector<value_t> XPr((N_VARS)*n_blocks);
-    std::vector<value_t> XPl((N_VARS)*n_blocks);
-    std::vector<std::vector<index_t>> block_idxs(acc_flux_op_set_list.size());
-    uint8_t n_ops;
-    n_ops = get_n_ops();
-    std::vector<value_t> Pl_op_vals_arr(n_ops * n_blocks);
-    std::vector<value_t> Pl_op_ders_arr(n_ops * N_VARS * n_blocks);
-    std::vector<value_t> Pr_op_vals_arr(n_ops * n_blocks);
-    std::vector<value_t> Pr_op_ders_arr(n_ops * N_VARS * n_blocks);
-
-    index_t idx = 0;
-    for (auto op_region : mesh->op_num)
-    {
-        block_idxs[op_region].emplace_back(idx++);
-    }
-    XPl = X;
-    XPr = X;
+    std::vector<value_t> Wn(NC * n_blocks, 0);
+    //std::vector<value_t> Pn(n_blocks * N_VARS, 0);
+    
+    std::vector<value_t> b(NC * n_blocks, 0);
+    //std::vector<value_t> dWdp(NC * n_blocks, 1);
     for (index_t i = 0; i < n_blocks; ++i)
     {
-        XPl[i * N_VARS + P_VAR] = static_cast<int>(X[i * N_VARS + P_VAR] / P_interval) * P_interval;
-        XPr[i * N_VARS + P_VAR] = static_cast<int>(X[i * N_VARS + P_VAR] / P_interval) * P_interval + P_interval;
+        b[i * NC] = 1;
     }
-    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    if (!Jacobian_Wn)
     {
-        acc_flux_op_set_list[r]->evaluate_with_derivatives(XPl, block_idxs[r], Pl_op_vals_arr, Pl_op_ders_arr);
-        acc_flux_op_set_list[r]->evaluate_with_derivatives(XPr, block_idxs[r], Pr_op_vals_arr, Pr_op_ders_arr);
+        Jacobian_Wn = new csr_matrix<N_VARS>;
+        Jacobian_Wn->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
     }
-    std::vector<value_t> WPr(NC * n_blocks, 0);
-    std::vector<value_t> WPl(NC * n_blocks, 0);
-    std::vector<value_t> bPr(NC * n_blocks, 0);
-    std::vector<value_t> bPl(NC * n_blocks, 0);
-    for (index_t i = 0; i < n_blocks; ++i)
-    {
-        bPr[i * NC] = 1;
-        bPl[i * NC] = 1;
-    }
-    if (!Jacobian_WR)
-    {
-        Jacobian_WR = new csr_matrix<N_VARS>;
-        Jacobian_WR->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-    }
-    if (!Jacobian_Wl)
-    {
-        Jacobian_Wl = new csr_matrix<N_VARS>;
-        Jacobian_Wl->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-    }
-    (static_cast<csr_matrix<N_VARS> *>(Jacobian_WR))->init(n_blocks, n_blocks, N_VARS, n_blocks);
-    (static_cast<csr_matrix<N_VARS> *>(Jacobian_Wl))->init(n_blocks, n_blocks, N_VARS, n_blocks);
+    (static_cast<csr_matrix<N_VARS> *>(Jacobian_Wn))->init(n_blocks, n_blocks, N_VARS, n_blocks);
 
-    value_t* Jac_WR = Jacobian_WR->get_values();
-    index_t* diag_ind_WR = Jacobian_WR->get_diag_ind();
-    index_t* rows_WR = Jacobian_WR->get_rows_ptr();
-    index_t* cols_WR = Jacobian_WR->get_cols_ind();
-    value_t* Jac_Wl = Jacobian_Wl->get_values();
-    index_t* diag_ind_Wl = Jacobian_Wl->get_diag_ind();
-    index_t* rows_Wl = Jacobian_Wl->get_rows_ptr();
-    index_t* cols_Wl = Jacobian_Wl->get_cols_ind();
-    memset(Jac_WR, 0, rows_WR[end] * N_VARS_SQ * sizeof(value_t));
-    memset(Jac_Wl, 0, rows_Wl[end] * N_VARS_SQ * sizeof(value_t));
+    value_t* Jac_Wn = Jacobian_Wn->get_values();
+    index_t* diag_ind_Wn = Jacobian_Wn->get_diag_ind();
+    index_t* rows_Wn = Jacobian_Wn->get_rows_ptr();
+    index_t* cols_Wn = Jacobian_Wn->get_cols_ind();
+    
+    memset(Jac_Wn, 0, rows_Wn[end] * N_VARS_SQ * sizeof(value_t));
+
     for (index_t i = 0; i < n_blocks; i++)
     {
-        rows_WR[i] = i;
-        diag_ind_WR[i] = i;
-        cols_WR[i] = i;
-        diag_ind_Wl[i] = i;
-        rows_Wl[i] = i;
-        cols_Wl[i] = i;
+        rows_Wn[i] = i;
+        diag_ind_Wn[i] = i;
+        cols_Wn[i] = i;
     }
-    rows_WR[n_blocks] = n_blocks;
-    rows_Wl[n_blocks] = n_blocks;
+    rows_Wn[n_blocks] = n_blocks;
+
 
     for (index_t i = start; i < end; ++i)
     {
-        diag_idx_WR = N_VARS_SQ * diag_ind_WR[i];
-        diag_idx_Wl = N_VARS_SQ * diag_ind_Wl[i];
+        diag_idx_Wn = N_VARS_SQ * diag_ind_Wn[i];
+
         for (uint8_t c = 0; c < NE; c++)
         {
             for (uint8_t v = 0; v < NE; v++)
             {
-                Jac_WR[diag_idx_WR + c * N_VARS + v] = PV[i] * (Pr_op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v] - Pr_op_ders_arr_n[(i * N_OPS + ACC_OP + c) * N_VARS + v]);
-                Jac_Wl[diag_idx_Wl + c * N_VARS + v] = PV[i] * (Pl_op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v] - Pl_op_ders_arr_n[(i * N_OPS + ACC_OP + c) * N_VARS + v]);
-
+                Jac_Wn[diag_idx_Wn + v * N_VARS + c] = PV[i] * (op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v] - op_ders_arr_n[(i * N_OPS + ACC_OP + c) * N_VARS + v]) / dt;
             }
         }
     }
-    Jacobian_WR->write_matrix_to_file("WR.txt");
-    Pr_op_ders_arr_n = Pr_op_ders_arr;
-    Pl_op_ders_arr_n = Pl_op_ders_arr;
+    Jacobian_Wn->write_matrix_to_file("Wn.txt");
 
-    if (!linear_solver_WR)
+    if (!linear_solver_Wn)
     {
-        linear_solver_WR = new linsolv_superlu<N_VARS>;
-    }
-    if (!linear_solver_Wl)
-    {
-        linear_solver_Wl = new linsolv_superlu<N_VARS>;
-    }
-    linear_solver_WR->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
-    linear_solver_Wl->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
-    linear_solver_WR->init(Jacobian_WR, params->max_i_linear, params->tolerance_linear);
-    linear_solver_Wl->init(Jacobian_Wl, params->max_i_linear, params->tolerance_linear);
-    r_code = linear_solver_WR->setup(Jacobian_WR);
-    r_code = linear_solver_Wl->setup(Jacobian_Wl);
-    r_code = linear_solver_WR->solve(&bPr[0], &WPr[0]);
-    r_code = linear_solver_Wl->solve(&bPl[0], &WPl[0]);
-
-
-    std::vector<value_t> P_left((N_VARS)*n_blocks);
-    std::vector<value_t> P_right((N_VARS)*n_blocks);
-    std::vector<value_t> P_real((N_VARS)*n_blocks);
-
-    // Interapolation of w:
-    for (size_t i = 0; i < n_blocks; ++i)
-    {
-        value_t p_value   = XPl[3 * i]; 
-        P_left[3 * i]     = p_value;
-        P_left[3 * i + 1] = p_value;
-        P_left[3 * i + 2] = p_value;
-
-        p_value            = XPr[3 * i];
-        P_right[3 * i]     = p_value;
-        P_right[3 * i + 1] = p_value;
-        P_right[3 * i + 2] = p_value;
-
-        p_value           = X[3 * i];
-        P_real[3 * i]     = p_value;
-        P_real[3 * i + 1] = p_value;
-        P_real[3 * i + 2] = p_value;
-    }
-    std::vector<value_t> W(NC * n_blocks, 0);
-    std::vector<value_t> dWdp(NC * n_blocks, 0);
-    for (size_t i = 0; i < (N_VARS)*n_blocks; ++i)
-    {
-        W[i] = WPl[i] + (P_real[i] - P_left[i]) * (WPr[i] - WPl[i]) / (P_right[i] - P_left[i]);
+        linear_solver_Wn = new linsolv_superlu<N_VARS>;
     }
 
-    //Unevenly quadratic spaced central difference formula:
-    // 
-    // dw     (P_real - P_left)**2 * (W_right - W_real) - (P_right - P_real)**2 * (W_real - W_left)
-    // --  = ---------------------------------------------------------------------------------------
-    // dp             (P_right - P_real) * (P_right - P_left) * (P_real - P_left)
+    linear_solver_Wn->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+    linear_solver_Wn->init(Jacobian_Wn, params->max_i_linear, params->tolerance_linear);
+    r_code = linear_solver_Wn->setup(Jacobian_Wn);
+    r_code = linear_solver_Wn->solve(&b[0], &Wn[0]);
+    /*
+    bool all_zero = true; 
+
+    for (const auto& val : Wn_1) {
+        if (val != 0) {
+            all_zero = false;
+            break;
+        }
+    }
     
-    //Unevenly linear spaced central difference formula:
-    // dw     (P_right - P_real)     (W_real - W_left)     (P_real - P_left)      (W_right - W_real)
-    // --  = -------------------- * ------------------- + -------------------- + --------------------
-    // dp     (P_right - P_left)     (P_real - P_left)     (P_right - P_left)     (P_right - P_real)
-
-    // linear formulation:
-    for (size_t i = 0; i < (N_VARS)*n_blocks; ++i)
+    for (index_t i = 0; i < n_blocks; ++i)
+        for (index_t k = 0; k < N_VARS; ++k)
+            Pn[i * N_VARS + k] = X[i * N_VARS];
+    
+    if (!all_zero)
     {
-        dWdp[i] = ((P_right[i] - P_real[i]) / (P_right[i] - P_left[i])) * ((W[i] - WPl[i]) /
-            (P_real[i] - P_left[i]))+((P_real[i] - P_left[i]) / (P_right[i] - 
-                P_left[i])) * ((WPr[i] - W[i]) / (P_right[i] - P_real[i]));
+        
+        for (size_t i = 0; i < (N_VARS)*n_blocks; ++i)
+        {
+            dWdp[i] = (Wn[i] - Wn_1[i])/(Pn[i] - Pn_1[i]) ;
+        }
     }
-
+    
+    Wn_1 = Wn;
+    Pn_1 = Pn;
+    */
+    op_ders_arr_n = op_ders_arr;
      //-----------------------------------------------------------------------------
 
     for (index_t i = start; i < end; ++i)
@@ -556,12 +476,16 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
     } // end of loop over grid blocks
 
     //---------------------------------------Weights Application-------------------------------
+    value_t rhs;
     for (index_t i = 0; i < n_blocks; ++i)
     {
-        RHS[3 * i] = RHS[3 * i] * W[3 * i] + RHS[3 * i + 1] * W[3 * i + 1] + RHS[3 * i + 2] * W[3 * i + 2];
-        RHS[3 * i + 1] = 0;
-        RHS[3 * i + 2] = 0;
-
+        rhs = 0;
+        for (uint8_t c = 0; c < NE; ++c)
+        {
+            rhs += RHS[NE * i + c] * Wn[NE * i + c];
+            RHS[NE * i + c] = 0;
+        }
+        RHS[NE * i] = rhs;
         index_t csr_idx_start = rows[i];
         index_t csr_idx_end = rows[i + 1];
         jac_idx = N_VARS_SQ * csr_idx_start;
@@ -572,7 +496,7 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
             {
                 for (uint8_t v = 0; v < N_VARS; ++v)
                 {
-                    Jac[jac_idx + c * N_VARS + v] = Jac[jac_idx + c * N_VARS + v] * dWdp[j * N_VARS + v];
+                    Jac[jac_idx + c * N_VARS + v] = Jac[jac_idx + c * N_VARS + v] * Wn[j * N_VARS + c];
                 }
             }
             for (uint8_t c = 1; c < NE; ++c)
@@ -589,7 +513,7 @@ int engine_sequentialp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
         Jac[diag_idx + 4] = 1;
         Jac[diag_idx + 8] = 1;
     }
- 
+   
     //-----------------------------------------------------------------------------------------
 #ifdef _OPENMP
 #pragma omp critical
