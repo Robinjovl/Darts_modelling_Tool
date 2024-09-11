@@ -313,11 +313,10 @@ build-windows-3.7-ODLS:
     tags:
         - linux_gpu
     before_script:
-        - echo 'before build-linux-gpu'
         - module load cuda/23.5
         - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
-        - conda create -n darts_gitlab_gpu python=3.9 --yes
-        - conda activate darts_gitlab_gpu
+        - conda create -n darts_gitlab_gpu_build python=3.9 --yes
+        - conda activate darts_gitlab_gpu_build
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh
@@ -509,6 +508,17 @@ test-linux-3.7:
     dependencies:
         - build-linux-3.7
 
+###################################################################################
+
+test-linux-3.12:
+    rules: 
+        - if: $TEST_GPU == "1"
+    extends: .test-linux-gpu
+    variables:
+        ODLS: '-a'
+    dependencies:
+        - build-linux-gpu
+      
 ###################################################################################
 test-windows-3.12:
     rules: 
@@ -708,6 +718,42 @@ test-windows-3.7-ODLS:
       expire_in: 1 week
       when: always
 
+###################################################################################
+
+.test-linux-gpu:
+    stage: test
+    tags:
+        - linux_gpu
+    before_script:
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_test python=3.9 --yes 
+        - conda activate darts_gitlab_gpu_test
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
+        - pip install ./dist/*.whl
+    script:
+        # run simulation fot test models set
+        - cd models
+        # passing additional argument to trigger verbose check performance
+        - python run_test_suite2.py LOG gpu
+        - echo "run_test_suite2 returned" $?
+        - ./upload_pkl.sh "$CI_COMMIT_SHORT_SHA" $ODLS
+        - cd ..
+        # test discretizer
+        - cd discretizer/tests/compare_discretizers
+        - python main.py
+        - cd ../../..
+        #
+        - echo "test finished"
+    artifacts:
+      paths:
+        - './models/_logs/*.log'
+        - './models/pkl_lin.tar.gz'
+      expire_in: 1 day
+      when: always
+      
 ###################################################################################
 
 .test-windows:
