@@ -24,7 +24,7 @@ make gpu -j 20 USE_OPENDARTS_LINEAR_SOLVERS=false 2>&1 | tee ../make_engines.log
 cd ..
 
 # to add amgx shared library to wheels
-cp ../darts-linear-solvers/lib/AMGX/build/libamgxsh.so ./darts
+cp -v ./engines/lib/darts_linear_solvers/lib/AMGX/build/libamgxsh.so ./darts
 
 # build DARTS wheel
 ./helper_scripts/build_install_darts.sh
