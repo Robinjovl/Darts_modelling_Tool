@@ -138,7 +138,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
                 p.terminate()
     return n_fails
 
-def run_single_test(dir, module_name, args, ret_value):
+def run_single_test(dir, module_name, args, ret_value, platform):
     args_str = '_'.join(args[:-1]) #except last arg (overwrite flag)
     # step in target folder
     os.chdir(dir)
@@ -158,7 +158,7 @@ def run_single_test(dir, module_name, args, ret_value):
         log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
-        ret_value.value, test_time = mod.run_test(args)
+        ret_value.value, test_time = mod.run_test(args, platform=platform)
         log_stream = redirect_all_output(log_file)
         abort_redirection(log_stream)
         if ret_value.value:
@@ -174,7 +174,7 @@ def run_single_test(dir, module_name, args, ret_value):
         print(err)
 
 
-def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
+def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cpu'):
     # set working directory to folder which contains tests
     os.chdir(root_path)
 
@@ -196,7 +196,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
             f.close()
             log_stream = redirect_all_output(log_file)
             starting_time = time.time()
-            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
+            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()

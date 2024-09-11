@@ -4,14 +4,14 @@ from main_gen_mesh import generate_mesh
 from main_simulation import run_simulation
 from set_case import set_input_data
 
-def run_test(args: list = []):
+def run_test(args: list = [], platform='cpu'):
     if len(args) > 1:
-        return test(case=args[0], overwrite=args[1])
+        return test(case=args[0], overwrite=args[1], platform=platform)
     else:
         print('Not enough arguments provided')
         return 1, 0.0
 
-def test(case, overwrite='0'):
+def test(case, overwrite='0', platform='cpu'):
     freeze_support()
 
     input_data = set_input_data(case)
@@ -22,7 +22,7 @@ def test(case, overwrite='0'):
     mesh_gen_timer = (t2 - t1).total_seconds()
 
     t1 = datetime.now()
-    run_simulation(input_data)
+    m = run_simulation(input_data, platform=platform)
     t2 = datetime.now()
     sim_timer = (t2 - t1).total_seconds()
 

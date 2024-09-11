@@ -302,7 +302,7 @@ def run_thermoporoelastic_convergence_study_peclet_number(mesh='rect'):
     fig.savefig('conv_peclet_' + str(mesh) + '.png')
     plt.show()
 
-def run_test(args: list = []):
+def run_test(args: list = [], platform='cpu'):
     n_res = [3, 3, 3, 3, 3]
     discretizers = ['pm_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer']
     modes = ['poroelastic', 'poroelastic', 'poroelastic', 'thermoporoelastic', 'thermoporoelastic']
