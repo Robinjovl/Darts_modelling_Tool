@@ -2,7 +2,7 @@ import numpy as np
 from darts.tools.keyword_file_tools import save_few_keywords
 
 def gen_cpg_grid(nx : int, ny : int, nz : int, 
-                 dx, dy, dz,
+                 dx : float, dy : float, dz : float,
                  permx : float, permy : float, permz : float, poro : float,
                  gridname=None, propname=None, burden_dz=None,
                  start_x : float=0, start_y : float =0, start_z : float =2000):
@@ -25,45 +25,25 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
     :param start_y: mesh lower bound coordinate by Y [m]
     :param start_z: mesh lower bound coordinate by Z (the depth of the top layer) [m]  
     '''
-    if np.isscalar(dx):
-        dx_array = np.zeros(nx) + dx
-    else:
-        dx_array = dx
-
-    if np.isscalar(dy):
-        dy_array = np.zeros(ny) + dy
-    else:
-        dy_array = dy
-
-    if np.isscalar(dz):
-        dz_array = np.zeros(nz) + dz
-    else:
-        dz_array = dz
     # generate corner point geometry
     coord = np.empty(6 * (nx + 1) * (ny + 1), dtype=float)
     zcorn = np.empty(8 * nx * ny * nz, dtype=float)
-    end_z = start_z + dz_array.sum()
     idx = 0
-    y = start_y
     for j in range(ny + 1):
-        x = start_x
+        y = start_y + j * dy
         for i in range(nx + 1):
+            x = start_x + i * dx
             coord[idx + 0] = x
             coord[idx + 1] = y
             coord[idx + 2] = start_z
             coord[idx + 3] = x
             coord[idx + 4] = y
-            coord[idx + 5] = end_z
+            coord[idx + 5] = start_z + nz * dz
             idx += 6
-            if i < nx:
-                x += dx_array[i]
-        if j < ny:
-            y += dy_array[j]
+
     zcorn[:4 * nx * ny] = start_z
-    z = start_z
-    for k in range(1, nz + 1):
-        z += dz_array[k - 1]
-        zcorn[(2 * k - 1) * 4 * nx * ny:(2 * k + 1) * 4 * nx * ny] = z
+    for i in range(1, nz + 1):
+        zcorn[(2 * i - 1) * 4 * nx * ny:(2 * i + 1) * 4 * nx * ny] = start_z + i * dz
 
     if burden_dz is not None:
         for i in range(0, len(burden_dz)):

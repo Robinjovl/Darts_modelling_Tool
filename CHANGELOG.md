@@ -1,26 +1,9 @@
-# 1.1.4 [07-09-2024]
-- Generalize super engine physics for solid formulation[(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/112)
-- Python 3.12 support
-- Recover the well control and constraints in case of switching between BHP and rate control
-- Fix local build script for Windows: don't turn off OpenMP if '-b' is specified
-
 # 1.1.3 [13-07-2024]
-- Support for *.h5
-	- Save well states of well blocks to 'output/well_data.h5': [save well data](https://gitlab.com/open-darts/open-darts/-/blob/v1.1.3/darts/models/darts_model.py#L450)
-	- Save states of all reservoir blocks to 'output/solution.h5': [save solution data](https://gitlab.com/open-darts/open-darts/-/blob/v1.1.3/darts/models/darts_model.py#L463)
-- Breaking changes:\
-	{- Before, input states in the `DartsModel output_properties()` function were read from engine.X}\
-	{+ Now, input states in the `DartsModel output_properties()` are read from a user specified time-step in 'solution.h5'}\
-	{- Before, the properties_list in the `DartsModel output_properties()` function contained variable names and property names'}\
-	{+ Now, the 'properties_list' contains only the property names}\
-    {- Before `DartsModel output_to_vtk()` function returned a single *.vtk file}\
-    {+ Now, by default `DartsModel output_to_vtk()` returns a *.vtk file for every timestep contained in 'solution.h5'}
-- Two examples of models that use the new output_functions: [example](https://gitlab.com/open-darts/darts-models/-/tree/development/publications/24_geothermal_chapter/basic_1d.py) 1, [example](https://gitlab.com/open-darts/darts-models/-/tree/development/publications/24_geothermal_chapter/basic_3d.py) 2
+- Support of H5 / xarray output
+- Default `*.h5` output of data required for the calculation of well rates.
+- User-defined solution output to `*.h5`.
 - Molar and phase volumetric well rate calculators.
 - Support of restarts.
-- Molar and phase volumetric well rate calculators.
-- Support of restarts.
-
 
 # 1.1.2 [12-06-2024]
 - Thermo-hydro-mechanical-compositional (THMC) modeling:

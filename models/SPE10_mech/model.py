@@ -195,8 +195,8 @@ class Model(THMCModel):
         well_names = ['PRD1', 'INJ1']
         self.well_cell_ids = []
         well_init_depth = l_min[2]
-        nodes = np.array(self.reservoir.discr_mesh.nodes)
-        elems = np.array(self.reservoir.discr_mesh.elems)
+        nodes = np.array(self.reservoir.discr_mesh.nodes, copy=False)
+        elems = np.array(self.reservoir.discr_mesh.elems, copy=False)
         for i, coord in enumerate(well_coords):
             ids = ((centroids[:, 0] - coord[0]) ** 2 + (centroids[:, 1] - coord[1]) ** 2).argsort()
             self.well_cell_ids.append(ids[:self.nz])
@@ -212,7 +212,7 @@ class Model(THMCModel):
                 dx = np.max(pts, axis=0)[0] - np.min(pts, axis=0)[0]
                 dy = np.max(pts, axis=0)[1] - np.min(pts, axis=0)[1]
                 dz = np.max(pts, axis=0)[2] - np.min(pts, axis=0)[2]
-                perm = np.array(self.reservoir.discr.perms[cell_id].values)
+                perm = np.array(self.reservoir.discr.perms[cell_id].values, copy=False)
                 mean_perm_xx = perm[0]
                 mean_perm_yy = perm[4]
                 mean_perm_zz = perm[8]

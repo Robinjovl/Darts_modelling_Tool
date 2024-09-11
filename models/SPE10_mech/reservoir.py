@@ -101,9 +101,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 assert (self.adj_matrix_cols[self.id_sorted[id]] == id +
                         self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0])
                 conn = self.conns[self.id_boundary_conns[id]]
-                n = np.array(conn.n.values)
-                conn_c = np.array(conn.c.values)
-                c1 = np.array(self.centroids[conn.elem_id1].values)
+                n = np.array(conn.n.values, copy=False)
+                conn_c = np.array(conn.c.values, copy=False)
+                c1 = np.array(self.centroids[conn.elem_id1].values, copy=False)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
                     bc['mech']['rn'] * n + bc['mech']['rt']

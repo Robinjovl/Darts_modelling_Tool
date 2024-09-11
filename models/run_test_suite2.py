@@ -18,8 +18,9 @@ accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
                  'CoaxWell'
                  ]
 
-test_dirs_mech = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
-test_args_mech = []
+test_dirs = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
+
+test_args = []
 for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
     for discr_name in ['mech_discretizer', 'pm_discretizer']:
         if case == 'bai' and discr_name == 'pm_discretizer':
@@ -27,25 +28,8 @@ for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
         for mesh in ['rect', 'wedge', 'hex']:
             if case == 'terzaghi_two_layers' and mesh == 'hex':
                 continue
-            test_args_mech.append([case, discr_name, mesh])
-test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
-
-test_dirs_cpg = ['cpg_sloping_fault']
-test_args_cpg = []
-for case in ['case_40', 'case_43', 'case_40_actnum', 'generate_5x3x4', 'generate_51x51x1']:
-    for physics_type in ['geothermal']:#, 'dead_oil']:
-        test_args_cpg.append([case, physics_type])
-test_args_cpg = [test_args_cpg]
-
-test_dirs_dfn = ['fracture_network']
-test_cases_dfn = ['case_1']
-if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
-    test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-    test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
-test_args_dfn = []
-for case in test_cases_dfn:
-    test_args_dfn.append([case])
-test_args_dfn = [test_args_dfn]
+            test_args.append([case, discr_name, mesh])
+test_args = [test_args, [['']]]
 
 accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_mpfa']  # for adjoint test
 
@@ -134,19 +118,19 @@ if __name__ == '__main__':
 
     # discretizer tests
     n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite)
+    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=['cpg_sloping_fault'], test_args=[[['40'],['43']]], overwrite=overwrite)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite)
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=['fracture_network'], test_args=[[['case_1']]], overwrite=overwrite)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
     # poromechanic tests
     n_total_mech = n_failed_mech = 0
-    n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
+    n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs, test_args, overwrite)
     n_failed += n_failed_mech
     n_total += n_total_mech
 

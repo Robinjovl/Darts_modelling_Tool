@@ -67,8 +67,6 @@ def run_simulation(input_data):
     pkl_fname = os.path.join(output_directory, 'time_data.pkl')
     pickle.dump(time_data, open(pkl_fname, 'wb'))
 
-    return m
-
 if __name__ == "__main__":
 
     t1 = datetime.now()

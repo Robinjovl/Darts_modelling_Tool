@@ -3,7 +3,7 @@
 from darts.engines import value_vector, sim_params
 #from darts.models.physics.dead_oil import DeadOil
 from darts.physics.geothermal.physics import Geothermal
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.physics.properties.iapws.iapws_property import iapws_total_enthalpy_evalutor
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -16,7 +16,7 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, input_data, n_points=100):
         """
         Class constructor of Model class

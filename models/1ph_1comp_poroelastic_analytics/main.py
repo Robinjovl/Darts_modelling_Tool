@@ -151,7 +151,7 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     # poromech tests run with direct linear solvers (superlu), but somehow there is a difference
     # while using old and new lib. To handle this, use '_iter' pkls for old lib
     pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '0':
         pkl_suffix = '_iter'
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + discr_name + '_' + mesh + '.pkl')

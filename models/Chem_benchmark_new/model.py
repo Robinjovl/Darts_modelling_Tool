@@ -301,20 +301,21 @@ class Model(CICDModel):
         z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
         z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
 
-        pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            x_list = Xn[ii * nc:(ii + 1) * nc]
+            x_list = Xn[ii*nc:(ii+1)*nc]
             state = value_vector(x_list)
-            self.physics.property_operators[0].property.evaluate(state)
+            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators[0].property.evaluate(state)
 
-            rel_perm[ii, :] = pc.kr
-            visc[ii, :] = pc.mu
-            density[ii] = pc.dens
-            density_m[ii] = pc.dens_m
+            rel_perm[ii, :] = kr
+            visc[ii, :] = mu
+            density[ii, :2] = rho
+            density_m[ii, :2] = rho_m
 
-            X[ii, :, 0] = pc.x[1]
-            X[ii, :, 1] = pc.x[0]
-            Sg[ii] = pc.sat[0]
+            density[2] = self.physics.property_operators[0].property.solid_dens[-1]
+
+            X[ii, :, 0] = x[1][:-1]
+            X[ii, :, 1] = x[0][:-1]
+            Sg[ii] = sat[0]
             Ss[ii] = z_caco3[ii]
 
         phi = 1 - z_caco3
@@ -325,6 +326,7 @@ class Model(CICDModel):
                            'weight': 'normal',
                            'size': 8,
                            }
+
 
         fig, ax = plt.subplots(3, 2, figsize=(8, 5), dpi=200, facecolor='w', edgecolor='k')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
@@ -347,7 +349,6 @@ class Model(CICDModel):
 
         plt.tight_layout()
         plt.savefig("results_kinetic_brief.pdf")
-        plt.close()
 
     def print_and_plot_2D(self):
         import matplotlib.pyplot as plt
@@ -369,23 +370,25 @@ class Model(CICDModel):
         Ss = np.zeros(nb)
         X = np.zeros((nb, nc - 1, 2))
 
-        Xn = np.array(self.physics.engine.X, copy=True)
-
-        P = Xn[0:nb * nc:nc]
-        z_caco3 = 1 - (Xn[1:nb * nc:nc] + Xn[2:nb * nc:nc] + Xn[3:nb * nc:nc])
-
-        z_co2 = Xn[1:nb * nc:nc] / (1 - z_caco3)
-        z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
-        z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
-
-        pc = self.physics.property_operators[0].property
-        for ii in range(nb):
-            X[ii, :, 0] = pc.x[1]
-            X[ii, :, 1] = pc.x[0]
-            Sg[ii] = pc.sat[0]
-            Ss[ii] = z_caco3[ii]
-
+        output_props = self.output_properties()
+        P = output_props[0, :]
+        z_caco3 = 1 - np.sum(output_props[1:nc, :], axis=0)
         phi = 1 - z_caco3
+
+        z_co2 = output_props[1, :] / phi
+        z_inert = output_props[2, :] / phi
+        z_h2o = output_props[3, :] / phi
+
+        sat_idx = self.physics.n_vars
+        y_idx = sat_idx + 1
+        x_idx = y_idx + nc - 1
+        for ii in range(nb):
+            x0 = [output_props[x_idx + i, ii] for i in range(nc - 1)]
+            x1 = [output_props[y_idx + i, ii] for i in range(nc - 1)]
+            X[ii, :, 0] = x0
+            X[ii, :, 1] = x1
+            Sg[ii] = output_props[sat_idx, ii]
+            Ss[ii] = z_caco3[ii]
 
         fig, ax = plt.subplots(3, 2, figsize=(10, 6), dpi=200, facecolor='w', edgecolor='k')
         plt.set_cmap('jet')
@@ -400,6 +403,7 @@ class Model(CICDModel):
                 ax[i, j].set_title(titles[n], fontdict=font_dict_title)
                 plt.colorbar(im, ax=ax[i, j])
 
+
         left = 0.05  # the left side of the subplots of the figure
         right = 0.95  # the right side of the subplots of the figure
         bottom = 0.05  # the bottom of the subplots of the figure
@@ -408,11 +412,14 @@ class Model(CICDModel):
         hspace = 0.25  # the amount of height reserved for white space between subplots
         plt.subplots_adjust(left=left, bottom=bottom, right=right, top=top, wspace=wspace, hspace=hspace)
 
+
         plt.tight_layout()
         name = "results_kinetic_2D_" + str(self.nx) + "x" + str(self.ny)
         plt.savefig(name + ".pdf")
 
-        plt.close()
+        plt.show()
+
+        return 0
 
 
 class ModelProperties(PropertyContainer):
