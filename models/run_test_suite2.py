@@ -6,6 +6,12 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
+test_all_models = False
+if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
+    test_all_models = True
+if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
+    test_all_models = True
+    
 model_dir = r'.'
 
 accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
@@ -39,7 +45,7 @@ test_args_cpg = [test_args_cpg]
 
 test_dirs_dfn = ['fracture_network']
 test_cases_dfn = ['case_1']
-if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
+if test_all_models:
     test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
     test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
 test_args_dfn = []
