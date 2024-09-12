@@ -17,6 +17,7 @@ template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uin
           bool THERMAL>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const unsigned int trans_mult_exp,
+                               value_t phase_existence_tolerance,
                                value_t dt, value_t *X, value_t *RHS,
                                index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
                                value_t *op_vals_arr, value_t *op_vals_arr_n, value_t *op_ders_arr,
@@ -52,6 +53,8 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   // local value of jacobian offdiagonal block value at block_pos
   // is evaluated and written to global memory during each iteration of the loop over connections
   value_t jac_offd;
+  // local variable used to eliminate diffusion fluxes in case any of neighbours does not have a phase
+  value_t phase_presence_mult;
 
   index_t j;
   value_t p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg;
@@ -187,37 +190,26 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
       for (uint8_t p = 0; p < NP; p++)
       {
         value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
-        if (grad_con < 0)
-        {
-          // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
-          value_t diff_mob_ups_m = dt * tranD[conn_idx] * phi_avg * op_vals_arr[i * N_OPS + UPSAT_OP + p];
-          if (v == 0)
-          {
-            rhs -= diff_mob_ups_m * grad_con; // diffusion term
-          }
 
-          // Add diffusion terms to Jacobian:
-          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-
-          jac_diag -= grad_con * dt * tranD[conn_idx] * phi_avg * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v];
-        }
+        if (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > phase_existence_tolerance)
+          phase_presence_mult = 1.0;
         else
+          phase_presence_mult = 0.0;
+
+        value_t diff_mob_ups_m = dt * phase_presence_mult * tranD[conn_idx] * (poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                              poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+
+        if (v == 0)
         {
-          // Diffusion flows from cell j to i (high to low), use upstream quantity from cell j for density and saturation:
-          value_t diff_mob_ups_m = dt * tranD[conn_idx] * phi_avg * op_vals_arr[j * N_OPS + UPSAT_OP + p];
-
-          if (v == 0)
-          {
-            rhs -= diff_mob_ups_m * grad_con; // diffusion term
-          }
-
-          // Add diffusion terms to Jacobian:
-          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-
-          jac_offd -= grad_con * dt * tranD[conn_idx] * phi_avg * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v];
+          rhs -= diff_mob_ups_m * grad_con; // diffusion term
         }
+
+        // Add diffusion terms to Jacobian:
+        jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+        jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+        jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2.;
+        jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2.;
       }
     }
 
@@ -342,6 +334,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP, RE_INTER_OP,
                                  RE_TEMP_OP, ROCK_COND, GRAV_OP, PC_OP, PORO_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->trans_mult_exp,
+                                                     params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
                                                      jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
