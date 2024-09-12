@@ -583,7 +583,7 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 
 
 test_all = False
-test_all = True
+#test_all = True
 cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
 if test_all:
     for case in cases_list:
