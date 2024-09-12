@@ -151,7 +151,7 @@ def check_performance_local(m, case, discr_type, physics_type):
         return False, -1.0
 
 if __name__ == '__main__':
-    physics_list = ['geothermal']#, 'dead_oil']
+    physics_list = ['geothermal', 'dead_oil']
     cases_list = ['generate_5x3x4', 'generate_51x51x1', 'case_40', 'case_43', 'case_40_actnum']
     for physics_type in physics_list:
         for case in cases_list:

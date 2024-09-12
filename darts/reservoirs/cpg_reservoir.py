@@ -773,6 +773,21 @@ def read_arrays(gridfile: str, propfile: str):
         arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
+    # check dims of loaded arrays
+    nx, ny, nz = arrays['SPECGRID']
+    n_cells_all =  nx * ny * nz
+    coord_dims = (nx + 1) * (ny + 1) * 6
+    zcorn_dims = n_cells_all * 8
+    for a_name in arrays.keys():
+        if a_name == 'SPECGRID':
+            assert arrays[a_name].shape[0] == 3, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        elif a_name == 'COORD':
+            assert arrays[a_name].shape == coord_dims, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        elif a_name == 'ZCORN':
+            assert arrays[a_name].shape == zcorn_dims, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        else:
+            assert arrays[a_name].shape == n_cells_all, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+
     return arrays
 
 

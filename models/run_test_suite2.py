@@ -31,9 +31,12 @@ for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
 test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
 test_dirs_cpg = ['cpg_sloping_fault']
+physics_list = ['geothermal']
+if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
+    physics_list += ['dead_oil']
 test_args_cpg = []
 for case in ['case_40', 'case_43', 'case_40_actnum', 'generate_5x3x4', 'generate_51x51x1']:
-    for physics_type in ['geothermal']:#, 'dead_oil']:
+    for physics_type in ['geothermal', 'dead_oil']:
         test_args_cpg.append([case, physics_type])
 test_args_cpg = [test_args_cpg]
 

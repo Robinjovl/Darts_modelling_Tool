@@ -287,9 +287,9 @@ class Model(CICDModel):
         property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=zero/10)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                              ('oil', DensityBasic(compr=5e-3, dens0=500))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
-                                                ('oil', ConstFunc(0.03))])
+                                              ('oil', DensityBasic(compr=5e-3, dens0=700))])
+        property_container.viscosity_ev = dict([('wat', ConstFunc(0.89)),
+                                                ('oil', ConstFunc(50))])
         property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("wat", 0.1, 0.1)),
                                                ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
 
