@@ -302,30 +302,6 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_host()
-{
-  copy_data_to_host(X, X_d);
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_host()
-{
-  copy_data_to_host(RHS, RHS_d);
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_device()
-{
-  copy_data_to_device(X, X_d);
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
-void engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_device()
-{
-  copy_data_to_device(RHS, RHS_d);
-}
-
-template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
   timer->node["jacobian assembly"].node["kernel"].start_gpu();

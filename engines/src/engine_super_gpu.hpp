@@ -88,11 +88,6 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
 
-  void copy_solution_to_host();
-  void copy_residual_to_host();
-  void copy_solution_to_device();
-  void copy_residual_to_device();
-
 public:
   value_t *RV_d;              // [n_blocks] rock volumes for each block
   value_t *mesh_tranD_d;      // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection

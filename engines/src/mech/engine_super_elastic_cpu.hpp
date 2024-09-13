@@ -1,7 +1,6 @@
-#ifndef CPU_SIMULATOR_SUPER_ELASTIC_HPP
-#define CPU_SIMULATOR_SUPER_ELASTIC_HPP
+#ifndef ENGINE_SUPER_ELASTIC_CPU_HPP
+#define ENGINE_SUPER_ELASTIC_CPU_HPP
 
-#ifndef WITH_GPU
 #include <vector>
 #include <array>
 #include <unordered_map>
@@ -205,6 +204,5 @@ public:
 };
 
 #include "engine_super_elastic_cpu.tpp"
-#endif//WITH_GPU
 
-#endif
+#endif /* ENGINE_SUPER_ELASTIC_CPU_HPP */

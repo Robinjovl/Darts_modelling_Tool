@@ -4,6 +4,7 @@ namespace py = pybind11;
 void pybind_pm_discretizer(py::module &);
 void pybind_mesh_conn(py::module &);
 void pybind_globals(py::module &);
+void pybind_gpu_tools(py::module &);
 void pybind_engine_base(py::module &);
 void pybind_engine_nc_nl_cpu(py::module &);
 void pybind_engine_elasticity_cpu(py::module &);
@@ -14,10 +15,8 @@ void pybind_engine_nce_g_cpu(py::module &);
 void pybind_engine_nc_cg_cpu(py::module &);
 void pybind_engine_nc_cg_gpu(py::module &);
 void pybind_engine_super_cpu(py::module &);
-#ifndef WITH_GPU
 void pybind_engine_super_mp_cpu(py::module &);
 void pybind_engine_super_elastic_cpu(py::module &);
-#endif //WITH_GPU
 
 void pybind_engine_super_gpu(py::module &);
 void pybind_well_controls(py::module &);
@@ -96,10 +95,8 @@ PYBIND11_MODULE(engines, m)
   pybind_contact(m);
   pybind_engine_nce_g_cpu(m);
   pybind_engine_super_cpu(m);
-#ifndef WITH_GPU
   pybind_engine_super_mp_cpu(m);
   pybind_engine_super_elastic_cpu(m);
-#endif //WITH_GPU
 
   pybind_well_controls(m);
   pybind_ms_well(m);
@@ -112,5 +109,6 @@ PYBIND11_MODULE(engines, m)
 #ifdef WITH_GPU
   pybind_engine_nc_cg_gpu(m);
   pybind_engine_super_gpu(m);
+  pybind_gpu_tools(m);
 #endif
 }
