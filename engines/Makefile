@@ -83,8 +83,8 @@ OBJ_GPU =  	engine_base_gpu.o \
 	    engine_nc_cg_gpu.cu.o \
 	    engine_nce_g_gpu.cu.o \
 	    pybind11/py_engine_nc_cg_gpu.o \
-	    pybind11/py_engine_super_gpu.o 
-        pybind11/py_gpu_tools.o 
+	    pybind11/py_engine_super_gpu.o \
+        pybind11/py_gpu_tools.o
 
 
 
