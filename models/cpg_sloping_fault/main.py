@@ -1,5 +1,7 @@
 from darts.engines import redirect_darts_output
-from model_cpg import Model
+
+from model_geothermal import ModelGeothermal
+from model_deadoil import ModelDeadOil
 
 import numpy as np
 import pandas as pd
@@ -10,7 +12,14 @@ import os
 def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=False):
     print('Test started', 'physics_type:', physics_type, 'discr_type:', discr_type, 'case:', case)
     redirect_darts_output(os.path.join(out_dir, 'run.log'))
-    m = Model(physics_type=physics_type, discr_type=discr_type, case=case, grid_out_dir=out_dir)
+
+    if physics_type == 'geothermal':
+        m = ModelGeothermal(discr_type=discr_type, case=case, grid_out_dir=out_dir)
+    elif physics_type == 'dead_oil':
+        m = ModelDeadOil(discr_type=discr_type, case=case, grid_out_dir=out_dir)
+    else:
+        print('Error: wrong physics specified:', physics_type)
+        exit(1)
 
     m.init(output_folder=out_dir)
     m.save_data_to_h5(kind = 'solution')

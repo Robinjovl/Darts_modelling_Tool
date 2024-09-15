@@ -1,5 +1,4 @@
 import numpy as np
-import time
 import os
 import pandas as pd
 
@@ -14,13 +13,6 @@ from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
 
-from darts.physics.geothermal.physics import Geothermal
-from darts.physics.geothermal.property_container import PropertyContainer as PropertyContainerGeothermal
-
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.density import DensityBasic
 def get_case_files(case: str):
     prefix = os.path.join('meshes', case)
     gridfile = os.path.join(prefix, 'grid.grdecl')
@@ -31,66 +23,10 @@ def get_case_files(case: str):
     assert os.path.exists(sch_file)
     return gridfile, propfile, sch_file
 
-class ModelPropertiesDeadOil(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
-                         temperature=1.)
 
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
-
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        self.ph = [0, 1]
-
-        for j in self.ph:
-            # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.pc[j] = 0
-
-        return
-
-    def evaluate_at_cond(self, pressure, zc):
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
 
 #####################################################
-class Model(CICDModel):
+class Model_CPG(CICDModel):
     def __init__(self, physics_type='geothermal', discr_type='cpp', case='generate', grid_out_dir=None, n_points=100):
         super().__init__()
         self.n_points = n_points
@@ -170,13 +106,7 @@ class Model(CICDModel):
             self.reservoir.boundary_volumes['xz_minus'] = 1e18
             self.reservoir.boundary_volumes['xz_plus'] = 1e18
 
-        if self.physics_type == 'geothermal':
-            self.set_physics_geothermal()
-        elif self.physics_type == 'dead_oil':
-            self.set_physics_dead_oil()
-        else:
-            print('Error: wrong physics specified:', self.physics_type)
-            exit(1)
+        self.set_physics()
 
         self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=90, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
 
@@ -261,106 +191,18 @@ class Model(CICDModel):
                                                verbose=True)
             print('DX', self.dx, 'DY', self.dy, 'PRD:', i1, j1, 'INJ:', i2, j2)
 
-    def set_physics_geothermal(self):
-        '''
-        set Geothermal physics
-        :return:
-        '''
-        # initialize physics for Geothermal
-        property_container = PropertyContainerGeothermal()
-        self.physics = Geothermal(timer=self.timer,
-                                  n_points=101,        # number of OBL points
-                                  min_p=50, max_p=400,       # pressure range
-                                  min_e=1000, max_e=25000,  # enthalpy range
-                                  cache=False
-        )
-        self.physics.add_property_region(property_container)
-
-        T_init = 350.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_init).evaluate(state_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
-                               }
-
-    def set_physics_dead_oil(self):
-        zero = 1e-13
-        components = ["w", "o"]
-        phases = ["wat", "oil"]
-
-        self.inj = value_vector([zero])
-        self.ini = value_vector([1 - zero])
-
-        property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=zero/10)
-
-        property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                              ('oil', DensityBasic(compr=5e-3, dens0=700))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(0.89)),
-                                                ('oil', ConstFunc(50))])
-        property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("wat", 0.1, 0.1)),
-                                               ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
-
-        # create physics
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
-        self.physics.add_property_region(property_container)
-
-        self.initial_values = {self.physics.vars[0]: 400,
-                               self.physics.vars[1]: self.ini,
-                               }
-
-    def set_initial_pressure_from_file(self, fname):
+    def set_initial_pressure_from_file(self, fname : str):
         # set initial pressure
         p_cpp = value_vector()
         load_single_float_keyword(p_cpp, fname, 'PRESSURE', -1)
         p_file = np.array(p_cpp, copy=False)
-
         p_mesh = np.array(self.reservoir.mesh.pressure, copy=False)
         try:
             actnum = np.array(self.reservoir.actnum, copy=False) # CPG Reservoir
-            #nb = self.reservoir.mesh.n_cells
         except:
             actnum = self.reservoir.global_data['actnum']  #Struct reservoir
-        nb = self.reservoir.mesh.n_blocks
         p_mesh[:self.reservoir.mesh.n_res_blocks * 2] = p_file[actnum > 0]
 
-    def set_well_controls(self):
-        if self.physics_type == 'geothermal':
-            self.set_well_controls_geothermal()
-        elif self.physics_type == 'dead_oil':
-            self.set_well_controls_dead_oil()
-        else:
-            print('Error: wrong physics specified:', self.physics_type)
-            exit(1)
-    def set_well_controls_geothermal(self):
-        for i, w in enumerate(self.reservoir.wells):
-            if "INJ" in w.name:  # INJ well
-                # rate control
-                w.control = self.physics.new_rate_water_inj(7500, 300)  #  m3/day, K
-                w.constraint = self.physics.new_bhp_water_inj(500, 300)  # upper limit for bhp, bars
-                # BHP control
-                w.control = self.physics.new_bhp_water_inj(250, 300)  # bars
-            else:  # PROD well
-                # rate control
-                w.control = self.physics.new_rate_water_prod(7500)  #  m3/day
-                w.constraint = self.physics.new_bhp_prod(50)  # lower limit for bhp, bars
-                # BHP control
-                w.control = self.physics.new_bhp_prod(100)  # bars
-
-    def set_well_controls_dead_oil(self):
-        for i, w in enumerate(self.reservoir.wells):
-            if "INJ" in w.name:  # INJ well
-                # BHP control
-                w.control = self.physics.new_bhp_inj(450, self.inj)  # bars
-                # rate control
-                #w.control = self.physics.new_rate_inj(200, self.inj, 0)  # Kmol/day, composition, composition-index
-                #w.constraint = self.physics.new_bhp_inj(450, self.inj)   # bars, composition
-            else:  # PROD well
-                # BHP control
-                w.control = self.physics.new_bhp_prod(350)  # bars
-                # rate control
-                #w.control = self.physics.new_rate_prod(200)   # Kmol/day
-                #w.constraint = self.physics.new_bhp_prod(350) # bars
 
     #TODO: combine this function with save_few_keywords
     def save_cubes(self, fname, arr_list = [], arr_names = []):
@@ -445,10 +287,10 @@ class Model(CICDModel):
         if self.physics_type == 'geothermal':
             # set inj target rate for the next timestep with the production rate value from the previous timestep
             for i, w in enumerate(self.reservoir.wells):
-                if not "I" in w.name:
-                    prod_well = w
-                else:
+                if self.well_is_inj(w.name):
                     inj_well = w
+                else:
+                    prod_well = w
             time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
             years = np.array(time_data['time'])[-1]/365.
             pr_col_name = time_data.filter(like=prod_well.name + ' : water rate').columns.to_list()
@@ -458,4 +300,5 @@ class Model(CICDModel):
             temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
             rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
             print(years, 'years:', 'RATE_prod =', rate_prod, 'RATE_inj =', rate_inj, 'TEMP_prod =', temp_prod)
-
+    def well_is_inj(self, wname : str):
+        return "INJ" in wname
