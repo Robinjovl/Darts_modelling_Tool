@@ -106,7 +106,8 @@ class Model_CPG(CICDModel):
 
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=90, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
+        # time stepping and convergence parameters
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=90, runtime=300, tol_newton=1e-2, tol_linear=1e-4)
 
         self.timer.node["initialization"].stop()
 
@@ -202,40 +203,27 @@ class Model_CPG(CICDModel):
         p_mesh[:self.reservoir.mesh.n_res_blocks * 2] = p_file[actnum > 0]
 
 
-    #TODO: combine this function with save_few_keywords
-    def save_cubes(self, fname, arr_list = [], arr_names = []):
+    def save_grdecl(self, arrays_save, fname):
         '''
         arr - list of numpy arrays to save, size=nactive
         arr_names - list of array names (keyword)
         '''
-        Xn = np.array(self.physics.engine.X, copy=False)
-        P = Xn[0:self.reservoir.mesh.n_res_blocks * 2:2]
-        print('P range:', P.min(), P.max())
-
         actnum = self.reservoir.global_data['actnum']
         suffix = 'struct'
         if type(self.reservoir) == CPG_Reservoir:
             suffix = 'cpg'
-
         fname_suf = fname + '_' + suffix + '.grdecl'
-
-        arr_list_ = arr_list.copy()
-        arr_list_ += [P]
-        arr_names += ['PRESSURE']
 
         if suffix == 'cpg':
             local_to_global = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
             global_to_local = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
 
             save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
-            for i in range(len(arr_list)):
-                save_array(arr_list_[i], fname_suf, arr_names[i], local_to_global, global_to_local, 'a')
+            for arr_name in arrays_save.keys():
+                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a')
         else:
             print('save_array is not implemented yet for Struct Reservoir')
             return
-            save_array(actnum, fname_suf, 'ACTNUM', actnum, 'w')
-            for i in range(len(arr_list_)):
-                save_array(arr_list[i], fname_suf, arr_names[i], actnum, 'a')
 
     def read_and_add_perforations(self, reservoir, sch_fname, well_index: float = None, verbose: bool = False):
         '''

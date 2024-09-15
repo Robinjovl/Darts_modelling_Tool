@@ -39,8 +39,11 @@ sys.path.insert(0, os.path.join(parentdir2, 'python'))
 class CPG_Reservoir(ReservoirBase):
     def __init__(self, timer: timer_node, arrays=None, faultfile: str = None, minpv: float = 0., cache: bool = False):
         """
-        Class constructor for UnstructReservoir class
-        :param arrays: dictionary of numpy arrays with grid and props
+        Class constructor for CPG_Reservoir class (corner-point geometry)
+        :param arrays: dictionary of numpy arrays with grid (COORD, ZCORN, ACTNUM) and props (PORO, PERMX, PERMY, PERMZ)
+        :param faultfile: file name with fault locations (IJK) and fault transmicssibility multipliers
+        :param minpv: cells with poro volume smaller than minpv will be set inactive
+        :param cache:
         """
         super().__init__(timer, cache)
 
@@ -678,7 +681,7 @@ class CPG_Reservoir(ReservoirBase):
 #####################################################################
 
 def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w',
-               make_full=True):
+               make_full=True, inactive_value='min'):
     '''
     writes numpy array of n_active_cell size to text file in GRDECL format with n_cells_total
     :param arr: numpy array to write
@@ -686,10 +689,12 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
     :param keyword: keyword for array
     :param actnum: actnum array
     :param mode: 'w' to rewrite the file or 'a' to append
+    :param make_full: set this to True if passing arr only in active cells, and to False if it as already nx*ny*nz
+    :param inactive_value: if 'min' the value in inactive cells will be set to arr.min(), otherwise to the specified val
     :return: None
     '''
     if make_full:
-        arr_full = make_full_cube(arr, local_to_global, global_to_local)
+        arr_full = make_full_cube(arr, local_to_global, global_to_local, inactive_value)
     else:
         arr_full = arr
     with open(fname, mode) as f:
@@ -705,7 +710,7 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
         print('Array saved to file', fname, ' (keyword ' + keyword + ')')
 
 
-def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array):
+def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array, inactive_value='min'):
     '''
     returns 1d-array of size nx*ny*nz, filled with zeros where actnum is zero
     :param cube: 1d-array of size n_active_cells
@@ -714,7 +719,11 @@ def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: n
     '''
     if global_to_local.size == cube.size:
         return cube
-    cube_full = np.zeros(global_to_local.size)
+    if inactive_value == 'min':
+        inactive_value_ = cube.min()
+    else:
+        inactive_value_ = inactive_value
+    cube_full = np.zeros(global_to_local.size) + inactive_value_
     cube_full[local_to_global] = cube
     return cube_full
 

@@ -41,3 +41,8 @@ def _Backward1_T_Ph_vec(P, h):
     for i, j, ni in zip(I, J, n):
         T += ni * Pr**i * (nu+1)**j
     return T
+    
+def enthalpy_to_temperature(X): # X array of values (p, h) with stride=2  
+    data_len = int(len(X) / 2)  # number of values
+    # the first argument is pressure, convert [bars] to [MPa], the second is enthalpy, convert [kJ/kmol] to [kJ/kg]
+    return  _Backward1_T_Ph_vec(X[::2] / 10, X[1::2] / 18.015)

@@ -26,7 +26,8 @@ def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : floa
     m.set_well_controls()
     if export_vtk:
         m.output_to_vtk(ith_step=0, output_directory=out_dir)
-    m.save_cubes(os.path.join(out_dir, 'res_init'))
+    arrays_save = m.get_arrays()
+    m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_init'))
 
     t = 0
     for ti in range(n_time_steps):
@@ -34,12 +35,14 @@ def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : floa
         t += dt
         if export_vtk:
             m.output_to_vtk(ith_step=ti+1, output_directory=out_dir)
-        # save to grdecl file
-        #m.save_cubes(os.path.join(out_dir, 'res_' + str(ti+1)))
+        # save to grdecl file after each time step
+        #arrays_save = m.get_arrays()
+        #m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_' + str(ti+1)))
         m.physics.engine.report()
         m.print_well_rate()
 
-    m.save_cubes(os.path.join(out_dir, 'res_last'))
+    arrays_save = m.get_arrays()
+    m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_last'))
     m.print_timers()
     m.print_stat()
 
@@ -162,6 +165,11 @@ def check_performance_local(m, case, discr_type, physics_type):
 if __name__ == '__main__':
     physics_list = ['geothermal', 'dead_oil']
     cases_list = ['generate_5x3x4', 'generate_51x51x1', 'case_40', 'case_43', 'case_40_actnum']
+
+    #physics_list = ['geothermal']
+    #physics_list = ['dead_oil']
+    #cases_list = ['case_40']
+    #cases_list = ['brugge']
     for physics_type in physics_list:
         for case in cases_list:
             test(case, physics_type)
