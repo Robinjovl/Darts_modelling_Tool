@@ -23,8 +23,6 @@ def get_case_files(case: str):
     assert os.path.exists(sch_file)
     return gridfile, propfile, sch_file
 
-
-
 #####################################################
 class Model_CPG(CICDModel):
     def __init__(self, physics_type='geothermal', discr_type='cpp', case='generate', grid_out_dir=None, n_points=100):
@@ -63,8 +61,8 @@ class Model_CPG(CICDModel):
             self.propfile = gridfile if propfile == '' else propfile
             self.sch_fname = sch_fname
 
-        hcap = 2200
-        rcond = 181.44
+        hcap = 2200     # heat capacity [kJ/m3/K]
+        rcond = 181.44  # heat conduction [kJ/m/day/K]
 
         if discr_type == 'cpg':
             if self.generate_grid:
@@ -81,10 +79,10 @@ class Model_CPG(CICDModel):
                                       gridname=gridname, propname=propname)
             else:
                 arrays = read_arrays(self.gridfile, self.propfile)
-                # set inactive cells with small porosity (isothermal case)
-                # arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
-                # process cells with small poro (thermal case)
-                # arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
+                if self.physics_type == 'dead_oil':  # set inactive cells with small porosity (isothermal case)
+                    arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
+                elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
+                    arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
 
             self.reservoir = CPG_Reservoir(self.timer, arrays)
             self.reservoir.discretize()
