@@ -23,6 +23,9 @@ def get_case_files(case: str):
     assert os.path.exists(sch_file)
     return gridfile, propfile, sch_file
 
+def fmt(x):
+    return '{:.3}'.format(x)
+
 #####################################################
 class Model_CPG(CICDModel):
     def __init__(self, physics_type='geothermal', discr_type='cpp', case='generate', grid_out_dir=None, n_points=100):
@@ -98,7 +101,7 @@ class Model_CPG(CICDModel):
                                                  permx=permx, permy=permy, permz=permz, poro=poro,
                                                  hcap=hcap, rcond=rcond)
             else:
-                self.set_reservoir()
+                self.init_struct_reservoir(hcap=hcap, rcond=rcond)
             self.reservoir.boundary_volumes['yz_minus'] = 1e18
             self.reservoir.boundary_volumes['yz_plus'] = 1e18
             self.reservoir.boundary_volumes['xz_minus'] = 1e18
@@ -111,7 +114,10 @@ class Model_CPG(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-    def set_reservoir(self):
+    def init_struct_reservoir(self, hcap, rcond):
+        '''
+        initialize StructReservoir by the data in files self.gridfile and self.propfile
+        '''
         dims_cpp = index_vector_discr()
         load_single_int_keyword(dims_cpp, self.gridfile, "SPECGRID", 3)
         dims = np.array(dims_cpp, copy=False)
@@ -152,20 +158,15 @@ class Model_CPG(CICDModel):
             actnum = np.ones(dims[0] * dims[1] * dims[2])
             print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
-        depth = 0
-        dx, dy, dz = [], [], []
-        dx, dy, dz = 0, 0, 0
+        if self.physics_type == 'dead_oil':  # make cells with zero porosity (make sense if not thermal)
+            self.actnum[self.poro == 0.0] = 0
+        elif self.physics_type == 'dead_oil':  # makes sense for thermal
+            self.poro = np.array(self.reservoir.mesh.poro, copy=False)
+            self.poro[self.poro == 0.0] = 1.E-4
 
-        # make cells with zero porosity (make sense if not thermal)
-        # self.actnum[self.poro == 0.0] = 0
-
-        # makes sense for thermal
-        #self.poro = np.array(self.reservoir.mesh.poro, copy=False)
-        #self.poro[self.poro == 0.0] = 1.E-4
-
-        self.reservoir = StructReservoir(self.timer, nx=dims[0], ny=dims[1], nz=dims[2], dx=dx, dy=dy, dz=dz,
-                                         permx=permx, permy=permy, permz=permz, poro=poro, hcap=2200, rcond=181.44,
-                                         depth=depth, actnum=actnum, coord=coord, zcorn=zcorn, is_cpg=True)
+        self.reservoir = StructReservoir(self.timer, nx=dims[0], ny=dims[1], nz=dims[2], dx=0, dy=0, dz=0,
+                                         permx=permx, permy=permy, permz=permz, poro=poro, hcap=hcap, rcond=rcond,
+                                         depth=None, actnum=actnum, coord=coord, zcorn=zcorn, is_cpg=True)
         return
 
     def set_wells(self):
@@ -285,6 +286,7 @@ class Model_CPG(CICDModel):
             rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
             temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
             rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
-            print(years, 'years:', 'RATE_prod =', rate_prod, 'RATE_inj =', rate_inj, 'TEMP_prod =', temp_prod)
-    def well_is_inj(self, wname : str):
+            print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
+    def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
+
