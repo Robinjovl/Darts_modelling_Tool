@@ -29,10 +29,25 @@ struct engine_super_gpu_exposer
       .def("init", (int (engine_super_gpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) & engine_super_gpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>()) \
       .def("get_X_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
             return py::capsule(self.X_d, "double_ptr");
-        }) \
+          }) \
       .def("get_RHS_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
             return py::capsule(self.RHS_d, "double_ptr");
-        });
+          }) \
+      .def("get_molar_weights_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.molar_weights_d), "double_ptr_ptr");
+          }) \
+      .def("get_darcy_velocities_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.darcy_velocities_d), "double_ptr_ptr");
+          }) \
+      .def("get_velocity_appr_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.mesh_velocity_appr_d), "double_ptr_ptr");
+          }) \
+      .def("get_velocity_offset_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.mesh_velocity_offset_d), "int_ptr_ptr");
+          }) \
+      .def("get_op_num_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.mesh_op_num_d), "int_ptr_ptr");
+          });
   };
 };
 

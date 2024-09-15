@@ -11,6 +11,96 @@
 
 #include "engine_super_gpu.hpp"
 
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP, 
+          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP>
+__global__ void
+reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans_mult_exp, 
+                      value_t *X, value_t *op_vals_arr, index_t *op_num, index_t *rows, 
+                      index_t *cols, value_t *tran,  value_t *grav_coef, value_t *velocity_appr, 
+                      index_t *velocity_offset, value_t *darcy_velocities, value_t *molar_weights, 
+                      value_t dt)
+{
+  // mesh grid block number
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i > n_res_blocks - 1)
+    return;
+
+  // space dimension
+  const uint8_t ND = 3;
+
+  // index of first entry for block i in CSR cols array
+  index_t csr_idx_start = rows[i];
+  // index of last entry for block i in CSR cols array
+  index_t csr_idx_end = rows[i + 1];
+  // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
+  index_t conn_idx = csr_idx_start - i;
+
+  index_t j, cell_conn_idx, vel_idx;
+  value_t p_diff, phi_avg, trans_mult, avg_density, phase_p_diff;
+  value_t phase_flux;
+  index_t cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
+
+  for (uint8_t p = 0; p < NP; p++)
+    for (uint8_t d = 0; d < ND; d++)
+      darcy_velocities[NP * ND * i + p * ND + d] = 0.0;
+
+  cell_conn_idx = 0;
+  for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++)
+  {
+    j = cols[csr_idx];
+    // skip diagonal
+    if (i == j)
+      continue;
+
+    if (j >= n_res_blocks)
+    {
+      conn_idx++;
+      continue;
+    }
+
+    trans_mult = 1.;
+    if (trans_mult_exp > 0)
+    {
+      // Take average interface porosity:
+      phi_avg = (op_vals_arr[i * N_OPS + PORO_OP] + op_vals_arr[j * N_OPS + PORO_OP]) * 0.5;
+      trans_mult = pow(phi_avg, (double) trans_mult_exp);
+    }
+
+    p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
+
+    for (uint8_t p = 0; p < NP; p++)
+    {
+      avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) * 0.5;
+      phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
+      
+      phase_flux = 0.0;
+      if (phase_p_diff < 0)
+      {
+        for (uint8_t c = 0; c < NC; c++)
+          phase_flux += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
+
+        if (phase_flux != 0.0)
+            phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[i * N_OPS + GRAV_OP + p];
+      }
+      else
+      {
+        for (uint8_t c = 0; c < NC; c++)
+          phase_flux += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
+
+        if (phase_flux != 0.0)
+          phase_flux *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[j * N_OPS + GRAV_OP + p];
+      }
+
+      vel_idx = ND * velocity_offset[i];
+      for (uint8_t d = 0; d < ND; d++)
+        darcy_velocities[NP * ND * i + p * ND + d] += velocity_appr[vel_idx + d * cell_conn_num + cell_conn_idx] * phase_flux;
+    }
+    conn_idx++;
+    cell_conn_idx++;
+  }
+}
+
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
           uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t RE_INTER_OP,
           uint8_t RE_TEMP_OP, uint8_t ROCK_COND, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP,
@@ -316,6 +406,18 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
                                                      PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d);
+
+  if (mesh->velocity_appr.size()) // reconstruction of phase velocities
+  {
+    reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, PORO_OP>
+        KERNEL_1D(mesh->n_blocks, 1, 64)(mesh->n_res_blocks, params->trans_mult_exp, 
+                                        X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d, 
+                                        jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,
+                                        mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d, 
+                                        dt);
+    copy_data_to_host(darcy_velocities, darcy_velocities_d);
+  }
+
   timer->node["jacobian assembly"].node["kernel"].stop_gpu();
   timer->node["jacobian assembly"].node["wells"].start_gpu();
   int i_w = 0;

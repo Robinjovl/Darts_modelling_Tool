@@ -795,15 +795,38 @@ class DartsModel:
         velocity_offset = np.asarray(self.reservoir.mesh.velocity_offset)
         velocity_offset[:] = offset
 
-        # resize storage for velocities inside engine
-        self.physics.engine.darcy_velocities.resize(self.reservoir.mesh.n_res_blocks * self.physics.nph * 3)
-
         # specify molar weights to get rid of molar density multiplier in flux terms
         nc = self.physics.nc
         self.physics.engine.molar_weights.resize(nc * len(self.physics.regions))
         molar_weights = np.asarray(self.physics.engine.molar_weights)
         for i, region in enumerate(self.physics.regions):
             molar_weights[i * nc:(i + 1) * nc] = self.physics.property_containers[region].Mw
+
+        # resize storage for velocities inside engine
+        self.physics.engine.darcy_velocities.resize(self.reservoir.mesh.n_res_blocks * self.physics.nph * 3)
+        
+        # allocate & transfer data to device
+        if self.platform == 'gpu':
+            from darts.engines import copy_data_to_device, allocate_device_data
+            # velocity_appr
+            velocity_appr_d = self.physics.engine.get_velocity_appr_d()
+            allocate_device_data(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            # velocity_offset_d
+            velocity_offset_d = self.physics.engine.get_velocity_offset_d()
+            allocate_device_data(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            # darcy_velocities_d
+            darcy_velocities_d = self.physics.engine.get_darcy_velocities_d()
+            allocate_device_data(self.physics.engine.darcy_velocities, darcy_velocities_d)
+            # molar_weights_d
+            molar_weights_d = self.physics.engine.get_molar_weights_d()
+            allocate_device_data(self.physics.engine.molar_weights, molar_weights_d)
+            copy_data_to_device(self.physics.engine.molar_weights, molar_weights_d)
+            # op_num_d
+            op_num_d = self.physics.engine.get_op_num_d()
+            allocate_device_data(self.reservoir.mesh.op_num, op_num_d)
+            copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
 
     # destructor to force to destroy all created C objects and free memory
     def __del__(self):
