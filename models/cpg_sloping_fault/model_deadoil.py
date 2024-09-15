@@ -87,7 +87,9 @@ class ModelDeadOil(Model_CPG):
 
         # create physics
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=self.n_points, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
+                                     n_points=self.n_points,
+                                     min_p=0, max_p=1000,
+                                     min_z=zero, max_z=1 - zero)
         self.physics.add_property_region(property_container)
 
         self.initial_values = {self.physics.vars[0]: 400,
@@ -108,3 +110,16 @@ class ModelDeadOil(Model_CPG):
                 # rate control
                 #w.control = self.physics.new_rate_prod(200)   # Kmol/day
                 #w.constraint = self.physics.new_bhp_prod(350) # bars
+
+    def get_arrays(self):
+        '''
+        :return: dictionary of current unknown arrays (p, T)
+        '''
+        nv = self.physics.n_vars
+        nb = nv * self.reservoir.mesh.n_res_blocks
+        Xn = np.array(self.physics.engine.X, copy=False)
+        P = Xn[:nb:nv]
+
+        print('P range [bars]:', P.min(), '-', P.max())
+
+        return {'PRESSURE': P}

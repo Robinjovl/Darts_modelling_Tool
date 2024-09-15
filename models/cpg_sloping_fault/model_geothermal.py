@@ -5,6 +5,7 @@ from model_cpg import Model_CPG
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer as PropertyContainer
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
+from darts.physics.properties.iapws.custom_rock_property import custom_rock_compaction_evaluator
 
 from darts.engines import value_vector
 class ModelGeothermal(Model_CPG):
@@ -14,6 +15,13 @@ class ModelGeothermal(Model_CPG):
     def set_physics(self):
         # initialize physics for Geothermal
         property_container = PropertyContainer()
+        property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
+
+        # Create rock_compaction object to set rock compressibility
+        rock_compressibility = 1e-5  # [1/bars]
+        property_container.rock = [value_vector([1, rock_compressibility, 273.15])]
+        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
+
         self.physics = Geothermal(timer=self.timer,
                                   n_points=self.n_points,   # number of OBL points
                                   min_p=50, max_p=400,      # pressure range
@@ -21,13 +29,18 @@ class ModelGeothermal(Model_CPG):
                                   cache=False)
         self.physics.add_property_region(property_container)
 
-        T_init = 350.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_init).evaluate(state_init)
+        # uniform initial conditions
+        T_initial = 350.  # K
+        P_initial = 200.  # bars
+        state_init = value_vector([P_initial, 0.])
+        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_initial).evaluate(state_init)
         self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
-                               }
+                               self.physics.vars[1]: enth_init}
 
+    def set_initial_conditions(self):
+        # set initial p,T by gradients, units are in [bar/km] and [C/km]
+        pass
+        #self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh, pressure_grad=100, temperature_grad=300)
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
