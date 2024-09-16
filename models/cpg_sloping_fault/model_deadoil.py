@@ -67,7 +67,7 @@ class ModelPropertiesDeadOil(PropertyContainer):
         return self.sat, self.dens_m
 class ModelDeadOil(Model_CPG):
     def __init__(self, discr_type='cpp', case='generate', grid_out_dir=None, n_points=400):
-        super().__init__(discr_type=discr_type, case=case, grid_out_dir=grid_out_dir, n_points=n_points)
+        super().__init__(physics_type='dead_oil', discr_type=discr_type, case=case, grid_out_dir=grid_out_dir, n_points=n_points)
     def set_physics(self):
         zero = 1e-13
         components = ["w", "o"]
@@ -81,7 +81,7 @@ class ModelDeadOil(Model_CPG):
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=700))])
         property_container.viscosity_ev = dict([('wat', ConstFunc(0.89)),
-                                                ('oil', ConstFunc(50))])
+                                                ('oil', ConstFunc(1))])
         property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("wat", 0.1, 0.1)),
                                                ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
 

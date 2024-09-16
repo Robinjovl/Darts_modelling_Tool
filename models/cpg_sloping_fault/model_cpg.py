@@ -92,8 +92,8 @@ class Model_CPG(CICDModel):
             self.reservoir.hcap[:] = hcap
             self.reservoir.conduction[:] = rcond
             # add "open" boundaries
-            self.reservoir.set_boundary_volume(xz_minus=1e18, xz_plus=1e18, yz_minus=1e18, yz_plus=1e18)
-            self.reservoir.apply_volume_depth()
+            # self.reservoir.set_boundary_volume(xz_minus=1e18, xz_plus=1e18, yz_minus=1e18, yz_plus=1e18)
+            # self.reservoir.apply_volume_depth()
         elif discr_type == 'struct':
             if self.generate_grid:
                 self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
@@ -159,10 +159,10 @@ class Model_CPG(CICDModel):
             print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
         if self.physics_type == 'dead_oil':  # make cells with zero porosity (make sense if not thermal)
-            self.actnum[self.poro == 0.0] = 0
-        elif self.physics_type == 'dead_oil':  # makes sense for thermal
-            self.poro = np.array(self.reservoir.mesh.poro, copy=False)
-            self.poro[self.poro == 0.0] = 1.E-4
+            actnum[poro == 0.0] = 0
+        elif self.physics_type == 'geothermal':  # makes sense for thermal
+            poro = np.array(self.reservoir.mesh.poro, copy=False)
+            poro[poro == 0.0] = 1.E-4
 
         self.reservoir = StructReservoir(self.timer, nx=dims[0], ny=dims[1], nz=dims[2], dx=0, dy=0, dz=0,
                                          permx=permx, permy=permy, permz=permz, poro=poro, hcap=hcap, rcond=rcond,
@@ -287,6 +287,25 @@ class Model_CPG(CICDModel):
             temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
             rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
             print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
+        else:
+            # set inj target rate for the next timestep with the production rate value from the previous timestep
+            for i, w in enumerate(self.reservoir.wells):
+                if self.well_is_inj(w.name):
+                    inj_well = w
+                else:
+                    prod_well = w
+            time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
+            years = np.array(time_data['time'])[-1] / 365.
+            pr_col_name = time_data.filter(like=prod_well.name + ' : oil rate').columns.to_list()
+            pp_col_name = time_data.filter(like=prod_well.name + ' : BHP').columns.to_list()
+            ir_col_name = time_data.filter(like=inj_well.name + ' : wat rate').columns.to_list()
+            ip_col_name = time_data.filter(like=inj_well.name + ' : BHP').columns.to_list()
+            rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
+            bhp_prod = np.array(time_data[pp_col_name])[-1][0]  # pick the last timestep value
+            bhp_inj = np.array(time_data[ip_col_name])[-1][0]  # pick the last timestep value
+            rate_inj = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
+            print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
+                  fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 
