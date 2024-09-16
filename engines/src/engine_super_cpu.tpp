@@ -459,6 +459,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             {
                 index_t j = cols[csr_idx];
 
+                if (i == j)
+                  continue;
+
                 if (j < n_res_blocks)
                 {
                     for (uint8_t p = 0; p < NP; p++)
@@ -514,6 +517,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         }
                     }
                 }
+                conn_idx++;
             }
         }
     }
