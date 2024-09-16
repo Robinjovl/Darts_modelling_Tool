@@ -121,6 +121,8 @@ class StructDiscretizer:
                                 self.perm_y_cell * self.cell_data['faces'][:, :, :, 5, 0, 1] ** 2 + \
                                 self.perm_z_cell * self.cell_data['faces'][:, :, :, 5, 0, 2] ** 2)
 
+            self.centroids_all_cells = self.cell_data[:, :, :]['center']
+
             print(" done.")
 
         # If scalar dx, dy, and dz are specified: Store constant control volume dimensions
