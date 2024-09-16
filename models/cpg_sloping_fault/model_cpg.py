@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pandas as pd
 
-from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays
+from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, make_burden_layers
 from darts.discretizer import load_single_float_keyword, load_single_int_keyword
 from darts.discretizer import value_vector as value_vector_discr
 from darts.discretizer import index_vector as index_vector_discr
@@ -67,6 +67,8 @@ class Model_CPG(CICDModel):
         hcap = 2200     # heat capacity [kJ/m3/K]
         rcond = 181.44  # heat conduction [kJ/m/day/K]
 
+        bv = 1e8   # boundary volume
+
         if discr_type == 'cpg':
             if self.generate_grid:
                 if grid_out_dir is None:
@@ -87,13 +89,17 @@ class Model_CPG(CICDModel):
                 elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
                     arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
 
+                if self.physics_type == 'geothermal':
+                    # add over- and underburden layers
+                    make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays)
+
             self.reservoir = CPG_Reservoir(self.timer, arrays)
             self.reservoir.discretize()
             self.reservoir.hcap[:] = hcap
             self.reservoir.conduction[:] = rcond
             # add "open" boundaries
-            # self.reservoir.set_boundary_volume(xz_minus=1e18, xz_plus=1e18, yz_minus=1e18, yz_plus=1e18)
-            # self.reservoir.apply_volume_depth()
+            self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
+            self.reservoir.apply_volume_depth()
         elif discr_type == 'struct':
             if self.generate_grid:
                 self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
@@ -102,10 +108,10 @@ class Model_CPG(CICDModel):
                                                  hcap=hcap, rcond=rcond)
             else:
                 self.init_struct_reservoir(hcap=hcap, rcond=rcond)
-            self.reservoir.boundary_volumes['yz_minus'] = 1e18
-            self.reservoir.boundary_volumes['yz_plus'] = 1e18
-            self.reservoir.boundary_volumes['xz_minus'] = 1e18
-            self.reservoir.boundary_volumes['xz_plus'] = 1e18
+            self.reservoir.boundary_volumes['yz_minus'] = bv
+            self.reservoir.boundary_volumes['yz_plus'] = bv
+            self.reservoir.boundary_volumes['xz_minus'] = bv
+            self.reservoir.boundary_volumes['xz_plus'] = bv
 
         self.set_physics()
 
