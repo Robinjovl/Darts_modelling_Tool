@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pandas as pd
 
-from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, make_burden_layers
+from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, make_burden_layers, make_full_cube
 from darts.discretizer import load_single_float_keyword, load_single_int_keyword
 from darts.discretizer import value_vector as value_vector_discr
 from darts.discretizer import index_vector as index_vector_discr
@@ -64,9 +64,6 @@ class Model_CPG(CICDModel):
             self.propfile = gridfile if propfile == '' else propfile
             self.sch_fname = sch_fname
 
-        hcap = 2200     # heat capacity [kJ/m3/K]
-        rcond = 181.44  # heat conduction [kJ/m/day/K]
-
         bv = 1e6   # boundary volume
 
         if discr_type == 'cpg':
@@ -99,14 +96,20 @@ class Model_CPG(CICDModel):
             self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
             self.reservoir.apply_volume_depth()
 
-            cond_mesh = np.array(self.reservoir.mesh.rock_cond, copy=False)
-            hcap_mesh = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-            cond_mesh[np.array(self.reservoir.mesh.poro) <= 1e-3] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
-            cond_mesh[np.array(self.reservoir.mesh.poro) > 1e-3] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
-            hcap_mesh[np.array(self.reservoir.mesh.poro) <= 1e-3] = 2300 # Shale heat capacity kJ/m3/K
-            hcap_mesh[np.array(self.reservoir.mesh.poro) > 1e-3] = 2450 # Sandstone heat capacity kJ/m3/K
-
+            poro_shale_threshold = 1e-3
+            self.reservoir.conduction[np.array(self.reservoir.mesh.poro) <= poro_shale_threshold] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
+            self.reservoir.conduction[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
+            self.reservoir.hcap[np.array(self.reservoir.mesh.poro) <= poro_shale_threshold] = 2300 # Shale heat capacity kJ/m3/K
+            self.reservoir.hcap[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 2450 # Sandstone heat capacity kJ/m3/K
+            # add hcap and rcond to be saved into mesh.vtu
+            l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
+            g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
+            self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
+                                               'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
         elif discr_type == 'struct':
+            hcap = 2450  # heat capacity [kJ/m3/K]
+            rcond = 3 * 86.4  # heat conduction [kJ/m/day/K]
+
             if self.generate_grid:
                 self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
                                                  dx=self.dx, dy=self.dy, dz=self.dz, start_z=self.start_z, depth=None,
