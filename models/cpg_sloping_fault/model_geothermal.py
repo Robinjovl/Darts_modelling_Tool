@@ -37,8 +37,8 @@ class ModelGeothermal(Model_CPG):
         self.initial_values = {self.physics.vars[0]: state_init[0],
                                self.physics.vars[1]: enth_init}
 
-    # def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
-    #     self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh, pressure_grad=100, temperature_grad=30)
+    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+         self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh, pressure_grad=100, temperature_grad=30)
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):

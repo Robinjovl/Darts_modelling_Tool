@@ -26,6 +26,7 @@ def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : floa
     m.set_well_controls()
     if export_vtk:
         m.output_to_vtk(ith_step=0, output_directory=out_dir)
+        m.create_vtk_wells(output_directory=out_dir)
     arrays_save = m.get_arrays()
     m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_init'))
 
@@ -78,7 +79,7 @@ def run_test(args: list = []):
         return 1, 0.0
 
 def test(case: str, physics_type : str):
-    dt = 365.25
+    dt = 365.25  # one report timestep length, [days]
     n_time_steps = 20
 
     export_vtk = True
@@ -124,8 +125,8 @@ def test(case: str, physics_type : str):
         col = well_name + ' : temperature'
         plt.figure()
         for k in results.keys():
-            y = np.array(results[k].filter(like=col)) - 273.15
-            t = np.array(results[k]['Time (years)'])  # to years
+            y = np.array(results[k].filter(like=col)) - 273.15  # to degrees
+            t = np.array(results[k]['Time (years)'])
             plt.plot(t, y, label=k)
         plt.ylabel('Temperature prod well, C')
         plt.xlabel('years')

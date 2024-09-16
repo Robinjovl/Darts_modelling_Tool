@@ -88,10 +88,11 @@ class Model_CPG(CICDModel):
 
                 if self.physics_type == 'geothermal':
                     # add over- and underburden layers
-                    make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays)
+                    make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays, burden_layer_prop_value=1e-5)
 
             self.reservoir = CPG_Reservoir(self.timer, arrays)
             self.reservoir.discretize()
+
             # add "open" boundaries
             self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
             self.reservoir.apply_volume_depth()
@@ -101,6 +102,7 @@ class Model_CPG(CICDModel):
             self.reservoir.conduction[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
             self.reservoir.hcap[np.array(self.reservoir.mesh.poro) <= poro_shale_threshold] = 2300 # Shale heat capacity kJ/m3/K
             self.reservoir.hcap[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 2450 # Sandstone heat capacity kJ/m3/K
+
             # add hcap and rcond to be saved into mesh.vtu
             l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
             g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
