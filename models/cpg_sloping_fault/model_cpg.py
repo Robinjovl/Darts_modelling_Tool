@@ -325,7 +325,7 @@ class Model_CPG(CICDModel):
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
         appendFilter = vtk.vtkAppendPolyData()
-        def create_tube(center, prolongation=500):
+        def create_tube(center, prolongation=1000):
             # Create points for the polyline
             points = vtk.vtkPoints()
             points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
