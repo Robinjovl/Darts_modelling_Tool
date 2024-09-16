@@ -101,6 +101,100 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
   }
 }
 
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP>
+__global__ void
+assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr, 
+                    value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind, 
+                    value_t *tranD, value_t *darcy_velocities, value_t *dispersivity, index_t *op_num, value_t dt)
+{
+  const int i = (blockIdx.x * blockDim.x + threadIdx.x) / (NC * N_VARS);
+  if (i > n_res_blocks - 1)
+    return;
+
+  const int block_pos = (blockIdx.x * blockDim.x + threadIdx.x) % (NC * N_VARS);
+  const int v = block_pos % N_VARS;
+  const int c = block_pos / N_VARS;
+
+  const int N_VARS_SQ = N_VARS * N_VARS;
+  const int ND = 3;
+  value_t jac_diag = 0, jac_offd, rhs = 0, avg_dispersivity, avg_enthalpy, grad_con, 
+          vel_norm, arith_mean_dispersivity, disp;
+  value_t avg_velocity[ND];
+
+  // index of diagonal block entry for block i in CSR values array
+  index_t diag_idx = N_VARS_SQ * diag_ind[i];
+  // index of first entry for block i in CSR cols array
+  index_t csr_idx_start = rows[i];
+  // index of last entry for block i in CSR cols array
+  index_t csr_idx_end = rows[i + 1];
+  // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
+  index_t conn_idx = csr_idx_start - i;
+
+  index_t jac_idx = N_VARS_SQ * csr_idx_start;
+  index_t vel_idx_i, vel_idx_j, j;
+
+  for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++)
+  {
+
+    j = cols[csr_idx];
+    // skip diagonal
+    if (i == j)
+      continue;
+
+    if (j >= n_res_blocks)
+    {
+      conn_idx++;
+      continue;
+    }  
+
+    // initialize offdiagonal value for current connection
+    jac_offd = 0;
+    for (uint8_t p = 0; p < NP; p++)
+    {
+      avg_enthalpy = 0.5 * (op_vals_arr[i * N_OPS + ENTH_OP + p] + op_vals_arr[j * N_OPS + ENTH_OP + p]);
+
+      // approximate facial velocity
+      vel_idx_i = ND * NP * i;
+      vel_idx_j = ND * NP * j;
+      for (uint8_t d = 0; d < ND; d++)
+          avg_velocity[d] = 0.5 * (darcy_velocities[vel_idx_i + p * ND + d] + darcy_velocities[vel_idx_j + p * ND + d]);
+
+      grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
+
+      // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
+      vel_norm = sqrt(avg_velocity[0] * avg_velocity[0] + avg_velocity[1] * avg_velocity[1] + avg_velocity[2] * avg_velocity[2]);
+
+      arith_mean_dispersivity = 0.5 * (dispersivity[NP * NC * op_num[i] + p * NC + c] + dispersivity[NP * NC * op_num[j] + p * NC + c]);
+      if (arith_mean_dispersivity > 0.)
+          avg_dispersivity = dispersivity[NP * NC * op_num[i] + p * NC + c] * dispersivity[NP * NC * op_num[j] + p * NC + c] / arith_mean_dispersivity;
+      else
+          avg_dispersivity = 0.0;
+
+      disp = dt * avg_dispersivity * tranD[conn_idx] * vel_norm;
+
+      rhs -= disp * grad_con; // diffusion term
+
+      // Add diffusion terms to Jacobian:
+      jac_diag += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+      jac_offd -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+      // respective heat fluxes
+      /*if constexpr (THERMAL)
+      {
+          RHS[i * N_VARS + NC] -= avg_enthalpy * disp * grad_con;
+
+          Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+          Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
+          Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
+      }*/
+    }
+    
+    conn_idx++;
+  }
+}
+
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
           uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t RE_INTER_OP,
           uint8_t RE_TEMP_OP, uint8_t ROCK_COND, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP, uint8_t ENTH_OP,
@@ -434,12 +528,20 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   if (mesh->velocity_appr.size()) // reconstruction of phase velocities
   {
     reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, PORO_OP>
-        KERNEL_1D(mesh->n_blocks, 1, 64)(mesh->n_res_blocks, params->trans_mult_exp, 
+        KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->trans_mult_exp, 
                                         X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d, 
                                         jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,
                                         mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d, 
                                         dt);
     copy_data_to_host(darcy_velocities, darcy_velocities_d);
+
+    if (dispersivity.size())
+    {
+      assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP>
+        KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d, 
+                                                    op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d, 
+                                                    mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
+    }
   }
 
   timer->node["jacobian assembly"].node["kernel"].stop_gpu();

@@ -47,6 +47,9 @@ struct engine_super_gpu_exposer
           }) \
       .def("get_op_num_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
             return py::capsule(&(self.mesh_op_num_d), "int_ptr_ptr");
+          }) \
+      .def("get_dispersivity_d", [](const engine_super_gpu<NC, NP, THERMAL>& self) -> py::capsule {
+            return py::capsule(&(self.dispersivity_d), "double_ptr_ptr");
           });
   };
 };

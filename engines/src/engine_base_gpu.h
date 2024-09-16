@@ -114,6 +114,7 @@ public:
   value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
   index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
   index_t *mesh_op_num_d;              // regions indices for every cell 
+  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory 
 };
 
 template <uint8_t N_VARS>
