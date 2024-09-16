@@ -67,7 +67,7 @@ class Model_CPG(CICDModel):
         hcap = 2200     # heat capacity [kJ/m3/K]
         rcond = 181.44  # heat conduction [kJ/m/day/K]
 
-        bv = 1e8   # boundary volume
+        bv = 1e6   # boundary volume
 
         if discr_type == 'cpg':
             if self.generate_grid:
