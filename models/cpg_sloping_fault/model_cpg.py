@@ -320,3 +320,53 @@ class Model_CPG(CICDModel):
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 
+    def create_vtk_wells(self, output_directory : str):
+        import vtk
+        well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
+        # Append multiple cylinders into one polydata
+        appendFilter = vtk.vtkAppendPolyData()
+        def create_tube(center, prolongation=500):
+            # Create points for the polyline
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+
+            # Create a polyline that connects the points
+            lines = vtk.vtkCellArray()
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)  # Number of points
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+            lines.InsertNextCell(line)
+
+            # Create a polydata to hold the points and the polyline
+            polyData = vtk.vtkPolyData()
+            polyData.SetPoints(points)
+            polyData.SetLines(lines)
+
+            # Apply vtkTubeFilter to create a tube around the polyline
+            tubeFilter = vtk.vtkTubeFilter()
+            tubeFilter.SetInputData(polyData)
+            tubeFilter.SetRadius(35)  # Tube radius
+            tubeFilter.SetNumberOfSides(50)  # Smoothness of the tube
+            tubeFilter.Update()
+
+            return tubeFilter.GetOutput()
+
+        for w in self.reservoir.wells:
+            for p in w.perforations:
+                well_block, res_block_local, well_index, well_indexD = p
+                c = self.reservoir.centroids_all_cells[res_block_local].values
+                cyl = create_tube(c)
+                appendFilter.AddInputData(cyl)
+                break  # use only the first perf
+
+        # Update the append filter to combine the polydata
+        appendFilter.Update()
+
+        # Write the cylinders to a VTK file
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(appendFilter.GetOutputPort())
+        writer.Write()
+
