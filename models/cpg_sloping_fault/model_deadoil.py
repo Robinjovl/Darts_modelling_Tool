@@ -1,6 +1,6 @@
 import numpy as np
 
-from model_cpg import Model_CPG
+from model_cpg import Model_CPG, fmt
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -120,6 +120,6 @@ class ModelDeadOil(Model_CPG):
         Xn = np.array(self.physics.engine.X, copy=False)
         P = Xn[:nb:nv]
 
-        print('P range [bars]:', P.min(), '-', P.max())
+        print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()))
 
         return {'PRESSURE': P}

@@ -167,7 +167,6 @@ class Model_CPG(CICDModel):
         if self.physics_type == 'dead_oil':  # make cells with zero porosity (make sense if not thermal)
             actnum[poro == 0.0] = 0
         elif self.physics_type == 'geothermal':  # makes sense for thermal
-            poro = np.array(self.reservoir.mesh.poro, copy=False)
             poro[poro == 0.0] = 1.E-4
 
         self.reservoir = StructReservoir(self.timer, nx=dims[0], ny=dims[1], nz=dims[2], dx=0, dy=0, dz=0,

@@ -1,6 +1,6 @@
 import numpy as np
 
-from model_cpg import Model_CPG
+from model_cpg import Model_CPG, fmt
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer as PropertyContainer
@@ -24,8 +24,8 @@ class ModelGeothermal(Model_CPG):
 
         self.physics = Geothermal(timer=self.timer,
                                   n_points=self.n_points,   # number of OBL points
-                                  min_p=50, max_p=400,      # pressure range
-                                  min_e=1000, max_e=25000,  # enthalpy range
+                                  min_p=50, max_p=400,      # pressure range for OBL grid
+                                  min_e=1000, max_e=25000,  # enthalpy range for OBL grid
                                   cache=False)
         self.physics.add_property_region(property_container)
 
@@ -44,16 +44,16 @@ class ModelGeothermal(Model_CPG):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
                 # rate control
-                w.control = self.physics.new_rate_water_inj(7500, 300)  #  m3/day, K
-                w.constraint = self.physics.new_bhp_water_inj(500, 300)  # upper limit for bhp, bars
+                #w.control = self.physics.new_rate_water_inj(7500, 300)  #  m3/day, K
+                #w.constraint = self.physics.new_bhp_water_inj(500, 300)  # upper limit for bhp, bars
                 # BHP control
-                #w.control = self.physics.new_bhp_water_inj(250, 300)  # bars
+                w.control = self.physics.new_bhp_water_inj(250, 300)  # bars
             else:  # PROD well
                 # rate control
-                w.control = self.physics.new_rate_water_prod(7500)  #  m3/day
-                w.constraint = self.physics.new_bhp_prod(50)  # lower limit for bhp, bars
+                #w.control = self.physics.new_rate_water_prod(7500)  #  m3/day
+                #w.constraint = self.physics.new_bhp_prod(50)  # lower limit for bhp, bars
                 # BHP control
-                #w.control = self.physics.new_bhp_prod(100)  # bars
+                w.control = self.physics.new_bhp_prod(100)  # bars
 
     def get_arrays(self):
         '''
@@ -66,6 +66,6 @@ class ModelGeothermal(Model_CPG):
         T = enthalpy_to_temperature(Xn[:nb])
         T -= 273.15  # K to degrees
 
-        print('P range [bars]:', P.min(), '-', P.max(), 'T range [degrees]:', T.min(), '-', T.max())
+        print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()), 'T range [degrees]:', fmt(T.min()), '-', fmt(T.max()))
 
         return {'PRESSURE': P, 'TEMPERATURE': T}
