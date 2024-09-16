@@ -101,10 +101,10 @@ class Model_CPG(CICDModel):
 
             cond_mesh = np.array(self.reservoir.mesh.rock_cond, copy=False)
             hcap_mesh = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-            cond_mesh[np.array(self.reservoir.mesh.poro) <= 0.1] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
-            cond_mesh[np.array(self.reservoir.mesh.poro) > 0.1] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
-            hcap_mesh[np.array(self.reservoir.mesh.poro) <= 0.1] = 2300 # Shale heat capacity kJ/m3/K
-            hcap_mesh[np.array(self.reservoir.mesh.poro) > 0.1] = 2450 # Sandstone heat capacity kJ/m3/K
+            cond_mesh[np.array(self.reservoir.mesh.poro) <= 1e-3] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
+            cond_mesh[np.array(self.reservoir.mesh.poro) > 1e-3] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
+            hcap_mesh[np.array(self.reservoir.mesh.poro) <= 1e-3] = 2300 # Shale heat capacity kJ/m3/K
+            hcap_mesh[np.array(self.reservoir.mesh.poro) > 1e-3] = 2450 # Sandstone heat capacity kJ/m3/K
 
         elif discr_type == 'struct':
             if self.generate_grid:
