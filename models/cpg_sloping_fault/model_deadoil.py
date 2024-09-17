@@ -15,6 +15,7 @@ class ModelPropertiesDeadOil(PropertyContainer):
         Mw = np.ones(self.nph)
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          temperature=1.)
+
     def run_flash(self, pressure, temperature, zc):
         # two-phase flash - assume water phase is always present and water component last
         for i in range(self.nph):
@@ -49,22 +50,37 @@ class ModelDeadOil(Model_CPG):
                                      min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
 
-        self.P_initial = 400.
+        self.P_initial = np.zeros(self.reservoir.mesh.n_res_blocks) + 400.
+
         # uniform initial conditions
         self.initial_values = {self.physics.vars[0]: 400,
                                self.physics.vars[1]: self.ini}
 
     def set_initial_conditions(self):
-        S_initial = 0.8
-        # find composition corresponding to particular saturation
-        z_range = np.linspace(self.zero, 1 - self.zero, 200)
-        for z in z_range:
-            # state is pressure and 1 molar fractions out of 2
-            state = [self.P_initial, z]
-            sat = self.physics.property_containers[0].compute_saturation_full(state)
-            if sat > S_initial:
-                break
-        self.initial_values = {self.physics.vars[0]: state[0], self.physics.vars[1]: state[1]}
+
+        self.initial_values['pressure'] = 1 # bars at surface
+        super().set_initial_conditions(gradient={'pressure': 0.1})  # bar/m
+
+        depth_array = np.array(self.reservoir.mesh.depth, copy=False)[:self.reservoir.mesh.n_res_blocks]
+        water_table_depth = depth_array.mean()
+
+        Sw_initial = np.zeros(self.reservoir.mesh.n_res_blocks) + 0.1
+        Sw_initial[depth_array > water_table_depth] = 0.9
+        def sat_to_z(p, s):
+            # find composition corresponding to particular saturation
+            z_range = np.linspace(self.zero, 1 - self.zero, 200)
+            for z in z_range:
+                # state is pressure and 1 molar fractions out of 2
+                state = [p, z]
+                sat = self.physics.property_containers[0].compute_saturation_full(state)
+                if sat > s:
+                    break
+            return z
+
+        Z_initial = np.zeros(self.reservoir.mesh.n_res_blocks)
+        for ith_cell in range(self.reservoir.mesh.n_res_blocks):
+            Z_initial[ith_cell] = sat_to_z(self.P_initial[ith_cell], Sw_initial[ith_cell])
+        self.initial_values = {self.physics.vars[0]: self.P_initial, self.physics.vars[1]: Z_initial}
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
