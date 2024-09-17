@@ -9,8 +9,8 @@ from darts.physics.properties.iapws.custom_rock_property import custom_rock_comp
 
 from darts.engines import value_vector
 class ModelGeothermal(Model_CPG):
-    def __init__(self, discr_type='cpp', case='generate', grid_out_dir=None, n_points=100):
-        super().__init__(discr_type=discr_type, case=case, grid_out_dir=grid_out_dir, n_points=n_points)
+    def __init__(self, case='generate', grid_out_dir=None, n_points=100):
+        super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir, n_points=n_points)
 
     def set_physics(self):
         # initialize physics for Geothermal

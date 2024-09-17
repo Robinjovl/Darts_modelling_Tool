@@ -65,18 +65,19 @@ class ModelPropertiesDeadOil(PropertyContainer):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
+
 class ModelDeadOil(Model_CPG):
-    def __init__(self, discr_type='cpp', case='generate', grid_out_dir=None, n_points=400):
-        super().__init__(physics_type='dead_oil', discr_type=discr_type, case=case, grid_out_dir=grid_out_dir, n_points=n_points)
+    def __init__(self, case='generate', grid_out_dir=None, n_points=400):
+        super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir, n_points=n_points)
     def set_physics(self):
-        zero = 1e-13
+        self.zero = 1e-13
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        self.inj = value_vector([zero])
-        self.ini = value_vector([1 - zero])
+        self.inj = value_vector([self.zero])
+        self.ini = value_vector([1 - self.zero])
 
-        property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=zero/10)
+        property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=self.zero/10)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=700))])
@@ -89,13 +90,26 @@ class ModelDeadOil(Model_CPG):
         self.physics = Compositional(components, phases, self.timer,
                                      n_points=self.n_points,
                                      min_p=0, max_p=1000,
-                                     min_z=zero, max_z=1 - zero)
+                                     min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
 
+        self.P_initial = 400
+        # uniform initial conditions
         self.initial_values = {self.physics.vars[0]: 400,
-                               self.physics.vars[1]: self.ini,
-                               }
+                               self.physics.vars[1]: self.ini}
+        self.compute_initial_saturation()
 
+    def compute_initial_saturation(self):
+        s = 0.8
+        # find composition corresponding to particular saturation
+        z_range = np.linspace(self.zero, 1 - self.zero, 200)
+        for z in z_range:
+            # state is pressure and 1 molar fractions out of 2
+            state = [self.P_initial, z]
+            sat = self.physics.property_operators.property_container.compute_saturation_full(state)
+            if sat > s:
+                break
+        self.initial_values = {self.physics.vars[0]: state[0], self.physics.vars[1]: state[1]}
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
