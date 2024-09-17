@@ -97,7 +97,7 @@ class ModelDeadOil(Model_CPG):
         # uniform initial conditions
         self.initial_values = {self.physics.vars[0]: 400,
                                self.physics.vars[1]: self.ini}
-        self.compute_initial_saturation()
+        #self.compute_initial_saturation()
 
     def compute_initial_saturation(self):
         s = 0.8
