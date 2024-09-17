@@ -99,16 +99,16 @@ class ModelDeadOil(Model_CPG):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
                 # BHP control
-                w.control = self.physics.new_bhp_inj(450, self.inj)  # bars
+                w.control = self.physics.new_bhp_inj(250, self.inj)  # bars
                 # rate control
                 #w.control = self.physics.new_rate_inj(200, self.inj, 0)  # Kmol/day, composition, composition-index
-                #w.constraint = self.physics.new_bhp_inj(450, self.inj)   # bars, composition
+                #w.constraint = self.physics.new_bhp_inj(250, self.inj)   # bars, composition
             else:  # PROD well
                 # BHP control
-                w.control = self.physics.new_bhp_prod(350)  # bars
+                w.control = self.physics.new_bhp_prod(100)  # bars
                 # rate control
                 #w.control = self.physics.new_rate_prod(200)   # Kmol/day
-                #w.constraint = self.physics.new_bhp_prod(350) # bars
+                #w.constraint = self.physics.new_bhp_prod(100) # bars
 
     def get_arrays(self):
         '''
