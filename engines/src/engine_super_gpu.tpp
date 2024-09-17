@@ -101,7 +101,8 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
   }
 }
 
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP>
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP,
+          bool THERMAL>
 __global__ void
 assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr, 
                     value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind, 
@@ -182,7 +183,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
       jac_offd -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
       // respective heat fluxes
-      /*if constexpr (THERMAL)
+      if constexpr (THERMAL)
       {
         if (v == 0)
         {
@@ -194,7 +195,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
 
           atomicAdd(&Jac[diag_idx + NC * N_VARS + v], -op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
           atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
-      }*/
+      }
     }
     
     Jac[csr_idx * N_VARS_SQ + block_pos] += jac_offd;
@@ -409,7 +410,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
         jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
       
-        /*if constexpr (THERMAL)
+        if constexpr (THERMAL)
         {
           if (c < NC)
           {
@@ -431,7 +432,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
             atomicAdd(&Jac[diag_energy], -op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con * 0.5);
             atomicAdd(&Jac[jac_energy], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con * 0.5);
           }
-        }*/
+        }
       }
     }
 
@@ -551,7 +552,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     if (dispersivity.size())
     {
-      assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP>
+      assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP, THERMAL>
         KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d, 
                                                     op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d, 
                                                     mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
