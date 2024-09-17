@@ -43,6 +43,8 @@ int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
 
     engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
+    rate_unit = "m3/day";
+
     return 0;
 }
 

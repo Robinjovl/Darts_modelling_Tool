@@ -81,6 +81,8 @@ public:
 
 		print_linear_system = false;
 		output_counter = 0;
+
+		rate_unit = "kmol/day";
 	};
 
 	~engine_base()
@@ -264,7 +266,7 @@ public:
 
 	std::string engine_name;
 
-
+	std::string rate_unit;
 
 
 

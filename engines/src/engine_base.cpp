@@ -514,7 +514,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
             for (std::string opt_phase : prod_phase_name)
             {
-                rate = time_data.at(well_ + " : " + opt_phase + " rate (m3/day)");
+                rate = time_data.at(well_ + " : " + opt_phase + " rate " + rate_unit);
 
                 //std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));
                 std::transform(rate.begin(), rate.end(), rate.begin(), [](double val) { return -1 * val; });  // adding minus sign here to make sure the production rate is positive
@@ -538,7 +538,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
             for (std::string opt_phase : inj_phase_name)
             {
-                rate_inj = time_data.at(well_ + " : " + opt_phase + " rate (m3/day)");
+                rate_inj = time_data.at(well_ + " : " + opt_phase + " rate " + rate_unit);
 
                 //std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));
                 q_inj_p.push_back(rate_inj);
@@ -1509,7 +1509,7 @@ int engine_base::report()
 		std::vector<value_t> data;
 		value_t total_volume = 0;
 		std::tie(name, data) = c;
-		std::string search_str = "rate (m3/day)";
+		std::string search_str = "rate " + rate_unit;
 
 		// look only for phase volumetric rates
 		if (name.find(search_str) != std::string::npos)
