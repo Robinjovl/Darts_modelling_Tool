@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 
-def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=False):
+def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -61,6 +61,8 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
     time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
+    time_data_report['Time (years)'] = time_data_report['time'] / 365.25
+    time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
 
     # filter time_data_report and write to xlsx
     # list the column names that should be removed
@@ -135,11 +137,10 @@ if __name__ == '__main__':
         for case in cases_list:
             out_dir = 'results_' + physics_type + '_' + case
 
-            time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir,
-                                   dt=dt, n_time_steps=n_time_steps)
+            time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
-            # time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
+            #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
             plot_results(time_data_report, physics_type, out_dir)
 
