@@ -1,5 +1,5 @@
 from darts.engines import redirect_darts_output
-
+from darts.tools.plot_darts import *
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
@@ -77,20 +77,44 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     return time_data_report
 
 ##########################################################################################################
-
-def plot_results(results, out_dir, physics_type):
+def plot_results(results, physics_type, out_dir):
+    well_name = 'PRD'
     if physics_type == 'geothermal':
-        well_name = 'PRD'
-        col = well_name + ' : temperature'
-        plt.figure()
-        for k in results.keys():
-            y = np.array(results[k].filter(like=col)) - 273.15  # to degrees
-            t = np.array(results[k]['Time (years)'])
-            plt.plot(t, y, label=k)
-        plt.ylabel('Temperature prod well, C')
-        plt.xlabel('years')
-        plt.legend()
+        plt.rc('font', size=12)
+        ax1 = plot_bhp_darts(well_name, results)
+        ax1.set(xlabel="Days", ylabel="BHP [bar]")
+        plt.savefig(os.path.join(out_dir, 'well_bhp_' + case + '.png'))
+
+        ax2 = plot_temp_darts(well_name, results)
+        ax2.set(xlabel="Days", ylabel="Temperature [K]")
+        plt.tight_layout()
         plt.savefig(os.path.join(out_dir, 'well_temperature_' + case + '.png'))
+        plt.close()
+    else:
+        # rate plotting
+        plt.rc('font', size=12)
+        ax1 = plot_total_prod_oil_rate_darts(results)
+        ax1.set(xlabel="Days", ylabel="Total produced oil rate, sm$^3$/day")
+        plt.savefig(os.path.join(out_dir, 'well_production_oil_rate_' + case + '.png'), )
+
+        ax2 = plot_total_inj_gas_rate_darts(results)
+        ax2.set(xlabel="Days", ylabel="Total injected water rate, sm$^3$/day")
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, 'well_injection_water_rate_' + case + '.png'))
+
+        wcut = f'{well_name}' + ' watercut'
+        results[wcut] = results[well_name + ' : wat rate (m3/day)'] / (results[well_name + ' : wat rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+        ax3 = results.plot(x='time', y=wcut, label=wcut)
+
+        ax3.set_ylim(0, 1)
+        ax3.set(xlabel="Days", ylabel="Water cut [-]")
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, 'well_water_cut_' + case + '.png'))
+
+        ax4 = plot_bhp_darts(well_name, results)
+        ax4.set(xlabel="Days", ylabel="BHP [bar]")
+        plt.savefig(os.path.join(out_dir, 'well_bhp_' + case + '.png'))
+        plt.tight_layout()
         plt.close()
 
 ##########################################################################################################
