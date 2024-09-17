@@ -52,9 +52,8 @@ class ModelDeadOil(Model_CPG):
                                      min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
 
-        # uniform initial conditions
-        self.initial_values = {self.physics.vars[0]: 400,  # pressure in bars
-                               self.physics.vars[1]: self.ini}  # composition
+        # uniform initial conditions, # pressure in bars # composition
+        #self.initial_values = {self.physics.vars[0]: 400, self.physics.vars[1]: self.ini}
 
     def set_initial_conditions(self): # override origin set_initial_conditions function from darts_model
         depth_array = np.array(self.reservoir.mesh.depth, copy=False)
