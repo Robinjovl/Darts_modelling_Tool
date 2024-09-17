@@ -66,6 +66,13 @@ class ModelPropertiesDeadOil(PropertyContainer):
 
         return self.sat, self.dens_m
 
+    def run_flash(self, pressure, temperature, zc):
+        # two-phase flash - assume water phase is always present and water component last
+        for i in range(self.nph):
+            self.x[i, i] = 1
+        self.nu = zc
+        ph = [0, 1]
+        return ph
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None, n_points=400):
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir, n_points=n_points)
@@ -74,8 +81,8 @@ class ModelDeadOil(Model_CPG):
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        self.inj = value_vector([self.zero])
-        self.ini = value_vector([1 - self.zero])
+        self.inj = value_vector([1 - self.zero])
+        self.ini = value_vector([self.zero])
 
         property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=self.zero/10)
 
@@ -93,23 +100,23 @@ class ModelDeadOil(Model_CPG):
                                      min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
 
-        self.P_initial = 400
+        self.P_initial = 400.
         # uniform initial conditions
         self.initial_values = {self.physics.vars[0]: 400,
                                self.physics.vars[1]: self.ini}
-        #self.compute_initial_saturation()
 
-    def compute_initial_saturation(self):
-        s = 0.8
+    def set_initial_conditions(self):
+        S_initial = 0.8
         # find composition corresponding to particular saturation
         z_range = np.linspace(self.zero, 1 - self.zero, 200)
         for z in z_range:
             # state is pressure and 1 molar fractions out of 2
             state = [self.P_initial, z]
-            sat = self.physics.property_operators.property_container.compute_saturation_full(state)
-            if sat > s:
+            sat = self.physics.property_containers[0].compute_saturation_full(state)
+            if sat > S_initial:
                 break
         self.initial_values = {self.physics.vars[0]: state[0], self.physics.vars[1]: state[1]}
+
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
