@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import pandas as pd
 
 from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, make_burden_layers, make_full_cube
 from darts.discretizer import load_single_float_keyword, load_single_int_keyword
@@ -132,42 +131,6 @@ class Model_CPG(CICDModel):
             print('save_array is not implemented yet for Struct Reservoir')
             return
 
-    def print_well_rate(self):
-        if self.physics_type == 'geothermal':
-            # set inj target rate for the next timestep with the production rate value from the previous timestep
-            for i, w in enumerate(self.reservoir.wells):
-                if self.well_is_inj(w.name):
-                    inj_well = w
-                else:
-                    prod_well = w
-            time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
-            years = np.array(time_data['time'])[-1]/365.
-            pr_col_name = time_data.filter(like=prod_well.name + ' : water rate').columns.to_list()
-            pt_col_name = time_data.filter(like=prod_well.name + ' : temperature').columns.to_list()
-            ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
-            rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
-            temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
-            rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
-            print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
-        else:
-            # set inj target rate for the next timestep with the production rate value from the previous timestep
-            for i, w in enumerate(self.reservoir.wells):
-                if self.well_is_inj(w.name):
-                    inj_well = w
-                else:
-                    prod_well = w
-            time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
-            years = np.array(time_data['time'])[-1] / 365.
-            pr_col_name = time_data.filter(like=prod_well.name + ' : oil rate').columns.to_list()
-            pp_col_name = time_data.filter(like=prod_well.name + ' : BHP').columns.to_list()
-            ir_col_name = time_data.filter(like=inj_well.name + ' : wat rate').columns.to_list()
-            ip_col_name = time_data.filter(like=inj_well.name + ' : BHP').columns.to_list()
-            rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
-            bhp_prod = np.array(time_data[pp_col_name])[-1][0]  # pick the last timestep value
-            bhp_inj = np.array(time_data[ip_col_name])[-1][0]  # pick the last timestep value
-            rate_inj = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
-            print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
-                  fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 

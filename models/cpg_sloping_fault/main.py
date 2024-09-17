@@ -56,12 +56,19 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     m.print_timers()
     m.print_stat()
 
+    def add_columns_time_data(time_data):
+        time_data['Time (years)'] = time_data['time'] / 365.25
+        for k in time_data.keys():
+            if 'temperature' in k:
+                time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
+                time_data.drop(columns=k, inplace=True)
+
     time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-    time_data['Time (years)'] = time_data['time'] / 365.25
+    add_columns_time_data(time_data)
     time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
     time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
-    time_data_report['Time (years)'] = time_data_report['time'] / 365.25
+    add_columns_time_data(time_data_report)
     time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
 
     # filter time_data_report and write to xlsx
@@ -81,40 +88,46 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
 ##########################################################################################################
 def plot_results(results, physics_type, out_dir):
     well_name = 'PRD'
-    if physics_type == 'geothermal':
-        plt.rc('font', size=12)
-        ax1 = plot_bhp_darts(well_name, results)
-        ax1.set(xlabel="Days", ylabel="BHP [bar]")
-        plt.savefig(os.path.join(out_dir, 'well_bhp_' + case + '.png'))
+    plt.rc('font', size=12)
 
-        ax2 = plot_temp_darts(well_name, results)
-        ax2.set(xlabel="Days", ylabel="Temperature [K]")
+    if physics_type == 'geothermal':
+        ax1 = plot_temp_darts(well_name, results)
+        ax1.set(xlabel="Days", ylabel="temperature [degrees]")
         plt.tight_layout()
         plt.savefig(os.path.join(out_dir, 'well_temperature_' + case + '.png'))
         plt.close()
     else:
         # rate plotting
-        plt.rc('font', size=12)
         ax1 = plot_total_prod_oil_rate_darts(results)
         ax1.set(xlabel="Days", ylabel="Total produced oil rate, sm$^3$/day")
-        plt.savefig(os.path.join(out_dir, 'well_production_oil_rate_' + case + '.png'), )
-
-        ax2 = plot_total_inj_gas_rate_darts(results)
-        ax2.set(xlabel="Days", ylabel="Total injected water rate, sm$^3$/day")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'well_injection_water_rate_' + case + '.png'))
+        plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + case + '.png'), )
+        plt.close()
 
         wcut = f'{well_name}' + ' watercut'
-        results[wcut] = results[well_name + ' : wat rate (m3/day)'] / (results[well_name + ' : wat rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+        results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
         ax3 = results.plot(x='time', y=wcut, label=wcut)
-
         ax3.set_ylim(0, 1)
         ax3.set(xlabel="Days", ylabel="Water cut [-]")
         plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'well_water_cut_' + case + '.png'))
+        plt.savefig(os.path.join(out_dir, 'water_cut_' + case + '.png'))
+        plt.close()
 
-        ax4 = plot_bhp_darts(well_name, results)
-        ax4.set(xlabel="Days", ylabel="BHP [bar]")
+    # common plots for both physics
+    ax = plot_total_inj_water_rate_darts(results)
+    ax.set(xlabel="Days", ylabel="Total injected water rate, sm$^3$/day")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, 'injection_water_rate_' + case + '.png'))
+    plt.close()
+
+    ax = plot_total_prod_water_rate_darts(results)
+    ax.set(xlabel="Days", ylabel="Total produced water rate, sm$^3$/day")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
+    plt.close()
+
+    for well_name in ['PRD', 'INJ']:
+        ax = plot_bhp_darts(well_name, results)
+        ax.set(xlabel="Days", ylabel="BHP [bar]")
         plt.savefig(os.path.join(out_dir, 'well_bhp_' + case + '.png'))
         plt.tight_layout()
         plt.close()
@@ -125,7 +138,7 @@ if __name__ == '__main__':
     physics_list = ['geothermal', 'dead_oil']
 
     #physics_list = ['geothermal']
-    physics_list = ['dead_oil']
+    #physics_list = ['dead_oil']
 
     cases_list = ['case_40x40x10']  # small test case
     #cases_list = ['brugge']

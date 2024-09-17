@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from model_cpg import Model_CPG, fmt
 
@@ -69,3 +70,19 @@ class ModelGeothermal(Model_CPG):
         print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()), 'T range [degrees]:', fmt(T.min()), '-', fmt(T.max()))
 
         return {'PRESSURE': P, 'TEMPERATURE': T}
+
+    def print_well_rate(self):
+        for i, w in enumerate(self.reservoir.wells):
+            if self.well_is_inj(w.name):
+                inj_well = w
+            else:
+                prod_well = w
+        time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        years = np.array(time_data['time'])[-1]/365.
+        pr_col_name = time_data.filter(like=prod_well.name + ' : water rate').columns.to_list()
+        pt_col_name = time_data.filter(like=prod_well.name + ' : temperature').columns.to_list()
+        ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
+        rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
+        temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
+        rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
+        print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))

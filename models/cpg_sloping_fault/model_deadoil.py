@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy import interpolate
 
 from model_cpg import Model_CPG, fmt
@@ -30,18 +31,18 @@ class ModelDeadOil(Model_CPG):
     def set_physics(self):
         self.zero = 1e-13
         components = ["w", "o"]
-        phases = ["wat", "oil"]
+        phases = ["water", "oil"]
 
         self.inj = value_vector([1 - self.zero])
         self.ini = value_vector([self.zero])
 
         property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=self.zero/10)
 
-        property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
+        property_container.density_ev = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=700))])
-        property_container.viscosity_ev = dict([('wat', ConstFunc(0.89)),
+        property_container.viscosity_ev = dict([('water', ConstFunc(0.89)),
                                                 ('oil', ConstFunc(1))])
-        property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("wat", 0.1, 0.1)),
+        property_container.rel_perm_ev = dict([('water', PhaseRelPerm("water", 0.1, 0.1)),
                                                ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
 
         # create physics
@@ -122,3 +123,22 @@ class ModelDeadOil(Model_CPG):
         print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()))
 
         return {'PRESSURE': P}
+
+    def print_well_rate(self):
+        for i, w in enumerate(self.reservoir.wells):
+            if self.well_is_inj(w.name):
+                inj_well = w
+            else:
+                prod_well = w
+        time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
+        years = np.array(time_data['time'])[-1] / 365.
+        pr_col_name = time_data.filter(like=prod_well.name + ' : oil rate').columns.to_list()
+        pp_col_name = time_data.filter(like=prod_well.name + ' : BHP').columns.to_list()
+        ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
+        ip_col_name = time_data.filter(like=inj_well.name + ' : BHP').columns.to_list()
+        rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
+        bhp_prod = np.array(time_data[pp_col_name])[-1][0]  # pick the last timestep value
+        bhp_inj = np.array(time_data[ip_col_name])[-1][0]  # pick the last timestep value
+        rate_inj = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
+        print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
+              fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
