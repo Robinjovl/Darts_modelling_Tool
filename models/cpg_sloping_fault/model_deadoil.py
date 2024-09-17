@@ -51,11 +51,9 @@ class ModelDeadOil(Model_CPG):
                                      min_z=self.zero, max_z=1 - self.zero)
         self.physics.add_property_region(property_container)
 
-        self.P_initial = np.zeros(self.reservoir.mesh.n_res_blocks) + 400.
-
         # uniform initial conditions
-        self.initial_values = {self.physics.vars[0]: 400,
-                               self.physics.vars[1]: self.ini}
+        self.initial_values = {self.physics.vars[0]: 400,  # pressure in bars
+                               self.physics.vars[1]: self.ini}  # composition
 
     def set_initial_conditions(self): # override origin set_initial_conditions function from darts_model
         depth_array = np.array(self.reservoir.mesh.depth, copy=False)
@@ -89,8 +87,10 @@ class ModelDeadOil(Model_CPG):
         z_interp_func = interpolate.interp1d(tbl_depth, tbl_z, fill_value='extrapolate')
         Z_initial = z_interp_func(depth_array)
 
+        P_initial = p_by_depth(depth_array)
+
         # set initial array for each variable: pressure and composition
-        self.initial_values = {self.physics.vars[0]: self.P_initial, self.physics.vars[1]: Z_initial}
+        self.initial_values = {self.physics.vars[0]: P_initial, self.physics.vars[1]: Z_initial}
 
         # call base-class function from dart to transfer self.initial_values to actual arrays used in computation
         super().set_initial_conditions()
