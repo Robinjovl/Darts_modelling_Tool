@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import interpolate
 
 from model_cpg import Model_CPG, fmt
 
@@ -56,16 +57,10 @@ class ModelDeadOil(Model_CPG):
         self.initial_values = {self.physics.vars[0]: 400,
                                self.physics.vars[1]: self.ini}
 
-    def set_initial_conditions(self):
+    def set_initial_conditions(self): # override origin set_initial_conditions function from darts_model
+        depth_array = np.array(self.reservoir.mesh.depth, copy=False)
+        water_table_depth = depth_array.mean()  # specify your value here
 
-        self.initial_values['pressure'] = 1 # bars at surface
-        super().set_initial_conditions(gradient={'pressure': 0.1})  # bar/m
-
-        depth_array = np.array(self.reservoir.mesh.depth, copy=False)[:self.reservoir.mesh.n_res_blocks]
-        water_table_depth = depth_array.mean()
-
-        Sw_initial = np.zeros(self.reservoir.mesh.n_res_blocks) + 0.1
-        Sw_initial[depth_array > water_table_depth] = 0.9
         def sat_to_z(p, s):
             # find composition corresponding to particular saturation
             z_range = np.linspace(self.zero, 1 - self.zero, 200)
@@ -76,11 +71,29 @@ class ModelDeadOil(Model_CPG):
                 if sat > s:
                     break
             return z
+        def p_by_depth(depth):  # depth in meters
+            return 1 + depth * 0.1  # gradient 0.1 bars/m
+        def Sw_by_depth(depth):
+            return 0.9 if depth > water_table_depth else 0.1
 
-        Z_initial = np.zeros(self.reservoir.mesh.n_res_blocks)
-        for ith_cell in range(self.reservoir.mesh.n_res_blocks):
-            Z_initial[ith_cell] = sat_to_z(self.P_initial[ith_cell], Sw_initial[ith_cell])
+        # compute composition at few depth values
+        n_depth_discr = 200
+        tbl_depth = np.linspace(depth_array.min(), depth_array.max(), n_depth_discr)
+        tbl_z = np.zeros(n_depth_discr)
+        for i in range(n_depth_discr):
+            p = p_by_depth(tbl_depth[i])
+            Sw = Sw_by_depth(tbl_depth[i])
+            tbl_z[i] = sat_to_z(p, Sw)
+
+        # and interpolate the resulting tbl_z to the full array (as loop over the variables would be slow)
+        z_interp_func = interpolate.interp1d(tbl_depth, tbl_z, fill_value='extrapolate')
+        Z_initial = z_interp_func(depth_array)
+
+        # set initial array for each variable: pressure and composition
         self.initial_values = {self.physics.vars[0]: self.P_initial, self.physics.vars[1]: Z_initial}
+
+        # call base-class function from dart to transfer self.initial_values to actual arrays used in computation
+        super().set_initial_conditions()
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
