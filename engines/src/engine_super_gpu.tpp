@@ -172,7 +172,10 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
 
       disp = dt * avg_dispersivity * tranD[conn_idx] * vel_norm;
 
-      rhs -= disp * grad_con; // diffusion term
+      if (v == 0)
+      {
+        rhs -= disp * grad_con;
+      }
 
       // Add diffusion terms to Jacobian:
       jac_diag += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
@@ -181,17 +184,28 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
       // respective heat fluxes
       /*if constexpr (THERMAL)
       {
-          RHS[i * N_VARS + NC] -= avg_enthalpy * disp * grad_con;
+        if (v == 0)
+        {
+          atomicAdd(&RHS[i * N_VARS + NC], -avg_enthalpy * disp * grad_con);
+        }
 
-          Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-          Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          atomicAdd(&Jac[diag_idx + NC * N_VARS + v], avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
+          atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v]);
 
-          Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
-          Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
+          atomicAdd(&Jac[diag_idx + NC * N_VARS + v], -op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
+          atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
       }*/
     }
     
+    Jac[csr_idx * N_VARS_SQ + block_pos] += jac_offd;
     conn_idx++;
+  }
+
+  Jac[diag_idx + block_pos] += jac_diag;
+
+  if (v == 0)
+  {
+    RHS[i * N_VARS + c] += rhs;
   }
 }
 
