@@ -128,7 +128,7 @@ def plot_results(results, physics_type, out_dir):
     for well_name in ['PRD', 'INJ']:
         ax = plot_bhp_darts(well_name, results)
         ax.set(xlabel="Days", ylabel="BHP [bar]")
-        plt.savefig(os.path.join(out_dir, 'well_bhp_' + case + '.png'))
+        plt.savefig(os.path.join(out_dir, 'well_' + well_name + '_bhp_' + case + '.png'))
         plt.tight_layout()
         plt.close()
 
@@ -140,8 +140,8 @@ if __name__ == '__main__':
     #physics_list = ['geothermal']
     #physics_list = ['dead_oil']
 
-    cases_list = ['case_40x40x10']  # small test case
-    #cases_list = ['brugge']
+    #cases_list = ['case_40x40x10']  # small test case
+    cases_list = ['brugge']
 
     dt = 365.25  # one report timestep length, [days]
     n_time_steps = 20
