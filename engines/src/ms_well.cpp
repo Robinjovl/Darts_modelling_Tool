@@ -65,7 +65,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     else if (phase_names[i] == "energy")
       time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
     else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + phase_names[i] + " rate (" + rate_unit + ")"].push_back(rates[i] * p_diff * segment_transmissibility);
   }
 
   int nc = n_vars;
@@ -158,7 +158,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
     else if (phase_names[i] == "energy")
       time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
     else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * velocity);   // // V_phase =  * V_mix S_phase ;      rate_i= S_i
+      time_data[name + " : " + phase_names[i] + " rate (" + rate_unit + ")"].push_back(rates[i] * velocity);   // // V_phase =  * V_mix S_phase ;      rate_i= S_i
   }
 
   int nc = n_vars;

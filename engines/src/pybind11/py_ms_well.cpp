@@ -15,9 +15,9 @@ void pybind_ms_well(py::module &m)
     .def(py::init<>())
     //methods
     .def("init_rate_parameters", &ms_well::init_rate_parameters, "Init by NC and rate operators", 
-        "n_vars"_a, "n_ops"_a, "phase_names"_a, "rate_ev"_a, "thermal"_a = 0, py::keep_alive<1, 5>())
+        "n_vars"_a, "n_ops"_a, "phase_names"_a, "rate_ev"_a, "thermal"_a = 0, "rate_unit"_a = "?", py::keep_alive<1, 6>())
 	.def("init_mech_rate_parameters", &ms_well::init_mech_rate_parameters, "Init by NC and rate operators for poromechanics",
-		"N_VARS"_a, "P_VAR"_a, "n_vars"_a, "n_ops"_a, "phase_names"_a, "rate_ev"_a, "thermal"_a = 0, py::keep_alive<1, 7>())
+		"N_VARS"_a, "P_VAR"_a, "n_vars"_a, "n_ops"_a, "phase_names"_a, "rate_ev"_a, "thermal"_a = 0, "rate_unit"_a = "?", py::keep_alive<1, 8>())
     //properties
     .def_readwrite("name", &ms_well::name)
     .def_readwrite("perforations", &ms_well::perforations)

@@ -52,7 +52,7 @@ public:
     well_type = PRODUCER;
   };
 
-  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
+  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0, std::string rate_unit_ = "?")
   {
     n_block_size = n_vars_;
     P_VAR = 0;
@@ -65,12 +65,13 @@ public:
     state_neighbour.resize(n_vars);
     rates.resize(n_phases);
     thermal = thermal_;
-
+    rate_unit = rate_unit;
 
 	rate_etor_ad = rate_evaluator_;  //adjoint method
   };
 
-  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
+  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, 
+      int thermal_ = 0, std::string rate_unit_ = "?")
   {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
@@ -83,6 +84,7 @@ public:
     state_neighbour.resize(n_vars);
     rates.resize(n_phases);
     thermal = thermal_;
+    rate_unit = rate_unit;
 
 	rate_etor_ad = rate_evaluator_;  //adjoint method
   };
@@ -139,6 +141,7 @@ public:
   int n_segments = -1;
   int n_phases;
   int thermal;
+  std::string rate_unit;
   // n_block_size -- size of the full block, P_VAR -- index of the start of the state variables within block
   uint8_t n_block_size, P_VAR;
 
