@@ -62,6 +62,9 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
             if 'temperature' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
+            if physics_type == 'dead_oil' and 'm3/day' in k:
+                time_data[k.replace('m3/day', 'kmol/day')] = time_data[k]
+                time_data.drop(columns=k, inplace=True)
 
     time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
     add_columns_time_data(time_data)
@@ -99,28 +102,29 @@ def plot_results(results, physics_type, out_dir):
     else:
         # rate plotting
         ax1 = plot_total_prod_oil_rate_darts(results)
-        ax1.set(xlabel="Days", ylabel="Total produced oil rate, sm$^3$/day")
+        ax1.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
         plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + case + '.png'), )
         plt.close()
 
-        wcut = f'{well_name}' + ' watercut'
-        results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
-        ax3 = results.plot(x='time', y=wcut, label=wcut)
-        ax3.set_ylim(0, 1)
-        ax3.set(xlabel="Days", ylabel="Water cut [-]")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'water_cut_' + case + '.png'))
-        plt.close()
+        if False:
+            wcut = f'{well_name}' + ' watercut'
+            results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+            ax3 = results.plot(x='time', y=wcut, label=wcut)
+            ax3.set_ylim(0, 1)
+            ax3.set(xlabel="Days", ylabel="Water cut [-]")
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir, 'water_cut_' + case + '.png'))
+            plt.close()
 
     # common plots for both physics
     ax = plot_total_inj_water_rate_darts(results)
-    ax.set(xlabel="Days", ylabel="Total injected water rate, sm$^3$/day")
+    ax.set(xlabel="Days", ylabel="Total injected water rate, kmol/day")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'injection_water_rate_' + case + '.png'))
     plt.close()
 
     ax = plot_total_prod_water_rate_darts(results)
-    ax.set(xlabel="Days", ylabel="Total produced water rate, sm$^3$/day")
+    ax.set(xlabel="Days", ylabel="Total produced water rate, kmol/day")
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
     plt.close()
