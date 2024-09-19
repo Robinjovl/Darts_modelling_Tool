@@ -157,6 +157,7 @@ if __name__ == '__main__':
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
+    os.environ['OMP_NUM_THREADS'] = '1'  # adjoints are not supported with multithread (?)
     n_failed_adj = n_total_adj = 0
     import time
     n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
