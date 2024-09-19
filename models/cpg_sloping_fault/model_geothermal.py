@@ -60,6 +60,8 @@ class ModelGeothermal(Model_CPG):
         '''
         :return: dictionary of current unknown arrays (p, T)
         '''
+        a = self.reservoir.input_arrays
+
         nv = self.physics.n_vars
         nb = nv * self.reservoir.mesh.n_res_blocks
         Xn = np.array(self.physics.engine.X, copy=False)
@@ -67,9 +69,11 @@ class ModelGeothermal(Model_CPG):
         T = enthalpy_to_temperature(Xn[:nb])
         T -= 273.15  # K to degrees
 
+        a.update({'PRESSURE': P, 'TEMPERATURE': T})
+
         print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()), 'T range [degrees]:', fmt(T.min()), '-', fmt(T.max()))
 
-        return {'PRESSURE': P, 'TEMPERATURE': T}
+        return a
 
     def print_well_rate(self):
         for i, w in enumerate(self.reservoir.wells):

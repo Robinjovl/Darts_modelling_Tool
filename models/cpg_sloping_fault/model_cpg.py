@@ -53,6 +53,9 @@ class Model_CPG(CICDModel):
         self.reservoir = CPG_Reservoir(self.timer, arrays)
         self.reservoir.discretize()
 
+        # store modified arrrays (with burden layers) for output to grdecl
+        self.reservoir.input_arrays = arrays
+
         volume = np.array(self.reservoir.mesh.volume, copy=False)
         poro = np.array(self.reservoir.mesh.poro, copy=False)
         print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
@@ -132,7 +135,10 @@ class Model_CPG(CICDModel):
 
             save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
             for arr_name in arrays_save.keys():
-                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a')
+                make_full = True
+                if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
+                    make_full = False
+                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
         else:
             print('save_array is not implemented yet for Struct Reservoir')
             return

@@ -125,14 +125,17 @@ class ModelDeadOil(Model_CPG):
         '''
         :return: dictionary of current unknown arrays (p, T)
         '''
+        a = self.reservoir.input_arrays
+
         nv = self.physics.n_vars
         nb = nv * self.reservoir.mesh.n_res_blocks
         Xn = np.array(self.physics.engine.X, copy=False)
         P = Xn[:nb:nv]
+        a.update({'PRESSURE': P})
 
         print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()))
 
-        return {'PRESSURE': P}
+        return a
 
     def print_well_rate(self):
         for i, w in enumerate(self.reservoir.wells):
