@@ -20,21 +20,32 @@ class ModelPropertiesDeadOil(PropertyContainer):
 
     def run_flash(self, pressure, temperature, zc):
         # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
+        ph = [0, 1]
+        for i in ph:
             self.x[i, i] = 1
         self.nu = zc
-        ph = [0, 1]
         return ph
+
+    def evaluate_at_cond(self, pressure, zc):
+
+        self.nu = zc
+        for j in [0, 1]:
+            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
+
+        self.sat = self.nu / self.dens_m
+
+        return self.sat, self.dens_m
+
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None, n_points=400):
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir, n_points=n_points)
     def set_physics(self):
         self.zero = 1e-13
-        components = ["w", "o"]
-        phases = ["water", "oil"]
+        components = ["zoil", "zwat"]
+        phases = ["oil", "water"]
 
-        self.inj = value_vector([1 - self.zero])
-        self.ini = value_vector([self.zero])
+        self.inj = value_vector([self.zero])
+        self.ini = value_vector([1 - self.zero])
 
         property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=self.zero/10)
 
@@ -55,13 +66,13 @@ class ModelDeadOil(Model_CPG):
         # uniform initial conditions, # pressure in bars # composition
         #self.initial_values = {self.physics.vars[0]: 400, self.physics.vars[1]: self.ini}
 
-    def set_initial_conditions(self): # override origin set_initial_conditions function from darts_model
+    def set_initial_conditions(self):  # override origin set_initial_conditions function from darts_model
         depth_array = np.array(self.reservoir.mesh.depth, copy=False)
         water_table_depth = depth_array.mean()  # specify your value here
 
         def sat_to_z(p, s):
             # find composition corresponding to particular saturation
-            z_range = np.linspace(self.zero, 1 - self.zero, 200)
+            z_range = np.linspace(self.zero, 1 - self.zero, 2000)
             for z in z_range:
                 # state is pressure and 1 molar fractions out of 2
                 state = [p, z]
@@ -72,7 +83,7 @@ class ModelDeadOil(Model_CPG):
         def p_by_depth(depth):  # depth in meters
             return 1 + depth * 0.1  # gradient 0.1 bars/m
         def Sw_by_depth(depth):
-            return 0.9 if depth > water_table_depth else 0.1
+            return 0 if depth > water_table_depth else 0.9
 
         # compute composition at few depth values
         n_depth_discr = 200

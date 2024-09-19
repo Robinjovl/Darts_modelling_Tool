@@ -47,20 +47,26 @@ class Model_CPG(CICDModel):
 
         if self.physics_type == 'geothermal':
             # add over- and underburden layers
-            make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays, burden_layer_prop_value=1e-5)
+            make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays,
+                               burden_layer_prop_value=1e-5)
 
         self.reservoir = CPG_Reservoir(self.timer, arrays)
         self.reservoir.discretize()
+
+        volume = np.array(self.reservoir.mesh.volume, copy=False)
+        poro = np.array(self.reservoir.mesh.poro, copy=False)
+        print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
         # add "open" boundaries
         self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
         self.reservoir.apply_volume_depth()
 
         poro_shale_threshold = 1e-3
-        self.reservoir.conduction[np.array(self.reservoir.mesh.poro) <= poro_shale_threshold] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
-        self.reservoir.conduction[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
-        self.reservoir.hcap[np.array(self.reservoir.mesh.poro) <= poro_shale_threshold] = 2300 # Shale heat capacity kJ/m3/K
-        self.reservoir.hcap[np.array(self.reservoir.mesh.poro) > poro_shale_threshold] = 2450 # Sandstone heat capacity kJ/m3/K
+        poro = np.array(self.reservoir.mesh.poro)
+        self.reservoir.conduction[poro <= poro_shale_threshold] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
+        self.reservoir.conduction[poro > poro_shale_threshold] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
+        self.reservoir.hcap[poro <= poro_shale_threshold] = 2300 # Shale heat capacity kJ/m3/K
+        self.reservoir.hcap[poro > poro_shale_threshold] = 2450 # Sandstone heat capacity kJ/m3/K
 
         # add hcap and rcond to be saved into mesh.vtu
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
@@ -71,7 +77,7 @@ class Model_CPG(CICDModel):
         self.set_physics()
 
         # time stepping and convergence parameters
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=90, runtime=300, tol_newton=1e-2, tol_linear=1e-4)
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=92, runtime=300, tol_newton=1e-2, tol_linear=1e-4)
 
         self.timer.node["initialization"].stop()
 
