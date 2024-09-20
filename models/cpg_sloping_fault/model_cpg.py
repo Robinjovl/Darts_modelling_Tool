@@ -45,16 +45,15 @@ class Model_CPG(CICDModel):
         elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
             arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
 
+        self.burden_layers = 0
         if self.physics_type == 'geothermal':
+            self.burden_layers = 4
             # add over- and underburden layers
-            make_burden_layers(number_of_burden_layers=4, initial_thickness=10, property_dictionary=arrays,
+            make_burden_layers(number_of_burden_layers=self.burden_layers, initial_thickness=10, property_dictionary=arrays,
                                burden_layer_prop_value=1e-5)
 
         self.reservoir = CPG_Reservoir(self.timer, arrays)
         self.reservoir.discretize()
-
-        # store modified arrrays (with burden layers) for output to grdecl
-        self.reservoir.input_arrays = arrays
 
         volume = np.array(self.reservoir.mesh.volume, copy=False)
         poro = np.array(self.reservoir.mesh.poro, copy=False)
@@ -96,11 +95,11 @@ class Model_CPG(CICDModel):
             pass
 
         self.reservoir.add_well('PRD')
-        for k in range(1, self.reservoir.nz+1):
+        for k in range(1 + self.burden_layers,  self.reservoir.nz+1-self.burden_layers):
             self.reservoir.add_perforation('PRD', cell_index=(i1, j1, k), well_index=None, multi_segment=False,
                                            verbose=True)
         self.reservoir.add_well('INJ')
-        for k in range(1, self.reservoir.nz+1):
+        for k in range(1 + self.burden_layers, self.reservoir.nz+1-self.burden_layers):
             self.reservoir.add_perforation('INJ', cell_index=(i2, j2, k), well_index=None, multi_segment=False,
                                            verbose=True)
         print('PRD well:', i1, j1, 'INJ well:', i2, j2)
@@ -135,10 +134,7 @@ class Model_CPG(CICDModel):
 
             save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
             for arr_name in arrays_save.keys():
-                make_full = True
-                if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
-                    make_full = False
-                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
+                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a')
         else:
             print('save_array is not implemented yet for Struct Reservoir')
             return
@@ -195,4 +191,3 @@ class Model_CPG(CICDModel):
         writer.SetFileName(well_vtk_filename)
         writer.SetInputConnection(appendFilter.GetOutputPort())
         writer.Write()
-
