@@ -3,10 +3,8 @@ from darts.tools.plot_darts import *
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import time
 import os
 
 def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True):
@@ -33,9 +31,7 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     m.init(output_folder=out_dir)
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
-    if export_vtk:
-        m.output_to_vtk(ith_step=0, output_directory=out_dir)
-        m.create_vtk_wells(output_directory=out_dir)
+
     arrays_save = m.get_arrays()
     m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_init'))
 
@@ -43,18 +39,21 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     for ti in range(n_time_steps):
         m.run(dt)
         t += dt
-        if export_vtk:
-            m.output_to_vtk(ith_step=ti+1, output_directory=out_dir)
-        # save to grdecl file after each time step
-        #arrays_save = m.get_arrays()
-        #m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_' + str(ti+1)))
+
         m.physics.engine.report()
         m.print_well_rate()
 
     arrays_save = m.get_arrays()
     m.save_grdecl(arrays_save, os.path.join(out_dir, 'res_last'))
+
     m.print_timers()
     m.print_stat()
+
+    if export_vtk:
+        # read h5 file and write vtk
+        m.create_vtk_wells(output_directory=out_dir)
+        for ith_step in range(n_time_steps):
+            m.output_to_vtk(ith_step=ith_step)
 
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25
@@ -162,4 +161,3 @@ if __name__ == '__main__':
             #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
             plot_results(time_data_report, physics_type, out_dir)
-
