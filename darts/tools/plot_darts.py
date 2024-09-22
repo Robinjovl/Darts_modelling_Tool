@@ -349,6 +349,17 @@ def plot_temp_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None):
 
     return ax
 
+def plot_extracted_energy_darts(darts_df, style='-', color='#00A6D6', ax=None):
+    search_str = ' : energy'
+    y = [col for col in darts_df.columns if search_str in col]  # get columns with 'energy' data
+    y = darts_df[y].sum(axis=1)  # sum over the wells
+    t = darts_df['time']
+    dt = np.append(0, np.ediff1d(t))  # add the first time step
+    col_name = 'energy extracted, PJ'
+    darts_df[col_name] = -(y * dt).cumsum() * 1e-12  # kJ/day -> PJ
+    ax = darts_df.plot(x='time', y=col_name, style=style, color=color, ax=ax)
+    return ax
+
 def tersurf(a, b, c, d, line = None, inf_p = None):
     import matplotlib.tri as tri
     """

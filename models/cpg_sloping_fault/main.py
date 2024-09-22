@@ -99,6 +99,12 @@ def plot_results(results, physics_type, out_dir):
         plt.tight_layout()
         plt.savefig(os.path.join(out_dir, 'well_temperature_' + case + '.png'))
         plt.close()
+
+        ax1 = plot_extracted_energy_darts(results)
+        ax1.set(xlabel="Days", ylabel="energy [MJ]")
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, 'energy_extracted_' + case + '.png'))
+        plt.close()
     else:
         # rate plotting
         ax1 = plot_total_prod_oil_rate_darts(results)

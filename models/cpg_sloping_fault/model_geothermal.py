@@ -44,11 +44,12 @@ class ModelGeothermal(Model_CPG):
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
+                inj_temperature = 300  # K
                 # rate control
-                #w.control = self.physics.new_rate_water_inj(7500, 300)  #  m3/day, K
-                #w.constraint = self.physics.new_bhp_water_inj(500, 300)  # upper limit for bhp, bars
+                #w.control = self.physics.new_rate_water_inj(7500, inj_temperature)  #  m3/day
+                #w.constraint = self.physics.new_bhp_water_inj(500, inj_temperature)  # upper limit for bhp, bars
                 # BHP control
-                w.control = self.physics.new_bhp_water_inj(250, 300)  # bars
+                w.control = self.physics.new_bhp_water_inj(250, inj_temperature)  # bars
             else:  # PROD well
                 # rate control
                 #w.control = self.physics.new_rate_water_prod(7500)  #  m3/day
