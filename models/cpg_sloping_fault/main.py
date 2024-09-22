@@ -145,15 +145,15 @@ def plot_results(results, physics_type, out_dir):
 ##########################################################################################################
 
 if __name__ == '__main__':
-    physics_list = ['geothermal', 'dead_oil']
+    physics_list = []
+    physics_list += ['geothermal']
+    physics_list += ['dead_oil']
 
-    #physics_list = ['geothermal']
-    #physics_list = ['dead_oil']
-
-    cases_list = ['case_40x40x10', 'brugge']  # small test case
-
-    #cases_list = ['case_40x40x10']  # small test case
-    #cases_list = ['brugge']
+    cases_list = []
+    cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
+    cases_list += ['case_40x40x10']
+    #cases_list += ['brugge']
 
     dt = 365.25  # one report timestep length, [days]
     n_time_steps = 20

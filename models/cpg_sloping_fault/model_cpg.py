@@ -14,11 +14,12 @@ from darts.models.cicd_model import CICDModel
 
 def get_case_files(case: str):
     prefix = os.path.join('meshes', case)
-    gridfile = os.path.join(prefix, 'grid.grdecl')
-    propfile = os.path.join(prefix, 'reservoir.in')
-    assert os.path.exists(gridfile)
-    assert os.path.exists(propfile)
-    return gridfile, propfile
+    grid_file = os.path.join(prefix, 'grid.grdecl')
+    prop_file = os.path.join(prefix, 'reservoir.in')
+    sch_file = os.path.join(prefix, 'sch.inc')
+    assert os.path.exists(grid_file)
+    assert os.path.exists(prop_file)
+    return grid_file, prop_file, sch_file
 
 def fmt(x):
     return '{:.3}'.format(x)
@@ -30,20 +31,55 @@ class Model_CPG(CICDModel):
         self.n_points = n_points
         self.physics_type = physics_type
         self.case = case
+        self.generate_grid = 'generate' in case
 
-        # setup filenames
-        gridfile, propfile = get_case_files(case)
-        self.gridfile = gridfile
-        self.propfile = gridfile if propfile == '' else propfile
+        if self.generate_grid:
+            if case == 'generate_51x51x1':   # 4x4x0.1 km
+                self.nx = 51
+                self.ny = 51
+                self.nz = 1
+                self.dx = 4000. / self.nx
+                self.dy = self.dx
+                self.dz = 100. / self.nz
+                self.start_z = 2000  # top reservoir depth
+            elif case == 'generate_5x3x4':
+                self.nx = 5
+                self.ny = 3
+                self.nz = 4
+                self.start_z = 1000  # top reservoir depth
+                # non-uniform layers thickness
+                self.dx = np.array([500, 200, 100, 300, 500])
+                self.dy = np.array([1000, 700, 300])
+                self.dz = np.array([100, 150, 180, 120])
+            poro = 0.2
+            permx = 100
+            permy = 100
+            permz = 10
+        else:  # read from files
+            # setup filenames
+            gridfile, propfile, schfile = get_case_files(case)
+            self.gridfile = gridfile
+            self.propfile = gridfile if propfile == '' else propfile
 
-        bv = 1e6   # boundary volume
-
-        # read grid and props
-        arrays = read_arrays(self.gridfile, self.propfile)
-        if self.physics_type == 'dead_oil':  # set inactive cells with small porosity (isothermal case)
-            arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
-        elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
-            arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
+        if self.generate_grid:
+            if grid_out_dir is None:
+                gridname = None
+                propname = None
+            else:  # save generated grid to grdecl files
+                os.makedirs(grid_out_dir, exist_ok=True)
+                gridname = os.path.join(grid_out_dir, 'grid.grdecl')
+                propname = os.path.join(grid_out_dir, 'reservoir.in')
+            arrays = gen_cpg_grid(nx=self.nx, ny=self.ny, nz=self.nz,
+                                  dx=self.dx, dy=self.dy, dz=self.dz, start_z=self.start_z,
+                                  permx=permx, permy=permy, permz=permz, poro=poro,
+                                  gridname=gridname, propname=propname)
+        else:
+            # read grid and props
+            arrays = read_arrays(self.gridfile, self.propfile)
+            if self.physics_type == 'dead_oil':  # set inactive cells with small porosity (isothermal case)
+                arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
+            elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
+                arrays['PORO'][arrays['PORO'] < 1e-5] = 1e-5
 
         self.burden_layers = 0
         if self.physics_type == 'geothermal':
@@ -63,6 +99,7 @@ class Model_CPG(CICDModel):
         print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
         # add "open" boundaries
+        bv = 1e6   # boundary volume
         self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
         self.reservoir.apply_volume_depth()
 
@@ -87,8 +124,17 @@ class Model_CPG(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_wells(self):
+        # one can read well locations from a file
+        #self.reservoir.read_and_add_perforations(self.sch_fname)
+
         # add wells and perforations, 1-based indices
-        if self.case == 'brugge':
+        if self.case == 'generate_51x51x1':
+            i1, j1 = self.nx // 2 - int(500 // self.dx), self.ny // 2  # I = 0.5 km to the left from the center
+            i2, j2 = self.nx // 2 + int(500 // self.dx), self.ny // 2  # I = 0.5 km to the right from the center
+        elif self.case == 'generate_5x3x4':
+            i1, j1 = 1, 1
+            i2, j2 = 5, 3
+        elif self.case == 'brugge':
             i1, j1 = 41, 31  # production well
             i2, j2 = 96, 31  # injection well
         elif self.case == 'case_40x40x10':
