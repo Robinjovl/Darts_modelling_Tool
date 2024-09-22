@@ -843,3 +843,54 @@ def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, p
     # update the grid dimension in z direction for both overburden and underburden layers
     property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers
     return property_dictionary
+
+    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
+        '''
+        read COMPDAT from SCH file in Eclipse format, add wells and perforations
+        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
+        :param: sch_fname - path to file
+        '''
+        if sch_fname is None:
+            return
+        print('reading wells (COMPDAT) from', sch_fname)
+        well_dia = 0.152
+        well_rad = well_dia / 2
+
+        keep_reading = True
+        prev_well_name = ''
+        with open(sch_fname) as f:
+            while keep_reading:
+                buff = f.readline()
+                if 'COMPDAT' in buff:
+                    while True:  # be careful here
+                        buff = f.readline()
+                        if len(buff) != 0:
+                            CompDat = buff.split()
+                            wname = CompDat[0].strip('"').strip("'") #remove quotas (" and ')
+                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                                # define well
+                                if wname == prev_well_name:
+                                    pass
+                                else:
+                                    reservoir.add_well(wname)
+                                    prev_well_name = wname
+                                # define perforation
+                                i1 = int(CompDat[1])
+                                j1 = int(CompDat[2])
+                                k1 = int(CompDat[3])
+                                k2 = int(CompDat[4])
+
+                                well_index = None
+                                if len(CompDat) > 7:
+                                    if CompDat[7] != '*':
+                                        well_index = float(CompDat[7])
+
+                                for k in range(k1, k2 + 1):
+                                    reservoir.add_perforation(wname, cell_index=(i1, j1, k), well_radius=well_rad,
+                                                              well_index=well_index, well_indexD=well_indexD,
+                                                              multi_segment=False, verbose=verbose)
+
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
+                                keep_reading = False
+                                break
+        print('WELLS read from SCH file:', len(reservoir.wells))

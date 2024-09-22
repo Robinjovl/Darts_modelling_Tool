@@ -82,7 +82,7 @@ def gen_cpg_grid(nx : int, ny : int, nz : int,
     else:
         nz2 = nz
 
-    specgrid = [nx, ny, nz2]
+    specgrid = np.array([nx, ny, nz2], dtype=np.int32)
     n = nx * ny * nz2
     actnum = np.ones(n, dtype=np.int32)
     poro_arr = np.zeros(n) + poro
