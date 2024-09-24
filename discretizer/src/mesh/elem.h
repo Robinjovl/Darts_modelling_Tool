@@ -24,11 +24,12 @@ namespace mesh
 
 
 	/***********	Elements	***************/
-	const index_t MAX_PTS_PER_3D_ELEM = 500;//normally is 8 but for the faults (CPG) might be greater //TODO: this could be optimized by getting max number for the particular case and dynamically allocating the corresponding arrays
-	const index_t MAX_PTS_NUM_PER_2D_ELEM = 50;
+	const index_t MAX_PTS_PER_3D_ELEM = 8; // used to reserve memory. Normally is 8 but for juxtaposed faults (CPG) might be greater in case there are non-neighbour connections
+	const index_t MAX_PTS_NUM_PER_2D_ELEM = 4; // not used
+	const index_t MAX_PTS_PER_3D_ELEM_GMSH = 8; // used to reserve memory
 	const index_t MIN_CONNS_PER_ELEM = 1;
 	const index_t MAX_CONNS_PER_ELEM_GMSH = 8;
-	const index_t MAX_CONNS_PER_ELEM = 500;//normally is 6 but for the faults (CPG) might be greater //TODO: this could be optimized by getting max number for the particular case and dynamically allocating the corresponding arrays
+	const index_t MAX_CONNS_PER_ELEM = 6; //normally is 6 but for the faults (CPG) might be greater 
 	const index_t PTS_NUM_1D_ELEM = 2;
 	// gmsh element types
 	enum ElemType { LINE = 1, TRI = 2, QUAD = 3, TETRA = 4, HEX = 5, PRISM = 6, PYRAMID = 7 };

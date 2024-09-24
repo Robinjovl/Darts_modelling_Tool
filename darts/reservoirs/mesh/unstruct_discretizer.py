@@ -799,7 +799,7 @@ class UnstructDiscretizer:
                             # interface:
                             try:
                                 for geometry in ['quad', 'triangle']:
-                                    if geometry == 'triangle': # it goes to 'except' in triangle case, thus misses next quad iteration
+                                    if geometry not in self.mesh_data.cells_dict.keys():
                                         continue
                                     # todo: this is most likely the reason why models with a lot of fractures are
                                     #  extremely slow, check after holiday if this can be done in another way!!!

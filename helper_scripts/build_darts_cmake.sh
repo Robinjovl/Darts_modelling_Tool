@@ -1,6 +1,7 @@
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
-set -e  
+set -e
+set -o pipefail
 # ------------------------------------------------------------------------------
 
 ################################################################################
@@ -32,6 +33,7 @@ clean_mode=false  # Set mode to clean up, cleans build to prepare for fresh new 
 testing=false     # Whether to enable the testing (ctest) of solvers.
 wheel=false       # Whether to generate python wheel.
 bos_solvers_artifact=false # Fetch the bos_solvers library from artifacts (for CI/CD purposes)
+iter_solvers=false # Iterative linear solvers, will be set below depending on -a and -b flags
 MT=true           # Build openDARTS multi-threaded. This is for engines and bos_solvers (if defined)
 skip_req=false    # Skip building requirements.
 config="Release"  # Default configuration (install).
@@ -55,9 +57,11 @@ while getopts ":chtwmrab:d:j:g:" option; do
         r) # skip buildrequirements
            skip_req=true;;
         a) # Fetch the bos_solvers library from artifacts
-           bos_solvers_artifact=true;;
+           bos_solvers_artifact=true
+           iter_solvers=true;;
         b) # path to bos_solvers
-           bos_solvers_dir=${OPTARG};;
+           bos_solvers_dir=${OPTARG}
+           iter_solvers=true;;
         d) # Select a mode
            config=${OPTARG};;
         j) # Number of threads
@@ -69,13 +73,13 @@ while getopts ":chtwmrab:d:j:g:" option; do
 done
 
 # Amend possible contradictory inputs
-if [ "$bos_solvers_artifact" == true ] && [ "$testing" == true ]; then
+if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     # tests are only available in open-DARTS, bos_solvers do not have testing
     testing=false
 fi
-if [ "$bos_solvers_artifact" == false ] && [ "$MT" == true ]; then
-    # Open-DARTS linear solvers do not support multi-threading
-    MT=false
+if [ "$iter_solvers" == false ] && [ "$MT" == true ]; then
+   echo '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
+   MT=false
 fi
 # ------------------------------------------------------------------------------
 
@@ -87,12 +91,13 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
+rm -rf darts/*.so
+
 # Build loop -------------------------------------------------------------------
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder'
     rm -r build
-    rm darts/*.so
     rm -r dist
 else
     if [[ "$skip_req" == false ]]; then
@@ -111,8 +116,8 @@ else
         cd thirdparty
         mkdir -p build/eigen
         cd build/eigen
-        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/
-        make install -j $NT
+        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  2>&1 | tee ../../../make_eigen.log
+        make install -j $NT 2>&1 | tee -a ../../../make_eigen.log
         cd ../../
 
         echo -e "\n-- Install SuperLU \n"
@@ -126,8 +131,8 @@ else
   	        cp make_gcc_linux.inc make.inc
         fi
 
-        make -j $NT
-        make install -j $NT
+        make -j $NT 2>&1 | tee ../../make_superlu.log
+        make install -j $NT 2>&1 | tee -a ../../make_superlu.log
         cd ../../
 
         if [[ "$bos_solvers_artifact" == true ]]; then
@@ -170,10 +175,10 @@ else
     fi
 
     echo "CMake options: $cmake_options" # Report to user the CMake options
-    cmake $cmake_options ..
+    cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
     # Build and install openDARTS
-    make install -j $NT
+    make install -j $NT 2>&1 | tee -a ../make_darts.log
 
     # Test
     if [[ "$testing" == true ]]; then
@@ -196,12 +201,12 @@ else
     # build darts.whl
     if [[ "$wheel" == true ]]; then
         python3 setup.py clean
-        python3 setup.py build bdist_wheel
+        python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
         echo "-- Python wheel generated! \n"
     fi
 
     # installing python package
-    python3 -m pip install .
+    python3 -m pip install . 2>&1 | tee -a make_wheel.log
 
     echo "\n************************************************************************"
     echo "| Building python package open-darts: DONE! "

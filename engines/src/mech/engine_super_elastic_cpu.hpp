@@ -1,17 +1,20 @@
 #ifndef CPU_SIMULATOR_SUPER_ELASTIC_HPP
 #define CPU_SIMULATOR_SUPER_ELASTIC_HPP
 
+#ifndef WITH_GPU
 #include <vector>
 #include <array>
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
+#include <type_traits>
 
 #include "globals.h"
 #include "ms_well.h"
 #include "engine_base.h"
 #include "evaluator_iface.h"
 #include "mech/contact.h"
+#include "../../discretizer/src/mech_discretizer.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -29,7 +32,14 @@ using namespace opendarts::linear_solvers;
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 class engine_super_elastic_cpu : public engine_base
 {
-
+public:
+  /// @brief Compile-time evaluation of discretizer type.
+  using DiscretizerType = typename std::conditional<THERMAL,
+    dis::MechDiscretizer<dis::MechDiscretizerMode::THERMOPOROELASTIC>,
+    dis::MechDiscretizer<dis::MechDiscretizerMode::POROELASTIC>>::type;
+protected:
+  /// @brief Pointer to discretizer required for the evaluation of stresses and velocities.
+  DiscretizerType* discr;
 public:
   // space dimension
   const static uint8_t ND = 3;
@@ -45,18 +55,24 @@ public:
   const static uint8_t P_VAR = 0;
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
-  const static uint8_t U_VAR = NC + THERMAL;
+  const static uint8_t U_VAR = NE;
   // size of transmissibility block
-  const static uint8_t NT = 4;
-  const static uint8_t NT_SQ = NT * NT;
+  const static uint8_t NT = ND + 1 + THERMAL;
   // order of variables in transmissibility block
   const static uint8_t U_VAR_T = 0;
   const static uint8_t P_VAR_T = 3;
+  // number of boundary conditions
+  const static uint8_t N_BC_VARS = 1 + THERMAL + ND;
+  // order of boundary conditions
+  const static uint8_t P_BC_VAR = 0;
+  const static uint8_t T_BC_VAR = THERMAL;
+  const static uint8_t U_BC_VAR = 1 + THERMAL;
+
   // dimension of state space
   const static uint8_t N_STATE = NC_ + THERMAL;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 /*weight*/ + 1;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -73,7 +89,13 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + 1;
+  const static uint8_t SAT_OP = UPSAT_OP;
+  const static uint8_t ROCK_DENS = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + 1;
+  // mapping 
+  // from transmissibility order of unknowns 
+  // to the order of unknowns in simulation
+  const static uint8_t T2U[5];
+  const static uint8_t BC2U[5];
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -83,11 +105,11 @@ public:
   // number of variables per jacobian matrix block
   const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
-  const uint8_t get_n_state() { return N_STATE; };
+  uint8_t get_n_vars() const { return N_VARS; };
+  uint8_t get_n_ops() const  { return N_OPS; };
+  uint8_t get_n_comps() const  { return NC; };
+  uint8_t get_z_var() const  { return Z_VAR; };
+  uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_elastic_cpu()
   {
@@ -111,11 +133,12 @@ public:
 
   int init_jacobian_structure_pme(csr_matrix_base *jacobian);
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
+  int eval_stresses_and_velocities();
 
   int solve_linear_equation();
   //void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
   int assemble_linear_system(value_t deltat);
-  int post_newtonloop(value_t deltat, value_t time);
+  int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
   /// @brief vector of variables in the current timestep provided for operator evaluation
   std::vector<value_t> Xop;
@@ -128,20 +151,52 @@ public:
 
   value_t dev_u,		dev_p,		dev_e,		dev_z[NC], dev_g;
   value_t dev_u_prev,	dev_p_prev, dev_e_prev, dev_z_prev[NC], dev_g_prev, well_residual_prev_dt;
-  int output_counter;
   value_t newton_update_coefficient;
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
+  void set_discretizer(DiscretizerType* _discr);
+
 public:
+
   std::vector<value_t> eps_vol;
 
-  std::vector<value_t> fluxes, fluxes_n, fluxes_biot, fluxes_biot_n, fluxes_ref, fluxes_biot_ref, fluxes_ref_n, fluxes_biot_ref_n;
+  /// @brief Vector storing Darcy fluxes.
+  std::vector<value_t> darcy_fluxes;
+
+  /// @brief Vector storing fluid fluxes caused by matrix movement.
+  std::vector<value_t> structural_movement_fluxes;
+
+  /// @brief Vector storing heat conduction fluxes.
+  std::vector<value_t> fourier_fluxes;
+
+  /// @brief Vector storing molecular diffusion fluxes.
+  std::vector<value_t> fick_fluxes;
+
+  /// @brief Vectors storing pure elastic forces at this and previous time steps.
+  std::vector<value_t> hooke_forces, hooke_forces_n;
+
+  /// @brief Vectors storing pore pressure-induced forces at this and previous time steps.
+  std::vector<value_t> biot_forces, biot_forces_n;
+
+  /// @brief Vectors storing thermally-induced forces at this and previous time steps.
+  std::vector<value_t> thermal_forces, thermal_forces_n;
+
+  /// @brief Vector storing cell-centered total stresses in Voigt notation.
+  std::vector<value_t> total_stresses;
+
+  /// @brief Vector storing cell-centered effective Biot stresses in Voigt notation.
+  std::vector<value_t> effective_stresses;
+
+  /// @brief Vector storing cell-centered Darcy velocities.
+  std::vector<value_t> darcy_velocities;
+
   std::vector<value_t> Xref, Xn_ref;
   bool FIND_EQUILIBRIUM;
   std::vector<pm::contact> contacts;
   pm::ContactSolver contact_solver;
   std::vector<index_t> geomechanics_mode;
+  std::array<value_t, ND> gravity;
 
   void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
   void apply_global_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -152,5 +207,6 @@ public:
 };
 
 #include "engine_super_elastic_cpu.tpp"
+#endif//WITH_GPU
 
 #endif

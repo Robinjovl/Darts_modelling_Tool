@@ -1,12 +1,12 @@
 WELSPECS
-'PRD_5' 'GROUP1' 2 5 * WAT / 
-'INJ_5' 'GROUP1' 9 5 * WAT / 
+'PRD' 'GROUP1' 2 5 * WAT / 
+'INJ' 'GROUP1' 9 5 * WAT / 
 / 
 COMPDAT
-'PRD_5' 2 5 1 10 3* 0.152 /
-'INJ_5' 9 5 1 10 3* 0.152 /
+'PRD' 2 5 1 10 3* 0.152 /
+'INJ' 9 5 1 10 3* 0.152 /
 / 
 WCONPROD
-'PRD_5' OPEN BHP 5* 100 / 
-'INJ_5' OPEN BHP 5* 100 / 
+'PRD' OPEN BHP 5* 100 / 
+'INJ' OPEN BHP 5* 100 / 
 / 

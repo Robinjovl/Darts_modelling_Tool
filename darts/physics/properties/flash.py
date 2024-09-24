@@ -4,7 +4,7 @@ import numpy as np
 
 class Flash:
     nu: []
-    x: []
+    X: []
 
     def __init__(self, nph, nc, ni=0):
         self.nph = nph
@@ -16,11 +16,8 @@ class Flash:
     def evaluate(self, pressure, temperature, zc):
         pass
 
-    def getnu(self):
-        return self.nu
-
-    def getx(self):
-        return self.x
+    def get_flash_results(self):
+        return self
 
 
 class SinglePhase(Flash):
@@ -28,7 +25,7 @@ class SinglePhase(Flash):
         super().__init__(nph=1, nc=nc)
 
     def evaluate(self, pressure, temperature, zc):
-        self.nu, self.x = np.array([1.]), np.array([zc])
+        self.nu, self.X = np.array([1.]), np.array([zc])
         return 0
 
 
@@ -40,7 +37,7 @@ class ConstantK(Flash):
         self.K_values = np.array(ki)
 
     def evaluate(self, pressure, temperature, zc):
-        self.nu, self.x = RR2(self.K_values, zc, self.rr_eps)
+        self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
         return 0
 
 
@@ -106,6 +103,6 @@ class SolidFlash(Flash):
             X[self.np_fl+j, self.nc_fl+j] = 1.
 
         self.nu = NU
-        self.x = X
+        self.X = X
 
         return error_output

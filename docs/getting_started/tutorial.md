@@ -29,7 +29,18 @@ If you are using PyCharm as your IDE, you can use following steps to run `GeoRis
 ![](screenshots/time_step.png)
 6. At the end of the program you can see two paragraphs which give the simulation time and the number of iterations of the current program.
 ![](screenshots/statistics.png)
-7. The standard output of the program may be found in a new folder called `vtk` which contains VTK snapshots of every times step; a picture `output.png` gives the production temperature; `time_data.xlsx` specifies the dynamic simulation results of injection wells and production wells.
+7. The standard output of the program may be found in a new folder called `vtk` which contains VTK snapshots of every times step and the `mesh.vts` file which contains the static reservoir properties, such as permeability and porosity,
+
+top view of permeability (`mesh.vts`)
+![](screenshots/permeability.png)
+top view of temperature distribution after 10 years' simulation (`solution_ts1.vts`)
+![](screenshots/temperature_after_10_years.png)
+
+a picture `output.png` gives the production temperature,
+
+`output.png`
+![](screenshots/out.png)
+`time_data.xlsx` specifies the dynamic simulation results of injection wells and production wells.
 
 If you are using console, you can use following step to run `GeoRising` model
 

@@ -62,10 +62,10 @@ public:
     free_device_data(mesh_grav_coef_d);
   }
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const { return N_VARS; };
+  uint8_t get_n_ops() const { return N_OPS; };
+  uint8_t get_n_comps() const { return NC; };
+  uint8_t get_z_var() const { return Z_VAR; };
 
   engine_nce_g_gpu() { engine_name = std::to_string(NP) + "-phase " + std::to_string(NC) + "-component enthalpy-based thermal flow with gravity GPU engine"; };
 

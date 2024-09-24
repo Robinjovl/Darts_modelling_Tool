@@ -1,8 +1,10 @@
 from darts.models.darts_model import DartsModel
+from darts.tools.flux_tools import get_molar_well_rates, get_phase_volumetric_well_rates, get_mass_well_rates
+
 import numpy as np
+import pandas as pd
 import pickle
 import os
-
 
 class CICDModel(DartsModel):
     def __init__(self):
@@ -108,6 +110,40 @@ class CICDModel(DartsModel):
         data = self.get_performance_data()
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
+
+    def compare_well_rates(self, time_data_filename: str):
+        """
+        Compares Python well rates against the rates calculated with legacy c++ function and stored in a given file
+        :param time_data_filename: data filename
+        :type time_data_filename: str
+        """
+
+        n_vars = self.physics.n_vars
+
+        # load old well data
+        old_data = pd.read_pickle(time_data_filename)
+        old_time = old_data['time'].to_numpy()
+
+        # calculate new rates at all timesteps
+        new_molar_rate = get_molar_well_rates(self)
+        new_volumetric_rate = get_phase_volumetric_well_rates(self)
+        # new_mass_rate = get_mass_well_rate(self, self.reservoir.wells[0])
+
+        rtol = 1.e-2
+        atol = 0.1
+        c_pattern = ' : c {} rate (Kmol/day)'
+        p_pattern = ' : {} rate (m3/day)'
+
+        # compare
+        for well in self.reservoir.wells:
+            # molar rates
+            old_c = np.array([old_data[well.name + c_pattern.format(c)].to_numpy() for c in range(self.physics.nc)]).T
+            assert (np.isclose(new_molar_rate[well.name][:, :self.physics.nc], -old_c, rtol=rtol, atol=atol).all())
+
+            # volumetric phase rates
+            old_p = np.array([old_data[well.name + p_pattern.format(self.physics.phases[p])].to_numpy() for p in
+                              range(self.physics.nph)]).T
+            assert (np.isclose(new_volumetric_rate[well.name], -old_p, rtol=rtol, atol=atol).all())
 
     @staticmethod
     def load_performance_data(file_name: str = '', pkl_suffix: str = ''):

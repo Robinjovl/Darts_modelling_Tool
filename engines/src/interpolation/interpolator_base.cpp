@@ -3,10 +3,10 @@
 #include <assert.h>
 #include "interpolator_base.hpp"
 
-interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator_,
                                      const std::vector<int> &axes_points,
                                      const std::vector<double> &axes_min, const std::vector<double> &axes_max)
-    : supporting_point_evaluator(supporting_point_evaluator), axes_points(axes_points), axes_min(axes_min), axes_max(axes_max)
+    : supporting_point_evaluator(supporting_point_evaluator_), axes_points(axes_points), axes_min(axes_min), axes_max(axes_max)
 {
     n_dims = axes_points.size();
     assert(axes_min.size() == axes_points.size());

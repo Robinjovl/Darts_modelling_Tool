@@ -34,15 +34,9 @@ class PhysicsBase:
     :type regions: list
     """
     engine: engine_base
-
-    property_containers = {}
-
-    reservoir_operators = {}
-    property_operators = {}
     wellbore_operators: operator_set_evaluator_iface
     rate_operators: operator_set_evaluator_iface
-
-    regions = []
+    mass_flux_operators: operator_set_evaluator_iface
 
     def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_points: int,
@@ -90,6 +84,12 @@ class PhysicsBase:
         if self.cache:
             self.created_itors = []
             atexit.register(self.write_cache)
+
+        self.regions = []
+        self.property_containers = {}
+        self.reservoir_operators = {}
+        self.property_operators = {}
+        self.mass_flux_operators = {}
 
     def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive', itor_precision: str = 'd',
@@ -170,6 +170,7 @@ class PhysicsBase:
         """
         self.acc_flux_itor = {}
         self.property_itor = {}
+        self.mass_flux_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
                                                                   platform=platform, algorithm=itor_type,
@@ -181,6 +182,12 @@ class PhysicsBase:
                                                                   mode=itor_mode, precision=itor_precision,
                                                                   timer_name='property %d interpolation' % region, region=str(region))
 
+            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
+                                                                   platform=platform, algorithm=itor_type,
+                                                                   mode=itor_mode, precision=itor_precision,
+                                                                   timer_name='Mass flux %d interpolation' % region,
+                                                                   region=str(region))
+
         self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
                                                         timer_name='wellbore interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
@@ -190,7 +197,6 @@ class PhysicsBase:
                                                   timer_name='well controls interpolation',
                                                   platform=platform, algorithm=itor_type, mode=itor_mode,
                                                   precision=itor_precision)
-
         return
 
     @abc.abstractmethod

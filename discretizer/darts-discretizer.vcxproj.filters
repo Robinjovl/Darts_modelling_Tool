@@ -100,7 +100,15 @@
     <ClCompile Include="..\thirdparty\MshIO\src\save_msh_format.cpp">
       <Filter>Source Files\mesh\mshio</Filter>
     </ClCompile>
-    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_nodes.cpp">
+    <ClCompile Include="src\mech_discretizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pybind11\py_mech_discretizer.cpp">
+      <Filter>Source Files\pybind</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pybind11\py_approximation.cpp">
+      <Filter>Source Files\pybind</Filter>
+    </ClCompile>    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_nodes.cpp">
       <Filter>Source Files\mesh\mshio</Filter>
     </ClCompile>
     <ClCompile Include="..\thirdparty\MshIO\src\save_msh_patches.cpp">
@@ -215,6 +223,15 @@
     </ClInclude>
     <ClInclude Include="..\thirdparty\MshIO\src\save_msh_physical_groups.h">
       <Filter>Source Files\mesh\mshio</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mech_discretizer.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pybind11\py_mech_discretizer.h">
+      <Filter>Source Files\pybind</Filter>
+    </ClInclude>
+    <ClInclude Include="src\approximation.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

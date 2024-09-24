@@ -180,7 +180,7 @@ class ModelProperties(PropertyContainer):
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
 
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
         self.pvt = pvt
         self.surf_dens = get_table_keyword(self.pvt, 'DENSITY')[0]
         self.surf_oil_dens = self.surf_dens[0]
@@ -211,13 +211,13 @@ class ModelProperties(PropertyContainer):
             self.x[i, i] = 1
 
         if V < 0:
-            ph = [1, 2]
+            self.ph = [1, 2]
         else:  # assume oil and water are always exists
             self.x[1][0] = xgo
             self.x[1][1] = 1 - xgo
-            ph = [0, 1, 2]
+            self.ph = [0, 1, 2]
 
-        for j in ph:
+        for j in self.ph:
             M = 0
             # molar weight of mixture
             for i in range(self.nc):
@@ -235,9 +235,9 @@ class ModelProperties(PropertyContainer):
             self.nu[1] = zc[1] / (1 - xgo)
             self.nu[0] = 1 - self.nu[1] - self.nu[2]
 
-        self.compute_saturation(ph)
+        self.compute_saturation(self.ph)
 
-        for j in ph:
+        for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[0], self.sat[2])
 
         pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
@@ -245,9 +245,7 @@ class ModelProperties(PropertyContainer):
 
         self.pc = np.array([-pcgo, 0, pcow])
 
-        mass_source = np.zeros(self.nc)
-
-        return ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return
 
     def evaluate_at_cond(self, pressure, zc):
 
@@ -257,13 +255,13 @@ class ModelProperties(PropertyContainer):
             # print(zc)
             zc = self.comp_out_of_bounds(zc)
 
-        ph = []
+        self.ph = []
         for j in range(self.nph):
             if zc[j] > self.min_z:
-                ph.append(j)
+                self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 
         self.nu = zc
-        self.compute_saturation(ph)
+        self.compute_saturation(self.ph)
 
         return self.sat, self.dens_m

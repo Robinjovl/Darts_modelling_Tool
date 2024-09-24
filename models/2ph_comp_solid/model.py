@@ -55,7 +55,7 @@ class Model(CICDModel):
         self.zero = 1e-12
 
         components = ['CO2', 'Ions', 'H2O', 'CaCO3']
-        phases = ['gas', 'wat']
+        phases = ['gas', 'wat', 'sol']
         nc = len(components)
         nc_fl = nc-1
         thermal = 0
@@ -78,13 +78,14 @@ class Model(CICDModel):
 
         """Physical properties"""
         # Create property containers:
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, temperature=1.,
-                                             rock_comp=1e-7, min_z=self.zero / 10, solid_dens=[2000])
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
+                                               temperature=1., rock_comp=1e-7, min_z=self.zero / 10)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
-                                              ('wat', DensityBasic(compr=1e-6, dens0=1000))])
+                                              ('wat', DensityBasic(compr=1e-6, dens0=1000)),
+                                              ('sol', ConstFunc(2000.))])
         property_container.viscosity_ev = dict([('gas', ConstFunc(0.1)),
                                                 ('wat', ConstFunc(1))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
@@ -241,50 +242,3 @@ class Model(CICDModel):
         plt.tight_layout()
         plt.savefig("results_kinetic_brief.pdf")
         plt.show()
-
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, solid_dens=[], temperature=None):
-        # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z,
-                         rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
-
-    def run_flash(self, pressure, temperature, zc):
-
-        nc_fl = self.nc - self.nm
-        norm = 1 - np.sum(zc[nc_fl:])
-
-        zc_r = zc[:nc_fl] / norm
-        self.flash_ev.evaluate(pressure, temperature, zc_r)
-        nu = self.flash_ev.getnu()
-        xr = self.flash_ev.getx()
-        V = nu[0]
-
-        if V <= 0:
-            V = 0
-            xr[1] = zc_r
-            ph = [1]
-        elif V >= 1:
-            V = 1
-            xr[0] = zc_r
-            ph = [0]
-        else:
-            ph = [0, 1]
-
-        for i in range(self.nc - 1):
-            for j in range(2):
-                self.x[j][i] = xr[j][i]
-
-        self.nu[0] = V
-        self.nu[1] = (1 - V)
-
-        return ph
-
-    def evaluate_mass_source(self, pressure, temperature, zc):
-        mass_source = np.zeros(self.nc)
-        for j, reaction in self.kinetic_rate_ev.items():
-            dm, _ = reaction.evaluate(pressure, temperature, self.x, zc[-1])
-            # dm, _ += reaction.evaluate(pressure, temperature, self.x, self.sat[-1])
-            mass_source += dm
-
-        return mass_source

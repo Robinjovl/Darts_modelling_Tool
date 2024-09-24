@@ -27,7 +27,8 @@ else()
   set(opendarts_BUILD_USERNAME $ENV{USER})
 endif()
 
-# Show build information 
+# Show build information
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  username: ${opendarts_BUILD_USERNAME}")
 message(STATUS "  hostname: ${opendarts_BUILD_HOSTNAME}")
 
@@ -71,7 +72,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   
   message(STATUS "  Setting MSVC compiler and linker flags")
   # Compiler flags 
-  set(opendarts_cxx_compiler_flags "/MP;/W3")
+  set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -80,6 +81,8 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND opendarts_cxx_compiler_flags "/openmp")
     list(APPEND opendarts_cxx_linker_flags "/openmp")
   endif()
+
+  message("COMPILER FLAGS:" opendarts_cxx_compiler_flags)
 
   # Compiler specific helper variables 
    
@@ -90,7 +93,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto")
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")

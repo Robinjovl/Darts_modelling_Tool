@@ -10,7 +10,7 @@ namespace py = pybind11;
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 struct engine_super_gpu_exposer
 {
-  static void expose(py::module &m)
+  static void expose(py::module& m)
   {
     std::string short_name, long_name;
     short_name = "engine_super_gpu" + std::to_string(NC) + "_" + std::to_string(NP);
@@ -25,9 +25,13 @@ struct engine_super_gpu_exposer
     }
     long_name += "GPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases with diffusion and kinetic reaction";
     py::class_<engine_super_gpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())
-        .def(py::init<>())
-        .def("init", (int (engine_super_gpu<NC, NP, THERMAL>::*)(conn_mesh *, std::vector<ms_well *> &, std::vector<operator_set_gradient_evaluator_iface *> &, sim_params *, timer_node *)) & engine_super_gpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>());
-  }
+      .def(py::init<>())
+      .def("init", (int (engine_super_gpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) & engine_super_gpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>()) \
+      .def("copy_solution_to_host", &engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_host) \
+      .def("copy_residual_to_host", &engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_host) \
+      .def("copy_solution_to_device", &engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_device) \
+      .def("copy_residual_to_device", &engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_device);
+  };
 };
 
 void pybind_engine_super_gpu(py::module &m)

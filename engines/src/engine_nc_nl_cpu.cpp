@@ -11,7 +11,7 @@
 
 #include "engine_nc_nl_cpu.hpp"
 #include "conn_mesh.h"
-#include "mech/matrix.hpp"
+#include "mech/matrix.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
@@ -108,7 +108,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #ifdef _WIN32
-#if 0 // can be enabled if amgdll.dll is available \
+#if 0 // can be enabled if amgdll.dll is available
 	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
 		case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{

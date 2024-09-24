@@ -102,14 +102,16 @@ class CapillaryPressure:
         :param sat: saturation
         :return: Pc
         '''
-        Se = (sat[1] - self.swc)/(1 - self.swc)
-        if Se < self.eps:
-            Se = self.eps
-        pc = self.p_entry * Se ** (-1/self.labda)
+        if self.nph > 1:
+            Se = (sat[1] - self.swc)/(1 - self.swc)
+            if Se < self.eps:
+                Se = self.eps
+            pc = self.p_entry * Se ** (-1/self.labda)
 
-        Pc = np.zeros(self.nph, dtype=object)
-        Pc[1] = pc
-
+            Pc = np.zeros(self.nph, dtype=object)
+            Pc[1] = pc
+        else:
+            Pc = [0.0]
         return Pc
 
 

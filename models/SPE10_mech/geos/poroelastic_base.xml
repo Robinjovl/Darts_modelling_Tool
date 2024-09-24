@@ -1,0 +1,145 @@
+<?xml version="1.0" ?>
+
+<Problem>
+  <Mesh>
+    <VTKMesh
+      name="mesh"
+      logLevel="5"
+      regionAttribute="CellEntityIds"
+      fieldsToImport="{ bulkModulus, permeability, porosity, biotCoefficient }"
+      fieldNamesInGEOSX="{ skeleton_bulkModulus, rockPerm_permeability, rockPorosity_referencePorosity, rockPorosity_biotCoefficient }"
+      file="input/data_10_10_10/geos_input.vtu"/>
+  </Mesh>
+
+  <Geometry>  
+    <Box
+      name="xneg"
+      xMin="{ -0.001, -1e9, -1e9 }"
+      xMax="{ 0.001, 1e9, 1e9 }"/>
+    <Box
+      name="xpos"
+      xMin="{ 292.607, -1e9, -1e9 }"
+      xMax="{ 292.609, 1e9, 1e9 }"/>
+    <Box
+      name="yneg"
+      xMin="{ -1e9, -0.001, -1e9 }"
+      xMax="{ 1e9, 0.001, 1e9 }"/>
+    <Box
+      name="ypos"
+      xMin="{ -1e9, 633.983, -1e9 }"
+      xMax="{ 1e9, 633.985, 1e9 }"/>
+    <Box
+      name="zneg"
+      xMin="{ -1e9, -1e9, -3657.601 }"
+      xMax="{ 1e9, 1e9, -3657.599 }"/>
+	  <Box
+      name="zpos"
+      xMin="{ -1e9, -1e9, -3608.833 }"
+      xMax="{ 1e9, 1e9, -3608.831 }"/>
+  </Geometry>
+
+  <NumericalMethods>
+    <FiniteElements>
+      <FiniteElementSpace
+        name="FE1"
+        order="1"/>
+    </FiniteElements>
+    <FiniteVolume>
+      <TwoPointFluxApproximation
+        name="fluidTPFA"/>
+    </FiniteVolume>
+  </NumericalMethods>
+
+  <ElementRegions>
+    <CellElementRegion
+      name="Domain"
+      cellBlocks="{ 99991_hexahedra }"
+      materialList="{ fluid, porousRock }"/>
+  </ElementRegions>
+
+  <Constitutive>
+    <CompressibleSinglePhaseFluid
+      name="fluid"
+      defaultDensity="666.854632"
+      defaultViscosity="0.001"
+      referencePressure="3.5e7"
+      referenceDensity="666.854632"
+      compressibility="1.45e-10"
+      referenceViscosity="0.001"
+      viscosibility="0.0"/>
+    <PorousElasticIsotropic
+      name="porousRock"
+      solidModelName="skeleton"
+      porosityModelName="rockPorosity"
+      permeabilityModelName="rockPerm"/>
+    <ElasticIsotropic
+      name="skeleton"
+      defaultDensity="2650"
+      defaultBulkModulus="5.e9"
+      defaultPoissonRatio="0.25"/>
+    <ConstantPermeability
+      name="rockPerm"
+      permeabilityComponents="{ 9.8e-13, 9.8e-13, 9.8e-13 }"/>
+    <BiotPorosity
+      name="rockPorosity"
+      grainBulkModulus="1.e27"
+      defaultReferencePorosity="0.2"/>
+  </Constitutive>
+
+  <FieldSpecifications>
+
+    <!--FieldSpecification 
+      name="initialPressure"
+      initialCondition="1"
+      setNames="{all}"
+      objectPath="ElementRegions/Domain"
+      fieldName="pressure"
+	    functionName="pressure0"
+      scale="1.0e5"/-->
+    <HydrostaticEquilibrium
+      name="equil"
+      objectPath="ElementRegions"      
+      datumElevation="-3608.832"
+      datumPressure="331.4586867729831e+5"/>
+
+	<!-- boundary conditions --> 
+    <FieldSpecification
+      name="xconstraint"
+      objectPath="nodeManager"
+      fieldName="totalDisplacement"
+      component="0"
+      scale="0.0"
+      setNames="{ xneg, xpos }"/>
+    <FieldSpecification
+      name="yconstraint"
+      objectPath="nodeManager"
+      fieldName="totalDisplacement"
+      component="1"
+      scale="0.0"
+      setNames="{ yneg, ypos }"/>
+    <FieldSpecification
+      name="zconstraint0"
+      objectPath="nodeManager"
+      fieldName="totalDisplacement"
+      component="2"
+      scale="0.0"
+      setNames="{ zneg }"/>
+	<Traction
+      name="zconstraint1"
+      objectPath="faceManager"
+      tractionType="normal"
+      scale="-90.0e6"      
+      setNames="{ zpos }"/>  
+  </FieldSpecifications>
+
+  <Functions>
+	<!--TableFunction
+      name="pressure0"
+      inputVarNames="{ elementCenter }"
+      coordinateFiles="{ input/data_10_10_10/z.geos }"
+      voxelFile="input/data_10_10_10/ref_pres.geos"
+      interpolation="linear"/-->
+  </Functions>
+  
+</Problem>
+
