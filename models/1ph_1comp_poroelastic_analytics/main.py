@@ -193,15 +193,6 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     else:
         return False, -1.0
 def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
-    if case == 'bai':
-        nt = 60
-        max_dt = 0.1
-        t = np.logspace(-7, np.log10(max_dt), nt)
-    else:
-        nt = 60
-        max_dt = 30
-        t = np.logspace(-3, np.log10(max_dt), nt)
-
     # GeosX
     # t = np.empty(shape=(0,), dtype=np.float64)
     # t = np.append(t, 60 * np.ones(int((600 - 0) / 60)) / 86400)
@@ -216,6 +207,9 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
+
+    t = m.idata.sim.time_steps
+    nt = len(m.idata.sim.time_steps)
 
     # for rectangular grid
     if discretizer == 'pm_discretizer':
@@ -547,13 +541,12 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
 #run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
-#run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
+run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
 #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
 #run(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
 #run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
-
 #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='box')
 #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='cylinder')
 
