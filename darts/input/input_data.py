@@ -66,6 +66,14 @@ class InitialSolution():
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
+class MeshData():
+    '''
+    tags
+    '''
+    def __init__(self):
+        self.bnd_tags = None
+        self.matrix_tags = None
+
 class OBLParams():
     '''
     OBL range, number of points
@@ -98,6 +106,7 @@ class InputData():
         self.fluid = FluidProps()
         self.obl = OBLParams()
         self.initial = InitialSolution()
+        self.mesh = MeshData()
         self.other = OtherProps()
         
     def check(self):

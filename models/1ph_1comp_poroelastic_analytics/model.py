@@ -4,7 +4,7 @@ import numpy as np
 from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
+from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
 from darts.input.input_data import InputData
 
 class Model(THMCModel):
@@ -17,13 +17,16 @@ class Model(THMCModel):
     def set_solver_params(self):
         super().set_solver_params()
         if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+            self.params.linear_type = sim_params.cpu_superlu
+            #self.params.linear_type = sim_params.cpu_gmres_fs_cpr
         elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+            self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_superlu
+            #self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_gmres_fs_cpr
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
                                                  discretizer=self.discretizer_name, fluid_vars=self.physics.vars, mesh=self.mesh)
+
     def set_input_data(self):
         case = self.case
         if case == 'bai':
@@ -38,6 +41,63 @@ class Model(THMCModel):
         self.idata.fluid.Mw = 18.015
         self.idata.fluid.density = self.idata.fluid.Mw  #TODO check
 
+        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
+        NO_FLOW = self.bc_type.NO_FLOW  # short name
+        self.idata.mesh.bnd_tags = {}
+        bnd_tags = self.idata.mesh.bnd_tags  # short name
+
+        if 'box' in case or 'cylinder' in case:
+            confining = self.bc_type.LOAD(self.idata.other.load_horiz, [0.0, 0.0, 0.0])
+            f_top = self.bc_type.AQUIFER(self.p_init)
+
+            flow = False
+            #flow = True
+            if flow:
+                vertic = self.bc_type.STUCK(0, [0,0,0])
+                f_bottom = self.bc_type.AQUIFER(self.p_init + 0.5)
+            else:
+                vertic = self.bc_type.LOAD(self.idata.other.load_vertic, [0.0, 0.0, 0.0])
+                f_bottom = self.bc_type.AQUIFER(self.p_init)
+
+        if 'box' in case:
+            # define correspondence between the physical tags in msh file and mesh elements types
+            bnd_tags['BND_X-1'] = 991
+            bnd_tags['BND_X-2'] = 981
+            bnd_tags['BND_X+'] = 992
+            bnd_tags['BND_Y-'] = 993
+            bnd_tags['BND_Y+'] = 994
+            bnd_tags['BND_Z-'] = 995
+            bnd_tags['BND_Z+'] = 996
+            self.idata.mesh.matrix_tags = [99991]
+
+            self.idata.boundary = {}
+            b = {'flow': NO_FLOW, 'mech': confining, 'temp': self.bc_type.NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_X-1']] = b
+            self.idata.boundary[bnd_tags['BND_X-2']] = b
+            self.idata.boundary[bnd_tags['BND_X+']] = b
+            self.idata.boundary[bnd_tags['BND_Y-']] = {'flow': f_bottom, 'mech': self.bc_type.STUCK(0, [0,0,0]), 'temp': NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': f_top, 'mech': vertic, 'temp': NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_Z-']] = b
+            self.idata.boundary[bnd_tags['BND_Z+']] = b
+        elif 'cylinder' in case:
+            bnd_tags['BND_Z-'] = 992
+            bnd_tags['BND_Z+'] = 993
+            bnd_tags['BND_SIDE'] = 991
+            self.idata.mesh.matrix_tags = [99991, 99992]
+
+            self.idata.boundary = {}
+            self.idata.boundary[bnd_tags['BND_SIDE']] = {'flow': NO_FLOW, 'mech': confining, 'temp': NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_Z-']] = {'flow': f_bottom, 'mech': self.bc_type.STUCK(0, [0, 0, 0]), 'temp': NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_Z+']] = {'flow': f_top, 'mech': vertic, 'temp': NO_FLOW}
+        else:  # 'rect', 'hex' and others meshes, used in mandel, terzaghi and bai cases
+            bnd_tags['BND_X-'] = 991
+            bnd_tags['BND_X+'] = 992
+            bnd_tags['BND_Y-'] = 993
+            bnd_tags['BND_Y+'] = 994
+            bnd_tags['BND_Z-'] = 995
+            bnd_tags['BND_Z+'] = 996
+            self.idata.mesh.matrix_tags = [99991]
+
         if case == 'mandel':
             self.idata.rock.porosity = 0.375
             self.idata.rock.perm = 10.0 / 9.81
@@ -49,6 +109,17 @@ class Model(THMCModel):
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
+
+            self.idata.other.Fa = -100.0  # bar * m
+
+            self.idata.boundary = {}
+            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            self.idata.boundary[bnd_tags['BND_X-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure), 'mech': self.bc_type.FREE}
+            self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': NO_FLOW, 'mech': None}
+            self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'terzaghi':
             self.idata.rock.porosity = 0.375
             self.idata.rock.perm = 10.0 / 9.81
@@ -60,6 +131,18 @@ class Model(THMCModel):
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
             self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
+
+            self.idata.other.F = -100.0 # bar * m
+
+            self.idata.boundary = {}
+            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            self.idata.boundary[bnd_tags['BND_X-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
+                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0])}
+            self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Y+']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'terzaghi_two_layers':
             biot_1 = 0.9; biot_2 = 0.01
             poro_1 = 0.15; poro_2 = 0.001
@@ -84,6 +167,20 @@ class Model(THMCModel):
             self.idata.other.M = get_biot_modulus(biot=self.idata.rock.biot, poro0=self.idata.rock.porosity,
                                                   kd=self.idata.other.kd, cf=self.idata.rock.compressibility)
             self.idata.make_prop_arrays()
+
+            self.idata.other.F = -100.0 # bar * m
+
+            self.idata.mesh.matrix_tags = [99991, 99992]
+
+            self.idata.boundary = {}
+            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            self.idata.boundary[bnd_tags['BND_X-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
+                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0])}
+            self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Y+']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'bai':
             self.idata.rock.porosity = 0.2
             self.idata.rock.perm = 4.e+6 / 0.9869
@@ -101,6 +198,90 @@ class Model(THMCModel):
             self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
 
+            self.idata.other.F = -1.e-5
+
+            self.idata.boundary = {}
+            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER, 'temp': NO_FLOW}
+            self.idata.boundary[bnd_tags['BND_X-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_X+']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': None,
+                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0]),
+                                                       'temp': None}
+            self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
+            self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
+        elif case == 'lab_uniform':
+            self.idata.rock.density = 3000. #TODO
+            self.idata.rock.porosity = 0.02 #Porosity of Dinantian ~0,01-3%
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = 0.02 # not measured yet
+            self.idata.rock.E = 20 * 1e+4 # 10-35 GPa = *10^4 to bars
+            self.idata.rock.nu = 0.25  #0.25
+            self.idata.rock.biot = 1 # ?
+            #TODO bulk_modulus 20Gpa
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
+
+            #if 'thermoporoelastic' in case:
+            self.idata.rock.th_expn = 1e-5  #linear
+            #self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
+            self.idata.rock.conductivity = 200 #0.836 * 86400.0 * 1000
+            self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
+            self.idata.rock.heat_capacity = 2200  # [kJ/m3/K]
+
+            self.idata.fluid.compressibility = 0.0  #TODO why zero here
+            self.idata.fluid.viscosity = 1.0
+
+            self.idata.initial.initial_temperature = 20  # [K]
+            self.idata.initial.initial_pressure = 1  # [bar]
+            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+            self.idata.initial.initial_composition = None  # not used in this test
+
+            # 1 to 500 kN
+            # 1 kilonewton/square meter	= 0.01 bar
+            # R = 0.025 => area = 0.0196
+            # 100 kN / area = 1 bar / area = 50 bar/m2
+            self.idata.other.load_vertic = -100
+            # 0 to 55 MPa (550 bars)
+            self.idata.other.load_horiz = -50
+        elif case == 'lab_2_rocks':
+            biot_2 = self.idata.rock.biot
+            nu_2 = self.idata.rock.nu  #*0.1
+            young_2 = self.idata.rock.E *0.1
+            #poro_2 = self.idata.rock.porosity
+            #perm_2 = self.idata.rock.permx
+            poro_2 = self.idata.rock.porosity *0.1
+            perm_2 = self.idata.rock.permx *0.1
+            self.idata.rock.porosity = np.array([self.idata.rock.porosity, poro_2])
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = np.array([self.idata.rock.permx, perm_2])
+            self.idata.rock.E = np.array([self.idata.rock.E, young_2])
+            self.idata.rock.biot = np.array([self.idata.rock.biot, biot_2])
+            self.idata.rock.nu = np.array([self.idata.rock.nu, nu_2])
+            self.idata.make_prop_arrays()
+            self.idata.rock.compressibility = get_rock_compressibility(
+                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
+                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
+            #if 'thermoporoelastic' in case:
+            #    self.idata.rock.th_expn = np.array([self.idata.rock.th_expn, N])
+            #    #self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
+            #    self.idata.rock.conductivity = np.array([self.idata.rock.conductivity, N])
+            #    self.idata.rock.th_expn_poro = np.array([self.idata.rock.th_expn_poro, N])
+
+            self.idata.fluid.compressibility = 0.0  #TODO why zero here
+            self.idata.fluid.viscosity = 1.0
+
+            self.idata.initial.initial_temperature = 20  # [K]
+            self.idata.initial.initial_pressure = 1  # [bar]
+            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+            self.idata.initial.initial_composition = None  # not used in this test
+            # 1 to 500 kN
+            # 1 kilonewton/square meter	= 0.01 bar
+            # R = 0.025 => area = 0.0196
+            # 100 kN / area = 1 bar / area = 50 bar/m2
+            self.idata.other.load_vertic = -100
+            # 0 to 55 MPa (550 bars)
+            self.idata.other.load_horiz = -50
+
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         if case == 'terzaghi_two_layers':
@@ -113,11 +294,12 @@ class Model(THMCModel):
             self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)
             self.idata.other.c = TC.darcy_constant * self.idata.rock.perm / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
             assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
-
-        self.idata.initial.initial_temperature = 0  # [K]
-        self.idata.initial.initial_pressure = 0  # [bar]
-        self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-        self.idata.initial.initial_composition = None  # not used in this test
+        
+        if 'lab' not in case:
+            self.idata.initial.initial_temperature = 0  # [K]
+            self.idata.initial.initial_pressure = 0  # [bar]
+            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+            self.idata.initial.initial_composition = None  # not used in this test
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
