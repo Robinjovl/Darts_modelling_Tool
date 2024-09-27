@@ -73,6 +73,7 @@ class MeshData():
     def __init__(self):
         self.bnd_tags = None
         self.matrix_tags = None
+        self.mesh_filename = None
 
 class OBLParams():
     '''
@@ -87,6 +88,13 @@ class OBLParams():
         self.max_t = None
         self.min_z = None
         self.max_z = None
+
+class Simulation():
+    '''
+
+    '''
+    def __init__(self):
+        self.time_steps = None
 
 class OtherProps():
     '''
@@ -107,6 +115,8 @@ class InputData():
         self.obl = OBLParams()
         self.initial = InitialSolution()
         self.mesh = MeshData()
+        self.boundary = None
+        self.sim = Simulation()
         self.other = OtherProps()
         
     def check(self):
@@ -144,9 +154,12 @@ class InputData():
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         '''
+        no_array_obj = ['fluid', 'obl', 'mesh']
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
+            if k in no_array_obj:
+                continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
@@ -158,7 +171,7 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
-            if k == 'fluid' or k == 'obl':
+            if k in no_array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):

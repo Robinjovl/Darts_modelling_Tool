@@ -1,5 +1,5 @@
 from darts.models.thmc_model import THMCModel
-from reservoir import UnstructReservoirCustom
+from reservoir import UnstructReservoirCustom, get_mesh_filename
 import numpy as np
 from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
@@ -29,7 +29,7 @@ class Model(THMCModel):
 
     def set_input_data(self):
         case = self.case
-        if case == 'bai':
+        if case == 'bai' or 'lab' in case:
             type_hydr = 'thermal'
             type_mech = 'thermoporoelasticity'
         else:
@@ -46,20 +46,31 @@ class Model(THMCModel):
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
 
-        if 'box' in case or 'cylinder' in case:
+        self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
+
+        if 'box' in self.mesh or 'cylinder' in self.mesh:
+            # 1 to 500 kN
+            # 1 kilonewton/square meter	= 0.01 bar
+            # R = 0.025 => area = 0.0196
+            # 100 kN / area = 1 bar / area = 50 bar/m2
+            self.idata.other.load_vertic = -100
+            # 0 to 55 MPa (550 bars)
+            self.idata.other.load_horiz = -50
+
             confining = self.bc_type.LOAD(self.idata.other.load_horiz, [0.0, 0.0, 0.0])
-            f_top = self.bc_type.AQUIFER(self.p_init)
+            p_init = self.idata.initial.initial_pressure
+            f_top = self.bc_type.AQUIFER(p_init)
 
             flow = False
             #flow = True
             if flow:
                 vertic = self.bc_type.STUCK(0, [0,0,0])
-                f_bottom = self.bc_type.AQUIFER(self.p_init + 0.5)
+                f_bottom = self.bc_type.AQUIFER(p_init + 0.5)
             else:
                 vertic = self.bc_type.LOAD(self.idata.other.load_vertic, [0.0, 0.0, 0.0])
-                f_bottom = self.bc_type.AQUIFER(self.p_init)
+                f_bottom = self.bc_type.AQUIFER(p_init)
 
-        if 'box' in case:
+        if 'box' in self.mesh:
             # define correspondence between the physical tags in msh file and mesh elements types
             bnd_tags['BND_X-1'] = 991
             bnd_tags['BND_X-2'] = 981
@@ -79,7 +90,7 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': f_top, 'mech': vertic, 'temp': NO_FLOW}
             self.idata.boundary[bnd_tags['BND_Z-']] = b
             self.idata.boundary[bnd_tags['BND_Z+']] = b
-        elif 'cylinder' in case:
+        elif 'cylinder' in self.mesh:
             bnd_tags['BND_Z-'] = 992
             bnd_tags['BND_Z+'] = 993
             bnd_tags['BND_SIDE'] = 991
@@ -170,6 +181,7 @@ class Model(THMCModel):
 
             self.idata.other.F = -100.0 # bar * m
 
+            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, suffix='_two_layers')
             self.idata.mesh.matrix_tags = [99991, 99992]
 
             self.idata.boundary = {}
@@ -199,6 +211,8 @@ class Model(THMCModel):
             self.idata.fluid.viscosity = 1.0
 
             self.idata.other.F = -1.e-5
+
+            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, suffix='_bai')
 
             self.idata.boundary = {}
             nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER, 'temp': NO_FLOW}
@@ -237,13 +251,10 @@ class Model(THMCModel):
             self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
             self.idata.initial.initial_composition = None  # not used in this test
 
-            # 1 to 500 kN
-            # 1 kilonewton/square meter	= 0.01 bar
-            # R = 0.025 => area = 0.0196
-            # 100 kN / area = 1 bar / area = 50 bar/m2
-            self.idata.other.load_vertic = -100
-            # 0 to 55 MPa (550 bars)
-            self.idata.other.load_horiz = -50
+            self.idata.other.F = -1.e-5
+
+            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
+
         elif case == 'lab_2_rocks':
             biot_2 = self.idata.rock.biot
             nu_2 = self.idata.rock.nu  #*0.1
@@ -274,13 +285,6 @@ class Model(THMCModel):
             self.idata.initial.initial_pressure = 1  # [bar]
             self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
             self.idata.initial.initial_composition = None  # not used in this test
-            # 1 to 500 kN
-            # 1 kilonewton/square meter	= 0.01 bar
-            # R = 0.025 => area = 0.0196
-            # 100 kN / area = 1 bar / area = 50 bar/m2
-            self.idata.other.load_vertic = -100
-            # 0 to 55 MPa (550 bars)
-            self.idata.other.load_horiz = -50
 
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
@@ -300,6 +304,24 @@ class Model(THMCModel):
             self.idata.initial.initial_pressure = 0  # [bar]
             self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
             self.idata.initial.initial_composition = None  # not used in this test
+
+            if case == 'bai':
+                nt = 60
+                max_dt = 0.1
+                self.idata.sim.time_steps = np.logspace(-7, np.log10(max_dt), nt)
+            else:
+                nt = 60  # number of timesteps
+                max_dt = 30  # timestep length, days
+                self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
+        else:
+            # time step list
+            T = 10  # simulation time, sec.
+            dt = 1  # simulation timestep, sec.
+            # convert to days
+            sec_to_days = 86400.
+            T /= sec_to_days
+            dt /= sec_to_days
+            self.idata.sim.time_steps = np.arange(dt, T, dt)
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

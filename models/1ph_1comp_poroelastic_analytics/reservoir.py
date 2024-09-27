@@ -23,6 +23,22 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.input.input_data import InputData
 
+def get_mesh_filename(mesh='rect', suffix=''):
+    if mesh == 'rect':
+        mesh_filename = 'meshes/transfinite'
+    elif mesh == 'wedge':
+        mesh_filename = 'meshes/wedge'
+    elif mesh == 'hex':
+        mesh_filename = 'meshes/hexahedron'
+    elif mesh == 'box':
+        mesh_filename = 'meshes/core2d_unstr'
+    elif mesh == 'cylinder':
+        mesh_filename = 'meshes/core_unstr'
+    elif mesh == 'cylinder_fine':
+        mesh_filename = 'meshes/core_unstr_fine'
+    elif mesh == 'cylinder_jacket':
+        mesh_filename = 'meshes/core_unstr_jacket'
+    return mesh_filename + suffix + '.msh'
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
@@ -34,6 +50,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bnd_tags = idata.mesh.bnd_tags
         self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
 
+        self.mesh_filename = idata.mesh.mesh_filename
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             if discretizer == 'mech_discretizer':
@@ -62,23 +79,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_reservoir_main(idata=idata)
         self.set_pzt_bounds(p=self.p_init, z=None, t=self.t_init)
 
-    def get_mesh_filename(self, mesh='rect', suffix = ''):
-        if mesh == 'rect':
-            mesh_filename = 'meshes/transfinite'
-        elif mesh == 'wedge':
-            mesh_filename = 'meshes/wedge'
-        elif mesh == 'hex':
-            mesh_filename = 'meshes/hexahedron'
-        elif mesh == 'box':
-            mesh_filename = 'meshes/core2d_unstr'
-        elif mesh == 'cylinder':
-            mesh_filename = 'meshes/core_unstr'
-        elif mesh == 'cylinder_fine':
-            mesh_filename = 'meshes/core_unstr_fine'
-        elif mesh == 'cylinder_jacket':
-            mesh_filename = 'meshes/core_unstr_jacket'
-        return mesh_filename + suffix + '.msh'
-
     def init_tD_pD(self, idata: InputData, F, a=1):
         '''
         set self.tD and self.pD, they used to get dimensionless solution to compare with analytic solution
@@ -91,8 +91,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = abs(F / a) / 2
     # Mandel
     def mandel_north_dirichlet_mech_discretizer(self, idata: InputData, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename(mesh)
-        self.mesh_data = meshio.read(self.mesh_filename)
+        self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
         self.set_mandel_boundary_conditions(idata)
@@ -122,7 +121,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
-        self.mesh_filename = self.get_mesh_filename(mesh)
         physical_tags = {}
         physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
         physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -194,8 +192,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     # Terzaghi
     def terzaghi_mech_discretizer(self, idata: InputData, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename(mesh)
-        self.mesh_data = meshio.read(self.mesh_filename)
+        self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
@@ -225,7 +222,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
     def terzaghi_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
-        self.mesh_filename = self.get_mesh_filename(mesh)
         physical_tags = {'matrix': list(self.domain_tags[elem_loc.MATRIX])}
         physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
         physical_tags['fracture_shape'] = list(self.domain_tags[elem_loc.FRACTURE_BOUNDARY])
@@ -279,7 +275,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     # Two-layer Terzaghi
     def terzaghi_two_layers_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
-        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
 
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -327,7 +322,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = 1.0
     def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData, mesh='rect'):
         self.set_uniform_initial_conditions(idata=idata)
-        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
 
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -370,8 +364,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = 1.0
         self.pD = 1.0
     def terzaghi_two_layers_mech_discretizer(self, idata: InputData, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_two_layers')
-        self.mesh_data = meshio.read(self.mesh_filename)
+        self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -403,8 +396,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
     def bai_thermoporoelastic_consolidation(self, idata: InputData, mesh='rect'):
-        self.mesh_filename = self.get_mesh_filename(mesh, suffix='_bai')
-        self.mesh_data = meshio.read(self.mesh_filename)
+        self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F

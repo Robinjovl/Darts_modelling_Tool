@@ -439,15 +439,6 @@ def plot_bai_comparison(m, data, save_data=False):
     # plt.show()
 
 def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
-    if case == 'bai':
-        nt = 60
-        max_dt = 0.1
-        t = np.logspace(-7, np.log10(max_dt), nt)
-    else:
-        nt = 60
-        max_dt = 30
-        t = np.logspace(-3, np.log10(max_dt), nt)
-
     m = Model(case=case, discretizer=discretizer, mesh=mesh)
     m.init()
 
@@ -469,7 +460,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     elif discretizer == 'pm_discretizer':
         m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, 0, m.physics.engine)
     time = 0.0
-    for ith_step, dt in enumerate(t):
+    for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
         m.params.first_ts = dt
         m.params.max_ts = dt
@@ -552,7 +543,7 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
     return sol_data_slice
 
 # Rectangular grid, comparison to analytics
-run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
+#run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
 #run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
@@ -560,8 +551,8 @@ run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
 #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
-#run_and_plot(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
-#run_and_plot(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
+#run(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
+#run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
 
 #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='box')
 #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='cylinder')
