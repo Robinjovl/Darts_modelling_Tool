@@ -42,7 +42,7 @@ def get_mesh_filename(mesh='rect', suffix=''):
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, fluid_vars, case='mandel', discretizer='mech_discretizer', mesh='rect'):
+    def __init__(self, timer, idata: InputData, fluid_vars, case='mandel', discretizer='mech_discretizer'):
         thermoporoelasticity = idata.type_mech == 'thermoporoelasticity'
         super().__init__(timer, discretizer=discretizer, fluid_vars=fluid_vars, thermoporoelasticity=thermoporoelasticity)
 
@@ -54,24 +54,24 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # Specify elastic properties, mesh & boundaries
         if case == 'mandel':
             if discretizer == 'mech_discretizer':
-                self.mandel_north_dirichlet_mech_discretizer(idata=idata, mesh=mesh)
+                self.mandel_north_dirichlet_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
-                self.mandel_north_dirichlet_pm_discretizer(idata=idata, mesh=mesh)
+                self.mandel_north_dirichlet_pm_discretizer(idata=idata)
         elif case == 'terzaghi':
             if discretizer == 'mech_discretizer':
-                self.terzaghi_mech_discretizer(idata=idata, mesh=mesh)
+                self.terzaghi_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
-                self.terzaghi_pm_discretizer(idata=idata, mesh=mesh)
+                self.terzaghi_pm_discretizer(idata=idata)
         elif case == 'terzaghi_two_layers':
             if discretizer == 'mech_discretizer':
-                self.terzaghi_two_layers_mech_discretizer(idata=idata, mesh=mesh)
+                self.terzaghi_two_layers_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
-                self.terzaghi_two_layers_pm_discretizer(idata=idata, mesh=mesh)
+                self.terzaghi_two_layers_pm_discretizer(idata=idata)
         elif case == 'terzaghi_two_layers_no_analytics':
             if discretizer == 'pm_discretizer':
-                self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata, mesh=mesh)
+                self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata)
         elif case == 'bai' or 'lab' in case:
-            self.bai_thermoporoelastic_consolidation(idata=idata, mesh=mesh)
+            self.bai_thermoporoelastic_consolidation(idata=idata)
         else:
             print('Error: wrong case', case)
             exit(-1)
@@ -90,7 +90,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(F / a) / 2
     # Mandel
-    def mandel_north_dirichlet_mech_discretizer(self, idata: InputData, mesh='rect'):
+    def mandel_north_dirichlet_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
@@ -119,7 +119,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
 
-    def mandel_north_dirichlet_pm_discretizer(self, idata: InputData, mesh='rect'):
+    def mandel_north_dirichlet_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
         physical_tags = {}
         physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
@@ -171,6 +171,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_tD_pD(idata, self.F, self.a)
     def set_boundary_conditions(self, idata):
         self.boundary_conditions = idata.boundary
+        self.bnd_tags = idata.mesh.bnd_tags
         self.set_boundary_conditions_pm_discretizer()
     def set_mandel_boundary_conditions(self, idata, v_north=0.):
         self.set_boundary_conditions(idata)
@@ -191,7 +192,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_bc_rhs()
 
     # Terzaghi
-    def terzaghi_mech_discretizer(self, idata: InputData, mesh='rect'):
+    def terzaghi_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
@@ -220,7 +221,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
-    def terzaghi_pm_discretizer(self, idata: InputData, mesh='rect'):
+    def terzaghi_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
         physical_tags = {'matrix': list(self.domain_tags[elem_loc.MATRIX])}
         physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -273,7 +274,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_tD_pD(idata, self.F, a=0.5)
 
     # Two-layer Terzaghi
-    def terzaghi_two_layers_pm_discretizer(self, idata: InputData, mesh='rect'):
+    def terzaghi_two_layers_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -320,7 +321,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData, mesh='rect'):
+    def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -363,7 +364,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_mech_discretizer(self, idata: InputData, mesh='rect'):
+    def terzaghi_two_layers_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -395,13 +396,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = 1.0
 
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
-    def bai_thermoporoelastic_consolidation(self, idata: InputData, mesh='rect'):
+    def bai_thermoporoelastic_consolidation(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
-
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        self.set_bai_boundary_conditions(idata=idata, p_top = self.p_init, t_top = self.t_init + 50)
+        if idata.other.case_name != 'bai':
+            self.set_boundary_conditions(idata=idata)
+        else:
+            self.set_bai_boundary_conditions(idata=idata, p_top = self.p_init, t_top = self.t_init + 50)
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)
         self.init_arrays_boundary_condition()

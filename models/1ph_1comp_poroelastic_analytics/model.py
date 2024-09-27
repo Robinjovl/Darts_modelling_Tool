@@ -25,10 +25,10 @@ class Model(THMCModel):
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
-                                                 discretizer=self.discretizer_name, fluid_vars=self.physics.vars, mesh=self.mesh)
+                                                 discretizer=self.discretizer_name, fluid_vars=self.physics.vars)
 
     def set_input_data(self):
-        case = self.case
+        case = self.case  # short name
         if case == 'bai' or 'lab' in case:
             type_hydr = 'thermal'
             type_mech = 'thermoporoelasticity'
@@ -36,6 +36,8 @@ class Model(THMCModel):
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+
+        self.idata.other.case_name = self.case
 
         self.idata.rock.density = 2650.
         self.idata.fluid.Mw = 18.015
