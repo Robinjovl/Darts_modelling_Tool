@@ -50,6 +50,17 @@ class Model(THMCModel):
 
         self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
 
+        if 'lab' not in case:
+            self.idata.initial.initial_temperature = 0  # [K]
+            self.idata.initial.initial_pressure = 0  # [bar]
+            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+            self.idata.initial.initial_composition = None  # not used in this test
+        else:
+            self.idata.initial.initial_temperature = 20  # [K]
+            self.idata.initial.initial_pressure = 1  # [bar]
+            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+            self.idata.initial.initial_composition = None  # not used in this test
+
         if 'box' in self.mesh or 'cylinder' in self.mesh:
             # 1 to 500 kN
             # 1 kilonewton/square meter	= 0.01 bar
@@ -248,11 +259,6 @@ class Model(THMCModel):
             self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
 
-            self.idata.initial.initial_temperature = 20  # [K]
-            self.idata.initial.initial_pressure = 1  # [bar]
-            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-            self.idata.initial.initial_composition = None  # not used in this test
-
             self.idata.other.F = -1.e-5
 
             self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
@@ -283,10 +289,6 @@ class Model(THMCModel):
             self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
 
-            self.idata.initial.initial_temperature = 20  # [K]
-            self.idata.initial.initial_pressure = 1  # [bar]
-            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-            self.idata.initial.initial_composition = None  # not used in this test
 
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
@@ -302,11 +304,6 @@ class Model(THMCModel):
             assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
         
         if 'lab' not in case:
-            self.idata.initial.initial_temperature = 0  # [K]
-            self.idata.initial.initial_pressure = 0  # [bar]
-            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-            self.idata.initial.initial_composition = None  # not used in this test
-
             if case == 'bai':
                 nt = 60
                 max_dt = 0.1

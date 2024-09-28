@@ -92,7 +92,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     # Mandel
     def mandel_north_dirichlet_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
-
         self.set_uniform_initial_conditions(idata=idata)
         self.set_mandel_boundary_conditions(idata)
         self.init_mech_discretizer(idata=idata)
@@ -136,21 +135,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-        # lam = 1.0 * 10000  # in bar
-        # mu = 1.0 * 10000
-        # nu = lam / 2 / (lam + mu)
-        # E = lam * (1 + nu) * (1 - 2 * nu) / nu
-
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
         self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
                                   kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
                                   cf=idata.fluid.compressibility)
         self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
                                                     {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
-
-        #self.set_mandel_boundary_conditions()
         self.set_boundary_conditions(idata)
-
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=0)
         self.unstr_discr.calc_cell_neighbours()
 
@@ -201,7 +192,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.M = get_biot_modulus(biot=idata.rock.biot, poro0=idata.rock.porosity,
                                   kd=get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu),
                                   cf=idata.fluid.compressibility)
-        #self.set_terzaghi_boundary_conditions()
         self.set_boundary_conditions(idata)
         self.init_mech_discretizer(idata=idata)
         self.init_uniform_properties(idata=idata)
@@ -249,8 +239,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                                   cf=idata.fluid.compressibility)
         self.init_matrix_stiffness({self.unstr_discr.physical_tags['matrix'][0]:
                                                     {'E': idata.rock.E, 'nu': idata.rock.nu, 'stiffness': idata.rock.stiffness}})
-
-        #self.set_terzaghi_boundary_conditions()
         self.set_boundary_conditions(idata)
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=0)
         self.unstr_discr.calc_cell_neighbours()
@@ -294,10 +282,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
         self.init_matrix_stiffness(self.props)
-
         self.F = idata.other.F
-
-        #self.set_terzaghi_boundary_conditions()
         self.set_boundary_conditions(idata)
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=0)
         self.unstr_discr.calc_cell_neighbours()
@@ -340,12 +325,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.unstr_discr.n_dim = 3
         self.unstr_discr.bcf_num = 3
         self.unstr_discr.bcm_num = self.unstr_discr.n_dim + 3
-
         self.init_matrix_stiffness(self.props)
-
         self.F = idata.other.F
-
-        #self.set_terzaghi_boundary_conditions()
         self.set_boundary_conditions(idata)
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=0)
         self.unstr_discr.calc_cell_neighbours()
@@ -366,16 +347,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pD = 1.0
     def terzaghi_two_layers_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
-
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
         [self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
         self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
-
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
-
-        #self.set_terzaghi_boundary_conditions()
         self.set_boundary_conditions(idata)
         self.init_mech_discretizer(idata=idata)
         self.init_heterogeneous_properties()
