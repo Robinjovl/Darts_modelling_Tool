@@ -154,7 +154,7 @@ class InputData():
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         '''
-        no_array_obj = ['fluid', 'obl', 'mesh']
+        no_array_obj = ['fluid', 'obl', 'mesh', 'initial', 'other']
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
