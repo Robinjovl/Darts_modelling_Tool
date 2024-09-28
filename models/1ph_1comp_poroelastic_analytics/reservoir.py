@@ -168,11 +168,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_boundary_conditions(idata)
         self.boundary_conditions[self.bnd_tags['BND_Y+']]['mech'] = self.bc_type.STUCK_ROLLER(v_north)
         self.set_boundary_conditions_pm_discretizer()
-    def set_bai_boundary_conditions(self, idata, p_top, t_top):
-        self.set_boundary_conditions(idata)
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.AQUIFER(p_top),
-                                                             'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(t_top) }
     def update_mandel_boundary(self, time, idata: InputData):
         '''
         time-dependent boundary condition from the analytic solution
@@ -378,12 +373,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
         self.lam, self.mu = get_lambda_mu(idata.rock.E, idata.rock.nu)
-        if idata.other.case_name != 'bai':
-            self.set_boundary_conditions(idata=idata)
-        else:
-            self.set_bai_boundary_conditions(idata=idata, p_top = self.p_init, t_top = self.t_init + 50)
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
-        self.init_uniform_properties(idata=idata)
+
+        if len(idata.mesh.matrix_tags) == 1:
+            self.init_uniform_properties(idata=idata)
+        else:
+            #[self.m1_tag, self.m2_tag] = idata.mesh.matrix_tags
+            self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+
         self.init_arrays_boundary_condition()
         self.init_bc_rhs()
 
