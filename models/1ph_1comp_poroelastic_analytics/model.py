@@ -141,7 +141,7 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_X-']] = nf_r
             self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure), 'mech': self.bc_type.FREE}
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': NO_FLOW, 'mech': None}
+            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.)}
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'terzaghi':
