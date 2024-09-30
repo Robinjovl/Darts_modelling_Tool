@@ -91,7 +91,7 @@ if __name__ == '__main__':
     n.compare_well_rates(time_data_filename)
 
 #%% Calculate well rates
-from plot_well_rates import plot_well_rates
+from darts.tools.plot_well_rates import plot_well_rates
 types_of_well_rates = ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates', 'components_molar_rates', 'components_mass_rates', 'heat_rate']
 plot_well_rates(types_of_well_rates, n)
 
