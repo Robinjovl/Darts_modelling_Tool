@@ -286,11 +286,6 @@ class Model(THMCModel):
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            #if 'thermoporoelastic' in case:
-            #    self.idata.rock.th_expn = np.array([self.idata.rock.th_expn, N])
-            #    #self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-            #    self.idata.rock.conductivity = np.array([self.idata.rock.conductivity, N])
-            #    self.idata.rock.th_expn_poro = np.array([self.idata.rock.th_expn_poro, N])
 
             self.idata.fluid.compressibility = 0.0  #TODO why zero here
             self.idata.fluid.viscosity = 1.0
