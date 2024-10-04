@@ -246,7 +246,11 @@ class DartsModel:
         while t < stop_time:
 
             converged = self.run_timestep(dt, t, verbose)
-
+            #XX = np.array(self.physics.engine.X)
+            #csv_file_path = 'vectors_data.csv'  # save pressure data
+            #with open(csv_file_path, 'a', newline='') as csvfile:
+            #    csv_writer = csv.writer(csvfile)
+            #    csv_writer.writerow(np.insert(XX, 0, t))
             if converged:
                 t += dt
                 ts += 1
@@ -293,7 +297,7 @@ class DartsModel:
         self.timer.node['simulation'].start()
         for i in range(max_newt+1):
             # self.physics.engine.run_single_newton_iteration(dt)
-            self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
+            self.physics.engine.assemble_linear_system(dt)  # At first
             self.apply_rhs_flux(dt, t)  # apply RHS flux
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
@@ -340,6 +344,8 @@ class DartsModel:
             #print(self.physics.engine.X)
             """
         # End of newton loop
+
+
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
 
@@ -347,13 +353,18 @@ class DartsModel:
         """
         P = np.array(self.physics.engine.X)
         t = np.array(self.physics.engine.t)
-        csv_file_path = 'vectors_data.csv' #save pressure data
+        csv_file_path = 'vectors_data_FI.csv' #save pressure data
         with open(csv_file_path, 'a', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow( np.insert(P, 0, t))
 
         #print('X', np.array(self.physics.engine.X))
         """
+        #XX = np.array(self.physics.engine.X)
+        #csv_file_path = 'vectors_data_FI.csv'  # save pressure data
+        #with open(csv_file_path, 'a', newline='') as csvfile:
+        #    csv_writer = csv.writer(csvfile)
+        #    csv_writer.writerow(np.insert(XX, 0, t))
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -524,8 +535,8 @@ class DartsModel:
                 if i % 3 != 0:
                     self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
             #print(self.instances[0].physics.engine.X)
-            #XX = np.array(self.instances[0].physics.engine.X)
-            #csv_file_path = 'vectors_data.csv'  # save pressure data
+            #XX = np.array(self.instances[1].physics.engine.X)
+            #csv_file_path = 'vectors_data_SEQ.csv'  # save pressure data
             #with open(csv_file_path, 'a', newline='') as csvfile:
             #    csv_writer = csv.writer(csvfile)
             #    csv_writer.writerow(np.insert(XX, 0, t))

@@ -4,7 +4,7 @@ from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.operators_base import PropertyOperators as props
-
+import csv
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -13,22 +13,22 @@ def plot_sol(n):
     z = np.ones((nc, n.reservoir.nb))
     phi = np.ones(n.reservoir.nb)
     sat_ev = props(n.property_container)
-    prop = np.zeros(2*n.property_container.nph)
+    prop = np.zeros(2 * n.property_container.nph)
 
     plt.figure(num=1, figsize=(12, 8), dpi=100)
-    for i in range(nc-1):
+    for i in range(nc - 1):
         z[i][:] = Xn[i + 1:n.reservoir.nb * nc:nc]
         z[-1][:] -= z[i][:]
 
     for i in range(n.reservoir.nb):
-        state = Xn[i*nc:(i+1)*nc]
+        state = Xn[i * nc:(i + 1) * nc]
         sat_ev.evaluate(state, prop)
         density_tot = np.sum(prop[0:3] * prop[3:6])
         phi[i] -= prop[2]  # (z[-1, i] * density_tot / prop[-1])
 
     for i in range(3):
         plt.subplot(330 + (i + 1))
-        plt.plot(z[i]/(1-z[3]))
+        plt.plot(z[i] / (1 - z[3]))
         plt.title('Composition' + str(i + 1), y=1)
 
     i = 3
@@ -43,51 +43,79 @@ def plot_sol(n):
 
     plt.show()
 
+
 if __name__ == '__main__':
-
-
+    # ----------------------------------
+    SEQ = False
+    days = 10
+    reload = False
+    Save = True
+    # ----------------------------------
     redirect_darts_output('run.log')
-    pressure = Model('P_SEQ')
-    concentration = Model('C_SEQ')
-    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
-    pressure.init()
-    concentration.init()
-    pressure.add_model(pressure)
-    pressure.add_model(concentration)
-
-    if True:
-        pressure.run_seq(days=10)
-        # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # n.run_python(300, restart_dt=1e-3)
-        pressure.print_timers()
-        pressure.print_stat()
-        time_data = pd.DataFrame.from_dict(pressure.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        pressure.save_restart_data()
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
-        writer.close()
+    if SEQ:
+        pressure = Model('P_SEQ')
+        concentration = Model('C_SEQ')
+        # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
+        pressure.init()
+        concentration.init()
+        pressure.add_model(pressure)
+        pressure.add_model(concentration)
+        if not reload:
+            pressure.run_seq(days=days)
+            pressure.print_timers()
+            pressure.print_stat()
+            time_data = pd.DataFrame.from_dict(pressure.physics.engine.time_data)
+            time_data.to_pickle("darts_time_data.pkl")
+            pressure.save_restart_data()
+            writer = pd.ExcelWriter('time_data.xlsx')
+            time_data.to_excel(writer, 'Sheet1')
+            writer.close()
+        else:
+            pressure.load_restart_data()
+            time_data = pd.read_pickle("darts_time_data.pkl")
     else:
-        FI.load_restart_data()
-        time_data = pd.read_pickle("darts_time_data.pkl")
+        FI = Model('FI')
+        FI.init()
+        if not reload:
+            FI.run(days=days)
+            # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
+            # n.run_python(300, restart_dt=1e-3)
+            FI.print_timers()
+            FI.print_stat()
+            time_data = pd.DataFrame.from_dict(FI.physics.engine.time_data)
+            time_data.to_pickle("darts_time_data.pkl")
+            FI.save_restart_data()
+            writer = pd.ExcelWriter('time_data.xlsx')
+            time_data.to_excel(writer, 'Sheet1')
+            writer.close()
+        else:
+            FI.load_restart_data()
+            time_data = pd.read_pickle("darts_time_data.pkl")
 
-
-    if True:
-        Xn = np.array(pressure.physics.engine.X, copy=False)
-        nc = pressure.physics.nc + pressure.physics.thermal
-        nb = pressure.reservoir.mesh.n_res_blocks
-
+    if Save:
+        if SEQ:
+            Xn = np.array(pressure.physics.engine.X, copy=False)
+            nc = pressure.physics.nc + pressure.physics.thermal
+            nb = pressure.reservoir.mesh.n_res_blocks
+            csv_file_path = 'Final_data_SEQ.csv'  # save pressure data
+        else:
+            Xn = np.array(FI.physics.engine.X, copy=False)
+            nc = FI.physics.nc + FI.physics.thermal
+            nb = FI.reservoir.mesh.n_res_blocks
+            csv_file_path = 'Final_data_FI.csv'  # save pressure data
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(np.insert(Xn, 0, 1))
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:nb*nc:nc])
+            plt.plot(Xn[i:nb * nc:nc])
             plt.savefig(str(i) + '.png')
     else:
-        #plot_sol(n)
-        FI.print_and_plot('sim_data')
+        # plot_sol(n)
+        pressure.print_and_plot('sim_data')
 
-
-#z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
+# z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
 # rho_aq = n.property_container.density_ev['wat'].evaluate(P, z_co2)
 # Sg = np.zeros(n.reservoir.nb)

@@ -2489,8 +2489,8 @@ int engine_base::assemble_linear_system(value_t deltat)
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
 
-	Jacobian->write_matrix_to_file("jac_tpfa.txt");
-	write_vector_to_file("rhs.txt", RHS);
+	//Jacobian->write_matrix_to_file("jac_tpfa.txt");
+	//write_vector_to_file("rhs.txt", RHS);
 
 
 #ifdef WITH_GPU

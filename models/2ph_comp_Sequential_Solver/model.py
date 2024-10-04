@@ -33,7 +33,7 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nx = 1000
+        nx = 10
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10,
                                          permx=100, permy=100, permz=10, poro=0.3, depth=1000)
         return
@@ -66,7 +66,7 @@ class Model(CICDModel):
                                                ('oil', PhaseRelPerm("oil"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,engine= self.engine ,
+        self.physics = Compositional(components, phases, self.timer, engine=self.engine,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 

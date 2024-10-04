@@ -132,7 +132,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
             if (i < mesh->n_res_blocks)
                 RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
 
-            for (uint8_t v = 0; v < N_VARS; v++)
+            for (uint8_t v = 1; v < N_VARS; v++)
             {
                 Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
                 // Include derivatives for reaction term if part of reservoir cells:
@@ -174,7 +174,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                 phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
 
                 trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
                     trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
@@ -183,7 +183,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
             }
             else
             {
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     trans_mult_der_i[v] = 0;
                     trans_mult_der_j[v] = 0;
@@ -210,7 +210,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                 // calculate partial derivatives for gravity and capillary terms
                 value_t grav_pc_der_i[N_VARS];
                 value_t grav_pc_der_j[N_VARS];
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
                     grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
@@ -229,7 +229,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                             CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
 
                         RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
-                        for (uint8_t v = 0; v < N_VARS; v++)
+                        for (uint8_t v = 1; v < N_VARS; v++)
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
                                 tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
@@ -255,7 +255,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                             CFL_in[c] += phase_p_diff * c_flux;
 
                         RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
-                        for (uint8_t v = 0; v < N_VARS; v++)
+                        for (uint8_t v = 1; v < N_VARS; v++)
                         {
                             Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
                                 tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
@@ -293,7 +293,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                             RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
                             // Add diffusion terms to Jacobian:
-                            for (uint8_t v = 0; v < N_VARS; v++)
+                            for (uint8_t v = 1; v < N_VARS; v++)
                             {
                                 Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                 Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
@@ -309,7 +309,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                             RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
                             // Add diffusion terms to Jacobian:
-                            for (uint8_t v = 0; v < N_VARS; v++)
+                            for (uint8_t v = 1; v < N_VARS; v++)
                             {
                                 Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
                                 Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
@@ -331,7 +331,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                 {
                     // rock heat transfers flows from cell i to j
                     RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-                    for (uint8_t v = 0; v < N_VARS; v++)
+                    for (uint8_t v = 1; v < N_VARS; v++)
                     {
                         Jac[diag_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
                         if (v == T_VAR)
@@ -345,7 +345,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
                 {
                     // rock heat transfers flows from cell j to i
                     RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j]; // energy cond operator
-                    for (uint8_t v = 0; v < N_VARS; v++)
+                    for (uint8_t v = 1; v < N_VARS; v++)
                     {
                         Jac[jac_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
                         if (v == T_VAR)
@@ -365,7 +365,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt,
         {
             RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
 
-            for (uint8_t v = 0; v < N_VARS; v++)
+            for (uint8_t v = 1; v < N_VARS; v++)
             {
                 Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
             } // end of fill offdiagonal part + contribute to diagonal
@@ -488,7 +488,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
         // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
         for (uint8_t c = 1; c < NE; c++)
         {
-            for (uint8_t v = 0; v < N_VARS; v++)
+            for (uint8_t v = 1; v < N_VARS; v++)
             {
                 Jac_n[diag_idx + c * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]); // der of accumulation term
 
@@ -552,7 +552,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
                 phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
 
                 trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
                     trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
@@ -561,7 +561,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
             }
             else
             {
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     trans_mult_der_i[v] = 0;
                     trans_mult_der_j[v] = 0;
@@ -597,7 +597,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
                 // calculate partial derivatives for gravity and capillary terms
                 value_t grav_pc_der_i[N_VARS];
                 value_t grav_pc_der_j[N_VARS];
-                for (uint8_t v = 0; v < N_VARS; v++)
+                for (uint8_t v = 1; v < N_VARS; v++)
                 {
                     grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
                     grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
@@ -709,7 +709,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
             //set the values of non-diagonal elements to zero
             /*for (uint8_t c = 1; c < N_VARS; c++)
             {
-              for (uint8_t v = 0; v < N_VARS; v++)
+              for (uint8_t v = 1; v < N_VARS; v++)
               {
                 Jac_n[jac_idx + c * N_VARS + v] = 0;
               }
@@ -724,7 +724,7 @@ int engine_sequentialc_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t d
         //{
         //  RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
 
-        //  for (uint8_t v = 0; v < N_VARS; v++)
+        //  for (uint8_t v = 1; v < N_VARS; v++)
         //  {
         //    Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
         //  } // end of fill offdiagonal part + contribute to diagonal

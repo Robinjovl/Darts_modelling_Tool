@@ -45,10 +45,10 @@ public:
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
 
-  std::vector<value_t> op_ders_arr_n;
   csr_matrix_base* Jacobian_Wn;
   linsolv_iface* linear_solver_Wn;
-
+  std::vector<value_t> Pn_1;
+  std::vector<value_t> Wn_1;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
   //const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux beta star*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 + NP /*Lambda*/;
