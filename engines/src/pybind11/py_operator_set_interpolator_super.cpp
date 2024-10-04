@@ -38,17 +38,17 @@ void pybind_operator_set_interpolator_super(py::module &m)
         N_OPS = NC * (2 * NP + 2) + 4 * NP + 4 
     */
 
-    // NP = 1: A =  4, B =  8 (th)
+    // NP = 1: A =  4, B =  8 
     ABPair<4, 8>,     // single phase
 
-    // NP = 2: A =  6, B = 12 (th)
+    // NP = 2: A =  6, B = 12 
     ABPair<6, 12>,    // two-phase
 
-    // NP = 3: A =  8, B = 12 (th) ???
-    ABPair<8, 13>,    // three phases
+    // NP = 3: A =  8, B = 16 
+    ABPair<8, 16>,    // three phases
 
-    // NP = 4: A = 10, B = 16 (th)
-    ABPair<10, 16>,   // four phases
+    // NP = 4: A = 10, B = 20 
+    ABPair<10, 20>,   // four phases
 
     // ???
     ABPair<4, 4>,     // geothermal problem, three phases
