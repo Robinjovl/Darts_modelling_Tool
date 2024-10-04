@@ -90,10 +90,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     index_t* row_thread_starts = jacobian->get_row_thread_starts();
 
     // for reconstruction of phase velocities
-    if (mesh->velocity_appr.size() && !darcy_velocities.size())
+    if (!mesh->velocity_appr.empty() && darcy_velocities.empty())
         darcy_velocities.resize(n_res_blocks * NP * ND);
     std::fill(darcy_velocities.begin(), darcy_velocities.end(), 0.0);
 
+    // if velocity reconstruction enabled, also provide molar weights
+    if (!mesh->velocity_appr.empty())
+    {
+      if (molar_weights.empty())
+      {
+        printf("Velocity reconstruction is enabled. Provide molar weights!");
+        exit(-1);
+      }
+    }
 
     CFL_max = 0;
 
@@ -167,7 +176,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         jac_idx = N_VARS_SQ * csr_idx_start;
 
         // for velocity reconstruction
-        if (velocity_offset.size() && i < n_res_blocks)
+        if (!velocity_offset.empty() && i < n_res_blocks)
             cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
 
         cell_conn_idx = 0;
@@ -250,7 +259,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
                             if (molar_weights.size())
-                                phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
+                            phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
                         }
 
                         RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
@@ -282,7 +291,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             CFL_in[c] += phase_p_diff * c_flux;
                             if (molar_weights.size())
-                                phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
+                            phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
                         }
 
                         RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only

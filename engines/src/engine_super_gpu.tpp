@@ -540,8 +540,14 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
                                                      PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d);
 
-  if (mesh->velocity_appr.size()) // reconstruction of phase velocities
+  if (!mesh->velocity_appr.empty()) // reconstruction of phase velocities
   {
+    if (molar_weights.empty())
+    {
+      printf("Velocity reconstruction is enabled. Provide molar weights!");
+      exit(-1);
+    }
+
     reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, PORO_OP>
         KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->trans_mult_exp, 
                                         X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d, 
@@ -550,7 +556,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                         dt);
     copy_data_to_host(darcy_velocities, darcy_velocities_d);
 
-    if (dispersivity.size())
+    if (!dispersivity.empty())
     {
       assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP, THERMAL>
         KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d, 
