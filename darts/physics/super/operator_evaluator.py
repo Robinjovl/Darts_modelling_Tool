@@ -29,7 +29,7 @@ class OperatorsSuper(OperatorsBase):
         self.GRAV_OP = self.RE_INTER_OP + 3  # gravity operator - nph
         self.PC_OP = self.RE_INTER_OP + 3 + self.nph  # capillary operator - nph
         self.PORO_OP = self.RE_INTER_OP + 3 + 2 * self.nph  # porosity operator - 1
-        self.ENTH_OP = self.PORO_OP + 1  # porosity operator - 1
+        self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
         self.n_ops = self.ENTH_OP + self.nph
 
     def print_operators(self, state: value_vector, values: value_vector):
