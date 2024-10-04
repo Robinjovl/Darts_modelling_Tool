@@ -11,6 +11,40 @@
 
 #include "engine_super_gpu.hpp"
 
+
+/**
+ * @brief Reconstruct phase velocities based on input data and operators.
+ *
+ * This kernel (thread per cell) reconstructs the velocities of phases in a computational grid,
+ * accounting for various physical parameters such as pressure differences, density,
+ * gravity, and phase flux. The result is stored in `darcy_velocities`.
+ *
+ * @tparam NC Number of components in the fluid.
+ * @tparam NP Number of phases.
+ * @tparam NE Number of equations.
+ * @tparam N_VARS Number of variables per block.
+ * @tparam P_VAR Index of pressure variable.
+ * @tparam N_OPS Number of operators.
+ * @tparam FLUX_OP Index for flux operators.
+ * @tparam GRAV_OP Index for gravity operators.
+ * @tparam PC_OP Index for capillary pressure operators.
+ * @tparam PORO_OP Index for porosity operators.
+ *
+ * @param[in] n_res_blocks Number of reservoir blocks.
+ * @param[in] trans_mult_exp Exponent for transmissibility multiplier calculation.
+ * @param[in] X Array of unknowns (pressure, temperature, etc.).
+ * @param[in] op_vals_arr Array of operator values.
+ * @param[in] op_num Array of operator numbers per block.
+ * @param[in] rows CSR row pointer array for the sparse matrix.
+ * @param[in] cols CSR column index array for the sparse matrix.
+ * @param[in] tran Array of transmissibilities.
+ * @param[in] grav_coef Array of gravity coefficients.
+ * @param[in] velocity_appr Array of velocity approximations.
+ * @param[in] velocity_offset Velocity offset per block.
+ * @param[out] darcy_velocities Output array for the reconstructed Darcy velocities.
+ * @param[in] molar_weights Array of molar weights for fluid components.
+ * @param[in] dt Time step size.
+ */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP, 
           uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP>
 __global__ void
@@ -101,6 +135,36 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
   }
 }
 
+/**
+ * @brief Assemble the dispersion term for a phase in a computational grid.
+ *
+ * This kernel (thread per component*varible) computes the contribution of dispersion and diffusion terms to the
+ * residual and Jacobian matrix, which is used in solving flow and transport equations.
+ *
+ * @tparam NC Number of components in the fluid.
+ * @tparam NP Number of phases.
+ * @tparam NE Number of equations.
+ * @tparam N_VARS Number of variables per block.
+ * @tparam N_OPS Number of operators.
+ * @tparam GRAD_OP Index for gradient operators.
+ * @tparam ENTH_OP Index for enthalpy operators.
+ * @tparam THERMAL Enable or disable thermal effects.
+ *
+ * @param[in] n_res_blocks Number of reservoir blocks.
+ * @param[in] X Array of unknowns (pressure, temperature, etc.).
+ * @param[out] RHS Right-hand side array for the residual.
+ * @param[in] op_vals_arr Array of operator values.
+ * @param[in] op_ders_arr Array of operator derivatives.
+ * @param[in] rows CSR row pointer array for the sparse matrix.
+ * @param[in] cols CSR column index array for the sparse matrix.
+ * @param[out] Jac Output Jacobian matrix.
+ * @param[in] diag_ind Array of diagonal indices in the sparse matrix.
+ * @param[in] tranD Array of dispersion transmissibilities.
+ * @param[in] darcy_velocities Array of Darcy velocities.
+ * @param[in] dispersivity Array of phase dispersivities.
+ * @param[in] op_num Array of region per block.
+ * @param[in] dt Time step size.
+ */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP,
           bool THERMAL>
 __global__ void
@@ -185,6 +249,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
       // respective heat fluxes
       if constexpr (THERMAL)
       {
+        // use atomics below because threads for all components are writing into energy balance equation
         if (v == 0)
         {
           atomicAdd(&RHS[i * N_VARS + NC], -avg_enthalpy * disp * grad_con);
@@ -210,6 +275,58 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
   }
 }
 
+/**
+ * @brief Assemble the Jacobian matrix for a set of equations with thermal effects.
+ *
+ * This kernel assembles the Jacobian matrix for a system of flow and transport equations
+ * with potential thermal effects. It accounts for accumulation, convection, diffusion, and
+ * reaction terms.
+ *
+ * @tparam NC Number of components in the fluid.
+ * @tparam NP Number of phases.
+ * @tparam NE Number of equations.
+ * @tparam N_VARS Number of variables per block.
+ * @tparam P_VAR Index of pressure variable.
+ * @tparam T_VAR Index of temperature variable.
+ * @tparam N_OPS Number of operators.
+ * @tparam ACC_OP Index for accumulation operators.
+ * @tparam FLUX_OP Index for flux operators.
+ * @tparam UPSAT_OP Index for upstream saturation operators.
+ * @tparam GRAD_OP Index for gradient operators.
+ * @tparam KIN_OP Index for kinetic operators.
+ * @tparam RE_INTER_OP Index for reservoir interface operators.
+ * @tparam RE_TEMP_OP Index for reservoir temperature operators.
+ * @tparam ROCK_COND Index for rock conductivity.
+ * @tparam GRAV_OP Index for gravity operators.
+ * @tparam PC_OP Index for capillary pressure operators.
+ * @tparam PORO_OP Index for porosity operators.
+ * @tparam ENTH_OP Index for enthalpy operators.
+ * @tparam THERMAL Enable or disable thermal effects.
+ *
+ * @param[in] n_blocks Total number of blocks.
+ * @param[in] n_res_blocks Number of reservoir blocks.
+ * @param[in] trans_mult_exp Exponent for transmissibility multiplier.
+ * @param[in] phase_existence_tolerance Tolerance value for phase existence.
+ * @param[in] dt Time step size.
+ * @param[in] X Array of unknowns.
+ * @param[out] RHS Right-hand side residual array.
+ * @param[in] rows CSR row pointer array for the sparse matrix.
+ * @param[in] cols CSR column index array for the sparse matrix.
+ * @param[out] Jac Output Jacobian matrix.
+ * @param[in] diag_ind Diagonal indices in the sparse matrix.
+ * @param[in] op_vals_arr Operator values at the current timestep.
+ * @param[in] op_vals_arr_n Operator values at the previous timestep.
+ * @param[in] op_ders_arr Operator derivatives array.
+ * @param[in] tran Transmissibility array.
+ * @param[in] tranD Diffusion transmissibility array.
+ * @param[in] hcap Array of heat capacities.
+ * @param[in] rock_cond Array of rock conductivities.
+ * @param[in] poro Array of porosity values.
+ * @param[in] PV Pore volume array.
+ * @param[in] RV Rock volume array.
+ * @param[in] grav_coef Array of gravity coefficients.
+ * @param[in] kin_fac Kinetic factor array.
+ */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
           uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t RE_INTER_OP,
           uint8_t RE_TEMP_OP, uint8_t ROCK_COND, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP, uint8_t ENTH_OP,
@@ -415,6 +532,8 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           if (c < NC)
           {
             value_t avg_enthalpy = (op_vals_arr[i * N_OPS + ENTH_OP + p] + op_vals_arr[j * N_OPS + ENTH_OP + p]) * 0.5;
+            
+            // use atomics below because threads for all components are writing into energy balance equation
             if (v == 0)
             {
               atomicAdd(&RHS[i * N_VARS + NC], -avg_enthalpy * diff_mob_ups_m * grad_con);
