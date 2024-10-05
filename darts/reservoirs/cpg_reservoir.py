@@ -591,6 +591,7 @@ class CPG_Reservoir(ReservoirBase):
         nodes_cpp = self.discr_mesh.get_nodes_array()
         nodes_1d = np.array(nodes_cpp, copy=True)
         points = nodes_1d.reshape((nodes_1d.size // 3, 3))
+        points[:,2] *= -1  # invert z-coordinate
 
         cells_1d = np.arange(self.discr_mesh.n_cells * 8)
         cells = cells_1d.reshape((cells_1d.size // 8, 8))

@@ -651,6 +651,8 @@ class DartsModel:
         nb = self.reservoir.mesh.n_res_blocks
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
+        prop_idxs = [list(self.physics.property_containers[0].output_props.keys()).index(prop)
+                     for prop in output_properties]
 
         # Loop over timesteps
         for k, timestep in enumerate(timesteps):
@@ -658,7 +660,7 @@ class DartsModel:
             for j, variable in enumerate(var_names):
                 property_array[variable][k, :] = X[k, :nb, j]
 
-            if len(props) > n_vars:
+            if output_properties is not None:
                 state = value_vector(np.stack([property_array[var][k] for var in var_names]).T.flatten())
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
@@ -668,8 +670,8 @@ class DartsModel:
                     prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
                     i += 1
 
-                for j, prop in enumerate(props[n_vars:]):
-                    property_array[prop][k] = values_numpy[j::n_ops]
+                for j, prop in enumerate(output_properties):
+                    property_array[prop][k] = values_numpy[prop_idxs[j]::n_ops]
 
         return timesteps, property_array
 

@@ -30,6 +30,23 @@ def run(physics_type : str, discr_type : str, case: str, out_dir: str, dt : floa
         m.physics.engine.report()
         m.print_well_rate()
 
+    # output center points to VTK
+    from pyevtk.hl import pointsToVTK
+    fname = os.path.join(out_dir, 'centers')
+    c = None
+    if discr_type == 'struct' and not m.reservoir.discretizer.is_cpg:
+        c = m.reservoir.discretizer.centroids_all_cells
+        x, y, z = c[:, :, :, 0].flatten(), c[:, :, :, 1].flatten(), -c[:, :, :, 2].flatten()
+    elif discr_type == 'cpg':
+        c_cpg = m.reservoir.centroids_all_cells[:m.reservoir.discr_mesh.n_cells]
+        c = np.zeros((m.reservoir.discr_mesh.n_cells, 3))
+        for i in range(m.reservoir.discr_mesh.n_cells):
+            cv = c_cpg[i].values
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+    if c is not None:
+        pointsToVTK(fname, x, y, z)
+
     m.save_cubes(os.path.join(out_dir, 'res_last'))
     m.print_timers()
     m.print_stat()
