@@ -1,5 +1,6 @@
 from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
+from darts.reservoirs.unstruct_reservoir_mech import bound_cond
 import numpy as np
 from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators
@@ -45,6 +46,27 @@ class Model(THMCModel):
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+
+        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
+        NO_FLOW = self.bc_type.NO_FLOW  # short name
+        self.idata.mesh.bnd_tags = {}
+        bnd_tags = self.idata.mesh.bnd_tags  # short name
+        bnd_tags['BND_X-'] = 991
+        bnd_tags['BND_X+'] = 992
+        bnd_tags['BND_Y-'] = 993
+        bnd_tags['BND_Y+'] = 994
+        bnd_tags['BND_Z-'] = 995
+        bnd_tags['BND_Z+'] = 996
+        self.idata.mesh.matrix_tags = [99991]
+
+        self.idata.boundary = {}
+        nf_s = {'flow': NO_FLOW, 'temp': NO_FLOW, 'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0])}
+        self.idata.boundary[bnd_tags['BND_X-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_X+']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Y-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Y+']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Z-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Z+']] = nf_s
 
         self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1
