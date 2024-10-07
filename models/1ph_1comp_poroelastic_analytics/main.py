@@ -548,8 +548,9 @@ if __name__ == '__main__':
 
     #run(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
     #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='box')
-    run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
-    run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinder')
+    #run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
+    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinder')
+    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinderfine')
 
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')

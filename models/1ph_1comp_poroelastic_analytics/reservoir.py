@@ -34,8 +34,8 @@ def get_mesh_filename(mesh='rect', suffix='', prop=''):
         mesh_filename = 'meshes/box_' + prop
     elif mesh == 'cylinder':
         mesh_filename = 'meshes/cylinder_' + prop
-    elif mesh == 'cylinder_fine':
-        mesh_filename = 'meshes/cylinder_fine' + prop
+    elif mesh == 'cylinderfine':
+        mesh_filename = 'meshes/cylinderfine_' + prop
     elif mesh == 'cylinder_jacket':
         mesh_filename = 'meshes/core_unstr_jacket'
     return mesh_filename + suffix + '.msh'
@@ -62,7 +62,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.terzaghi_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(idata=idata)
-        elif case == 'terzaghi_two_layers' or ('lab' in case and '2rocks' in case):
+        elif case == 'terzaghi_two_layers':
             if discretizer == 'mech_discretizer':
                 self.terzaghi_two_layers_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
@@ -72,6 +72,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata)
         elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(idata=idata)
+        elif 'lab' in case and '2rocks' in case:
+            if discretizer == 'mech_discretizer':
+                self.two_layers_mech_discretizer(idata=idata)
+            elif discretizer == 'pm_discretizer':
+                self.two_layers_pm_discretizer(idata=idata)
         else:
             print('Error: wrong case', case)
             exit(-1)
@@ -257,7 +262,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_tD_pD(idata, self.F, a=0.5)
 
     # Two-layer Terzaghi
-    def terzaghi_two_layers_pm_discretizer(self, idata: InputData):
+    def two_layers_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -297,10 +302,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_bc_rhs()
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
+    def terzaghi_two_layers_pm_discretizer(self, idata: InputData):
+        self.two_layers_pm_discretizer(idata)
+
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
+
     def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData):
         self.set_uniform_initial_conditions(idata=idata)
 
@@ -340,7 +349,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
         self.tD = 1.0
         self.pD = 1.0
-    def terzaghi_two_layers_mech_discretizer(self, idata: InputData):
+
+    def two_layers_mech_discretizer(self, idata: InputData):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -363,6 +373,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
+    def terzaghi_two_layers_mech_discretizer(self, idata: InputData):
+        self.two_layers_mech_discretizer(idata)
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
