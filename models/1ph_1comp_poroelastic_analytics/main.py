@@ -547,9 +547,9 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
     #run(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
-    #run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
-    #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='box')
-    #run_and_plot(case='lab_2_rocks', discretizer='mech_discretizer', mesh='cylinder')
+    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='box')
+    run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
+    run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinder')
 
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')

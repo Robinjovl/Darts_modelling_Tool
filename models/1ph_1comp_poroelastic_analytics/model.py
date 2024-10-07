@@ -29,7 +29,7 @@ class Model(THMCModel):
 
     def set_input_data(self):
         case = self.case  # short name
-        if case == 'bai' or 'lab' in case:
+        if case == 'bai':
             type_hydr = 'thermal'
             type_mech = 'thermoporoelasticity'
         else:
@@ -48,7 +48,7 @@ class Model(THMCModel):
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
 
-        self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
+        self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, prop=case.split('_')[1])
 
         if 'lab' not in case:
             self.idata.initial.initial_temperature = 0  # [K]
@@ -93,8 +93,6 @@ class Model(THMCModel):
             bnd_tags['BND_Z-'] = 995
             bnd_tags['BND_Z+'] = 996
 
-            self.idata.mesh.matrix_tags = [99991]
-
             self.idata.boundary = {}
             b = {'flow': NO_FLOW, 'mech': confining, 'temp': self.bc_type.NO_FLOW}
             self.idata.boundary[bnd_tags['BND_X-1']] = b
@@ -108,8 +106,6 @@ class Model(THMCModel):
             bnd_tags['BND_Z-'] = 992
             bnd_tags['BND_Z+'] = 993
             bnd_tags['BND_SIDE'] = 991
-
-            self.idata.mesh.matrix_tags = [99991, 99992]
 
             self.idata.boundary = {}
             self.idata.boundary[bnd_tags['BND_SIDE']] = {'flow': NO_FLOW, 'mech': confining, 'temp': NO_FLOW}
@@ -240,10 +236,13 @@ class Model(THMCModel):
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'lab_uniform':
+            self.idata.mesh.matrix_tags = [99991]
+
             self.idata.rock.density = 3000. #TODO
 
             self.idata.rock.porosity = 0.02 #Porosity of Dinantian ~0,01-3%
-            self.idata.rock.permx = 0.02 # not measured yet
+            self.idata.rock.perm = 0.02 # not measured yet
+            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = self.idata.rock.perm
 
             self.idata.rock.E = 20 * 1e+4 # 10-35 GPa = *10^4 to bars
             self.idata.rock.nu = 0.25  #0.25
@@ -264,12 +263,15 @@ class Model(THMCModel):
 
             self.idata.other.F = -1.e-5
 
-        elif case == 'lab_2_rocks':
+        elif case == 'lab_2rocks':
+            self.idata.mesh.matrix_tags = [99991, 99992]
+
             self.idata.rock.density = 3000.  # TODO
+
 
             biot_1, biot_2 = 1, 1
             nu_1, nu_2 = 0.25, 0.25
-            young_1, young_2 = 20 * 1e+4, 20 * 1e+4
+            E_1, E_2 = 28 * 1e+4, 28 * 1e+4   # 10-35 GPa = *10^4 to bars
             poro_1, poro_2 = 0.02, 0.02
             perm_1, perm_2 = 0.02, 0.02
 
@@ -277,7 +279,7 @@ class Model(THMCModel):
             self.idata.rock.perm = np.array([perm_1, perm_2])
             self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = self.idata.rock.perm
 
-            self.idata.rock.E = np.array([young_1, young_2])
+            self.idata.rock.E = np.array([E_1, E_2])
             self.idata.rock.biot = np.array([biot_1, biot_2])
             self.idata.rock.nu = np.array([nu_1, nu_2])
             self.idata.other.kd = get_bulk_modulus(self.idata.rock.E, self.idata.rock.nu)

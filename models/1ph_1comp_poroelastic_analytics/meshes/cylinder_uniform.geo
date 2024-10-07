@@ -72,8 +72,7 @@ Volume(2) = {2};
 
 //Recombine Surface{:};
 
-Physical Volume("matrix", 99991) = {1};
-Physical Volume("matrix2", 99992) = {2};
+Physical Volume("matrix", 99991) = {1, 2};
 //Physical Surface("fracture", 91) = {2};
 Physical Surface("side", 991) = {101:103, 201:203};
 Physical Surface("boundary_zm", 992) = {1};

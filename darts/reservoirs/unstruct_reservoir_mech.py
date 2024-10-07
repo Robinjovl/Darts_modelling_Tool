@@ -57,6 +57,12 @@ def set_domain_tags(matrix_tags,
     domain_tags[elem_loc.FRACTURE_BOUNDARY] = set(frac_bnd_tags)
     return domain_tags
 
+def E_nu_from_Vp_Vs(density, Vp, Vs):
+    G = density * Vs ** 2
+    nu = 0.5 * (Vp ** 2 - 2 * Vs ** 2) / (Vp ** 2 - Vs ** 2)
+    E = 2 * G * (1 + nu)
+    return E, nu
+
 def get_lambda_mu(E, nu):
     '''
     :param E: Young modulus [bars]
@@ -531,6 +537,9 @@ class UnstructReservoirMech():
                             self.props[m][prop] = val
                         else:
                             self.props[m][prop] = val[i]
+                    else:
+                        print('in set_props_tags: ', prop + ' is None')
+                        #exit(1)
 
     def init_heterogeneous_properties(self):
         '''

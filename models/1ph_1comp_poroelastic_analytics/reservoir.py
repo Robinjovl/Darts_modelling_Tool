@@ -23,7 +23,7 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.input.input_data import InputData
 
-def get_mesh_filename(mesh='rect', suffix=''):
+def get_mesh_filename(mesh='rect', suffix='', prop=''):
     if mesh == 'rect':
         mesh_filename = 'meshes/transfinite'
     elif mesh == 'wedge':
@@ -31,11 +31,11 @@ def get_mesh_filename(mesh='rect', suffix=''):
     elif mesh == 'hex':
         mesh_filename = 'meshes/hexahedron'
     elif mesh == 'box':
-        mesh_filename = 'meshes/core2d_unstr'
+        mesh_filename = 'meshes/box_' + prop
     elif mesh == 'cylinder':
-        mesh_filename = 'meshes/core_unstr'
+        mesh_filename = 'meshes/cylinder_' + prop
     elif mesh == 'cylinder_fine':
-        mesh_filename = 'meshes/core_unstr_fine'
+        mesh_filename = 'meshes/cylinder_fine' + prop
     elif mesh == 'cylinder_jacket':
         mesh_filename = 'meshes/core_unstr_jacket'
     return mesh_filename + suffix + '.msh'
@@ -57,12 +57,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.mandel_north_dirichlet_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(idata=idata)
-        elif case == 'terzaghi':
+        elif case == 'terzaghi'  or ('lab' in case and 'uniform' in case):
             if discretizer == 'mech_discretizer':
                 self.terzaghi_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
                 self.terzaghi_pm_discretizer(idata=idata)
-        elif case == 'terzaghi_two_layers':
+        elif case == 'terzaghi_two_layers' or ('lab' in case and '2rocks' in case):
             if discretizer == 'mech_discretizer':
                 self.terzaghi_two_layers_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
@@ -70,7 +70,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         elif case == 'terzaghi_two_layers_no_analytics':
             if discretizer == 'pm_discretizer':
                 self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata)
-        elif case == 'bai' or 'lab' in case:
+        elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(idata=idata)
         else:
             print('Error: wrong case', case)
