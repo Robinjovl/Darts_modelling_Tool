@@ -754,7 +754,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 	index_t r_ind, r_ind1, r_ind2, r_ind3, r_ind4, l_ind, l_ind1, upwd_idx[NP];
 	index_t j, diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], conn_id = 0, st_id = 0, conn_st_id = 0;
     value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
-	value_t avg_density, *buf, *buf_c, *buf_diff, avg_heat_cond_multiplier;
+	value_t avg_density, *buf, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult;
 	uint8_t d, v, c, p;
 	value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
@@ -926,6 +926,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 					//// mass fluxes
 					for (p = 0; p < NP; p++)
 					{
+						if (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > params->phase_existence_tolerance)
+						  phase_presence_mult = 1.0;
+						else
+						  phase_presence_mult = 0.0;
+
 						// NE equations
 						for (c = 0; c < NE; c++)
 						{
@@ -943,7 +948,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 								Jac[l_ind1 + v] -= dt * op_vals_arr[r_ind] * tran[conn_st_id] * op_ders_arr[r_ind1 + v];
 								// component diffusion
 								if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
-									Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
+									Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 * 
+								  phase_presence_mult * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
 							}
 						}
 					}
@@ -992,8 +998,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 				{
 					for (p = 0; p < NP; p++)
 					{
-						RHS[i * N_VARS + c] += dt * diff_diff[p * NE + c] * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + 
-																			  mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5; // diffusion term
+						if (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > params->phase_existence_tolerance)
+						  phase_presence_mult = 1.0;
+						else
+						  phase_presence_mult = 0.0;
+
+						RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] * 
+							(mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + 
+							 mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5; // diffusion term
 
 						l_ind = diag_ind[i] * N_VARS_SQ + c * N_VARS;
 						l_ind1 = nebr_jac_idx * N_VARS_SQ + c * N_VARS;
@@ -1001,8 +1013,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 						r_ind1 = (j * N_OPS + UPSAT_OP + p) * N_VARS;
 						for (v = 0; v < N_VARS; v++)
 						{
-						  Jac[l_ind + v] += diff_diff[p * NE + c] * dt * mesh->poro[i] * op_ders_arr[r_ind + v] * 0.5;
-						  Jac[l_ind1 + v] += diff_diff[p * NE + c] * dt * mesh->poro[j] * op_ders_arr[r_ind1 + v] * 0.5;
+						  Jac[l_ind + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[i] * op_ders_arr[r_ind + v] * 0.5;
+						  Jac[l_ind1 + v] += diff_diff[p * NE + c] * phase_presence_mult * dt * mesh->poro[j] * op_ders_arr[r_ind1 + v] * 0.5;
 						}
 					}
 				}
