@@ -264,8 +264,7 @@ class DartsModel:
                 values[:] = initial_value
             elif gradient is not None and variable in gradient.keys():
                 # If gradient has been defined, calculate distribution over depth and assign to array
-                for ith_cell in range(self.reservoir.mesh.n_res_blocks):
-                    values[ith_cell] = initial_value + self.reservoir.mesh.depth[ith_cell] * gradient[variable]
+                values = initial_value + self.reservoir.mesh.depth * gradient[variable]
             else:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
@@ -380,6 +379,12 @@ class DartsModel:
 
                 dt = min(dt * self.params.mult_ts, self.params.max_ts)
 
+                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
+                # to not allow the next time step be smaller than min_ts
+                if np.fabs(t + dt - stop_time) < self.params.min_ts:
+                    dt = stop_time - t
+                    dt = min(dt, self.params.max_ts)
+
                 if t + dt > stop_time:
                     dt = stop_time - t
                 else:
@@ -401,7 +406,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = False, verbose: bool = True):
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -413,7 +418,7 @@ class DartsModel:
         :type verbose: bool
         :param save_well_data: if True save states of well blocks at every time step to 'well_data.h5', default is True
         :type save_well_data: bool
-        :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is False
+        :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
         """
         days = days if days is not None else self.runtime
@@ -445,6 +450,12 @@ class DartsModel:
                           % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
 
                 dt = min(dt * self.params.mult_ts, self.params.max_ts)
+
+                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
+                # to not allow the next time step be smaller than min_ts
+                if np.fabs(t + dt - stop_time) < self.params.min_ts:
+                    dt = stop_time - t
+                    dt = min(dt, self.params.max_ts)
 
                 if t + dt > stop_time:
                     dt = stop_time - t
@@ -651,6 +662,8 @@ class DartsModel:
         nb = self.reservoir.mesh.n_res_blocks
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
+        prop_idxs = [list(self.physics.property_containers[0].output_props.keys()).index(prop)
+                     for prop in output_properties]
 
         # Loop over timesteps
         for k, timestep in enumerate(timesteps):
@@ -658,7 +671,7 @@ class DartsModel:
             for j, variable in enumerate(var_names):
                 property_array[variable][k, :] = X[k, :nb, j]
 
-            if len(props) > n_vars:
+            if output_properties is not None:
                 state = value_vector(np.stack([property_array[var][k] for var in var_names]).T.flatten())
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
@@ -668,8 +681,8 @@ class DartsModel:
                     prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
                     i += 1
 
-                for j, prop in enumerate(props[n_vars:]):
-                    property_array[prop][k] = values_numpy[j::n_ops]
+                for j, prop in enumerate(output_properties):
+                    property_array[prop][k] = values_numpy[prop_idxs[j]::n_ops]
 
         return timesteps, property_array
 

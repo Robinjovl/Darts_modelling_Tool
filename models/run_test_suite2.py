@@ -31,9 +31,12 @@ for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
 test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
 test_dirs_cpg = ['cpg_sloping_fault']
+cpg_cases_list = ['generate_5x3x4', 'generate_51x51x1']
+if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
+    cpg_cases_list += ['case_40x40x10']
 test_args_cpg = []
-for case in ['case_40', 'case_43', 'case_40_actnum', 'generate_5x3x4', 'generate_51x51x1']:
-    for physics_type in ['geothermal']:#, 'dead_oil']:
+for case in cpg_cases_list:
+    for physics_type in ['geothermal', 'dead_oil']:
         test_args_cpg.append([case, physics_type])
 test_args_cpg = [test_args_cpg]
 
@@ -114,7 +117,8 @@ if __name__ == '__main__':
 
     # run tests accepted_dirs/model.py with comparison of pkl files
     n_failed_m = n_total_m = 0
-    n_failed_m = for_each_model(model_dir, check_performance, accepted_dirs)
+    if len(accepted_dirs):
+        n_failed_m = for_each_model(model_dir, check_performance, accepted_dirs)
     n_total_m = len(accepted_dirs)
     n_failed += n_failed_m
     n_total += n_total_m

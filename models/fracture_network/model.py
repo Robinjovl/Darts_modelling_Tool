@@ -186,7 +186,7 @@ class Model(CICDModel):
         enthalpy = np.array(mesh.enthalpy, copy=False)
         init_temperature = (depth - self.input_data['reference_depth_for_temperature']) * self.input_data['temperature_gradient'] + \
                       + self.input_data['temperature_initial'] + \
-                      293.15  # convert to K
+                      273.15  # convert to K
 
         self.pressure_initial_mean = pressure.mean()
         self.temperature_initial_mean = init_temperature.mean()

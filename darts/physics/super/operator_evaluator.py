@@ -158,7 +158,7 @@ class ReservoirOperators(OperatorsSuper):
         for i in range(self.ns):
             # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
             j = self.np_fl + i
-            values[self.ACC_OP + self.nc] += (self.compr * self.phi_s * self.property.sat[j] * self.property.dens_m[j]
+            values[self.ACC_OP + self.nc] += (self.compr * self.property.sat[j] * self.property.dens_m[j]
                                               * self.property.enthalpy[j])
         # Enthalpy to internal energy conversion
         values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
