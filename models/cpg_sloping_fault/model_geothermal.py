@@ -14,7 +14,7 @@ class ModelGeothermal(Model_CPG):
         self.n_points = 100  # OBL points
         super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir)
 
-    def set_physics(self):
+    def set_physics(self, idata):
         # initialize physics for Geothermal
         property_container = PropertyContainer()
         property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
@@ -92,3 +92,6 @@ class ModelGeothermal(Model_CPG):
         temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
         rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
         print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
+
+def set_input_data(case):
+    pass

@@ -25,28 +25,6 @@ def fmt(x):
 
 #####################################################
 
-def set_input_data(case):
-    idata = InputData(type_hydr='isothermal', type_mech='none')
-
-    #idata.fluid= DensityBasic(compr=1e-5, dens0=1014)
-
-
-    from deadoil import DeadOil2PFluidProps
-    idata.fluid = DeadOil2PFluidProps()#idata) #if twophase else DeadOil3PFluidProps
-
-    idata.obl.n_points = 500
-    idata.obl.zero = 1e-9
-    idata.obl.min_p = -5.
-    idata.obl.max_p = 500.
-    idata.obl.min_t = -10.
-    idata.obl.max_t = 100.
-    idata.obl.min_z = idata.obl.zero
-    idata.obl.max_z = 1 - idata.obl.zero
-
-    #idata.check()
-
-    return idata
-
 class Model_CPG(CICDModel):
     def __init__(self, physics_type : str, case : str, grid_out_dir=None):
         super().__init__()
@@ -117,7 +95,7 @@ class Model_CPG(CICDModel):
             make_burden_layers(number_of_burden_layers=self.burden_layers, initial_thickness=10, property_dictionary=arrays,
                                burden_layer_prop_value=1e-5)
 
-        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=1e-1)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=1e-5)
         self.reservoir.discretize()
 
         # store modified arrrays (with burden layers) for output to grdecl
@@ -144,7 +122,10 @@ class Model_CPG(CICDModel):
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
-        idata = set_input_data('')
+        if physics_type == 'dead_oil':
+            idata = self.set_input_data('')
+        else:
+            idata = None
         self.set_physics(idata)
 
         # time stepping and convergence parameters
