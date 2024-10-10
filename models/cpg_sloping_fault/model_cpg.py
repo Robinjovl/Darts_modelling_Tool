@@ -10,7 +10,7 @@ from darts.engines import value_vector
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
-
+from darts.input.input_data import InputData
 def get_case_files(case: str):
     prefix = os.path.join('meshes', case)
     grid_file = os.path.join(prefix, 'grid.grdecl')
@@ -24,6 +24,29 @@ def fmt(x):
     return '{:.3}'.format(x)
 
 #####################################################
+
+def set_input_data(case):
+    idata = InputData(type_hydr='isothermal', type_mech='none')
+
+    #idata.fluid= DensityBasic(compr=1e-5, dens0=1014)
+
+
+    from deadoil import DeadOil2PFluidProps
+    idata.fluid = DeadOil2PFluidProps()#idata) #if twophase else DeadOil3PFluidProps
+
+    idata.obl.n_points = 500
+    idata.obl.zero = 1e-9
+    idata.obl.min_p = -5.
+    idata.obl.max_p = 500.
+    idata.obl.min_t = -10.
+    idata.obl.max_t = 100.
+    idata.obl.min_z = idata.obl.zero
+    idata.obl.max_z = 1 - idata.obl.zero
+
+    #idata.check()
+
+    return idata
+
 class Model_CPG(CICDModel):
     def __init__(self, physics_type : str, case : str, grid_out_dir=None):
         super().__init__()
@@ -121,8 +144,8 @@ class Model_CPG(CICDModel):
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
-
-        self.set_physics()
+        idata = set_input_data('')
+        self.set_physics(idata)
 
         # time stepping and convergence parameters
         self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=92, runtime=300, tol_newton=1e-2, tol_linear=1e-4)

@@ -4,66 +4,24 @@ from scipy import interpolate
 
 from model_cpg import Model_CPG, fmt
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.density import DensityBasic
+from darts.input.input_data import InputData
 
 from darts.engines import value_vector
-class ModelPropertiesDeadOil(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
-                         temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc):
-        # two-phase flash - assume water phase is always present and water component last
-        ph = [0, 1]
-        for i in ph:
-            self.x[i, i] = 1
-        self.nu = zc
-        return ph
+from deadoil import DeadOil, DeadOil2PFluidProps
 
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.nu = zc
-        for j in [0, 1]:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.sat = self.nu / self.dens_m
-
-        return self.sat, self.dens_m
 
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
         self.n_points = 400  # OBL points
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir)
 
-    def set_physics(self):
+    def set_physics(self, idata: InputData):
         self.zero = 1e-13
-        components = ["zoil", "zwat"]
-        phases = ["oil", "water"]
+        self.physics = DeadOil(idata, self.timer, thermal=False)
 
         self.inj = value_vector([self.zero])  # injection composition - water
         self.ini = value_vector([1 - self.zero])  # initial composition (above water table depth) - oil
-
-        property_container = ModelPropertiesDeadOil(phases_name=phases, components_name=components, min_z=self.zero/10)
-
-        property_container.density_ev = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
-                                              ('oil', DensityBasic(compr=5e-3, dens0=700))])
-        property_container.viscosity_ev = dict([('water', ConstFunc(0.89)),
-                                                ('oil', ConstFunc(1))])
-        property_container.rel_perm_ev = dict([('water', PhaseRelPerm("water", 0.1, 0.1)),
-                                               ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
-
-        # create physics
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=self.n_points,
-                                     min_p=0, max_p=1000,
-                                     min_z=self.zero, max_z=1 - self.zero)
-        self.physics.add_property_region(property_container)
 
     def set_initial_conditions(self):  # override origin set_initial_conditions function from darts_model
         if self.reservoir.nz == 1:

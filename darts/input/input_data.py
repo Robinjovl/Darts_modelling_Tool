@@ -102,7 +102,7 @@ class InputData():
         
     def check(self):
         assert self.type_hydr in ['isothermal', 'thermal'], 'input_data: Unknown type_hydr'
-        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity'], 'input_data: Unknown type_mech'
+        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity', 'none'], 'input_data: Unknown type_mech'
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
