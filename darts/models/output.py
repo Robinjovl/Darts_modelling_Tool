@@ -1,20 +1,27 @@
 import os
 import numpy as np
 import h5py
+import xarray as xr
+import matplotlib.pyplot as plt
 
-from darts.engines import value_vector
+from darts.engines import value_vector, timer_node
 
 class Output:
     """
     Base class for all output related functionality
     """
-    def __init__(self, reservoir, physics, output_folder: str = None, restart: bool = False):
+    def __init__(self, timer: timer_node, reservoir, physics, output_folder: str = None, restart: bool = False):
         super().__init__()
 
         self.reservoir = reservoir
         self.physics = physics
 
-        self.sol_filename = "reservoir.h5"
+        self.timer = timer.node['output']
+        self.timer.node["output_reservoir"] = timer_node()
+        self.timer.node["output_well"] = timer_node()
+        self.timer.node["vtk_output"] = timer_node()
+
+        self.sol_filename = 'reservoir.h5'
         self.well_filename = 'well_data.h5'
 
         self.output_folder = 'output'
@@ -22,9 +29,10 @@ class Output:
             self.output_folder = output_folder
 
         if restart is False:
+            # save initial state of reservoir at t = 0 days
             self.save_data_to_h5(kind = 'reservoir')
 
-    def load_restart_data(self, filename: str = os.path.join('restart', 'solution.h5'), timestep = -1):
+    def load_restart_data(self, filename: str = os.path.join('restart', 'reservoir.h5'), timestep = -1):
         """
         Function to load data from previous simulation and uses them for following simulation.
         :param output_folder: restart_data filename
@@ -38,7 +46,7 @@ class Output:
         self.physics.engine.X = value_vector(X.flatten())
         self.physics.engine.Xn = value_vector(X.flatten())
 
-        self.save_data_to_h5(kind='solution')
+        self.save_data_to_h5(kind='reservoir')
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
         """
@@ -151,12 +159,23 @@ class Output:
 
         if kind == 'well':
             path = os.path.join(self.output_folder, self.well_filename)
+            self.timer.start()
+            self.timer.node['output_well'].start()
+            self.save_specific_data(path)
+            self.timer.node['output_well'].stop()
+            self.timer.stop()
+
         elif kind == 'reservoir':
             path = os.path.join(self.output_folder, self.sol_filename)
+            self.timer.start()
+            self.timer.node['output_reservoir'].start()
+            self.save_specific_data(path)
+            self.timer.node['output_reservoir'].stop()
+            self.timer.stop()
+
         else:
             print("Please use either kind='well' or kind='solution' in save_data_to_h5")
             return
-        self.save_specific_data(path)
 
     def read_specific_data(self, filename: str, timestep: int = None):
         """
@@ -254,7 +273,8 @@ class Output:
         props = list(data.keys())
 
         # Initialize coords and data_vars for Xarray Dataset
-        array_shape = (len(timesteps), self.reservoir.nx, self.reservoir.ny, self.reservoir.nz)
+        # array_shape = (len(timesteps), self.reservoir.nx, self.reservoir.ny, self.reservoir.nz)
+        array_shape = (len(timesteps), self.reservoir.nz, self.reservoir.ny, self.reservoir.nx)
         for prop, array in data.items():
             data[prop] = array.reshape(array_shape)
 
@@ -264,13 +284,44 @@ class Output:
         x = np.cumsum(dx[:, 0, 0]) - dx[0, 0, 0] * 0.5
         y = np.cumsum(dy[0, :, 0]) - dy[0, 0, 0] * 0.5
         z = np.cumsum(dz[0, 0, :]) - dz[0, 0, 0] * 0.5
-        coords = {'time': timesteps, 'x': x, 'y': y, 'z': z}
+        # coords = {'time': timesteps, 'x': x, 'y': y, 'z': z}
+        coords = {'time': timesteps, 'z': z, 'y': y, 'x': x}
         data_vars = {prop: (list(coords.keys()), data[prop]) for prop in props}
         dataset = xr.Dataset(data_vars=data_vars, coords=coords)
 
-        dataset.to_netcdf(os.path.join(self.output_folder, 'solution_xarray.nc'))
+        dataset.to_netcdf(os.path.join(self.output_folder, 'reservoir_xarray.nc'))
 
         return dataset
+
+    def plot_xarray(self, xarray_data, timestep: int = -1, x: int = None, y: int =None, z: int = None):
+        """
+        :param xarray_data: xarray data set
+        :param timestep: time index
+        :param x: index in x-dimension
+        :param y: index in y-dimension
+        :param z: index in z-dimension
+        """
+        assert timestep < len(xarray_data['time']), 'time step should be less than %d' % len(xarray_data['time'])
+
+        var_names = list(xarray_data.data_vars)
+        nrows = len(var_names)
+        sx = 5
+        sy = (self.reservoir.ny // self.reservoir.nx) * sx
+        fig, axes = plt.subplots(nrows=nrows, ncols = 1, figsize = (sx, nrows*sy))
+        plt.subplots_adjust(hspace=0.5)
+        for i, var in enumerate(var_names):
+            if z is not None:
+                assert z < len(xarray_data['z']), 'z-level step should be less than %d' % len(xarray_data['z'])
+                xarray_data[var].isel(time=timestep, z=z).plot(ax=axes[i], cmap='jet')
+
+            elif y is not None:
+                assert y < len(xarray_data['y']), 'y-level step should be less than %d' % len(xarray_data['y'])
+                xarray_data[var].isel(time=timestep, y=y).plot(ax=axes[i], cmap='jet')
+
+            elif x is not None:
+                assert x < len(xarray_data['x']), 'x-level step should be less than %d' % len(xarray_data['x'])
+                xarray_data[var].isel(time=timestep, x=x).plot(ax=axes[i], cmap='jet')
+        plt.show()
 
     def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None):
         """
@@ -283,7 +334,7 @@ class Output:
         :param output_properties: List of properties to include in .vtk file, default is None which will pass all
         :type output_properties: list
         """
-        self.timer.node["vtk_output"].start()
+        self.timer.start(); self.timer.node["vtk_output"].start()
         # Set default output directory
         if output_directory is None:
             output_directory = self.output_folder
@@ -315,4 +366,4 @@ class Output:
             else:
                 self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
 
-        self.timer.node["vtk_output"].stop()
+        self.timer.node["vtk_output"].stop(); self.timer.stop()

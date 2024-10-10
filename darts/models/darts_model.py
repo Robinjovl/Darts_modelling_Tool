@@ -47,15 +47,10 @@ class DartsModel:
         self.timer.start()  # Start time record
         self.timer.node["simulation"] = timer_node()  # Create timer.node called "simulation" to record simulation time
         self.timer.node["newton update"] = timer_node()
-        self.timer.node["vtk_output"] = timer_node()
         self.timer.node["initialization"] = timer_node()  # Create timer.node called "initialization" to record initialization time
+        self.timer.node["output"] = timer_node()
         self.timer.node["initialization"].start()  # Start recording "initialization" time
-        self.output_folder = 'output'
-        self.sol_filename = "solution.h5"
-        self.well_filename = 'well_data.h5'
-
         self.params = sim_params()  # Create sim_params object to set simulation parameters
-
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False,
@@ -310,7 +305,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True, verbose: bool = True):
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_reservoir_data : bool = True, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -380,7 +375,7 @@ class DartsModel:
         self.physics.engine.t = stop_time
 
         # save solution vector
-        if save_solution_data:
+        if save_reservoir_data:
             self.output.save_data_to_h5(kind='reservoir')
 
         if verbose:
