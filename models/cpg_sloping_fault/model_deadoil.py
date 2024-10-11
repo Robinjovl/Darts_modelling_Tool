@@ -17,7 +17,7 @@ class ModelDeadOil(Model_CPG):
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir)
 
     def set_physics(self, idata: InputData):
-        self.zero = 1e-13
+        self.zero = 1e-7
         self.physics = DeadOil(idata, self.timer, thermal=False)
 
         self.inj = value_vector([self.zero])  # injection composition - water
@@ -131,10 +131,10 @@ class ModelDeadOil(Model_CPG):
         idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
 
         # example - how to change the properties
-        idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+        # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
         idata.obl.n_points = 500
-        idata.obl.zero = 1e-9
+        idata.obl.zero = 1e-10
         idata.obl.min_p = -5.
         idata.obl.max_p = 500.
         idata.obl.min_t = -10.
