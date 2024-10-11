@@ -119,29 +119,29 @@ class ModelDeadOil(Model_CPG):
         print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
               fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
 
-def set_input_data(case):
-    idata = InputData(type_hydr='isothermal', type_mech='none')
+    def set_input_data(self, case):
+        idata = InputData(type_hydr='isothermal', type_mech='none')
 
-    #idata.fluid= DensityBasic(compr=1e-5, dens0=1014)
+        #idata.fluid= DensityBasic(compr=1e-5, dens0=1014)
 
-    from darts.physics.properties.density import DensityBasic, DensityBrineCO2
-    from deadoil import DeadOil2PFluidProps
+        from darts.physics.properties.density import DensityBasic, DensityBrineCO2
+        from deadoil import DeadOil2PFluidProps
 
-    # this sets default properties
-    idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        # this sets default properties
+        idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
 
-    # example - how to change the properties
-    idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+        # example - how to change the properties
+        idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-    idata.obl.n_points = 500
-    idata.obl.zero = 1e-9
-    idata.obl.min_p = -5.
-    idata.obl.max_p = 500.
-    idata.obl.min_t = -10.
-    idata.obl.max_t = 100.
-    idata.obl.min_z = idata.obl.zero
-    idata.obl.max_z = 1 - idata.obl.zero
+        idata.obl.n_points = 500
+        idata.obl.zero = 1e-9
+        idata.obl.min_p = -5.
+        idata.obl.max_p = 500.
+        idata.obl.min_t = -10.
+        idata.obl.max_t = 100.
+        idata.obl.min_z = idata.obl.zero
+        idata.obl.max_z = 1 - idata.obl.zero
 
-    #idata.check()
+        #idata.check()
 
-    return idata
+        return idata
