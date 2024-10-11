@@ -19,7 +19,6 @@ class ModelDeadOil(Model_CPG):
     def set_physics(self, idata: InputData):
         self.zero = 1e-7
         self.physics = DeadOil(idata, self.timer, thermal=False)
-
         self.inj = value_vector([self.zero])  # injection composition - water
         self.ini = value_vector([1 - self.zero])  # initial composition (above water table depth) - oil
 
@@ -121,10 +120,6 @@ class ModelDeadOil(Model_CPG):
 
     def set_input_data(self, case):
         idata = InputData(type_hydr='isothermal', type_mech='none')
-
-        #idata.fluid= DensityBasic(compr=1e-5, dens0=1014)
-
-        from darts.physics.properties.density import DensityBasic, DensityBrineCO2
         from deadoil import DeadOil2PFluidProps
 
         # this sets default properties
@@ -141,7 +136,5 @@ class ModelDeadOil(Model_CPG):
         idata.obl.max_t = 100.
         idata.obl.min_z = idata.obl.zero
         idata.obl.max_z = 1 - idata.obl.zero
-
-        #idata.check()
 
         return idata

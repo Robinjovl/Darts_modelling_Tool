@@ -2,15 +2,13 @@ import numpy as np
 import os
 
 from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
-from darts.discretizer import load_single_float_keyword, load_single_int_keyword
-from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import index_vector as index_vector_discr
+from darts.discretizer import load_single_float_keyword
 from darts.engines import value_vector
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
-from darts.input.input_data import InputData
+
 def get_case_files(case: str):
     prefix = os.path.join('meshes', case)
     grid_file = os.path.join(prefix, 'grid.grdecl')
