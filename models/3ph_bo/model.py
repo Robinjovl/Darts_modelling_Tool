@@ -1,11 +1,9 @@
-import numpy as np
+from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-
-from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-
 from darts.physics.properties.black_oil import *
+from blackoil import BlackOil
 
 
 # Model class creation here!
@@ -18,7 +16,8 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
-        self.set_physics()
+        idata = self.set_input_data('')
+        self.set_physics(idata)
 
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-3, tol_linear=1e-7,
                             it_newton=10, it_linear=50)
@@ -51,41 +50,11 @@ class Model(CICDModel):
         self.reservoir.add_well("P1")
         self.reservoir.add_perforation("P1", cell_index=(10, 10, 3))
 
-    def set_physics(self):
-        """Physical properties"""
-        # Create property containers:
+    def set_physics(self, idata: InputData):
+        self.physics = BlackOil(idata, self.timer, thermal=False)
         zero = 1e-12
-        components = ['g', 'o', 'w']
-        phases = ['gas', 'oil', 'wat']
-
         self.inj_stream = [1 - 2 * zero, zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
-
-        """ properties correlations """
-        pvt = 'physics.in'
-        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, min_z=zero/10)
-
-        property_container.flash_ev = flash_black_oil(pvt)
-        property_container.density_ev = dict([('gas', DensityGas(pvt)),
-                                              ('oil', DensityOil(pvt)),
-                                              ('wat', DensityWat(pvt))])
-        property_container.viscosity_ev = dict([('gas', ViscGas(pvt)),
-                                                ('oil', ViscOil(pvt)),
-                                                ('wat', ViscWat(pvt))])
-        property_container.rel_perm_ev = dict([('gas', GasRelPerm(pvt)),
-                                               ('oil', OilRelPerm(pvt)),
-                                               ('wat', WatRelPerm(pvt))])
-        property_container.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(pvt)),
-                                                         ('pcgo', CapillaryPressurePcgo(pvt))])
-
-        property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
-
-        """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
-                                     n_points=5000, min_p=1, max_p=450, min_z=zero/10, max_z=1-zero/10)
-        self.physics.add_property_region(property_container)
-
-        return
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
@@ -95,6 +64,26 @@ class Model(CICDModel):
             else:
                 # w.control = self.physics.new_rate_oil_prod(3000)
                 w.control = self.physics.new_bhp_prod(70)
+
+    def set_input_data(self, case):
+        idata = InputData(type_hydr='isothermal', type_mech='none')
+        from blackoil import BlackOilFluidProps
+        pvt = 'physics.in'
+        # this sets default properties
+        idata.fluid = BlackOilFluidProps(pvt=pvt)
+        # example - how to change the properties
+        # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+
+        idata.obl.n_points = 5000
+        idata.obl.zero = 1e-12
+        idata.obl.min_p = 1.
+        idata.obl.max_p = 450.
+        idata.obl.min_t = -10.
+        idata.obl.max_t = 100.
+        idata.obl.min_z = idata.obl.zero/10
+        idata.obl.max_z = 1 - idata.obl.zero/10
+
+        return idata
 
 
 class ModelProperties(PropertyContainer):

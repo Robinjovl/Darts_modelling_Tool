@@ -1,5 +1,3 @@
-import numpy as np
-
 from darts.input.input_data import InputData, FluidProps
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -24,11 +22,10 @@ class BlackOil(Compositional):
                          idata.obl.n_points, idata.obl.min_p, idata.obl.max_p, idata.obl.min_z, idata.obl.max_z,
                          idata.obl.min_t, idata.obl.max_t)
         self.idata = idata
-        self.zero = 1e-13
 
         temperature = None if thermal else 1.
         property_container = BlackOilProperties(phases_name=idata.fluid.phases, components_name=idata.fluid.components,
-                                                Mw=idata.fluid.Mw, min_z=self.zero / 10, temperature=temperature)
+                                                Mw=idata.fluid.Mw, min_z=idata.obl.min_z, temperature=temperature)
 
         property_container.flash_ev = flash_black_oil(idata.fluid.pvt)
         property_container.density_ev = idata.fluid.density
