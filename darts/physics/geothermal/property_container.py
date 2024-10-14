@@ -198,10 +198,10 @@ class PropertyContainerPH(PropertyBase):
         for j in self.ph:
             phase = self.phases[j]
             Mw = np.sum(self.Mw * self.x[j, :])
-            self.density[j] = self.density_ev[phase].evaluate(state)
+            self.density[j] = self.density_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
             self.dens_m[j] = self.density[j] / Mw
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
-            self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
+            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :], self.density[j])
+            self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
 
         # Compute saturation and saturation-based properties

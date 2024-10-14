@@ -1,41 +1,34 @@
 import numpy as np
 import pandas as pd
 
+from darts.input.input_data import InputData
 from model_cpg import Model_CPG, fmt
 
 from darts.physics.geothermal.physics import Geothermal
-from darts.physics.geothermal.property_container import PropertyContainer as PropertyContainer
+from darts.physics.geothermal.property_container import PropertyContainerIAPWS
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.physics.properties.iapws.custom_rock_property import custom_rock_compaction_evaluator
 
 from darts.engines import value_vector
+
+from geothermal import GeothermalIAPWS, GeothermalPH
+
+
 class ModelGeothermal(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
         self.n_points = 100  # OBL points
         super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir)
 
     def set_physics(self, idata):
-        # initialize physics for Geothermal
-        property_container = PropertyContainer()
-        property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
-
-        # Create rock_compaction object to set rock compressibility
-        rock_compressibility = 1e-5  # [1/bars]
-        property_container.rock = [value_vector([1, rock_compressibility, 273.15])]
-        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
-
-        self.physics = Geothermal(timer=self.timer,
-                                  n_points=self.n_points,   # number of OBL points
-                                  min_p=50, max_p=400,      # pressure range for OBL grid
-                                  min_e=1000, max_e=25000,  # enthalpy range for OBL grid
-                                  cache=False)
-        self.physics.add_property_region(property_container)
+        self.physics = GeothermalIAPWS(idata, self.timer)
+        # self.physics = GeothermalPH(idata, self.timer)
 
         # uniform initial conditions
         T_initial = 350.  # K
         P_initial = 200.  # bars
         state_init = value_vector([P_initial, 0.])
         enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_initial).evaluate(state_init)
+        # enth_init = self.physics.property_containers[0].enthalpy_ev['total']()
         self.initial_values = {self.physics.vars[0]: state_init[0],
                                self.physics.vars[1]: enth_init}
 
@@ -93,5 +86,17 @@ class ModelGeothermal(Model_CPG):
         rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
         print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
 
-def set_input_data(case):
-    pass
+    def set_input_data(self, case):
+        idata = InputData(type_hydr='thermal', type_mech='none')
+        # example - how to change the properties
+        # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+
+        idata.obl.n_points = 100
+        idata.obl.min_p = 50.
+        idata.obl.max_p = 400.
+        idata.obl.min_e = 1000.
+        idata.obl.max_e = 25000.
+        idata.other.cache = False
+        idata.other.mass_rate = False
+
+        return idata
