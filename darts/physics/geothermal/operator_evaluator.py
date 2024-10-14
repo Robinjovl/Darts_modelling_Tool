@@ -1,10 +1,10 @@
 from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.operators_base import OperatorsBase
-from darts.physics.geothermal.property_container import PropertyContainer
+from darts.physics.geothermal.property_container import PropertyContainerIAPWS
 
 
 class OperatorsGeothermal(OperatorsBase):
-    def __init__(self, property_container: PropertyContainer, thermal: bool = True):
+    def __init__(self, property_container: PropertyContainerIAPWS, thermal: bool = True):
         super().__init__(property_container, thermal)
 
 

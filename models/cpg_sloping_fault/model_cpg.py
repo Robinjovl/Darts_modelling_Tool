@@ -120,10 +120,8 @@ class Model_CPG(CICDModel):
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
-        if physics_type == 'dead_oil':
-            idata = self.set_input_data('')
-        else:
-            idata = None
+
+        idata = self.set_input_data('')
         self.set_physics(idata)
 
         # time stepping and convergence parameters

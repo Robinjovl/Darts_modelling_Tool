@@ -122,8 +122,8 @@ class Model(CICDModel):
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
 
-        from darts.physics.geothermal.property_container import PropertyContainer
-        property_container = PropertyContainer()
+        from darts.physics.geothermal.property_container import PropertyContainerIAPWS
+        property_container = PropertyContainerIAPWS()
         property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
 
         # Create rock_compaction object to set rock compressibility (it is 0 by default)
