@@ -312,7 +312,9 @@ class Output:
             if z is not None:
                 assert z < len(xarray_data['z']), 'z-level step should be less than %d' % len(xarray_data['z'])
                 xarray_data[var].isel(time=timestep, z=z).plot(cmap='jet')
-                plt.savefig(self.output_folder + '/figures/%s_ts%d_z%d.png' % (var, timestep, z))
+                plt.savefig(
+                    os.path.join(self.output_folder, 'figures') + '\\%s_ts%d_z%d.png'%(var, timestep, z)
+                            )
 
             elif y is not None:
                 assert y < len(xarray_data['y']), 'y-level step should be less than %d' % len(xarray_data['y'])
@@ -327,7 +329,8 @@ class Output:
             else:
                 # model is 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(self.output_folder + '/figures/%s_%d.png' % (var, timestep))
+                plt.savefig(self.output_folder + '/figures/%s_ts%d.png' % (var, timestep))
+        plt.close()
 
     def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None):
         """
@@ -341,6 +344,11 @@ class Output:
         :type output_properties: list
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
+
+        main_dir = os.path.join(self.output_folder, 'vtk_files')
+        if not os.path.exists(main_dir):
+            os.mkdir(main_dir)
+
         # Set default output directory
         if output_directory is None:
             output_directory = self.output_folder
@@ -368,9 +376,9 @@ class Output:
 
             # Pass to Reservoir.output_to_vtk() method
             if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
+                self.reservoir.output_to_vtk(t, time, main_dir, prop_names, data)
             else:
-                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
+                self.reservoir.output_to_vtk(ith_step, time, main_dir, prop_names, data)
 
         self.timer.node["vtk_output"].stop(); self.timer.stop()
 
