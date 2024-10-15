@@ -1,5 +1,5 @@
 #include "mech/pm_discretizer.hpp"
-#include "mech/matrix.hpp"
+#include "mech/matrix.h"
 #include <iostream>
 #include <unordered_set>
 #include <assert.h>

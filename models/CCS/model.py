@@ -9,11 +9,11 @@ from darts.physics.operators_base import PropertyOperators
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
+from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import NegativeFlash2
+from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
-from dartsflash.components import CompData, EnthalpyIdeal
-from dartsflash.eos_properties import EoSDensity, EoSEnthalpy
+from dartsflash.components import CompData
 
 
 class Model(DartsModel):
@@ -62,9 +62,6 @@ class Model(DartsModel):
         # EoS-related parameters
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
-        flash_params.eos_used = ["AQ", "PR"]
-
-        flash_params.split_initial_guesses = [InitialGuess.Henry_AV]
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
@@ -78,7 +75,7 @@ class Model(DartsModel):
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                temperature=temperature, min_z=zero/10)
 
-        property_container.flash_ev = NegativeFlash2(flash_params)
+        property_container.flash_ev = NegativeFlash(flash_params, ["AQ", "PR"], [InitialGuess.Henry_AV])
         property_container.density_ev = dict([('V', EoSDensity(pr, comp_data.Mw)),
                                               ('Aq', Garcia2001(components))])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),
@@ -86,11 +83,10 @@ class Model(DartsModel):
         property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas")),
                                                ('Aq', PhaseRelPerm("oil"))])
 
-        h_ideal = EnthalpyIdeal(components)
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(pr, h_ideal)),
-                                               ('Aq', EoSEnthalpy(aq, h_ideal))])
-        property_container.conductivity_ev = dict([('V', ConstFunc(0.)),
-                                                   ('Aq', ConstFunc(0.)), ])
+        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(pr)),
+                                               ('Aq', EoSEnthalpy(aq))])
+        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
+                                                   ('Aq', ConstFunc(180.)), ])
 
         property_container.output_props = {"satA": lambda: property_container.sat[0],
                                            "satV": lambda: property_container.sat[1],

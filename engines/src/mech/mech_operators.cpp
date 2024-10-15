@@ -303,10 +303,9 @@ void mech_operators::eval_porosities(vector<value_t>& X, vector<value_t>& bc_rhs
 	const value_t* tran_biot = mesh->tran_biot.data();
 	const value_t* rhs_biot = mesh->rhs_biot.data();
 	const value_t* poro = mesh->poro.data();
-	const value_t* kd = mesh->drained_compressibility.data();
+	const value_t* cs = mesh->rock_compressibility.data();
 	const value_t* p_ref = mesh->ref_pressure.data();
 	const value_t* eps_vol_ref = mesh->ref_eps_vol.data();
-	const value_t* biot = mesh->biot.data();
 	const value_t* V = mesh->volume.data();
 	const value_t* bc = bc_rhs.data();
 	const value_t* bc_ref = mesh->bc_ref.data();
@@ -359,9 +358,7 @@ void mech_operators::eval_porosities(vector<value_t>& X, vector<value_t>& bc_rhs
 		}
 
 		eps_vol[i] = biot_mult / V[i];
-		b = (biot[ND * ND * i] + biot[ND * ND * i + ND + 1] + biot[ND * ND * i + 2 * ND + 2]) / 3.0;
-		comp_mult = (b != 0.0) ? (b - poro[i]) * (1 - b) / kd[i] : 1.0 / kd[i];
-		porosities[i] = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - p_ref[i]) + (biot_mult / V[i] - eps_vol_ref[i]);
+		porosities[i] = poro[i] + cs[i] * (X[i * N_VARS + P_VAR] - p_ref[i]) + (biot_mult / V[i] - eps_vol_ref[i]);
 		if (porosities[i] < 0.0) porosities[i] = poro[i];
 	}
 }

@@ -58,9 +58,10 @@ def run_darts(mode):
 
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        # n.save_restart_data()
+        n.save_data_to_h5('solution')
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
+        time_data.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
         Xn = np.array(n.physics.engine.X, copy=False)

@@ -791,6 +791,17 @@ class Graph:
         plt.show()
         return
 
+def dist_to_well(unique_nodes, nodes, i, wells):  # distance from line x,y to the closest well
+    p1 = np.array([unique_nodes[nodes[0], 0], unique_nodes[nodes[0], 1]])
+    p2 = np.array([unique_nodes[nodes[1], 0], unique_nodes[nodes[1], 1]])
+    p_cur = np.array([unique_nodes[nodes[i], 0], unique_nodes[nodes[i], 1]])
+    min_dist = 1e+10
+    for ii in range(len(wells)):
+        p_well = np.array([wells[ii][0], wells[ii][1]])
+        dist_line = np.linalg.norm(np.cross(p2-p1, p1-p_well))/np.linalg.norm(p2-p1)
+        dist = np.linalg.norm(p_cur-p_well)
+        min_dist = max(min(dist_line, min_dist), dist)
+    return min_dist
 
 def create_geo_file(act_frac_sys, filename, decimals, z_top,
                     height_res, char_len, box_data, char_len_boundary, export_frac=True,
@@ -860,16 +871,27 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
         if not points_created[nodes[0]]:
             points_created[nodes[0]] = True
             point_count += 1
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc}};\n'.format(nodes[0] + 1,
+            cell_size_str = 'lc'
+            if wells is not None:
+                dist = dist_to_well(unique_nodes, nodes, 0, wells)
+                if dist < char_len:
+                    cell_size_str = 'lc_well'
+            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(nodes[0] + 1,
                                                                            unique_nodes[nodes[0], 0],
-                                                                           unique_nodes[nodes[0], 1], z_top))
+                                                                           unique_nodes[nodes[0], 1], z_top, cell_size_str))
 
         if not points_created[nodes[1]]:
             points_created[nodes[1]] = True
             point_count += 1
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc}};\n'.format(nodes[1] + 1,
+
+            cell_size_str = 'lc'
+            if wells is not None:
+                dist = dist_to_well(unique_nodes, nodes, 1, wells)
+                if dist < char_len:
+                    cell_size_str = 'lc_well'
+            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(nodes[1] + 1,
                                                                            unique_nodes[nodes[1], 0],
-                                                                           unique_nodes[nodes[1], 1], z_top))
+                                                                           unique_nodes[nodes[1], 1], z_top, cell_size_str))
 
         line_count += 1
         f.write('Line({:d}) = {{{:d}, {:d}}};\n\n'.format(line_count, nodes[0] + 1, nodes[1] + 1))
@@ -885,15 +907,6 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
         point_count += 1
         f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_box}};\n'.format(point_count,
                                                                           box_data[ii, 0], box_data[ii, 1], z_top))
-
-    # Write well locations
-    if wells is not None:
-        f.write('// Extra points to refine the mesh around the well locations:\n')
-        for ii in range(len(wells)):
-            # For every corner of the box:
-            point_count += 1
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_well}};\n'.format(point_count,
-                                                                              wells[ii][0], wells[ii][1], z_top))
 
     # Add four lines for each side of the box:
     f.write('\n// Extra lines for boundary of domain:\n')
@@ -915,6 +928,15 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                                                                    line_count - 1, line_count))
     f.write('Plane Surface(1) = {1};\n\n')
     f.write('Curve{1:num_lines_frac} In Surface{1};\n')
+
+    # Write well locations
+    if wells is not None:
+        f.write('\n// Extra points to refine the mesh around the well locations:\n')
+        for ii in range(len(wells)):
+            point_count += 1
+            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_well}};\n'.format(point_count,
+                                                                              wells[ii][0], wells[ii][1], z_top))
+            f.write('Point{' + str(point_count) + '} In Surface{1};\n')
 
     # Extrude model (reservoir) to pseudo-3D (2.5D):
     f.write('\n// Extrude surface with embedded features\n\n')
@@ -1033,19 +1055,25 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     f.write('num_surfaces_fracs = num_surfaces_after - num_surfaces_before;\n\n')
     
     f.write('//Reservoir\n');
-    f.write('Physical Volume("matrix", 9991) = {1};\n')
+    vol_idx = 1
+    f.write('Physical Volume("matrix", 9991) = {' + str(vol_idx) + '};\n')
+    vol_idx += 1
     if input_data['overburden_layers'] > 0:
         f.write('//Overburden\n');
-        f.write('Physical Volume("matrix_ov", 9992) = {2};\n')
+        f.write('Physical Volume("matrix_ov", 9992) = {' + str(vol_idx) + '};\n')
+        vol_idx += 1
     if input_data['underburden_layers'] > 0:
         f.write('//Underburden\n');
-        f.write('Physical Volume("matrix_un", 9993) = {3};\n')
+        f.write('Physical Volume("matrix_un", 9993) = {' + str(vol_idx) + '};\n')
+        vol_idx += 1
     if input_data['overburden_2_layers'] > 0:
         f.write('//Overburden2\n');
-        f.write('Physical Volume("matrix_ov2", 9994) = {4};\n')
+        f.write('Physical Volume("matrix_ov2", 9994) = {' + str(vol_idx) + '};\n')
+        vol_idx += 1
     if input_data['underburden_2_layers'] > 0:
         f.write('//Underburden2\n');
-        f.write('Physical Volume("matrix_un2", 9995) = {5};\n')
+        f.write('Physical Volume("matrix_un2", 9995) = {' + str(vol_idx) + '};\n')
+        vol_idx += 1
 
     f.write('\n\n')
 

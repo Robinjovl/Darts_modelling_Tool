@@ -5,7 +5,6 @@ from darts.discretizer import index_vector as index_vector_discr
 import numpy as np
 from typing import Union, List, Dict
 
-
 from opmcpg._cpggrid import UnstructuredGrid, process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
@@ -30,6 +29,7 @@ except ImportError:
 import os
 import sys
 import inspect
+
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 parentdir2 = os.path.dirname(parentdir)
@@ -37,15 +37,19 @@ sys.path.insert(0, os.path.join(parentdir2, 'python'))
 
 
 class CPG_Reservoir(ReservoirBase):
-    def __init__(self, timer: timer_node, arrays=None, faultfile=None, cache: bool = False):
+    def __init__(self, timer: timer_node, arrays=None, faultfile: str = None, minpv: float = 0., cache: bool = False):
         """
-        Class constructor for UnstructReservoir class
-        :param arrays: dictionary of numpy arrays with grid and props
+        Class constructor for CPG_Reservoir class (corner-point geometry)
+        :param arrays: dictionary of numpy arrays with grid (COORD, ZCORN, ACTNUM) and props (PORO, PERMX, PERMY, PERMZ)
+        :param faultfile: file name with fault locations (IJK) and fault transmicssibility multipliers
+        :param minpv: cells with poro volume smaller than minpv will be set inactive
+        :param cache:
         """
         super().__init__(timer, cache)
 
         self.arrays = arrays
         self.faultfile = faultfile
+        self.minpv = minpv  # minimal pore volume threshold to make cells inactive, m3
 
         self.snap_counter = 0
 
@@ -57,14 +61,14 @@ class CPG_Reservoir(ReservoirBase):
         self.vtk_grid_type = 1
 
     def set_arrays(self, arrays):
-        '''
+        """
         :param arrays: dictionary of input data for the grid and grid properties
-        '''
+        """
         self.dims = arrays['SPECGRID']  # dimensions, array of 3 integer elements: nx, ny ,nz
-        self.coord = arrays['COORD']    # grid pillars, array of (nx+1)*(ny+1)*6 elements
-        self.zcorn = arrays['ZCORN']    # grid nodes depths, array of nx*ny*nz*8 elements
+        self.coord = arrays['COORD']  # grid pillars, array of (nx+1)*(ny+1)*6 elements
+        self.zcorn = arrays['ZCORN']  # grid nodes depths, array of nx*ny*nz*8 elements
         self.actnum = arrays['ACTNUM']  # integer array of nx*ny*nz elements, 0 - inactive cell, 1 - active cell
-        self.poro  = arrays['PORO']     # porosity array, nx*ny*nz elements
+        self.poro = arrays['PORO']  # porosity array, nx*ny*nz elements
         # permeability arrays, nx*ny*nz elements
         self.permx = arrays['PERMX']
         self.permy = arrays['PERMY']
@@ -89,11 +93,11 @@ class CPG_Reservoir(ReservoirBase):
         self.discretize_cpg()
         # self.discretizer.write_mpfa_results('conn.dat')
 
-        self.global_data = {}
-        self.global_data['volume'] = self.volume_all_cells[:self.discr_mesh.n_cells]
-        self.global_data['depth'] = self.depth_all_cells[:self.discr_mesh.n_cells]
-        self.global_data['global_to_local'] = self.discr_mesh.global_to_local
-        self.global_data['actnum'] = self.actnum
+        self.global_data = {'volume': self.volume_all_cells[:self.discr_mesh.n_cells],
+                            'global_to_local': self.discr_mesh.global_to_local,
+                            'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
+                            'depth': self.depth_all_cells[:self.discr_mesh.n_cells], 'actnum': self.actnum
+                            }
 
         mpfa_tran = np.array(self.discretizer.flux_vals, copy=False)
         mpfa_tranD = np.array(self.discretizer.flux_vals_thermal, copy=False)
@@ -101,9 +105,14 @@ class CPG_Reservoir(ReservoirBase):
         cell_m = np.array(self.discretizer.cell_m)[ids]
         cell_p = np.array(self.discretizer.cell_p)[ids]
         tran = mpfa_tran[::2][ids]
-        tranD = mpfa_tranD[1::2][ids]
+        tranD = mpfa_tranD[::2][ids]
 
-        # self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
+        print('tran  mean=', tran.mean(),  'tran  max=', tran.max())
+        print('tranD mean=', tranD.mean(), 'tranD max=', tranD.max())
+        #max_tranD = 1e3
+        #tranD[tranD > max_tranD] = max_tranD
+
+        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
         if self.faultfile is not None:
             self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
             # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
@@ -148,41 +157,40 @@ class CPG_Reservoir(ReservoirBase):
         displaced_tags[elem_loc.FRACTURE_BOUNDARY] = set()
 
         result_fname = 'results.grdecl'
-        minpv = 0
 
         dims_cpp = index_vector_cpggrid(self.dims)
         coord_cpp = value_vector_cpggrid(self.coord)
         zcorn_cpp = value_vector_cpggrid(self.zcorn)
         actnum_cpp = index_vector_cpggrid(self.actnum)
-        ugrid = process_cpg_grid(dims_cpp, coord_cpp, zcorn_cpp, actnum_cpp, minpv, result_fname)
+        unstr_grid = process_cpg_grid(dims_cpp, coord_cpp, zcorn_cpp, actnum_cpp, self.minpv, result_fname)
 
         self.nx = self.discr_mesh.nx = self.dims[0]
         self.ny = self.discr_mesh.ny = self.dims[1]
         self.nz = self.discr_mesh.nz = self.dims[2]
         self.nb = self.mesh.n_res_blocks
-        self.discr_mesh.n_cells = ugrid.number_of_cells
+        self.discr_mesh.n_cells = unstr_grid.number_of_cells
         # cells + boundary_faces, approximate
         self.discr_mesh.num_of_elements = self.discr_mesh.n_cells + \
                                           2 * (self.nx * self.ny +
                                                self.ny * self.nz +
                                                self.nx * self.nz)
 
-        number_of_nodes = ugrid.number_of_nodes
-        number_of_cells = ugrid.number_of_cells
-        number_of_faces = ugrid.number_of_faces
-        node_coordinates = value_vector(np.array(ugrid.node_coordinates, copy=False))
-        face_nodes = index_vector(np.array(ugrid.face_nodes, copy=False))
-        face_nodepos = index_vector(np.array(ugrid.face_nodepos, copy=False))
-        face_cells = index_vector(np.array(ugrid.face_cells, copy=False))
-        cell_faces = index_vector(np.array(ugrid.cell_faces, copy=False))
-        cell_facetag = index_vector(np.array(ugrid.cell_facetag, copy=False))
-        global_cell = index_vector(np.array(ugrid.global_cell, copy=False))
-        cell_facepos = index_vector(np.array(ugrid.cell_facepos, copy=False))
-        cell_volumes = value_vector(np.array(ugrid.cell_volumes, copy=False))
-        cell_centroids = value_vector(np.array(ugrid.cell_centroids, copy=False))
-        face_normals = value_vector(np.array(ugrid.face_normals, copy=False))
-        face_areas = value_vector(np.array(ugrid.face_areas, copy=False))
-        face_centroids = value_vector(np.array(ugrid.face_centroids, copy=False))
+        number_of_nodes = unstr_grid.number_of_nodes
+        number_of_cells = unstr_grid.number_of_cells
+        number_of_faces = unstr_grid.number_of_faces
+        node_coordinates = value_vector(np.array(unstr_grid.node_coordinates, copy=False))
+        face_nodes = index_vector(np.array(unstr_grid.face_nodes, copy=False))
+        face_nodepos = index_vector(np.array(unstr_grid.face_nodepos, copy=False))
+        face_cells = index_vector(np.array(unstr_grid.face_cells, copy=False))
+        cell_faces = index_vector(np.array(unstr_grid.cell_faces, copy=False))
+        cell_facetag = index_vector(np.array(unstr_grid.cell_facetag, copy=False))
+        global_cell = index_vector(np.array(unstr_grid.global_cell, copy=False))
+        cell_facepos = index_vector(np.array(unstr_grid.cell_facepos, copy=False))
+        cell_volumes = value_vector(np.array(unstr_grid.cell_volumes, copy=False))
+        cell_centroids = value_vector(np.array(unstr_grid.cell_centroids, copy=False))
+        face_normals = value_vector(np.array(unstr_grid.face_normals, copy=False))
+        face_areas = value_vector(np.array(unstr_grid.face_areas, copy=False))
+        face_centroids = value_vector(np.array(unstr_grid.face_centroids, copy=False))
 
         face_order = index_vector()
 
@@ -193,32 +201,38 @@ class CPG_Reservoir(ReservoirBase):
             cell_volumes, face_order)
 
         bnd_faces_num = res[0]
-        #self.discr_mesh.print_elems_nodes()
+        # self.discr_mesh.print_elems_nodes()
+
+        # store min max coordinates
+        nodes_3d = np.array(unstr_grid.node_coordinates, copy=False)
+        nodes_3d = nodes_3d.reshape(number_of_nodes, 3)
+        self.x_min, self.x_max = nodes_3d[:, 0].min(), nodes_3d[:, 0].max()
+        self.y_min, self.y_max = nodes_3d[:, 1].min(), nodes_3d[:, 1].max()
+        self.z_min, self.z_max = nodes_3d[:, 2].min(), nodes_3d[:, 2].max()
 
         self.discr_mesh.construct_local_global(global_cell)
 
         self.discr_mesh.cpg_cell_props(number_of_nodes, number_of_cells, number_of_faces,
-                                           cell_volumes, cell_centroids, global_cell,
-                                           face_areas, face_centroids,
-                                           bnd_faces_num, face_order)
+                                       cell_volumes, cell_centroids, global_cell,
+                                       face_areas, face_centroids,
+                                       bnd_faces_num, face_order)
 
         self.discr_mesh.cpg_connections(number_of_cells, number_of_faces,
-                                                       node_coordinates, face_nodes, face_nodepos,
-                                                       face_cells, cell_faces, cell_facepos,
-                                                       face_centroids, face_areas, face_normals,
-                                                       cell_facetag, displaced_tags)
+                                        node_coordinates, face_nodes, face_nodepos,
+                                        face_cells, cell_faces, cell_facepos,
+                                        face_centroids, face_areas, face_normals,
+                                        cell_facetag, displaced_tags)
 
         self.discr_mesh.generate_adjacency_matrix()
 
         self.discretizer = Discretizer()
         self.cpp_bc = self.set_boundary_conditions(displaced_tags)
         self.discretizer.set_mesh(self.discr_mesh)
-        self.discretizer.init()
 
         self.volume_all_cells = np.array(self.discr_mesh.volumes, copy=False)
         self.depth_all_cells = np.array(self.discr_mesh.depths, copy=False)
+        self.centroids_all_cells = np.array(self.discr_mesh.centroids)
         self.actnum = np.array(self.discr_mesh.actnum, copy=False)
-        # self.centroids = np.array(self.discr_mesh.centroids, copy=False)
 
         self.discretizer.set_permeability(self.permx_cpp, self.permy_cpp, self.permz_cpp)
 
@@ -226,8 +240,8 @@ class CPG_Reservoir(ReservoirBase):
         print("Number of all cells    = ", n_all)
         print("Number of active cells = ", self.discr_mesh.n_cells)
 
-        #poro could be modified here
-        #self.poro[poro < 1e-2] = 1e-2
+        # poro could be modified here
+        # self.poro[poro < 1e-2] = 1e-2
         self.discretizer.set_porosity(self.discr_mesh.poro)
         self.mesh.poro = darts.engines.value_vector(self.discretizer.poro)
         self.poro = np.array(self.discr_mesh.poro, copy=False)
@@ -236,7 +250,7 @@ class CPG_Reservoir(ReservoirBase):
         self.discretizer.calc_tpfa_transmissibilities(displaced_tags)
         return
 
-    def calc_well_index(self, i, j, k, well_radius=0.1524, segment_direction='z_axis', skin=0):
+    def calc_well_index(self, i, j, k, well_radius=0.0762, segment_direction='z_axis', skin=0):
         """
         Class method which construct the well index for each well segment/perforation
         :param i: "human" counting of x-location coordinate of perforation
@@ -362,7 +376,8 @@ class CPG_Reservoir(ReservoirBase):
                         j -= 1
                     if j >= 0:
                         volume[i, j, k] = xz_plus
-        volume_1d = np.reshape(volume, self.discr_mesh.nx*self.discr_mesh.ny*self.discr_mesh.nz, order='F') # back to 1D
+        volume_1d = np.reshape(volume, self.discr_mesh.nx * self.discr_mesh.ny * self.discr_mesh.nz,
+                               order='F')  # back to 1D
         # apply actnum and assign to mesh.volume
         mesh_volume[:self.discr_mesh.n_cells] = volume_1d[self.discr_mesh.local_to_global]
 
@@ -405,10 +420,10 @@ class CPG_Reservoir(ReservoirBase):
 
         if well_indexD is None:
             well_indexD = wiD
-            
+
         assert well_index >= 0
         assert well_indexD >= 0
-        
+
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
             well_block = len(well.perforations)
@@ -432,36 +447,35 @@ class CPG_Reservoir(ReservoirBase):
                     return
             well.perforations = well.perforations + [(well_block, res_block_local, well_index, well_indexD)]
             if verbose:
-                print('Added perforation for well %s to block %d [%d, %d, %d] with WI=%f WID=%f' % (
-                    well.name, res_block_local, i, j, k, well_index, well_indexD))
+                c = self.centroids_all_cells[res_block_local].values
+                print('Added perforation for well %s to block %d IJK=[%d, %d, %d] XYZ=(%f, %f, %f) with WI=%f WID=%f' % (
+                    well.name, res_block_local, i, j, k, c[0], c[1], c[2], well_index, well_indexD))
         else:
             if verbose:
                 print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
         return
 
-    def write_mpfa_conn_to_file(self, path = 'mpfa_conn.dat'):
+    def write_mpfa_conn_to_file(self, path='mpfa_conn.dat'):
         stencil = np.array(self.discretizer.flux_stencil, copy=False)
         trans = np.array(self.discretizer.flux_vals, copy=False)
-
 
         f = open(path, 'w')
         f.write(str(len(self.discretizer.cell_m)) + '\n')
 
         for conn_id in range(len(self.discretizer.cell_m)):
             cells = stencil[self.discretizer.flux_offset[conn_id]:self.discretizer.flux_offset[conn_id + 1]]
-            coefs= trans[self.discretizer.flux_offset[conn_id]:self.discretizer.flux_offset[conn_id + 1]]
-            #row = str(self.discretizer.cell_m[conn_id]) + '\t' + str(self.discretizer.cell_p[conn_id])
+            coefs = trans[self.discretizer.flux_offset[conn_id]:self.discretizer.flux_offset[conn_id + 1]]
+            # row = str(self.discretizer.cell_m[conn_id]) + '\t' + str(self.discretizer.cell_p[conn_id])
             row = str(self.discretizer.cell_m[conn_id]) + '\t' + str(self.discretizer.cell_p[conn_id]) + '\t\t'
-            #row_cells = ''#str(cells)
-            #row_vals = ''#str(coefs)
+            # row_cells = ''#str(cells)
+            # row_vals = ''#str(coefs)
             for i in range(cells.size):
                 if np.abs(coefs[i]) > 1.E-10:
                     row += str(cells[i]) + '\t' + str('{:.2e}'.format(coefs[i])) + '\t'
-                    #row_cells += str(cells[i]) + '\t'
-                    #row_vals += str('{:.2e}'.format(coefs[i])) + '\t'
-            f.write(row + '\n')# + row_cells + '\n' + row_vals + '\n')
+                    # row_cells += str(cells[i]) + '\t'
+                    # row_vals += str('{:.2e}'.format(coefs[i])) + '\t'
+            f.write(row + '\n')  # + row_cells + '\n' + row_vals + '\n')
         f.close()
-
 
     def init_vtk(self, output_directory: str, export_grid_data: bool = True):
         """
@@ -496,14 +510,19 @@ class CPG_Reservoir(ReservoirBase):
                     elif type(data) is float:
                         cell_data[key] = data * np.ones(self.nodes_tot, dtype=mesh_geom_dtype)
                 else:
-                    cell_data[key] = np.array(data)# * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
+                    cell_data[key] = np.array(data)
             mesh_filename = output_directory + '/mesh'
 
             if self.vtk_grid_type == 0:
                 vtk_file_name = gridToVTK(mesh_filename, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
             else:
+                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
                 for key, value in cell_data.items():
-                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+                    if cell_data[key].size == g_to_l.size:
+                        a = cell_data[key][g_to_l >= 0]
+                    else:
+                        a = cell_data[key]
+                    self.vtkobj.AppendScalarData(key, a)
 
                 vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
@@ -526,14 +545,23 @@ class CPG_Reservoir(ReservoirBase):
         for prop, idx in prop_idxs.items():
             local_data = data[idx, :]
             global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
-            global_array[self.local_to_global] = local_data
+            dummy_zeros = np.zeros(
+                self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
+            v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
+            global_array[self.discr_mesh.local_to_global] = v[:]
             cell_data[prop] = global_array
 
         if self.vtk_grid_type == 0:
             vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
         else:
             for key, value in cell_data.items():
-                self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+
+                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+                if cell_data[key].size == g_to_l.size:
+                    a = cell_data[key][g_to_l >= 0]
+                else:
+                    a = cell_data[key]
+                self.vtkobj.AppendScalarData(key, a)
 
             vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
             if len(self.vtk_filenames_and_times) == 0:
@@ -567,13 +595,14 @@ class CPG_Reservoir(ReservoirBase):
 
         start = time.perf_counter()
         # c++ implementation using discretizer.pyd
-        print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data (new implementation)....')
+        print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data...')
         nodes_cpp = self.discr_mesh.get_nodes_array()
         nodes_1d = np.array(nodes_cpp, copy=True)
         points = nodes_1d.reshape((nodes_1d.size // 3, 3))
+        points[:,2] *= -1  # invert z-coordinate
 
         cells_1d = np.arange(self.discr_mesh.n_cells * 8)
-        cells = cells_1d.reshape((cells_1d.size//8, 8))
+        cells = cells_1d.reshape((cells_1d.size // 8, 8))
         cells = [("hexahedron", cells)]
 
         offset = np.arange(self.discr_mesh.n_cells + 1) * 8
@@ -586,7 +615,7 @@ class CPG_Reservoir(ReservoirBase):
         cellArray.SetData(offset_vtk, cells_vtk)
 
         Cell = vtkHexahedron()
-        self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(),cellArray)
+        self.vtkobj.VTK_Grids.SetCells(Cell.GetCellType(), cellArray)
 
         vtk_points = vtkPoints()
         vtk_points.SetNumberOfPoints(points.size)
@@ -594,20 +623,18 @@ class CPG_Reservoir(ReservoirBase):
         vtk_points.SetData(points_vtk)
         self.vtkobj.VTK_Grids.SetPoints(vtk_points)
 
-        print("new     NumOfPoints",self.vtkobj.VTK_Grids.GetNumberOfPoints())
-        print("new     NumOfCells",self.vtkobj.VTK_Grids.GetNumberOfCells())
+        print("     NumOfPoints", self.vtkobj.VTK_Grids.GetNumberOfPoints())
+        print("     NumOfCells", self.vtkobj.VTK_Grids.GetNumberOfCells())
 
         # 3. Load grid properties data if applicable
-        for keyword,data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
-            self.vtkobj.AppendScalarData(keyword,data)
-        print('new.....Done!')
+        for keyword, data in self.vtkobj.GRDECL_Data.SpatialDatas.items():
+            self.vtkobj.AppendScalarData(keyword, data)
 
         end = time.perf_counter()
-        print('time:', end - start, 'sec.')
-
+        print('Done! init vtk time:', end - start, 'sec.')
 
     def apply_fault_mult(self, faultfile, cell_m, cell_p, mpfa_tran, ids):
-        #Faults
+        # Faults
 
         keep_reading = True
         prev_fault_name = ''
@@ -628,38 +655,164 @@ class CPG_Reservoir(ReservoirBase):
                 k2 = int(strline[6])
                 fault_tran_mult = float(strline[7])
                 if i1 > self.discr_mesh.nx or j1 > self.discr_mesh.ny or k1 > self.discr_mesh.nz:
-                    print ('Error:', i1,j1,k1, 'out of grid', buff)
-                    continue # skip
+                    print('Error:', i1, j1, k1, 'out of grid', buff)
+                    continue  # skip
                 if i2 > self.discr_mesh.nx or j2 > self.discr_mesh.ny or k2 > self.discr_mesh.nz:
-                    print ('Error:', i2,j2,k2, 'out of grid', buff)
-                    continue # skip
+                    print('Error:', i2, j2, k2, 'out of grid', buff)
+                    continue  # skip
 
-                m_idx = self.discr_mesh.global_to_local[self.discr_mesh.get_global_index(i1-1, j1-1, k1-1)]
-                p_idx = self.discr_mesh.global_to_local[self.discr_mesh.get_global_index(i2-1, j2-1, k2-1)]
+                m_idx = self.discr_mesh.global_to_local[self.discr_mesh.get_global_index(i1 - 1, j1 - 1, k1 - 1)]
+                p_idx = self.discr_mesh.global_to_local[self.discr_mesh.get_global_index(i2 - 1, j2 - 1, k2 - 1)]
 
-                p = set(np.where(cell_p == p_idx)[0]) # find cell idx in cell_p
+                p = set(np.where(cell_p == p_idx)[0])  # find cell idx in cell_p
                 m = set(np.where(cell_m == m_idx)[0])
-                res = m & p # find connection (cell should be in both
+                res = m & p  # find connection (cell should be in both
                 if len(res) > 0:
                     idx = res.pop()
-                    mpfa_tran[2*ids[idx]] *= fault_tran_mult
+                    mpfa_tran[2 * ids[idx]] *= fault_tran_mult
 
-                #print('fault tran mult', fault_tran_mult)
+                # print('fault tran mult', fault_tran_mult)
 
     def apply_volume_depth(self):
         self.depth = np.array(self.mesh.depth, copy=False)
         self.volume = np.array(self.mesh.volume, copy=False)
 
-        #self.depth_all_cells[self.depth_all_cells < 1e-6] = 1e-6
-        #self.volume_all_cells[self.volume_all_cells < 1e-6] = 1e-6
+        # self.depth_all_cells[self.depth_all_cells < 1e-6] = 1e-6
+        # self.volume_all_cells[self.volume_all_cells < 1e-6] = 1e-6
 
         self.depth[:] = self.depth_all_cells
         self.volume[:] = self.volume_all_cells
 
+    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
+        '''
+        read COMPDAT from SCH file in Eclipse format, add wells and perforations
+        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
+        :param: sch_fname - path to file
+        '''
+        if sch_fname is None:
+            return
+        print('reading wells (COMPDAT) from', sch_fname)
+        well_dia = 0.152
+        well_rad = well_dia / 2
+
+        keep_reading = True
+        prev_well_name = ''
+        with open(sch_fname) as f:
+            while keep_reading:
+                buff = f.readline()
+                if 'COMPDAT' in buff:
+                    while True:  # be careful here
+                        buff = f.readline()
+                        if len(buff) != 0:
+                            CompDat = buff.split()
+                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
+                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                                # define well
+                                if wname == prev_well_name:
+                                    pass
+                                else:
+                                    reservoir.add_well(wname)
+                                    prev_well_name = wname
+                                # define perforation
+                                i1 = int(CompDat[1])
+                                j1 = int(CompDat[2])
+                                k1 = int(CompDat[3])
+                                k2 = int(CompDat[4])
+
+                                well_index = None
+                                if len(CompDat) > 7:
+                                    if CompDat[7] != '*':
+                                        well_index = float(CompDat[7])
+
+                                for k in range(k1, k2 + 1):
+                                    reservoir.add_perforation(wname, cell_index=(i1, j1, k), well_radius=well_rad,
+                                                              well_index=well_index, well_indexD=well_indexD,
+                                                              multi_segment=False, verbose=verbose)
+
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
+                                keep_reading = False
+                                break
+        print('WELLS read from SCH file:', len(reservoir.wells))
+
+    def create_vtk_wells(self, output_directory: str):
+        import vtk
+        well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
+        # Append multiple cylinders into one polydata
+        appendFilter = vtk.vtkAppendPolyData()
+
+        def create_tube(center, prolongation=1000):
+            # Create points for the polyline
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+
+            # Create a polyline that connects the points
+            lines = vtk.vtkCellArray()
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)  # Number of points
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+            lines.InsertNextCell(line)
+
+            # Create a polydata to hold the points and the polyline
+            polyData = vtk.vtkPolyData()
+            polyData.SetPoints(points)
+            polyData.SetLines(lines)
+
+            # Apply vtkTubeFilter to create a tube around the polyline
+            tubeFilter = vtk.vtkTubeFilter()
+            tubeFilter.SetInputData(polyData)
+            tubeFilter.SetRadius(35)  # Tube radius
+            tubeFilter.SetNumberOfSides(50)  # Smoothness of the tube
+            tubeFilter.Update()
+
+            return tubeFilter.GetOutput()
+
+        for w in self.wells:
+            for p in w.perforations:
+                well_block, res_block_local, well_index, well_indexD = p
+                c = self.centroids_all_cells[res_block_local].values
+                cyl = create_tube(c)
+                appendFilter.AddInputData(cyl)
+                break  # use only the first perf
+
+        # Update the append filter to combine the polydata
+        appendFilter.Update()
+
+        # Write the cylinders to a VTK file
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(appendFilter.GetOutputPort())
+        writer.Write()
+
+    def get_ijk_from_xyz(self, x, y, z):
+        '''
+        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        '''
+        def find_cell_index(centers_flattened, coord) -> int:
+            min_dis = None
+            idx = None
+            for j, centroid in enumerate(centers_flattened):
+               dis = np.linalg.norm(np.array(coord) - centroid.values)
+               if (min_dis is not None and dis < min_dis) or min_dis is None:
+                   min_dis = dis
+                   idx = j
+            return idx
+        def get_ijk(idx, nx, ny, nz):
+            k = idx // (nx * ny)
+            j = (idx - k * (nx * ny)) // nx
+            i = idx % nx
+            return (i + 1, j + 1, k + 1)
+
+        centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        idx = find_cell_index(centers, np.array([x, y, z]))
+        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        return ijk
 
 #####################################################################
 
-def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w', make_full=True):
+def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w',
+               make_full=True, inactive_value='min'):
     '''
     writes numpy array of n_active_cell size to text file in GRDECL format with n_cells_total
     :param arr: numpy array to write
@@ -667,10 +820,12 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
     :param keyword: keyword for array
     :param actnum: actnum array
     :param mode: 'w' to rewrite the file or 'a' to append
+    :param make_full: set this to True if passing arr only in active cells, and to False if it as already nx*ny*nz
+    :param inactive_value: if 'min' the value in inactive cells will be set to arr.min(), otherwise to the specified val
     :return: None
     '''
     if make_full:
-        arr_full = make_full_cube(arr, local_to_global, global_to_local)
+        arr_full = make_full_cube(arr, local_to_global, global_to_local, inactive_value)
     else:
         arr_full = arr
     with open(fname, mode) as f:
@@ -678,7 +833,7 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
         s = ''
         for i in range(arr_full.size):
             s += str(arr_full[i]) + ' '
-            if (i+1) % 6 == 0:  # write only 6 values per row
+            if (i + 1) % 6 == 0:  # write only 6 values per row
                 f.write(s + '\n')
                 s = ''
         f.write(s + '\n')
@@ -686,7 +841,7 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
         print('Array saved to file', fname, ' (keyword ' + keyword + ')')
 
 
-def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array):
+def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array, inactive_value='min'):
     '''
     returns 1d-array of size nx*ny*nz, filled with zeros where actnum is zero
     :param cube: 1d-array of size n_active_cells
@@ -695,10 +850,14 @@ def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: n
     '''
     if global_to_local.size == cube.size:
         return cube
-    cube_full = np.zeros(global_to_local.size)
+    if inactive_value == 'min':
+        inactive_value_ = cube.min()
+    else:
+        inactive_value_ = inactive_value
+    cube_full = np.zeros(global_to_local.size) + inactive_value_
     cube_full[local_to_global] = cube
     return cube_full
-    
+
 
 def read_arrays(gridfile: str, propfile: str):
     '''
@@ -732,19 +891,19 @@ def read_arrays(gridfile: str, propfile: str):
     if arrays['PERMZ'].size == 0:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1
         print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
-    poro_cpp = value_vector_discr() #self.discr_mesh.poro
+    poro_cpp = value_vector_discr()  # self.discr_mesh.poro
     load_single_float_keyword(poro_cpp, propfile, 'PORO', -1)
     arrays['PORO'] = np.array(poro_cpp, copy=False)
 
-    coord_cpp = value_vector_discr() # self.discr_mesh.coord
+    coord_cpp = value_vector_discr()  # self.discr_mesh.coord
     load_single_float_keyword(coord_cpp, gridfile, 'COORD', -1)
     arrays['COORD'] = np.array(coord_cpp, copy=False)
 
-    zcorn_cpp = value_vector_discr()  #self.discr_mesh.zcorn
+    zcorn_cpp = value_vector_discr()  # self.discr_mesh.zcorn
     load_single_float_keyword(zcorn_cpp, gridfile, 'ZCORN', -1)
     arrays['ZCORN'] = np.array(zcorn_cpp, copy=False)
 
-    actnum_cpp = index_vector_discr() # self.discr_mesh.actnum
+    actnum_cpp = index_vector_discr()  # self.discr_mesh.actnum
     arrays['ACTNUM'] = np.array([])
     for fname in [gridfile, propfile]:
         if arrays['ACTNUM'].size == 0:
@@ -756,8 +915,24 @@ def read_arrays(gridfile: str, propfile: str):
 
     return arrays
 
+def check_arrays(arrays):
+    # check dims of loaded arrays
+    nx, ny, nz = arrays['SPECGRID']
+    n_cells_all =  nx * ny * nz
+    coord_dims = (nx + 1) * (ny + 1) * 6
+    zcorn_dims = n_cells_all * 8
+    for a_name in arrays.keys():
+        if a_name == 'SPECGRID':
+            assert arrays[a_name].shape[0] == 3, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        elif a_name == 'COORD':
+            assert arrays[a_name].shape == coord_dims, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        elif a_name == 'ZCORN':
+            assert arrays[a_name].shape == zcorn_dims, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
+        else:
+            assert arrays[a_name].shape == n_cells_all, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
 
-def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, property_dictionary, burden_layer_prop_value=1e-5):
+def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, property_dictionary,
+                       burden_layer_prop_value=1e-5):
     """create overburden and underburden layers if the number of burden layers is not zero
 
     :param number_of_burden_layers: the number of burden layers, applies to overburden and underburden layers
@@ -799,3 +974,4 @@ def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, p
     # update the grid dimension in z direction for both overburden and underburden layers
     property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers
     return property_dictionary
+

@@ -6,16 +6,12 @@ def plot_phase_rate_darts(well_name, darts_df, ph, style='-', color='#00A6D6', a
     search_str = well_name + ' : ' + ph + ' rate'
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax, alpha=alpha)
-
-    plt.show(block=False)
     return ax
 
 def plot_bhp_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None):
     search_str = well_name + ' : BHP'
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax)
-
-    plt.show(block=False)
     return ax
 
 
@@ -23,8 +19,6 @@ def plot_oil_rate_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None
     search_str = well_name + ' : oil rate'
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax, alpha=alpha)
-
-    plt.show(block=False)
     return ax
 
 def plot_oil_rate_darts_2(well_name, darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -32,16 +26,12 @@ def plot_oil_rate_darts_2(well_name, darts_df, style='-', color='#00A6D6', ax=No
     darts_df['time']  = -darts_df['time']
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax, alpha=alpha)
-
-    plt.show(block=False)
     return ax
 
 def plot_gas_rate_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None):
     search_str = well_name + ' : gas rate'
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax)
-
-    plt.show(block=False)
     return ax
 
 
@@ -57,7 +47,6 @@ def plot_water_rate_darts(well_name, darts_df, style='-', color='#00A6D6', ax=No
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 
@@ -74,8 +63,6 @@ def plot_watercut_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None
 
     ax.set_ylim(0, 1)
 
-
-    plt.show(block=False)
     return ax
 
 def plot_water_rate_darts_2(well_name, darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -90,8 +77,7 @@ def plot_water_rate_darts_2(well_name, darts_df, style='-', color='#00A6D6', ax=
 
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
-
-    plt.show(block=False)
+        
     return ax
 
 def plot_water_rate_vs_obsrate(well_name, darts_df, truth_df,  style='-', color='#00A6D6', ax=None, marker="o"):
@@ -111,7 +97,7 @@ def plot_water_rate_vs_obsrate(well_name, darts_df, truth_df,  style='-', color=
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
     plt.grid(True)
-    plt.show(block=False)
+
     return ax
 
 def plot_water_rate_vs_obsrate_time(well_name, darts_df, truth_df,  style='-', color='#00A6D6', ax=None, marker="o", time=0):
@@ -130,7 +116,7 @@ def plot_water_rate_vs_obsrate_time(well_name, darts_df, truth_df,  style='-', c
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
     plt.grid(True)
-    plt.show(block=False)
+
     return ax
 
 def plot_oil_rate_rate_vs_obsrate(well_name, darts_df, truth_df,  style='-', color='#00A6D6', ax=None, marker="o"):
@@ -155,7 +141,7 @@ def plot_oil_rate_rate_vs_obsrate(well_name, darts_df, truth_df,  style='-', col
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
     plt.grid(True)
-    plt.show(block=False)
+
     return ax
 
 def plot_total_inj_water_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -183,7 +169,6 @@ def plot_total_inj_water_rate_darts(darts_df, style='-', color='#00A6D6', ax=Non
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_total_inj_gas_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -211,7 +196,6 @@ def plot_total_inj_gas_rate_darts(darts_df, style='-', color='#00A6D6', ax=None,
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_water_rate_prediction(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -235,7 +219,6 @@ def plot_water_rate_prediction(darts_df, style='-', color='#00A6D6', ax=None, al
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 
@@ -261,7 +244,6 @@ def plot_total_prod_water_rate_darts(darts_df, style='-', color='#00A6D6', ax=No
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_acc_prod_water_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -286,7 +268,6 @@ def plot_acc_prod_water_rate_darts(darts_df, style='-', color='#00A6D6', ax=None
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_acc_prod_oil_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -311,7 +292,6 @@ def plot_acc_prod_oil_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, 
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_total_prod_oil_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -336,7 +316,6 @@ def plot_total_prod_oil_rate_darts(darts_df, style='-', color='#00A6D6', ax=None
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_total_prod_gas_rate_darts(darts_df, style='-', color='#00A6D6', ax=None, alpha=1):
@@ -361,7 +340,6 @@ def plot_total_prod_gas_rate_darts(darts_df, style='-', color='#00A6D6', ax=None
     if ymin > 0:
         ax.set_ylim(0, ymax * 1.1)
 
-    plt.show(block=False)
     return ax
 
 def plot_temp_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None):
@@ -369,7 +347,17 @@ def plot_temp_darts(well_name, darts_df, style='-', color='#00A6D6', ax=None):
     ax = darts_df.plot(x='time', y=[col for col in darts_df.columns if search_str in col], style=style, color=color,
                        ax=ax)
 
-    plt.show(block=False)
+    return ax
+
+def plot_extracted_energy_darts(darts_df, style='-', color='#00A6D6', ax=None):
+    search_str = ' : energy'
+    y = [col for col in darts_df.columns if search_str in col]  # get columns with 'energy' data
+    y = darts_df[y].sum(axis=1)  # sum over the wells
+    t = darts_df['time']
+    dt = np.append(0, np.ediff1d(t))  # add the first time step
+    col_name = 'energy extracted, PJ'
+    darts_df[col_name] = -(y * dt).cumsum() * 1e-12  # kJ/day -> PJ
+    ax = darts_df.plot(x='time', y=col_name, style=style, color=color, ax=ax)
     return ax
 
 def tersurf(a, b, c, d, line = None, inf_p = None):
@@ -438,4 +426,3 @@ def tersurf(a, b, c, d, line = None, inf_p = None):
             x = 0.5 - inf_p[:,0] * np.cos(np.pi / 3) + inf_p[:,1] / 2
             y = 0.866 - inf_p[:,0] * np.sin(np.pi / 3) - inf_p[:,1] / np.tan(np.pi / 6) / 2
             plt.scatter(x, y)
-    plt.show()

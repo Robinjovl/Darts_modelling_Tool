@@ -225,7 +225,7 @@ def frac_preprocessing(frac_data_raw, char_len, output_dir='', filename_base='ou
                     z_top=z_top, height_res=height_res,
                     char_len=char_len * char_len_mult, box_data=box_data,
                     char_len_boundary=char_len_boundary * char_len_mult,
-                    input_data=input_data)
+                    input_data=input_data, wells=wells)
     print('DONE creating geo-file for cleaned network (input for gmsh)\n')
 
     if mesh_clean:

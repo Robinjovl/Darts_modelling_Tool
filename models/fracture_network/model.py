@@ -3,7 +3,7 @@
 from darts.engines import value_vector, sim_params
 #from darts.models.physics.dead_oil import DeadOil
 from darts.physics.geothermal.physics import Geothermal
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.physics.properties.iapws.iapws_property import iapws_total_enthalpy_evalutor
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -16,8 +16,8 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(DartsModel):
-    def __init__(self, input_data, n_points=1000):
+class Model(CICDModel):
+    def __init__(self, input_data, n_points=100):
         """
         Class constructor of Model class
         :param n_points: number of discretization points for the parameter space
@@ -53,10 +53,12 @@ class Model(DartsModel):
         # set heterogeneous/uniform permeability
         if self.perm_file is not None:
             permx = self.get_perm_unstr_from_struct_grid(self.perm_file, self.input_data)
+            permy = permx
+            permz = permx * 0.1
         else:
-            permx = input_data['perm']
-        permy = permx
-        permz = permx * 0.1
+            permx = input_data['permx']
+            permy = input_data['permy']
+            permz = input_data['permz']
 
         # initialize reservoir
         self.reservoir = UnstructReservoir(timer=self.timer, mesh_file=mesh_file,
@@ -67,10 +69,11 @@ class Model(DartsModel):
                                       frac_aper=frac_aper)
 
         # parameters for fracture aperture computation depending on principal stresses
-        self.reservoir.sh_max = input_data['Sh_max']
-        self.reservoir.sh_min = input_data['Sh_min']
-        self.reservoir.sh_max_azimuth = input_data['SHmax_azimuth']
-        self.reservoir.sigma_c = input_data['sigma_c']
+        if 'Sh_max' in input_data:
+            self.reservoir.sh_max = input_data['Sh_max']
+            self.reservoir.sh_min = input_data['Sh_min']
+            self.reservoir.sh_max_azimuth = input_data['SHmax_azimuth']
+            self.reservoir.sigma_c = input_data['sigma_c']
 
         # read mesh to get the number of fractures for tags specification
         # assume mesh is extruded and fractures have a quad shape
@@ -78,27 +81,43 @@ class Model(DartsModel):
         msh = meshio.read(mesh_file)
         c = msh.cell_data_dict['gmsh:physical']
         n_fractures = (np.unique(c['quad']) >= 90000).sum()
+        n_fractures = n_fractures * (1 + int(input_data['overburden_layers']>0) + int(input_data['underburden_layers']>0))
 
         # 9991 - rsv, 9992 - overburden, 9993 - underburden, 9994 - overburden2, 9995 - underburden2
         self.reservoir.physical_tags['matrix'] = [9991 + i for i in range(5)]
         # multiplied by 3 because physical surfaces for fracture are also in underburden and overburden
-        self.reservoir.physical_tags['fracture'] = [90000 + i for i in range(n_fractures * 3)]
+        self.reservoir.physical_tags['fracture'] = [90000 + i for i in range(n_fractures)]
 
-        self.reservoir.physical_tags['boundary'] = [1, 2, 3, 4, 5, 6]  # order: Z- (top); Z+ (bottom) ; Y-; X+; Y+; X-
+        self.reservoir.physical_tags['boundary'] = [2, 1, 3, 4, 5, 6]  # order: Z- (bottom); Z+ (top) ; Y-; X+; Y+; X-
 
         '''     matrix_tag   surface_tag                             fracture_tag    test_case
-                ----------      5     overburden2 top                                     }
+                ----------      2     overburden2 top                                     }
                 | 9994                    overburden2                                     }
-                ----------      3     overburden top       ------------- 90003        }   }
+                ----------      2     overburden top       ------------- 90003        }   }
                 | 9992                    overburden       | FRACTURE  |              }   }case_1_burden_2
-                ----------      1     reservoir top        |-----------| 90001    }   }case_1_burden
+                ----------      2     reservoir top        |-----------| 90001    }   }case_1_burden
                 | 9991                    RESERVOIR        | FRACTURE  | 90000    }case_1 }
-                ----------      2     reservoir bottom     |-----------| 90002    }   }   }
+                ----------      1     reservoir bottom     |-----------| 90002    }   }   }
                 | 9993                    underburden      | FRACTURE  |              }   }
-                ----------      4     underburden bottom   ------------- 90004        }   }
+                ----------      1     underburden bottom   ------------- 90004        }   }
                 | 9995                    underburden2                                    }
-                ----------      6     underburden2 bottom                                 }
+                ----------      1     underburden2 bottom                                 }
         '''
+
+        # discretize
+        self.reservoir.init_reservoir(verbose=True)
+
+        # set boundary volume XY
+        boundary_cells = []
+        for bnd_tag in [1, 2, 3, 4, 5, 6]:
+            boundary_cells += self.reservoir.discretizer.find_cells(bnd_tag, 'face')
+        boundary_cells = np.array(boundary_cells) + self.reservoir.discretizer.frac_cells_tot
+        #bnd_vol = 1e+8
+        bnd_vol_mult = 5
+        # for vtk output
+        self.reservoir.discretizer.volume_all_cells[boundary_cells] *= bnd_vol_mult  # = bnd_vol
+        # for engines
+        np.array(self.reservoir.mesh.volume, copy=False)[boundary_cells] *= bnd_vol_mult # = bnd_vol
 
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
@@ -106,6 +125,12 @@ class Model(DartsModel):
         from darts.physics.geothermal.property_container import PropertyContainer
         property_container = PropertyContainer()
         property_container.output_props = {'T,degrees': lambda: property_container.temperature - 273.15}
+
+        # Create rock_compaction object to set rock compressibility (it is 0 by default)
+        from darts.physics.properties.iapws.custom_rock_property import custom_rock_compaction_evaluator
+        property_container.rock = [value_vector([1, input_data['rock_compressibility'], 273.15])]
+        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
+
         self.physics = Geothermal(timer=self.timer, n_points=n_points, min_p=100, max_p=500,
                                   min_e=1000, max_e=25000, cache=False)
         self.physics.add_property_region(property_container)
@@ -113,24 +138,33 @@ class Model(DartsModel):
         # Some tuning parameters:
         self.params.first_ts = 1e-6  # Size of the first time-step [days]
         self.params.mult_ts = 1.5  # Time-step multiplier if newton is converged (i.e. dt_new = dt_old * mult_ts)
-        self.params.max_ts = 2 #20  # Max size of the time-step [days]
+        self.params.max_ts = 60  # Max size of the time-step [days]
         self.params.tolerance_newton = 1e-4  # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.tolerance_linear = 1e-5  # Tolerance for linear solver ||Ax - b||<tol_linslv
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
+        # direct linear solver
+        #if int(input_data['overburden_layers']) + int(input_data['underburden_layers']) > 0:
+        #    self.params.linear_type = sim_params.cpu_superlu
 
         self.runtime = 2000  # Total simulations time [days], this parameters is overwritten in main.py!
 
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
-    def print_range(self, time, full=0):
-        P = self.get_pressure(full=full)
-        T = self.get_temperature(full=full)
-        suf = '(M)'  # matrix cells
-        if full:
-            suf = '(M+F)'  # matrix+fracture cells
-        print('Time', fmt(time), ' years; ', time, 'days, '
+    def print_range(self, time, part='cells'):
+        depth = np.array(self.reservoir.mesh.depth, copy=True)
+        start, end = self.get_mat_frac_range(part)
+        D = depth[start:end]
+        P = self.get_pressure(part)
+        T = self.get_temperature(part)
+        suf = '(MAT)'  # matrix cells
+        if part == 'full':
+            suf = '(MAT+FRAC)'  # matrix+fracture cells
+        elif part == 'fracs':
+            suf = '(FRAC)'  # matrix+fracture cells
+        print('Time', fmt(time/365), ' years; ', time, 'days, '
+              'D_range:', D.min(), '-', D.max(), 'm; ',
               'P_range:', fmt(P.min()), '-', fmt(P.max()), 'bars; ',
               'T_range:', fmt(T.min()), '-', fmt(T.max()), 'degrees', suf)
 
@@ -143,7 +177,7 @@ class Model(DartsModel):
         """
 
         depth = np.array(mesh.depth, copy=True)
-        print('depth:', fmt(depth.min()), '-', fmt(depth.max()), 'm.')
+        print('depth:', depth.min(), '-', depth.max(), 'm.')
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
         pressure[:] = (depth - self.input_data['reference_depth_for_pressure']) * self.input_data['pressure_gradient'] + \
@@ -152,7 +186,7 @@ class Model(DartsModel):
         enthalpy = np.array(mesh.enthalpy, copy=False)
         init_temperature = (depth - self.input_data['reference_depth_for_temperature']) * self.input_data['temperature_gradient'] + \
                       + self.input_data['temperature_initial'] + \
-                      293.15  # convert to K
+                      273.15  # convert to K
 
         self.pressure_initial_mean = pressure.mean()
         self.temperature_initial_mean = init_temperature.mean()
@@ -193,7 +227,7 @@ class Model(DartsModel):
                     w.control = self.physics.new_bhp_water_inj(self.pressure_initial_mean + self.delta_p_inj, self.temperature_initial_mean - self.delta_temp)
                 else:
                     w.control = self.physics.new_rate_water_inj(self.rate_inj, self.temperature_initial_mean - self.delta_temp)
-                    # TODO add constrain
+                    w.constraint = self.physics.new_bhp_water_inj(450, self.temperature_initial_mean - self.delta_temp)
             else:
                 # Add controls for production well:
                 # Specify bhp for particular production well:
@@ -201,9 +235,12 @@ class Model(DartsModel):
                     w.control = self.physics.new_bhp_prod(self.pressure_initial_mean - self.delta_p_prod)
                 else:
                     w.control = self.physics.new_rate_water_prod(self.rate_prod)
-                    # TODO add constrain
-            print(w.name, w.control, w.well_head_depth, w.control.target_pressure,
-                  w.control.target_temperature if 'I' in w.name else '')
+                    w.constraint = self.physics.new_bhp_prod(50)
+            print(w.name,
+                  w.well_head_depth,
+                  w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
+                  w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
+                  w.control.target_rate if hasattr(w.control, 'target_rate') else '')
         return 0
 
 
@@ -213,34 +250,28 @@ class Model(DartsModel):
         T[:] = _Backward1_T_Ph_vec(data[::2] / 10, data[1::2] / 18.015)
         return T
 
-    def get_pressure(self, full=0):
-        '''
-        if full == 1 return array with well blocks
-        '''
-        nb = self.reservoir.mesh.n_res_blocks
+    def get_mat_frac_range(self, part):
+        start = 0
+        if part == 'full':
+            end = self.reservoir.discretizer.frac_cells_tot + self.reservoir.discretizer.mat_cells_tot
+        elif part == 'cells':
+            end = self.reservoir.discretizer.mat_cells_tot
+            start = self.reservoir.discretizer.frac_cells_tot
+        elif part == 'fracs':
+            end = self.reservoir.discretizer.frac_cells_tot
+        return [start, end]
+    def get_pressure(self, part='cells'):
+        nvars = 2
+        start, end = self.get_mat_frac_range(part)
         Xn = np.array(self.physics.engine.X, copy=True)
-        if full == 1:
-          P = Xn[::2]
-        else:
-          P = Xn[:2*nb:2]
+        P = Xn[nvars*start:nvars*end:nvars]
         return P
-
-    def get_temperature(self, full=0):
-        nb = self.reservoir.mesh.n_res_blocks
+    def get_temperature(self, part='cells'):
+        nvars = 2
+        start, end = self.get_mat_frac_range(part)
         Xn = np.array(self.physics.engine.X, copy=True)
-        if full != 1:
-          Xn = Xn[:2*nb]
-        T = self.enthalpy_to_temperature(Xn) - 273.15  # to degrees
+        T = self.enthalpy_to_temperature(Xn[nvars*start:nvars*end]) - 273.15  # to degrees
         return T
-
-    def get_saturation(self, full=0):
-        nb = self.reservoir.mesh.n_res_blocks
-        Xn = np.array(self.physics.engine.X, copy=True)
-        if full == 1:
-          S = Xn[1::2]
-        else:
-          S = Xn[1:2*nb:2]
-        return S
 
     def calc_well_loc(self):
         #TODO use idx = self.reservoir.find_cell_index(wc)
@@ -260,6 +291,8 @@ class Model(DartsModel):
             offset = 0
             left_int = 0
             right_int = self.num_frac + self.num_mat
+        else:
+            raise('error: wrong self.bound_cond')
 
         # Find closest control volume to dummy_well point:
         self.injection_wells = []
@@ -296,7 +329,7 @@ class Model(DartsModel):
 
         self.well_perf_loc = np.array([self.injection_wells, self.production_wells])
 
-    def set_wells(self):
+    def set_wells(self, well_index=100):
         """
         Class method which initializes the wells (adding wells and their perforations to the reservoir)
         :return:
@@ -306,12 +339,12 @@ class Model(DartsModel):
         for i in range(len(self.well_perf_loc[0])):
             self.reservoir.add_well(f'I{i + 1}')
             self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[0][i],
-                                 well_indexD=0, verbose=True)
+                                 well_index=well_index, well_indexD=0, verbose=True)
 
         for i in range(len(self.well_perf_loc[1])):
             self.reservoir.add_well(f'P{i + 1}')
             self.reservoir.add_perforation(self.reservoir.wells[-1].name, cell_index=self.well_perf_loc[1][i],
-                                 well_indexD=0, verbose=True)
+                                 well_index=well_index, well_indexD=0, verbose=True)
 
     def get_perm_unstr_from_struct_grid(self, perm_file, input_data):
         # Set non-uniform permeability

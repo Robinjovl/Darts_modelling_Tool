@@ -4,13 +4,13 @@ def input_data_default():
 
     ###########################################################################################################
     # DFN framework parameters (for mesh generation)
-    input_data['frac_file'] = 'frac.txt'
+    input_data['frac_file'] = 'frac.txt'  # fracture tips coordinates X1 Y1 X2 Z2; should contain at least 2 rows (2 fractures)
     #input_data['mesh_prefix'] = 'raw_lc'  #  use mesh with original fracture tips
     input_data['mesh_prefix'] = 'mergefac_0.86_clean_lc'  #  cleaned mesh
-    input_data['mesh_clean'] = True  # need gmsh installed and callable from command line in order to mesh
+    input_data['mesh_clean'] = False  # need gmsh installed and callable from command line in order to mesh
 
     input_data['margin'] = 100  # [m]
-    input_data['box_data'] = None # mesh bounds (in case of no margin defined)
+    input_data['box_data'] = None  # [m] mesh bounds (in case of no margin defined)
 
     # cell sizes
     input_data['char_len'] = 16  # near fractures (characteristic length for cleaning and mesh generation) [m]
@@ -43,8 +43,12 @@ def input_data_default():
     # The properties below do not affect mesh generation stage. So no need to re-generate the mesh if you change them.
 
     input_data['poro'] = 0.2
-    input_data['perm'] = 10 # [mD]
+    input_data['permx'] = 10  # [mD]
+    input_data['permy'] = 10  # [mD]
+    input_data['permz'] = 1  # [mD]
     input_data['perm_file'] = None  # if want to read the permeability from netCDF file
+
+    input_data['rock_compressibility'] = 1e-5  # [1/bar]
 
     # will be passed to UnstructuredDiscretizer
     input_data['frac_aper'] = 1e-3  # (initial) fracture aperture [m]
@@ -59,17 +63,18 @@ def input_data_default():
 
     # well controls
     input_data['rate_prod'] = None  # m3/day. if None, well will work under BHP control
-    input_data['rate_inj'] = None  # m3/day. if None, well will work under BHP control
-    input_data['delta_temp'] = 10  # inj_temp = initial_temp - delta_temp
-    input_data['delta_p_inj']  = 5  # inj_bhp = initial_pressure + delta_p_inj
-    input_data['delta_p_prod'] = 5  # inj_prod = initial_pressure - delta_p_prod
+    input_data['rate_inj'] = None   # m3/day. if None, well will work under BHP control
+    input_data['delta_temp'] = 10   # bars. inj_temp = initial_temp - delta_temp
+    input_data['delta_p_inj']  = 5  # bars. inj_bhp = initial_pressure + delta_p_inj
+    input_data['delta_p_prod'] = 5  # bars. inj_prod = initial_pressure - delta_p_prod
 
-    # principal stress, MPa
-    input_data['Sh_min'] = 50
-    input_data['Sh_max'] = 90
-    input_data['Sv'] = 120
-    input_data['SHmax_azimuth'] = 0  #° from X, counter-clockwize
-    input_data['sigma_c'] = 100
+    # principal stress, MPa.
+    # Set to None if don't want to recompute fracture apertures by initial stresses
+    input_data['Sh_min'] = None #50
+    input_data['Sh_max'] = None # 90
+    input_data['Sv'] = None # 120
+    input_data['SHmax_azimuth'] = None #0  # [°] from X, counter-clockwise
+    input_data['sigma_c'] = None #100
 
     # initial pressure and temperature
     input_data['initial_uniform'] = False

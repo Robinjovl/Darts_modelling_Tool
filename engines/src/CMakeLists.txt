@@ -312,6 +312,8 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.tpp
 )
 
 # Define the engines_engines library

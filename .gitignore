@@ -14,6 +14,7 @@ lib64/
 *.egg
 build/
 bin/
+*.nc
 
 # cache
 docs/_build
@@ -31,3 +32,6 @@ darts/build_info.txt
 *.pdb
 *.npy
 .vscode
+/.idea/*
+*x64*
+*.log

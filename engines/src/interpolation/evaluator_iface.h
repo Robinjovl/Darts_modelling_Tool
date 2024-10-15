@@ -122,7 +122,7 @@ public:
      *
      * @param axis index of axis in question
      */
-   virtual double get_axis_max(int axis) { return 0; };
+   virtual double get_axis_max(int /*axis*/) { return 0; };
 
    /**
      * @brief Get the number of interpolations that took place, default empty implementation

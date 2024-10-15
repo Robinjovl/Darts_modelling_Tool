@@ -19,7 +19,7 @@ class Geothermal(PhysicsBase):
     """
 
     def __init__(self, timer: timer_node, n_points: int, min_p: float, max_p: float, min_e: float, max_e: float,
-                 mass_rate: bool = False, cache: bool = True):
+                 mass_rate: bool = False, cache: bool = False):
         """
         This is the constructor of the Geothermal Physics class.
 
@@ -71,6 +71,7 @@ class Geothermal(PhysicsBase):
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
+            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region])
         self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]])
 
         # create rate operators evaluator

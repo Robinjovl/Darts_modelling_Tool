@@ -63,7 +63,7 @@ class iapws_total_enthalpy_evalutor(property_evaluator_iface):
         elif (region == 2):
             h = _Region2(self.T, P)["h"] * 18.015
         else:
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(P) + ' region=' + str(region))
         return h
 
 
@@ -86,7 +86,7 @@ class iapws_temperature_evaluator(property_evaluator_iface):
         elif (region == 2):
             T = _Backward2_T_Ph(P, h)
         else:
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return T
 
 class iapws_water_enthalpy_evaluator(property_evaluator_iface):
@@ -107,12 +107,12 @@ class iapws_water_enthalpy_evaluator(property_evaluator_iface):
             if T <= 623.15:
                water_enth = _Region4(P, 0)["h"]
             else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         elif (region == 2):
             water_enth = 0
         else:
             print(region)
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return water_enth * 18.015
 
 
@@ -135,13 +135,13 @@ class iapws_steam_enthalpy_evaluator(property_evaluator_iface):
             if T <= 623.15:
                steam_enth = _Region4(P, 1)["h"]
             else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         elif (region == 2):
             To = _Backward2_T_Ph(P, h)
             T = newton(lambda T: _Region2(T, P)["h"]-h, To)
             steam_enth = _Region2(T, P)["h"]
         else:
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return steam_enth * 18.015
 
 
@@ -168,7 +168,7 @@ class iapws_water_saturation_evaluator(property_evaluator_iface):
         elif (region == 2):
             sw = 0
         else:
-             raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+             raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return sw
 
 class iapws_steam_saturation_evaluator(property_evaluator_iface):
@@ -217,11 +217,11 @@ class iapws_water_density_evaluator(property_evaluator_iface):
             if (T <= 623.15):
                water_density = 1 / _Region4(P, 0)['v']
             else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         elif (region == 2):
             water_density = 0
         else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return water_density / 18.015
 
 
@@ -244,13 +244,13 @@ class iapws_steam_density_evaluator(property_evaluator_iface):
             if T <= 623.15:
                steam_density = 1 / _Region4(P, 1)['v']
             else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         elif (region == 2):
             To = _Backward2_T_Ph(P, h)
             T = newton(lambda T: _Region2(T, P)["h"]-h, To)
             steam_density = 1 / _Region2(T, P)["v"]
         else:
-               raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+               raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return steam_density / 18.015
 
 
@@ -506,7 +506,7 @@ class Enthalpy_iapws_water():
             water_enth = 0
         else:
             print(region)
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return water_enth * 18.015
 
 class Enthalpy_iapws_steam():
@@ -535,13 +535,13 @@ class Enthalpy_iapws_steam():
             if T <= 623.15:
                 steam_enth = _Region4(P, 1)["h"]
             else:
-                raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+                raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         elif region == 2:
             # To = _Backward2_T_Ph(P, h)
             # T = newton(lambda T: _Region2(T, P)["h"]-h, To)
             steam_enth = _Region2(T, P)["h"]
         else:
-            raise NotImplementedError('Variables out of bound: p=' + str(P) + 'h=' + str(h) + ' region=' + str(region))
+            raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
         return steam_enth * 18.015
 
 

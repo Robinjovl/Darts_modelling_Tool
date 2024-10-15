@@ -1,5 +1,6 @@
 import numpy as np
 from math import pi, asin
+from scipy.spatial import KDTree
 
 from numba import jit
 
@@ -146,14 +147,13 @@ class MapMesh:
         """
         Function to translate mesh to structured mesh of certain x-y-z
         """
-        structured_mesh_size = (len(x), len(y), len(z))
-        idxs = np.zeros(structured_mesh_size)
-        for i, xx in enumerate(x):
-            for j, yy in enumerate(y):
-                for k, zz in enumerate(z):
-                    idxs[i, j, k] = _find_cells_index(np.array([xx, yy, zz]), self.centroids)
+        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        points = np.stack((X, Y, Z), axis=-1).reshape(len(x) * len(y) * len(z), 3)
+        tree = KDTree(self.centroids)
+        _, closest_indices = tree.query(points)
+        closest_indices_grid = closest_indices.reshape(len(x), len(y), len(z))
 
-        return idxs
+        return closest_indices_grid
 
     def find_nearest_cells(self, centroids):
         idxs = np.zeros(len(centroids))

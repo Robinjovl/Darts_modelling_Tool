@@ -33,6 +33,8 @@ target_sources(discretizer_mesh
 target_link_libraries(discretizer_mesh
   PUBLIC
     opendarts_compiler_flags
+    #auxiliary
+    #engines_global
     discretizer_linalg
   PRIVATE 
 	  mshio

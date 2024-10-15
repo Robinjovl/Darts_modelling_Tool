@@ -33,12 +33,14 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("stat", &engine_base::stat) \
 		.def_readwrite("n_linear_last_dt", &engine_base::n_linear_last_dt) \
 		.def_readwrite("op_vals_arr_n", &engine_base::op_vals_arr_n) \
+		.def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 		.def_readwrite("time_data", &engine_base::time_data) \
 		.def_readwrite("time_data_report", &engine_base::time_data_report) \
 		.def_readwrite("engine_name", &engine_base::engine_name) \
 		.def_readwrite("params", &engine_base::params) \
 		.def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 		.def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
+		.def_readwrite("print_linear_system", &engine_base::print_linear_system) \
 		.def("add_value_to_Q", &engine_base::add_value_to_Q)  \
 		.def("clear_Q", &engine_base::clear_Q)  \
 		.def("calc_adjoint_gradient_dirac_all", &engine_base::calc_adjoint_gradient_dirac_all, py::call_guard<py::gil_scoped_release>())  \

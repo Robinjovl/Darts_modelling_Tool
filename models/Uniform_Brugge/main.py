@@ -17,18 +17,19 @@ if __name__ == '__main__':
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        # n.save_restart_data()
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
+        time_data.to_excel(writer, sheet_name='Sheet1')
         writer.close()
     else:
-        n.load_restart_data()
+        # n.load_restart_data()
+        n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
     time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
     from darts.tools.plot_darts import *
     writer = pd.ExcelWriter('time_data.xlsx')
-    time_data.to_excel(writer, 'Sheet1')
+    time_data.to_excel(writer, sheet_name='Sheet1')
     writer.close()
     plot_phase_rate_darts('P1', time_data1, 'oil')
     plot_phase_rate_darts('P5', time_data1, 'oil')

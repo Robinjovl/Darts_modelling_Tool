@@ -158,6 +158,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
         jac_diag -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
                      tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
         jac_diag += c_flux * grav_pc_der_i;
+        jac_offd += c_flux * grav_pc_der_j;
       }
       else
       {
@@ -185,8 +186,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
       // Add diffusion term to the residual:
       for (uint8_t p = 0; p < NP; p++)
       {
-        value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + c * NP + p] - op_vals_arr[i * N_OPS + GRAD_OP + c * NP + p];
-
+        value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
         if (grad_con < 0)
         {
           // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
@@ -197,8 +197,8 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           }
 
           // Add diffusion terms to Jacobian:
-          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + c * NP + p) * N_VARS + v];
-          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + c * NP + p) * N_VARS + v];
+          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
           jac_diag -= grad_con * dt * tranD[conn_idx] * phi_avg * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v];
         }
@@ -213,8 +213,8 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
           }
 
           // Add diffusion terms to Jacobian:
-          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + c * NP + p) * N_VARS + v];
-          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + c * NP + p) * N_VARS + v];
+          jac_diag += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+          jac_offd -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
 
           jac_offd -= grad_con * dt * tranD[conn_idx] * phi_avg * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v];
         }
@@ -307,6 +307,30 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   copy_data_to_device(mesh->grav_coef, mesh_grav_coef_d);
 
   return 0;
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_host()
+{
+  copy_data_to_host(X, X_d);
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_host()
+{
+  copy_data_to_host(RHS, RHS_d);
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_gpu<NC, NP, THERMAL>::copy_solution_to_device()
+{
+  copy_data_to_device(X, X_d);
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_gpu<NC, NP, THERMAL>::copy_residual_to_device()
+{
+  copy_data_to_device(RHS, RHS_d);
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>

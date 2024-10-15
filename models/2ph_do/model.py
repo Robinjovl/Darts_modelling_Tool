@@ -44,8 +44,8 @@ class Model(CICDModel):
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
-        components = ['w', 'o']
-        phases = ['wat', 'oil']
+        components = ["w", "o"]
+        phases = ["wat", "oil"]
 
         self.inj = value_vector([zero])
         self.ini = value_vector([1 - zero])
@@ -81,7 +81,7 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
 
     def evaluate(self, state):
         """
@@ -101,9 +101,9 @@ class ModelProperties(PropertyContainer):
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        ph = [0, 1]
+        self.ph = [0, 1]
 
-        for j in ph:
+        for j in self.ph:
             # molar weight of mixture
             M = np.sum(self.x[j, :] * self.Mw)
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
@@ -111,15 +111,13 @@ class ModelProperties(PropertyContainer):
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
         self.nu = zc
-        self.compute_saturation(ph)
+        self.compute_saturation(self.ph)
 
-        for j in ph:
+        for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
-        mass_source = np.zeros(self.nc)
-
-        return ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return
 
     def evaluate_at_cond(self, pressure, zc):
         self.sat[:] = 0

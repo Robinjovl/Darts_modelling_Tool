@@ -13,7 +13,6 @@ filename = 'out'
 m = Model()
 
 m.set_reservoir()
-m.set_wells()
 
 zero = 1e-10
 m.set_physics(zero, n_points=1001, temperature=None)
@@ -36,7 +35,7 @@ x = np.cumsum(m.x_axes)
 y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)
 X, Y = np.meshgrid(x, y)
 
-properties = m.physics.vars + m.physics.property_operators.props_name
+properties = m.physics.vars + m.physics.property_operators[0].props_name
 output = m.output_properties()
 nv = m.physics.n_vars
 print_props = list(range(nv)) + [nv, nv + 2, nv + 3]
@@ -62,7 +61,7 @@ for t in range(2):
 
     fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
     for i, ith_prop in enumerate(print_props):
-        prop = axs[i].pcolormesh(X, Y, output[:, ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
+        prop = axs[i].pcolormesh(X, Y, output[ith_prop, :].reshape(m.reservoir.nz, m.reservoir.nx))
         plt.colorbar(prop, ax=axs[i])
         # axs[i].plot(output[:, ith_prop])
         axs[i].set_title(properties[ith_prop])
@@ -72,7 +71,6 @@ for t in range(2):
 td = pd.DataFrame.from_dict(m.physics.engine.time_data)
 td.to_pickle("darts_time_data.pkl")
 writer = pd.ExcelWriter('time_data.xlsx')
-td.to_excel(writer, 'Sheet1')
+td.to_excel(writer, sheet_name='Sheet1')
 writer.close()
 
-plt.show()

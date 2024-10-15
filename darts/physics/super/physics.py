@@ -3,7 +3,7 @@ from darts.engines import *
 from darts.physics.physics_base import PhysicsBase
 
 from darts.physics.operators_base import PropertyOperators
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
 
 
 class Compositional(PhysicsBase):
@@ -48,7 +48,7 @@ class Compositional(PhysicsBase):
         nph = len(phases)
         self.thermal = thermal
 
-        # Define variables and OBL axes: pressure, nc-1 components and possibly temperature
+        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature
         variables = ['pressure'] + components[:-1]
         if self.thermal:
             variables += ['temperature']
@@ -67,25 +67,6 @@ class Compositional(PhysicsBase):
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
-
-    def set_operators(self):
-        """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
-        and a :class:`PropertyOperator` for the evaluation of properties.
-        """
-        for region in self.regions:
-            self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
-            self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
-
-        if self.thermal:
-            self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
-        else:
-            self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
-
-        self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
-
-        return
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
         """
@@ -106,6 +87,26 @@ class Compositional(PhysicsBase):
                 return eval("engine_super_%s%d_%d_t" % (platform, self.nc, self.nph))()
             else:
                 return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
+
+    def set_operators(self):
+        """
+        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
+        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
+        and a :class:`PropertyOperator` for the evaluation of properties.
+        """
+        for region in self.regions:
+            self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
+            self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
+            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region], self.thermal)
+
+        if self.thermal:
+            self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+        else:
+            self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+
+        self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
+
+        return
 
     def define_well_controls(self):
         # define well control factories
@@ -157,6 +158,41 @@ class Compositional(PhysicsBase):
         else:
             for c in range(self.nc - 1):  # Denis
                 composition[c::(self.nc - 1)] = uniform_composition[c]
+
+    def set_nonuniform_initial_conditions(self, mesh: conn_mesh,
+                                        input_pressure, input_composition, input_temperature = None):
+        """
+        Function to set non-uniform initial conditions.
+
+        :param mesh: Mesh object
+        :type mesh: conn_mesh
+        :param input_pressure: Array of pressures
+        :param input_composition: Array of compositions
+        :param input_temperature: Array of temperatures, default is None for isothermal
+        """
+        assert isinstance(mesh, conn_mesh)
+        nb = mesh.n_blocks
+
+        """ Uniform Initial conditions """
+        # set initial pressure
+        pressure = np.array(mesh.pressure, copy=False)
+        pressure[:] = input_pressure
+
+        # if thermal, set initial temperature
+        if input_temperature is not None:
+            temperature = np.array(mesh.temperature, copy=False)
+            temperature[:] = input_temperature
+
+        # set initial composition
+        mesh.composition.resize(nb * (self.nc - 1))
+        composition = np.array(mesh.composition, copy=False)
+        # composition[:] = np.array(uniform_composition)
+        if self.nc == 2:
+            for c in range(self.nc - 1):
+                composition[c::(self.nc - 1)] = input_composition[:]
+        else:
+            for c in range(self.nc - 1):  # Denis
+                composition[c::(self.nc - 1)] = input_composition[c]
 
     def init_wells(self, wells):
         """

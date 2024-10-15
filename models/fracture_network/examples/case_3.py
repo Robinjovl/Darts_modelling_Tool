@@ -28,6 +28,4 @@ def input_data_case_3():
 
     input_data['frac_aper'] = 1e-2  # (initial) fracture aperture [m]
 
-    #input_data['perm'] = 100
-
     return input_data

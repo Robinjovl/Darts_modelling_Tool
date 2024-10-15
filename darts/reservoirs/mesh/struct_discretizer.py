@@ -34,6 +34,7 @@ class StructDiscretizer:
         self.ny = ny
         self.nz = nz
         dx, dy, dz = global_data['dx'], global_data['dy'], global_data['dz']
+        start_z = global_data['start_z']
         permx, permy, permz = global_data['permx'], global_data['permy'], global_data['permz']
         self.nodes_tot = nx * ny * nz
         self.arr_shape = (nx, ny, nz)
@@ -120,6 +121,8 @@ class StructDiscretizer:
                                 self.perm_y_cell * self.cell_data['faces'][:, :, :, 5, 0, 1] ** 2 + \
                                 self.perm_z_cell * self.cell_data['faces'][:, :, :, 5, 0, 2] ** 2)
 
+            self.centroids_all_cells = self.cell_data[:, :, :]['center']
+
             print(" done.")
 
         # If scalar dx, dy, and dz are specified: Store constant control volume dimensions
@@ -129,15 +132,24 @@ class StructDiscretizer:
             self.len_cell_zdir = self.convert_to_3d_array(dz, 'dz')
             self.volume = self.len_cell_xdir * self.len_cell_ydir * self.len_cell_zdir
 
-            self.centroids_all_cells = []
-            z = self.len_cell_zdir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_zdir)
-            for k in range(self.nz):
-                y = self.len_cell_ydir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_ydir)
-                for j in range(self.ny):
-                    x = self.len_cell_xdir[0, 0, 0] * 0.5 + np.cumsum(self.len_cell_xdir)
-                    for i in range(self.nx):
-                        self.centroids_all_cells.append(np.array([x[i], y[j], z[k]]))
-            self.centroids_all_cells = np.array(self.centroids_all_cells)
+            self.centroids_all_cells = np.zeros((self.nx, self.ny, self.nz, 3)) # 3 - for x,y,z coordinates
+            # fill z-coordinates using DZ
+            self.centroids_all_cells[:, :, 0, 2] = start_z + self.len_cell_zdir[:, :, 0] * 0.5  # nx*ny array of current layer's depths
+            if nz > 1:
+                d_cumsum = self.len_cell_zdir.cumsum(axis=2)
+                self.centroids_all_cells[:, :, 1:, 2] = start_z + (d_cumsum[:, :, :-1] + d_cumsum[:, :, 1:]) * 0.5
+
+            # fill y-coordinates using DY
+            self.centroids_all_cells[:, 0, :, 1] = self.len_cell_ydir[:, 0, :] * 0.5  # nx*nz array
+            if ny > 1:
+                d_cumsum = self.len_cell_ydir.cumsum(axis=1)
+                self.centroids_all_cells[:, 1:, :, 1] = (d_cumsum[:, :-1, :] + d_cumsum[:, 1:, :]) * 0.5
+
+            # fill x-coordinates using DX
+            self.centroids_all_cells[0, :, :, 0] = self.len_cell_xdir[0, :, :] * 0.5  # ny*nz array
+            if nx > 1:
+                d_cumsum = self.len_cell_xdir.cumsum(axis=0)
+                self.centroids_all_cells[1:, :, :, 0] = (d_cumsum[:-1, :, :] + d_cumsum[1:, :, :]) * 0.5
 
         self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
         self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')

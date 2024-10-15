@@ -6,7 +6,6 @@ from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
 from darts.physics.operators_base import PropertyOperators as props
 
-
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
     nc = n.property_container.nc + n.thermal
@@ -48,6 +47,8 @@ def plot_sol(n):
 if __name__ == '__main__':
 
     redirect_darts_output('run.log')
+    time_data_filename = "darts_time_data.pkl"
+
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
@@ -59,14 +60,16 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        time_data.to_pickle(time_data_filename)
+        # n.save_restart_data()
+        n.save_data_to_h5('solution')
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
+        time_data.to_excel(writer, sheet_name='Sheet1')
         writer.close()
     else:
-        n.load_restart_data()
-        time_data = pd.read_pickle("darts_time_data.pkl")
+        # n.load_restart_data()
+        n.load_restart_data('output/solution.h5')
+        time_data = pd.read_pickle(time_data_filename)
 
 
     if True:
@@ -83,6 +86,7 @@ if __name__ == '__main__':
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
+    n.compare_well_rates(time_data_filename)
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 

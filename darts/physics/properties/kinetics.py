@@ -111,12 +111,11 @@ class HydrateKinetics(Kinetics):
     def calc_df(self, pressure, temperature, x):
         # Calculate fugacity difference between water in fluid phases and water in hydrate phase
         if x[0, 0] != 0.:
-            f0 = self.flash.fugacity(pressure, temperature, x[0, :], self.fluid_eos[0])
+            f0 = self.fluid_eos[0].fugacity(pressure, temperature, x[0, :])
         else:
-            f0 = self.flash.fugacity(pressure, temperature, x[1, :], self.fluid_eos[1])
+            f0 = self.fluid_eos[1].fugacity(pressure, temperature, x[1, :])
 
-        self.hydrate_eos.component_parameters(pressure, temperature)
-        fwH = self.hydrate_eos.fw(f0)
+        fwH = self.hydrate_eos.fw(pressure, temperature, f0)
 
         df = fwH - f0[self.water_idx]  # if df < 0 formation, if df > 0 dissociation
         xH = self.hydrate_eos.xH()
