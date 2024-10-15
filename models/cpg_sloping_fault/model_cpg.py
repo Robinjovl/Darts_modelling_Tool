@@ -140,6 +140,8 @@ class Model_CPG(CICDModel):
         elif self.case == 'generate_5x3x4':
             i1, j1 = 1, 1
             i2, j2 = 5, 3
+            #i1, j1, k1 = self.reservoir.get_ijk_from_xyz(250.0, 500.0, 890.0)
+            #i2, j2, k2 = self.reservoir.get_ijk_from_xyz(1350.0, 1850.0, 1700.0)
         elif self.case == 'generate_100x100x100':
             i1, j1 = 50, 20
             i2, j2 = 50, 80
@@ -203,4 +205,5 @@ class Model_CPG(CICDModel):
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
+
 

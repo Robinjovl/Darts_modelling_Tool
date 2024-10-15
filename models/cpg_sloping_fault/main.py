@@ -1,5 +1,6 @@
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
+from darts.tools.logging import redirect_all_output, abort_redirection
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
@@ -20,7 +21,10 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     :return:
     '''
     print('Test started', 'physics_type:', physics_type, 'case:', case)
-    redirect_darts_output(os.path.join(out_dir, 'run.log'))
+
+    os.makedirs(out_dir, exist_ok=True)
+    log_filename = os.path.join(out_dir, 'run.log')
+    log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
         m = ModelGeothermal(case=case, grid_out_dir=out_dir)
@@ -102,6 +106,9 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     writer.close()
 
     failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+
+    abort_redirection(log_stream)
+    print('Failed' if failed else 'Ok')
 
     return failed, sim_time, time_data, time_data_report
 

@@ -785,6 +785,30 @@ class CPG_Reservoir(ReservoirBase):
         writer.SetInputConnection(appendFilter.GetOutputPort())
         writer.Write()
 
+    def get_ijk_from_xyz(self, x, y, z):
+        '''
+        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        '''
+        def find_cell_index(centers_flattened, coord) -> int:
+            min_dis = None
+            idx = None
+            for j, centroid in enumerate(centers_flattened):
+               dis = np.linalg.norm(np.array(coord) - centroid.values)
+               if (min_dis is not None and dis < min_dis) or min_dis is None:
+                   min_dis = dis
+                   idx = j
+            return idx
+        def get_ijk(idx, nx, ny, nz):
+            k = idx // (nx * ny)
+            j = (idx - k * (nx * ny)) // nx
+            i = idx % nx
+            return (i + 1, j + 1, k + 1)
+
+        centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        idx = find_cell_index(centers, np.array([x, y, z]))
+        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        return ijk
+
 #####################################################################
 
 def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w',
@@ -950,3 +974,4 @@ def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, p
     # update the grid dimension in z direction for both overburden and underburden layers
     property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers
     return property_dictionary
+
