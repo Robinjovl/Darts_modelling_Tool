@@ -3,15 +3,10 @@ import pandas as pd
 
 from darts.input.input_data import InputData
 from model_cpg import Model_CPG, fmt
-
-from darts.physics.geothermal.physics import Geothermal
-from darts.physics.geothermal.property_container import PropertyContainerIAPWS
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
-from darts.physics.properties.iapws.custom_rock_property import custom_rock_compaction_evaluator
-
 from darts.engines import value_vector
 
-from geothermal import GeothermalIAPWS, GeothermalPH
+from geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 
 
 class ModelGeothermal(Model_CPG):
@@ -21,14 +16,11 @@ class ModelGeothermal(Model_CPG):
 
     def set_physics(self, idata):
         self.physics = GeothermalIAPWS(idata, self.timer)
-        # self.physics = GeothermalPH(idata, self.timer)
-
         # uniform initial conditions
         T_initial = 350.  # K
         P_initial = 200.  # bars
-        state_init = value_vector([P_initial, 0.])
+        state_init = value_vector([P_initial,0.])
         enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_initial).evaluate(state_init)
-        # enth_init = self.physics.property_containers[0].enthalpy_ev['total']()
         self.initial_values = {self.physics.vars[0]: state_init[0],
                                self.physics.vars[1]: enth_init}
 
@@ -88,6 +80,7 @@ class ModelGeothermal(Model_CPG):
 
     def set_input_data(self, case):
         idata = InputData(type_hydr='thermal', type_mech='none')
+        idata.fluid = GeothermalIAPWSFluidProps()
         # example - how to change the properties
         # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
