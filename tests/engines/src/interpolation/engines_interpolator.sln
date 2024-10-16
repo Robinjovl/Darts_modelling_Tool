@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34723.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "engines_interpolator", "engines_interpolator.vcxproj", "{AB58D63A-BB66-3234-999E-F0B41111EC94}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		MinSizeRel|x64 = MinSizeRel|x64
+		Release|x64 = Release|x64
+		RelWithDebInfo|x64 = RelWithDebInfo|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.Debug|x64.ActiveCfg = Debug|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.Debug|x64.Build.0 = Debug|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.MinSizeRel|x64.ActiveCfg = MinSizeRel|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.MinSizeRel|x64.Build.0 = MinSizeRel|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.Release|x64.ActiveCfg = Release|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.Release|x64.Build.0 = Release|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.RelWithDebInfo|x64.ActiveCfg = RelWithDebInfo|x64
+		{AB58D63A-BB66-3234-999E-F0B41111EC94}.RelWithDebInfo|x64.Build.0 = RelWithDebInfo|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F6AA7601-F99C-433C-9126-A3AF5F44C580}
+	EndGlobalSection
+EndGlobal

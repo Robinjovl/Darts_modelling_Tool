@@ -16,11 +16,11 @@ namespace linalg
 		{
 			this->x = this->y = this->z = 0.0;
 		};
-		Vector3(value_t x, value_t y, value_t z)
+		Vector3(value_t x_, value_t y_, value_t z_)
 		{
-			this->x = x;
-			this->y = y;
-			this->z = z;
+			this->x = x_;
+			this->y = y_;
+			this->z = z_;
 		};
 		Vector3(const Vector3& vec)
 		{

@@ -71,10 +71,10 @@ public:
   // number of variables per jacobian matrix block
   const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
 
   engine_super_cpu()
   {
@@ -97,8 +97,6 @@ public:
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
-
-public:
 };
 
 #include "engine_super_cpu.tpp"

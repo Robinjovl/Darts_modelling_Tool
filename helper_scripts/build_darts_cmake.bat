@@ -7,7 +7,8 @@ set testing=false
 set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
-set MT=false
+set iter_solvers=false
+set MT=true
 set skip_req=false
 set config=Release
 set NT=8
@@ -25,8 +26,8 @@ if "%option%"=="-m" set MT=true & goto parse_args
 if "%option%"=="-r" set skip_req=true & goto parse_args
 if "%option%"=="-d" set config=%1 & shift & goto parse_args
 if "%option%"=="-j" set NT=%1 & shift & goto parse_args
-if "%option%"=="-a" set bos_solvers_artifact=true & goto parse_args
-if "%option%"=="-b" set bos_solvers_dir=%1 & shift & goto parse_args
+if "%option%"=="-a" set bos_solvers_artifact=true & set iter_solvers=true & goto parse_args
+if "%option%"=="-b" set bos_solvers_dir=%1 & set iter_solvers=true & shift & goto parse_args
 goto parse_args
 
 :process_input
@@ -38,10 +39,15 @@ if %bos_solvers_artifact%==true (
   if %testing%==true (
     set testing=false
   )
+)
+REM ODLS version does not support OpenMP yet
+if %iter_solvers%==false (
   if %MT%==true (
+    echo Waring: ODLS version does not support OpenMP yet. Switched to the sequentional build.
     set MT=false
   )
 )
+
 echo - Report configuration of this script: START
 echo    bos_solvers_dir = %bos_solvers_dir%
 echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
@@ -52,11 +58,12 @@ echo    Multi thread = %MT%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
+del darts\*.pyd 2> NUL
+
 if %clean_mode%==true (
   echo - Cleaning up
   rmdir /s /q build 2> NUL
   rmdir /s /q dist 2> NUL
-  del darts\*.pyd 2> NUL
   goto :eof
 )
 
@@ -132,7 +139,7 @@ if %wheel%==true (
   python setup.py build bdist_wheel --plat-name=win-amd64 > make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install .[cpg] >> make_wheel.log
+python -m pip install . >> make_wheel.log
 
 echo ************************************************************************
 echo   Building python package open-darts: DONE!

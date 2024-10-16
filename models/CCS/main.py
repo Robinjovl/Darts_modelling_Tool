@@ -71,7 +71,6 @@ for t in range(2):
 td = pd.DataFrame.from_dict(m.physics.engine.time_data)
 td.to_pickle("darts_time_data.pkl")
 writer = pd.ExcelWriter('time_data.xlsx')
-td.to_excel(writer, 'Sheet1')
+td.to_excel(writer, sheet_name='Sheet1')
 writer.close()
 
-plt.show()

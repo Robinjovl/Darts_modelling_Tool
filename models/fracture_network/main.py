@@ -3,7 +3,7 @@ from datetime import datetime
 from main_gen_mesh import generate_mesh
 from main_simulation import run_simulation
 from set_case import set_input_data
-
+import os
 def run_test(args: list = []):
     if len(args) > 1:
         return test(case=args[0], overwrite=args[1])
@@ -22,14 +22,47 @@ def test(case, overwrite='0'):
     mesh_gen_timer = (t2 - t1).total_seconds()
 
     t1 = datetime.now()
-    run_simulation(input_data)
+    m = run_simulation(input_data)
     t2 = datetime.now()
     sim_timer = (t2 - t1).total_seconds()
 
+    total_timer = mesh_gen_timer + sim_timer
     print('Mesh generation time:', mesh_gen_timer, 'sec.')
-    print('Simulation time:', sim_timer, 'sec.')
+    print('Simulation time:     ', sim_timer, 'sec.')
+    print('Total time:          ', total_timer, 'sec.')
 
-    return 0, 0.0
+    failed, sim_time = check_performance_local(m, case)
+
+    return failed, total_timer
+
+
+def check_performance_local(m, case):
+    import platform
+
+    os.makedirs('ref', exist_ok=True)
+
+    pkl_suffix = ''
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        pkl_suffix = '_iter'
+    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
+                             '_' + case + '.pkl')
+    overwrite = 0
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = 1
+
+    is_plk_exist = os.path.isfile(file_name)
+
+    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
+
+    if not is_plk_exist or overwrite == '1':
+        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
+        return False, 0.0
+
+    if is_plk_exist:
+        return (failed > 0), -1.0 #data[-1]['simulation time']
+    else:
+        return False, -1.0
+
 
 if __name__ == "__main__":
     #cases_list = ['whitby']

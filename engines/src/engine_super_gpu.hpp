@@ -61,10 +61,10 @@ public:
     free_device_data(mesh_grav_coef_d);
   }
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
 
   engine_super_gpu()
   {
@@ -82,10 +82,15 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
-           sim_params *params_, timer_node *timer_);
+           sim_params *params_, timer_node *timer_) override;
 
-  int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
-  int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+  int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
+  int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
+
+  void copy_solution_to_host();
+  void copy_residual_to_host();
+  void copy_solution_to_device();
+  void copy_residual_to_device();
 
 public:
   value_t *RV_d;              // [n_blocks] rock volumes for each block

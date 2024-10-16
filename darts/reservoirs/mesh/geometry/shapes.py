@@ -25,7 +25,7 @@ class Curve:
 @dataclass
 class Surface:
     idx: int
-    points: list
+    points: list = field(default_factory=list)
     curves: list = field(default_factory=list)
     in_surfaces: list = field(default_factory=list)
     holes: list = field(default_factory=list)
@@ -89,26 +89,27 @@ class Shape:
             curves.append(curve.points)
 
         for j, surface in enumerate(self.surfaces):
-            points = surface.points
-            surface_curves = []
-            for i in range(len(points)-1):
-                curve_points = [points[i], points[i+1]]
-                reverse = [points[i+1], points[i]]
+            if not surface.curves:
+                points = surface.points
+                surface_curves = []
+                for i in range(len(points)-1):
+                    curve_points = [points[i], points[i+1]]
+                    reverse = [points[i+1], points[i]]
 
-                if curve_points not in curves and reverse not in curves:
-                    curve_idx = len(curves) + 1
-                    curves.append(curve_points)
-                    curve_type = 'line'
-                    self.curves.append(Curve(curve_idx, curve_type, curve_points))
-                    surface_curves.append(curve_idx)
-                else:
-                    if curve_points in curves:
-                        curve_idx = curves.index(curve_points) + 1
+                    if curve_points not in curves and reverse not in curves:
+                        curve_idx = len(curves) + 1
+                        curves.append(curve_points)
+                        curve_type = 'line'
+                        self.curves.append(Curve(curve_idx, curve_type, curve_points))
                         surface_curves.append(curve_idx)
                     else:
-                        curve_idx = curves.index(reverse) + 1
-                        surface_curves.append(-curve_idx)
-            self.surfaces[j].curves = surface_curves
+                        if curve_points in curves:
+                            curve_idx = curves.index(curve_points) + 1
+                            surface_curves.append(curve_idx)
+                        else:
+                            curve_idx = curves.index(reverse) + 1
+                            surface_curves.append(-curve_idx)
+                self.surfaces[j].curves = surface_curves
 
         return
 

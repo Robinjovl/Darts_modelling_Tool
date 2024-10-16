@@ -1,10 +1,11 @@
+#pip install GitPython
 import git
 from openpyxl import Workbook
 
 # works from current folder, so synchronize it first
 repo = git.Repo(".")
 
-ver = 'v1.1.1'  # previous release version
+ver = 'v1.1.4'  # previous release version
 branch = 'development'  #  branch for processing
 
 # commit which corresponds to previous release

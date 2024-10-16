@@ -784,7 +784,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		csr_idx_end = rows[i + 1];
 
 		// loop over cell connections
-		for (; block_m[conn_id] == i && conn_id < n_conns; conn_id++)
+		for (; conn_id < n_conns && block_m[conn_id] == i; conn_id++)
 		{
 			j = block_p[conn_id];
 			if (j >= n_res_blocks && j < n_blocks)
@@ -830,7 +830,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 			for (st_id = csr_idx_start; conn_st_id < offset[conn_id + 1]; st_id++)
 			{
 				// skip entry if cell is different
-				if (stencil[conn_st_id] != cols[st_id] && st_id < csr_idx_end) continue;
+				if (st_id < csr_idx_end && stencil[conn_st_id] != cols[st_id]) continue;
 
 				// upwind index in jacobian
 				if (st_id < csr_idx_end && cols[st_id] == j) nebr_jac_idx = st_id;
@@ -1492,7 +1492,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_super_mp_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t deltat)
+int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_linear_system(value_t deltat)
 {
 	// switch constraints if needed
 	timer->node["jacobian assembly"].start();
@@ -1517,7 +1517,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::run_single_newton_iteration(value_t de
 	// assemble jacobian
 	assemble_jacobian_array(deltat, X, Jacobian, RHS);
 
-	
 	if (opt_history_matching && is_mp)
 	{
 		Xop_mp = Xop;

@@ -30,7 +30,9 @@ add_library(discretizer_build_info OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-target_compile_definitions(discretizer_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
+if(NOT DEFINED BOS_SOLVERS_DIR)
+  target_compile_definitions(discretizer_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
+endif()
 
 target_sources(discretizer_build_info
   PRIVATE
@@ -79,22 +81,27 @@ install(TARGETS discretizer_build_info
 # First the source files (private headers should also go here)
 set(DISCRETIZER_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp
 )
 
 # Then the public headers
 set(DISCRETIZER_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/approximation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.h  
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.h
 )
 
 # Define the opendarts_discretizer library
 # This is always a static library since we wish to use it internally only
-add_library(opendarts_discretizer OBJECT "")
+add_library(opendarts_discretizer STATIC "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-target_compile_definitions(opendarts_discretizer PUBLIC OPENDARTS_LINEAR_SOLVERS)
+if(NOT DEFINED BOS_SOLVERS_DIR)
+  target_compile_definitions(opendarts_discretizer PUBLIC OPENDARTS_LINEAR_SOLVERS)
+endif()
 
 target_sources(opendarts_discretizer
   PRIVATE

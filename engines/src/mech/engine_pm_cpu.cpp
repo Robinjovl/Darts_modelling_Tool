@@ -23,6 +23,7 @@ engine_pm_cpu::~engine_pm_cpu()
 {
   for (auto& ls : linear_solvers)
 	delete ls;
+  linear_solver = nullptr;
 }
 
 int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
@@ -34,7 +35,6 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	output_counter = 0;
 	FIND_EQUILIBRIUM = false;
 	contact_solver = pm::RETURN_MAPPING;
-	PRINT_LINEAR_SYSTEM = false;
 	TIME_DEPENDENT_DISCRETIZATION = false;
 	SCALE_ROWS = false;
 	SCALE_DIMLESS = false;
@@ -114,8 +114,8 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::CPU_GMRES_FS_CPR:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
-		linsolv_iface* fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR, NC_);
-		static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>, new linsolv_hypre_amg<1>);
+		linsolv_iface* fs_cpr = new linsolv_bos_fs_cpr<N_VARS>(P_VAR, Z_VAR, U_VAR);
+		static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec(new linsolv_bos_amg<1>, new linsolv_hypre_amg<1>(params->finalize_mpi));
 		//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix, mesh->n_fracs, mesh->n_blocks - mesh->n_res_blocks);
 		static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_block_sizes(mesh->n_matrix + mesh->n_fracs, 0, mesh->n_blocks - mesh->n_res_blocks);
 		//static_cast<linsolv_bos_fs_cpr<N_VARS>*>(fs_cpr)->set_prec_type(FS_UPG);
@@ -385,8 +385,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 
 	const value_t *f = mesh->f.data();
 	const value_t *V = mesh->volume.data();
-	const value_t *kd = mesh->drained_compressibility.data();
-	const value_t *biot = mesh->biot.data();
+	const value_t *cs = mesh->rock_compressibility.data();
 	const value_t *poro = mesh->poro.data();
 	value_t *pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -598,10 +597,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
-			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
-			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
+			comp_mult = cs[i];
+			phi = poro[i] + cs[i] * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
+			phi_n = poro[i] + cs[i] * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}
 
 		if (FIND_EQUILIBRIUM || geomechanics_mode[i])
@@ -727,8 +725,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	const value_t *rhs_biot = mesh->rhs_biot.data();
 	const value_t *f = mesh->f.data();
 	const value_t *V = mesh->volume.data();
-	const value_t *kd = mesh->drained_compressibility.data();
-	const value_t *biot = mesh->biot.data();
+	const value_t *cs = mesh->rock_compressibility.data();
 	const value_t *poro = mesh->poro.data();
 	value_t *pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -931,8 +928,7 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			comp_mult = cs[i];
 			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
 			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}
@@ -1059,8 +1055,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 	const value_t* rhs_biot = mesh->rhs_biot.data();
 	const value_t* f = mesh->f.data();
 	const value_t* V = mesh->volume.data();
-	const value_t* kd = mesh->drained_compressibility.data();
-	const value_t* biot = mesh->biot.data();
+	const value_t* cs = mesh->rock_compressibility.data();
 	const value_t* poro = mesh->poro.data();
 	value_t* pz_bounds = mesh->pz_bounds.data();
 	//const value_t *p_ref = mesh->ref_pressure.data();
@@ -1248,8 +1243,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 			eps_vol[i] = biot_mult / V[i];
 			biot_mult -= V[i] * eps_vol_ref[i];
 			RHS[i * N_VARS + P_VAR] += -V[i] * eps_vol_ref[i] * (op_vals_arr[i * N_OPS + ACC_OP] - op_vals_arr_n[i * N_OPS + ACC_OP]);
-			biot_cur = (biot[i * ND_ * ND_] + biot[i * ND_ * ND_ + ND_ + 1] + biot[i * ND_ * ND_ + 2 * ND_ + 2]) / 3.0; // one-third of the Biot tensor trace
-			comp_mult = (biot_cur != 0) ? (biot_cur - poro[i]) * (1 - biot_cur) / kd[i] : 1.0 / kd[i];
+			comp_mult = cs[i];
 			phi = poro[i] + comp_mult * (X[i * N_VARS + P_VAR] - Xref[N_VARS * i + P_VAR]);
 			phi_n = poro[i] + comp_mult * (Xn[i * N_VARS + P_VAR] - Xn_ref[N_VARS * i + P_VAR]);
 		}
@@ -1677,7 +1671,7 @@ int engine_pm_cpu::solve_linear_equation()
 	r_code = linear_solver->solve(&RHS[0], &dX[0]);
 	timer->node["linear solver solve"].stop();
 
-	if (PRINT_LINEAR_SYSTEM) // changed this to write jacobian to file!
+	if (print_linear_system) // changed this to write jacobian to file!
 	{
             #ifndef OPENDARTS_LINEAR_SOLVERS
 	    static_cast<csr_matrix<N_VARS>*>(Jacobian)->write_matrix_to_file_mm(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());

@@ -69,6 +69,7 @@ class Geothermal(PhysicsBase):
         for region in self.regions:
             self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
+            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region])
         self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
 
         # create rate operators evaluator

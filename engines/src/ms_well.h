@@ -70,12 +70,13 @@ public:
 	rate_etor_ad = rate_evaluator_;  //adjoint method
   };
 
-  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
+  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
   {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
     n_vars = n_vars_;
     n_phases = int(phase_names_.size());
+    n_ops = n_ops_;
     phase_names = phase_names_;
     rate_evaluator = rate_evaluator_;
     state.resize(n_vars);

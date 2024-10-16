@@ -3,7 +3,7 @@
 from darts.engines import value_vector, sim_params
 #from darts.models.physics.dead_oil import DeadOil
 from darts.physics.geothermal.physics import Geothermal
-from darts.models.darts_model import DartsModel
+from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.physics.properties.iapws.iapws_property import iapws_total_enthalpy_evalutor
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -16,8 +16,8 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(DartsModel):
-    def __init__(self, input_data, n_points=1000):
+class Model(CICDModel):
+    def __init__(self, input_data, n_points=100):
         """
         Class constructor of Model class
         :param n_points: number of discretization points for the parameter space
@@ -152,20 +152,19 @@ class Model(DartsModel):
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
-    def print_range(self, time, full=0):
+    def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)
-        if not full:
-            nb = self.reservoir.discretizer.mat_cells_tot
-            D = depth[:nb]
-        else:
-            D = depth
-        P = self.get_pressure(full=full)
-        T = self.get_temperature(full=full)
-        suf = '(M)'  # matrix cells
-        if full:
-            suf = '(M+F)'  # matrix+fracture cells
+        start, end = self.get_mat_frac_range(part)
+        D = depth[start:end]
+        P = self.get_pressure(part)
+        T = self.get_temperature(part)
+        suf = '(MAT)'  # matrix cells
+        if part == 'full':
+            suf = '(MAT+FRAC)'  # matrix+fracture cells
+        elif part == 'fracs':
+            suf = '(FRAC)'  # matrix+fracture cells
         print('Time', fmt(time/365), ' years; ', time, 'days, '
-              'D_range:', fmt(D.min()), '-', fmt(D.max()), 'm; ',
+              'D_range:', D.min(), '-', D.max(), 'm; ',
               'P_range:', fmt(P.min()), '-', fmt(P.max()), 'bars; ',
               'T_range:', fmt(T.min()), '-', fmt(T.max()), 'degrees', suf)
 
@@ -251,34 +250,28 @@ class Model(DartsModel):
         T[:] = _Backward1_T_Ph_vec(data[::2] / 10, data[1::2] / 18.015)
         return T
 
-    def get_pressure(self, full=0):
-        '''
-        if full == 1 return array with well blocks
-        '''
-        nb = self.reservoir.discretizer.mat_cells_tot
+    def get_mat_frac_range(self, part):
+        start = 0
+        if part == 'full':
+            end = self.reservoir.discretizer.frac_cells_tot + self.reservoir.discretizer.mat_cells_tot
+        elif part == 'cells':
+            end = self.reservoir.discretizer.mat_cells_tot
+            start = self.reservoir.discretizer.frac_cells_tot
+        elif part == 'fracs':
+            end = self.reservoir.discretizer.frac_cells_tot
+        return [start, end]
+    def get_pressure(self, part='cells'):
+        nvars = 2
+        start, end = self.get_mat_frac_range(part)
         Xn = np.array(self.physics.engine.X, copy=True)
-        if full == 1:
-          P = Xn[::2]
-        else:
-          P = Xn[:2*nb:2]
+        P = Xn[nvars*start:nvars*end:nvars]
         return P
-
-    def get_temperature(self, full=0):
-        nb = self.reservoir.discretizer.mat_cells_tot
+    def get_temperature(self, part='cells'):
+        nvars = 2
+        start, end = self.get_mat_frac_range(part)
         Xn = np.array(self.physics.engine.X, copy=True)
-        if full != 1:
-          Xn = Xn[:2*nb]
-        T = self.enthalpy_to_temperature(Xn) - 273.15  # to degrees
+        T = self.enthalpy_to_temperature(Xn[nvars*start:nvars*end]) - 273.15  # to degrees
         return T
-
-    def get_saturation(self, full=0):
-        nb = self.reservoir.discretizer.mat_cells_tot
-        Xn = np.array(self.physics.engine.X, copy=True)
-        if full == 1:
-          S = Xn[1::2]
-        else:
-          S = Xn[1:2*nb:2]
-        return S
 
     def calc_well_loc(self):
         #TODO use idx = self.reservoir.find_cell_index(wc)

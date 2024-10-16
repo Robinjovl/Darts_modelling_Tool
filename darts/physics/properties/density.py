@@ -75,7 +75,7 @@ class Spivey2004(Density):
           [0., 5.614, 4.6782, -0.307, 2.6069],
           [-0.1127, 0.2047, -0.0452, 0., 0.]]
 
-    def __init__(self, components: list, ions: list = None):
+    def __init__(self, components: list, ions: list = None, combined_ions: list = None):
         super().__init__(components)
 
         self.H2O_idx = components.index("H2O") if "H2O" in components else None
@@ -84,6 +84,7 @@ class Spivey2004(Density):
 
         self.ions = ions
         self.ni = len(ions) if ions is not None else 0
+        self.combined_ions = combined_ions
 
     def evaluate(self, pressure, temperature, x):
         tc = temperature - 273.15  # Temp in [Celcius]
@@ -107,7 +108,12 @@ class Spivey2004(Density):
             rho = 1000 * rho_w0 * np.exp(Iw - Iw0)
         else:
             # Brine density
-            Cm = 55.509 * x[self.nc] / x[self.H2O_idx]
+            if self.combined_ions is not None:
+                ion_weights = self.combined_ions / np.sum(self.combined_ions)
+                x_ion = ion_weights[0] * x[self.nc]
+            else:
+                x_ion = x[self.nc]
+            Cm = 55.509 * x_ion / x[self.H2O_idx]
 
             a_b = np.empty(8)
             for i in range(8):
@@ -128,8 +134,8 @@ class Garcia2001(Spivey2004):
     """
     Correlation for brine density with dissolved CO2: Garcia (2001) - Density of aqueous solutions of CO2
     """
-    def __init__(self, components: list, ions: list = None):
-        super().__init__(components, ions)
+    def __init__(self, components: list, ions: list = None, combined_ions: list = None):
+        super().__init__(components, ions, combined_ions)
 
         self.CO2_idx = components.index("CO2") if "CO2" in components else None
 

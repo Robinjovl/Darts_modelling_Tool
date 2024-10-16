@@ -142,7 +142,7 @@ class Model(CICDModel):
 
         """Physical properties"""
         # Create property containers:
-        phases = ['gas', 'wat']
+        phases = ['gas', 'wat', 'sol']
         if self.combined_ions:
             components = ['CO2', 'Ions', 'H2O', 'CaCO3']
             Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086]
@@ -177,7 +177,8 @@ class Model(CICDModel):
             flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-12, 1e-1], self.zero)
 
         density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
-                           ('wat', DensityBasic(compr=1e-6, dens0=1000))])
+                           ('wat', DensityBasic(compr=1e-6, dens0=1000)),
+                           ('sol', ConstFunc(2000.))])
         viscosity_ev = dict([('gas', ConstFunc(0.1)),
                              ('wat', ConstFunc(1))])
         rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
@@ -205,7 +206,7 @@ class Model(CICDModel):
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 min_z=self.zero / 10, rock_comp=1e-7, solid_dens=[2000])
+                                                 nc_sol=1, np_sol=1, min_z=self.zero / 10, rock_comp=1e-7)
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
@@ -300,21 +301,20 @@ class Model(CICDModel):
         z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
         z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
 
+        pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            x_list = Xn[ii*nc:(ii+1)*nc]
+            x_list = Xn[ii * nc:(ii + 1) * nc]
             state = value_vector(x_list)
-            ph, sat, x, rho, rho_m, mu, kr, pc, kin_rates = self.physics.property_operators[0].property.evaluate(state)
+            self.physics.property_operators[0].property.evaluate(state)
 
-            rel_perm[ii, :] = kr
-            visc[ii, :] = mu
-            density[ii, :2] = rho
-            density_m[ii, :2] = rho_m
+            rel_perm[ii, :] = pc.kr
+            visc[ii, :] = pc.mu
+            density[ii] = pc.dens
+            density_m[ii] = pc.dens_m
 
-            density[2] = self.physics.property_operators[0].property.solid_dens[-1]
-
-            X[ii, :, 0] = x[1][:-1]
-            X[ii, :, 1] = x[0][:-1]
-            Sg[ii] = sat[0]
+            X[ii, :, 0] = pc.x[1]
+            X[ii, :, 1] = pc.x[0]
+            Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
         phi = 1 - z_caco3
@@ -325,7 +325,6 @@ class Model(CICDModel):
                            'weight': 'normal',
                            'size': 8,
                            }
-
 
         fig, ax = plt.subplots(3, 2, figsize=(8, 5), dpi=200, facecolor='w', edgecolor='k')
         names = ['z_co2', 'z_h2o', 'z_inert', 'P', 'Sg', 'phi']
@@ -348,6 +347,7 @@ class Model(CICDModel):
 
         plt.tight_layout()
         plt.savefig("results_kinetic_brief.pdf")
+        plt.close()
 
     def print_and_plot_2D(self):
         import matplotlib.pyplot as plt
@@ -369,25 +369,23 @@ class Model(CICDModel):
         Ss = np.zeros(nb)
         X = np.zeros((nb, nc - 1, 2))
 
-        output_props = self.output_properties()
-        P = output_props[0, :]
-        z_caco3 = 1 - np.sum(output_props[1:nc, :], axis=0)
-        phi = 1 - z_caco3
+        Xn = np.array(self.physics.engine.X, copy=True)
 
-        z_co2 = output_props[1, :] / phi
-        z_inert = output_props[2, :] / phi
-        z_h2o = output_props[3, :] / phi
+        P = Xn[0:nb * nc:nc]
+        z_caco3 = 1 - (Xn[1:nb * nc:nc] + Xn[2:nb * nc:nc] + Xn[3:nb * nc:nc])
 
-        sat_idx = self.physics.n_vars
-        y_idx = sat_idx + 1
-        x_idx = y_idx + nc - 1
+        z_co2 = Xn[1:nb * nc:nc] / (1 - z_caco3)
+        z_inert = Xn[2:nb * nc:nc] / (1 - z_caco3)
+        z_h2o = Xn[3:nb * nc:nc] / (1 - z_caco3)
+
+        pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            x0 = [output_props[x_idx + i, ii] for i in range(nc - 1)]
-            x1 = [output_props[y_idx + i, ii] for i in range(nc - 1)]
-            X[ii, :, 0] = x0
-            X[ii, :, 1] = x1
-            Sg[ii] = output_props[sat_idx, ii]
+            X[ii, :, 0] = pc.x[1]
+            X[ii, :, 1] = pc.x[0]
+            Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
+
+        phi = 1 - z_caco3
 
         fig, ax = plt.subplots(3, 2, figsize=(10, 6), dpi=200, facecolor='w', edgecolor='k')
         plt.set_cmap('jet')
@@ -402,7 +400,6 @@ class Model(CICDModel):
                 ax[i, j].set_title(titles[n], fontdict=font_dict_title)
                 plt.colorbar(im, ax=ax[i, j])
 
-
         left = 0.05  # the left side of the subplots of the figure
         right = 0.95  # the right side of the subplots of the figure
         bottom = 0.05  # the bottom of the subplots of the figure
@@ -411,64 +408,24 @@ class Model(CICDModel):
         hspace = 0.25  # the amount of height reserved for white space between subplots
         plt.subplots_adjust(left=left, bottom=bottom, right=right, top=top, wspace=wspace, hspace=hspace)
 
-
         plt.tight_layout()
         name = "results_kinetic_2D_" + str(self.nx) + "x" + str(self.ny)
         plt.savefig(name + ".pdf")
 
-        plt.show()
-
-        return 0
+        plt.close()
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, solid_dens=None, temperature=1.):
+    def __init__(self, phases_name, components_name, Mw, nc_sol: int = 0, np_sol: int = 0,
+                 min_z=1e-11, rock_comp=1e-6, temperature=1.):
         # Call base class constructor
-        # Cm = 0
-        # super().__init__(phases_name, components_name, Mw, Cm, min_z, diff_coef, rock_comp, solid_dens)
-        if solid_dens is None:
-            solid_dens = []
-        super().__init__(phases_name, components_name, Mw, min_z=min_z,
-                         rock_comp=rock_comp, solid_dens=solid_dens, temperature=temperature)
-
-    def run_flash(self, pressure, temperature, zc):
-
-        nc_fl = self.nc - self.nm
-        norm = 1 - np.sum(zc[nc_fl:])
-
-        zc_r = zc[:nc_fl] / norm
-        self.flash_ev.evaluate(pressure, temperature, zc_r)
-        nu = self.flash_ev.getnu()
-        xr = self.flash_ev.getx()
-        V = nu[0]
-
-        if V <= 0:
-            V = 0
-            xr[1] = zc_r
-            xr[0] = np.zeros(nc_fl)
-            ph = [1]
-        elif V >= 1:
-            V = 1
-            xr[0] = zc_r
-            xr[1] = np.zeros(nc_fl)
-            ph = [0]
-        else:
-            ph = [0, 1]
-
-        for i in range(self.nc - 1):
-            for j in range(2):
-                self.x[j][i] = xr[j][i]
-
-        self.nu[0] = V
-        self.nu[1] = (1 - V)
-
-        return ph
+        super().__init__(phases_name, components_name, Mw, nc_sol=nc_sol, np_sol=np_sol,
+                         min_z=min_z, rock_comp=rock_comp, temperature=temperature)
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         # Kinetic reaction
-        mass_source = np.zeros(self.nc)
         dm, _ = self.kinetic_rate_ev[0].evaluate(pressure, temperature, self.x, zc[-1])
-        mass_source += dm
+        self.mass_source += dm
 
         # Mass source
         if 1 in self.kinetic_rate_ev.keys():
@@ -476,15 +433,15 @@ class ModelProperties(PropertyContainer):
             if id == 0:
                 dens_m_pure = self.density_ev['gas'].evaluate(pressure, 0) / 44.01
                 dm, _ = self.kinetic_rate_ev[1].evaluate(dens_m_pure)
-                mass_source[id] -= dm
+                self.mass_source[id] -= dm
             elif id == 2:
                 dens_m_pure = self.density_ev['wat'].evaluate(pressure, 0) / 18.015
                 dm, _ = self.kinetic_rate_ev[1].evaluate(dens_m_pure)
-                mass_source[id] -= dm
+                self.mass_source[id] -= dm
         else:
             ''
 
-        return mass_source
+        return self.mass_source
 
 
 class MassSource:

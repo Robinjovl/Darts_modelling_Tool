@@ -67,7 +67,6 @@ void Elem::calculate_centroid(const std::vector<Vector3>& nodes, const std::vect
         Vector3 corner3 = element_nodes[2] - element_nodes[1];
         Vector3 corner4 = element_nodes[2] - element_nodes[3];
 
-        double cell_area = 0.5 * cross(corner1, corner2).norm() + cross(corner3, corner4).norm();
         // volume is computed as area * "pseudo thickness"
         //this->volume = cell_area * 10e-4;
         break;
@@ -171,10 +170,6 @@ double mesh::tetra_volume(const std::vector<Vector3>& nodes) {
 void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, const std::vector<index_t>& elem_nodes,
 																				 value_t &volume, Vector3 &c){
 
-    double Cx = 0.0;
-    double Cy = 0.0;
-    double Cz = 0.0;
-
     // put all of the elements nodes into a vector
     std::vector<Vector3> element_nodes;
 
@@ -193,7 +188,11 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
 
     case LINE: {
         volume = (element_nodes[0] - element_nodes[1]).norm();
-        
+
+        double Cx = 0.0;
+        double Cy = 0.0;
+        double Cz = 0.0;
+
         // the centroid of a line is its middle point
         for (auto i : element_nodes) {
             Cx += i.x / 2;
@@ -318,10 +317,6 @@ void Elem::calculate_volume_and_centroid(const std::vector<Vector3>& nodes, cons
         std::vector<Vector3> tetra1{ element_nodes[0], element_nodes[3], element_nodes[4], element_nodes[5] };
         std::vector<Vector3> tetra2{ element_nodes[0], element_nodes[1], element_nodes[4], element_nodes[5] };
         std::vector<Vector3> tetra3{ element_nodes[1], element_nodes[2], element_nodes[5], element_nodes[0] };
-
-        Vector3 centroid1 = tetra_centroid(tetra1);
-        Vector3 centroid2 = tetra_centroid(tetra2);
-        Vector3 centroid3 = tetra_centroid(tetra3);
 
         double volume1 = tetra_volume(tetra1);
         double volume2 = tetra_volume(tetra2);

@@ -73,7 +73,7 @@ int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 	return converged;
 }
 
-int engine_base_gpu::run_single_newton_iteration(value_t deltat)
+int engine_base_gpu::assemble_linear_system(value_t deltat)
 {
 	// switch constraints if needed
 	timer->node["jacobian assembly"].start_gpu();
@@ -108,7 +108,6 @@ int engine_base_gpu::run_single_newton_iteration(value_t deltat)
 	return 0;
 }
 
-
 int engine_base_gpu::solve_linear_equation()
 {
 	int r_code;
@@ -125,6 +124,21 @@ int engine_base_gpu::solve_linear_equation()
 		r_code = linear_solver->setup(Jacobian);
 	}
 	timer->node["linear solver setup"].stop_gpu();
+
+    if (print_linear_system) //changed this to write jacobian to file!
+    {
+      const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+      copy_data_to_host(Jacobian->values, Jacobian->values_d, Jacobian->n_row_size * Jacobian->n_row_size * Jacobian->rows_ptr[mesh->n_blocks]);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+      Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+      Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
+      //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+      write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+      output_counter++;
+    }
 
 	if (r_code)
 	{

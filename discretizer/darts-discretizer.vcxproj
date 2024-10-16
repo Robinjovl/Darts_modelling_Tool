@@ -116,6 +116,8 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -145,6 +147,8 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -176,6 +180,8 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;..\thirdparty\pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -208,7 +214,9 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11;../thirdparty/eigen\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11/include;../thirdparty/eigen\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -258,16 +266,20 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClCompile Include="..\thirdparty\MshIO\src\validate_spec.cpp" />
     <ClCompile Include="src\discretizer.cpp" />
     <ClCompile Include="src\discretizer_build_info.cpp" />
+    <ClCompile Include="src\mech_discretizer.cpp" />
     <ClCompile Include="src\mesh\elem.cpp" />
     <ClCompile Include="src\mesh\mesh.cpp" />
+    <ClCompile Include="src\pybind11\py_approximation.cpp" />
     <ClCompile Include="src\pybind11\py_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_elem.cpp" />
     <ClCompile Include="src\pybind11\py_linalg.cpp" />
     <ClCompile Include="src\pybind11\py_main.cpp" />
+    <ClCompile Include="src\pybind11\py_mech_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_mesh.cpp" />
     <ClCompile Include="src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\approximation.h" />
     <ClInclude Include="..\thirdparty\MshIO\src\element_utils.h" />
     <ClInclude Include="..\thirdparty\MshIO\src\io_utils.h" />
     <ClInclude Include="..\thirdparty\MshIO\src\load_msh_curves.h" />
@@ -293,6 +305,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClInclude Include="src\discretizer_build_info.h" />
     <ClInclude Include="src\linalg\matrix.h" />
     <ClInclude Include="src\linalg\vector3.h" />
+    <ClInclude Include="src\mech_discretizer.h" />
     <ClInclude Include="src\mesh\elem.h" />
     <ClInclude Include="src\mesh\mesh.h" />
     <ClInclude Include="src\mesh\vtksnapshotter.h" />
@@ -300,6 +313,7 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     <ClInclude Include="src\pybind11\py_elem.h" />
     <ClInclude Include="src\pybind11\py_global.h" />
     <ClInclude Include="src\pybind11\py_linalg.h" />
+    <ClInclude Include="src\pybind11\py_mech_discretizer.h" />
     <ClInclude Include="src\pybind11\py_mesh.h" />
     <ClInclude Include="src\utils.h" />
   </ItemGroup>

@@ -41,8 +41,8 @@ public:
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
+  virtual int add_to_csr_jacobian(value_t /*dt*/, index_t /*well_head_idx*/, value_t /*segment_trans*/,
+	  index_t /*n_state_size*/, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
 	  return 0;
   };
 
@@ -431,11 +431,11 @@ public:
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 
 
-  index_t target_phase_idx, n_equations, n_variables;
   std::vector <std::string> phase_names;
+  index_t target_phase_idx, n_equations, n_variables;
   value_t target_rate;
-  operator_set_gradient_evaluator_iface *sources_etor;
   operator_set_evaluator_iface *rate_etor;
+  operator_set_gradient_evaluator_iface *sources_etor;
 
 
   std::vector<value_t> state;

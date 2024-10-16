@@ -17,7 +17,7 @@
 #ifndef OPENDARTS_LINEAR_SOLVERS_CSR_MATRIX_H
 #define OPENDARTS_LINEAR_SOLVERS_CSR_MATRIX_H
 //--------------------------------------------------------------------------
-
+#include <cstdint>
 #include <string>
 #include <type_traits>
 #include <vector>

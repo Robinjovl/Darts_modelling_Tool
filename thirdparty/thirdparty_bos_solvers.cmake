@@ -15,15 +15,18 @@ unset(thirdparty_missing_components)
 #   ST: single threaded (Default)
 #   MT: multi threaded
 #   GPU: GPU support (not available yet)
-if(${OPENDARTS_CONFIG} STREQUAL "ST")
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  set(BOS_SOLVERS_SUFFIX "_d")
+  message(STATUS "    Fetching bos_solvers with Debug mode")
+elseif(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(BOS_SOLVERS_SUFFIX "") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
-  set(BOS_SOLVERS_SUFFIX "_mt") 
+  set(BOS_SOLVERS_SUFFIX "_mt")
 else()
   message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
 endif()
 
-message(STATUS "Building openDARTS ${OPENDARTS_CONFIG}")
+message(STATUS "    Fetching bos_solvers ${OPENDARTS_CONFIG}")
 
 # Adds bos_solvers -------------------------------------------------------------
 add_library(linear_solvers STATIC IMPORTED GLOBAL)

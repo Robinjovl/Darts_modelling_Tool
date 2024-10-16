@@ -72,11 +72,11 @@ public:
   // number of variables per jacobian matrix block
   const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
-  const uint8_t get_n_state() { return N_STATE; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_mp_cpu()
   {
@@ -110,7 +110,7 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
 
-  int run_single_newton_iteration(value_t deltat);
+  int assemble_linear_system(value_t deltat);
   //double calc_newton_residual();
 
 

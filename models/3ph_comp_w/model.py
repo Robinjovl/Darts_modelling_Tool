@@ -1,3 +1,4 @@
+import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
@@ -90,14 +91,15 @@ class Model(CICDModel):
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc):
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)
-        nu = self.flash_ev.getnu()
-        xr = self.flash_ev.getx()
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        xr = np.array(flash_results.X).reshape(self.nph-1, self.nc-1)
         V = nu[0]
 
         if V <= 0:

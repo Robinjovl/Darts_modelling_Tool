@@ -28,7 +28,7 @@ struct engine_super_mp_exposer
 	py::class_<engine_super_mp_cpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())   \
 		.def(py::init<>()) \
 		.def("init", (int (engine_super_mp_cpu<NC, NP, THERMAL>::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_super_mp_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>())
-		.def("run_single_newton_iteration", &engine_super_mp_cpu<NC, NP, THERMAL>::run_single_newton_iteration) \
+		.def("assemble_linear_system", &engine_super_mp_cpu<NC, NP, THERMAL>::assemble_linear_system) \
 		.def_readwrite("fluxes", &engine_super_mp_cpu<NC, NP, THERMAL>::fluxes) \
 		.def_readwrite("dX", &engine_super_mp_cpu<NC, NP, THERMAL>::dX) \
 		.def_readwrite("RHS", &engine_super_mp_cpu<NC, NP, THERMAL>::RHS) \

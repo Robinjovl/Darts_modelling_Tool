@@ -6,15 +6,15 @@ fname="pkl_lin.tar.gz"
 echo $fname
 
 pklname="perf_lin"
-if [ $odls == "-a" ]
+if [[ $odls == "-a" ]]
 then
     pklname=$pklname"_iter"
 fi
 
 rm -f $fname # delete pkls from previous pipeline run
 
-if [ "$UPLOAD_PKL" != 1 ]; then
+if [[ "$UPLOAD_PKL" != 1 ]]; then
 	exit
 fi
 
-tar -czf $fname ./*/"$pklname".pkl #./*/ref/"$pklname".pkl
+tar -czf $fname ./*/"$pklname"*.pkl ./*/ref/"$pklname"*.pkl
