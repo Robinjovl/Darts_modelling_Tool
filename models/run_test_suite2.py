@@ -56,6 +56,10 @@ def check_performance(mod):
     pkl_suffix = ''
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
         pkl_suffix = '_iter'
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        pkl_suffix = '_gpu'
+    #else:
+    #    pkl_suffix = '_odls'
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed
@@ -108,6 +112,7 @@ if __name__ == '__main__':
     platform = 'cpu'
     if len(sys.argv) > 2:
         platform = sys.argv[2]
+    print('platform=', platform)
 
     overwrite = '0'
     if os.getenv('UPLOAD_PKL') == '1':
@@ -155,7 +160,8 @@ if __name__ == '__main__':
 
     # poromechanic tests
     n_total_mech = n_failed_mech = 0
-    n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
+    if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
+        n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
     n_failed += n_failed_mech
     n_total += n_total_mech
 
