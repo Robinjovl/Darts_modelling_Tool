@@ -56,10 +56,10 @@ def check_performance(mod):
     pkl_suffix = ''
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
         pkl_suffix = '_iter'
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+    elif os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         pkl_suffix = '_gpu'
-    #else:
-    #    pkl_suffix = '_odls'
+    else:
+        pkl_suffix = '_odls'
     x = os.path.basename(os.getcwd())
     print("Running {:<30}".format(x + ': '), flush=True)
     # erase previous log file if existed

@@ -9,6 +9,8 @@ pklname="perf_lin"
 if [[ $odls == "-a" ]]
 then
     pklname=$pklname"_iter"
+else
+    pklname=$pklname"_odls"
 fi
 
 rm -f $fname # delete pkls from previous pipeline run

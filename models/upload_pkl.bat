@@ -9,6 +9,9 @@ set pklname="perf_win"
 if "%odls%"=="-a" (
     set pklname=%pklname%"_iter"
 )
+else (
+    set pklname=%pklname%"_odls"
+)
 
 rem # delete pkls from previous pipeline run
 if exist %fname% del %fname%
