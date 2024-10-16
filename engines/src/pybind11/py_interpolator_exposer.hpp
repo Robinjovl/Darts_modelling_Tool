@@ -117,7 +117,7 @@ struct interpolator_exposer
     // we expose uint32 and uint64 adaptive interpolators by default
     expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
     expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
-    expose_class<uint64_t, double, multilinear_static_nested_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_nested_cpu_interpolator");
+    // expose_class<uint64_t, double, multilinear_static_nested_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_nested_cpu_interpolator");
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
     // linear adaptive with 64 bit index and 64 bit data
