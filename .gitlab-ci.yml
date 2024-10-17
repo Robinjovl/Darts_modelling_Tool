@@ -700,7 +700,7 @@ test-windows-3.7-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./upload_pkl.sh $ODLS
+        - ./archive_pkl.sh $ODLS
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -738,7 +738,7 @@ test-windows-3.7-ODLS:
         # passing additional argument LOG to trigger verbose check performance
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG gpu
         - echo "run_test_suite2 returned" $?
-        - ./upload_pkl.sh $ODLS
+        - ./archive_pkl.sh $ODLS
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -778,7 +778,7 @@ test-windows-3.7-ODLS:
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\upload_pkl.bat $env:ODLS
+        - .\archive_pkl.bat $env:ODLS
         - cd ..
         # test discretizer
         - cd discretizer\tests\compare_discretizers
