@@ -165,7 +165,7 @@ def check_performance(mod):
     m.print_stat()
     abort_redirection(log_stream)
     overwrite = 0
-    if os.getenv('UPLOAD_PKL') == '1':
+    if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
     failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
     log_stream = redirect_all_output(log_file)
@@ -205,7 +205,7 @@ if __name__ == '__main__':
 
     # overwrite existing pkl files
     overwrite = '0'
-    if os.getenv('UPLOAD_PKL') == '1':
+    if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
         
     # run larger set of models (takes longer)
