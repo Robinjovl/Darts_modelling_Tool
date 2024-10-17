@@ -6,117 +6,64 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
-model_dir = r'.'
+def run_testing(platform, overwrite, iter_solvers, test_all_models):
+    model_dir = r'.'
 
-accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
-                 '2ph_do_thermal_mpfa', '2ph_geothermal', '2ph_geothermal_mass_flux',
-                 '3ph_comp_w', '3ph_do', '3ph_bo',
-                 'Uniform_Brugge',
-                 'Chem_benchmark_new',
-                 #'CO2_foam_CCS',
-                 'GeoRising',
-                 'CoaxWell'
-                 ]
+    # set model list to run
 
-test_dirs_mech = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
-test_args_mech = []
-for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
-    for discr_name in ['mech_discretizer', 'pm_discretizer']:
-        if case == 'bai' and discr_name == 'pm_discretizer':
-            continue # is not supported by poroelastic as bai is thermoporoelasticity
-        for mesh in ['rect', 'wedge', 'hex']:
-            if case == 'terzaghi_two_layers' and mesh == 'hex':
-                continue
-            test_args_mech.append([case, discr_name, mesh])
-test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
+    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+                     '2ph_geothermal', '2ph_geothermal_mass_flux',
+                     '3ph_comp_w', '3ph_do', '3ph_bo',
+                     'Uniform_Brugge',
+                     'Chem_benchmark_new',
+                     #'CO2_foam_CCS',
+                     'GeoRising',
+                     'CoaxWell'
+                     ]       
+                     
+    if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
+        accepted_dirs += ['2ph_do_thermal_mpfa']
 
-test_dirs_cpg = ['cpg_sloping_fault']
-cpg_cases_list = ['generate_5x3x4', 'generate_51x51x1']
-if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
-    cpg_cases_list += ['case_40x40x10']
-test_args_cpg = []
-for case in cpg_cases_list:
-    for physics_type in ['geothermal', 'dead_oil']:
-        test_args_cpg.append([case, physics_type])
-test_args_cpg = [test_args_cpg]
+    test_dirs_mech = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
+    test_args_mech = []
+    for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
+        for discr_name in ['mech_discretizer', 'pm_discretizer']:
+            if case == 'bai' and discr_name == 'pm_discretizer':
+                continue # is not supported by poroelastic as bai is thermoporoelasticity
+            for mesh in ['rect', 'wedge', 'hex']:
+                if case == 'terzaghi_two_layers' and mesh == 'hex':
+                    continue
+                test_args_mech.append([case, discr_name, mesh])
+    test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-test_dirs_dfn = ['fracture_network']
-test_cases_dfn = ['case_1']
-if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
-    test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-    test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
-test_args_dfn = []
-for case in test_cases_dfn:
-    test_args_dfn.append([case])
-test_args_dfn = [test_args_dfn]
+    # CPG (C++ discr)
+    test_dirs_cpg = ['cpg_sloping_fault']
+    cpg_cases_list = ['generate_5x3x4', 'generate_51x51x1']
+    if iter_solvers:  # run this case only for the build with iterative solvers
+        cpg_cases_list += ['case_40x40x10']
+    test_args_cpg = []
+    for case in cpg_cases_list:
+        for physics_type in ['geothermal', 'dead_oil']:
+            test_args_cpg.append([case, physics_type])
+    test_args_cpg = [test_args_cpg]
 
-accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_mpfa']  # for adjoint test
+    # DFN (python discr)
+    test_dirs_dfn = ['fracture_network']
+    test_cases_dfn = ['case_1']
+    if test_all_models:
+        test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
+        test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+    test_args_dfn = []
+    for case in test_cases_dfn:
+        test_args_dfn.append([case])
+    test_args_dfn = [test_args_dfn]
 
-def check_performance(mod):
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    elif os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        pkl_suffix = '_gpu'
-    else:
-        pkl_suffix = '_odls'
-    x = os.path.basename(os.getcwd())
-    print("Running {:<30}".format(x + ': '), flush=True)
-    # erase previous log file if existed
-    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
-    f = open(log_file, "w")
-    f.close()
-    log_stream = redirect_all_output(log_file)
-    shutil.rmtree("__pycache__", ignore_errors=True)
-    # create model instance
-    m = mod.Model()
-    #m.params.linear_type = sim_params.cpu_superlu
-    m.init()
-    m.run()
-    m.print_stat()
-    abort_redirection(log_stream)
-    overwrite = 0
-    if os.getenv('UPLOAD_PKL') == '1':
-        overwrite = 1
-    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
-    log_stream = redirect_all_output(log_file)
-    return failed
+    # for adjoint test
+    accepted_dirs_adjoint = ['Adjoint_super_engine']
+    if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
+        accepted_dirs_adjoint += ['Adjoint_mpfa']
 
-
-def check_performance_adjoint(mod):
-    x = os.path.basename(os.getcwd())
-    print("Running {:<30}".format(x + ': '), flush=True)
-    # erase previous log file if existed
-    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
-    f = open(log_file, "w")
-    f.close()
-    log_stream = redirect_all_output(log_file)
-    mod.prepare_synthetic_observation_data()
-    mod.read_observation_data()
-    failed = mod.process_adjoint()
-    abort_redirection(log_stream)
-    log_stream = redirect_all_output(log_file)
-
-    return failed
-
-if __name__ == '__main__':
-
-    # print build info
-    engines_pbi()
-    package_pbi()
-
-    # set single thread in case of MT version to match the performance characteristics
-    os.environ['OMP_NUM_THREADS'] = '1'
-
-    # cpu/gpu
-    platform = 'cpu'
-    if len(sys.argv) > 2:
-        platform = sys.argv[2]
-    print('platform=', platform)
-
-    overwrite = '0'
-    if os.getenv('UPLOAD_PKL') == '1':
-        overwrite = '1'
+    # RUN
 
     n_failed = n_total = 0
 
@@ -186,9 +133,88 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         input("Press Enter to continue...") # pause the screen
     else:
-        if os.getenv('UPLOAD_PKL') == '1':  # do not interrupt ci/cd for uploading generated pkls
+        if overwrite:  # do not interrupt ci/cd for uploading generated pkls
             print('exit 0 because of UPLOAD_PKL==1')
             exit(0)
         print('exit:', n_failed)
         # exit with code equal to number of failed models
         exit(n_failed)
+
+
+def check_performance(mod):
+    pkl_suffix = ''
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        pkl_suffix = '_iter'
+    elif os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        pkl_suffix = '_gpu'
+    else:
+        pkl_suffix = '_odls'
+    x = os.path.basename(os.getcwd())
+    print("Running {:<30}".format(x + ': '), flush=True)
+    # erase previous log file if existed
+    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    f = open(log_file, "w")
+    f.close()
+    log_stream = redirect_all_output(log_file)
+    shutil.rmtree("__pycache__", ignore_errors=True)
+    # create model instance
+    m = mod.Model()
+    #m.params.linear_type = sim_params.cpu_superlu
+    m.init()
+    m.run()
+    m.print_stat()
+    abort_redirection(log_stream)
+    overwrite = 0
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = 1
+    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
+    log_stream = redirect_all_output(log_file)
+    return failed
+
+
+def check_performance_adjoint(mod):
+    x = os.path.basename(os.getcwd())
+    print("Running {:<30}".format(x + ': '), flush=True)
+    # erase previous log file if existed
+    log_file = os.path.join(os.path.abspath(os.pardir), '_logs/' + str(x) + '.log')
+    f = open(log_file, "w")
+    f.close()
+    log_stream = redirect_all_output(log_file)
+    mod.prepare_synthetic_observation_data()
+    mod.read_observation_data()
+    failed = mod.process_adjoint()
+    abort_redirection(log_stream)
+    log_stream = redirect_all_output(log_file)
+
+    return failed
+
+if __name__ == '__main__':
+
+    # print build info
+    engines_pbi()
+    package_pbi()
+
+    # set single thread in case of MT version to match the performance characteristics
+    os.environ['OMP_NUM_THREADS'] = '1'
+
+    # cpu/gpu
+    platform = 'cpu'
+    if len(sys.argv) > 2:
+        platform = sys.argv[2]
+    print('platform=', platform)
+
+    # overwrite existing pkl files
+    overwrite = '0'
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = '1'
+        
+    # run larger set of models (takes longer)
+    test_all_models = False
+    if os.getenv('TEST_ALL') != None and os.getenv('TEST_ALL') == '1':
+        test_all_models = True
+
+    iter_solvers = False
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
+        iter_solvers = True
+        
+    run_testing(platform, overwrite, iter_solvers, test_all_models)
