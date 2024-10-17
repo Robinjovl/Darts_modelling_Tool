@@ -134,6 +134,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         input("Press Enter to continue...") # pause the screen
     else:
         if overwrite:  # do not interrupt ci/cd for uploading generated pkls
+            print('UPLOAD_PKL=', os.getenv('UPLOAD_PKL'))
+            print('args', platform, overwrite, iter_solvers, test_all_models)
             print('exit 0 because of UPLOAD_PKL==1')
             exit(0)
         print('exit:', n_failed)
