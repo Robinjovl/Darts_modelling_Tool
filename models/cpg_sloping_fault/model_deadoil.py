@@ -128,7 +128,7 @@ class ModelDeadOil(Model_CPG):
         # example - how to change the properties
         # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-        idata.obl.n_points = 500
+        idata.obl.n_points = 400
         idata.obl.zero = 1e-10
         idata.obl.min_p = -5.
         idata.obl.max_p = 500.
