@@ -1,6 +1,5 @@
 # create an archive with .pkl files 
-commit=$1
-odls=$2
+odls=$1
 
 fname="pkl_lin.tar.gz"
 echo $fname
