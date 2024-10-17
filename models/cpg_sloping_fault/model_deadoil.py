@@ -17,7 +17,7 @@ class ModelDeadOil(Model_CPG):
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir)
 
     def set_physics(self, idata: InputData):
-        self.zero = 1e-7
+        self.zero = 1e-13
         self.physics = DeadOil(idata, self.timer, thermal=False)
         self.inj = value_vector([self.zero])  # injection composition - water
         self.ini = value_vector([1 - self.zero])  # initial composition (above water table depth) - oil
@@ -129,10 +129,10 @@ class ModelDeadOil(Model_CPG):
         # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
         idata.obl.n_points = 400
-        idata.obl.zero = 1e-9
-        idata.obl.min_p = -5.
-        idata.obl.max_p = 500.
-        idata.obl.min_t = -10.
+        idata.obl.zero = 1e-13
+        idata.obl.min_p = 0.
+        idata.obl.max_p = 1000.
+        idata.obl.min_t = 10.
         idata.obl.max_t = 100.
         idata.obl.min_z = idata.obl.zero
         idata.obl.max_z = 1 - idata.obl.zero
