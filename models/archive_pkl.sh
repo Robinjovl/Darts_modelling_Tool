@@ -1,15 +1,20 @@
 # create an archive with .pkl files 
 odls=$1
+gpu=$2
 
 fname="pkl_lin.tar.gz"
 echo $fname
 
-pklname="perf_lin"
+pklnamebase="perf_lin"
 if [[ $odls == "-a" ]]
 then
-    pklname=$pklname"_iter"
+    pklname=$pklnamebase"_iter"
 else
-    pklname=$pklname"_odls"
+    pklname=$pklnamebase"_odls"
+fi
+
+if [[ $gpu == "1" ]]
+    pklname=$pklnamebase"_gpu"
 fi
 
 rm -f $fname # delete pkls from previous pipeline run
