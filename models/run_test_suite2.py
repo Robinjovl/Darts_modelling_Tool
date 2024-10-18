@@ -130,7 +130,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('n_failed_mech=', n_failed_mech)
     print('n_failed_adj=', n_failed_adj)
     
-    if len(sys.argv) == 1:
+    if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
         input("Press Enter to continue...") # pause the screen
     else:
         if overwrite == '1':  # do not interrupt ci/cd for uploading generated pkls
