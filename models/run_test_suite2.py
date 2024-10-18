@@ -20,7 +20,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'GeoRising',
                      'CoaxWell'
                      ]       
-                     
+
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
 
@@ -64,9 +64,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
     # RUN
-
     n_failed = n_total = 0
-
     # run tests accepted_dirs/model.py with comparison of pkl files
     n_failed_m = n_total_m = 0
     if len(accepted_dirs):
@@ -143,10 +141,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
 def check_performance(mod):
     pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    elif os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         pkl_suffix = '_gpu'
+    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        pkl_suffix = '_iter'
     else:
         pkl_suffix = '_odls'
     x = os.path.basename(os.getcwd())
@@ -160,7 +158,12 @@ def check_performance(mod):
     # create model instance
     m = mod.Model()
     #m.params.linear_type = sim_params.cpu_superlu
-    m.init()
+
+    platform='cpu'
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        platform='gpu'
+
+    m.init(platform=platform)
     m.run()
     m.print_stat()
     abort_redirection(log_stream)
@@ -199,8 +202,8 @@ if __name__ == '__main__':
 
     # cpu/gpu
     platform = 'cpu'
-    if len(sys.argv) > 2:
-        platform = sys.argv[2]
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        platform = 'gpu'
     print('platform=', platform)
 
     # overwrite existing pkl files

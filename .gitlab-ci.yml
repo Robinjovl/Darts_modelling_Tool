@@ -736,7 +736,7 @@ test-windows-3.7-ODLS:
         # run simulation fot test models set
         - cd models
         # passing additional argument LOG to trigger verbose check performance
-        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG gpu
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..

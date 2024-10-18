@@ -8,7 +8,7 @@ import numpy as np
 
 m = Model()
 
-m.init()
+m.init()#(platform='gpu')
 m.output_to_vtk(ith_step=0, output_directory='vtk')
 m.run(365)
 m.print_timers()

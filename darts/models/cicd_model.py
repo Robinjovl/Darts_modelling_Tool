@@ -64,7 +64,7 @@ class CICDModel(DartsModel):
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)
-            print('SAVED')
+            print('SAVED PKL FILE', perf_file, pkl_suffix)
             return 0
 
     def get_performance_data(self):
@@ -157,4 +157,5 @@ class CICDModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
