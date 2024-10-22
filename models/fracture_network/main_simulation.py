@@ -10,7 +10,7 @@ from datetime import datetime
 from darts.tools.plot_darts import plot_temp_darts
 import pickle
 
-def run_simulation(input_data):
+def run_simulation(input_data, platform='cpu'):
     print('Running simulation for case', input_data['case_name'])
 
     output_directory = 'sol_' + input_data['case_name']
@@ -28,7 +28,7 @@ def run_simulation(input_data):
 
     m = Model(input_data)
 
-    m.init(verbose=True, output_folder = output_directory)
+    m.init(verbose=True, output_folder = output_directory, platform=platform)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
     size_report_step = 60  # Size of the reporting step 

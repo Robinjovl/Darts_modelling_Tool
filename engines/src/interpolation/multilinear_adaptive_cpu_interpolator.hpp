@@ -44,6 +44,12 @@ public:
    */
    std::unordered_map<index_t, point_data_t> point_data;
 
+   /**
+   * @brief Get indexes of all evaluated hypercubes
+   *
+   * @return array of indexes of hypercubes
+   */
+   std::vector<index_t> get_hypercube_indexes() const;
 protected:
    /**
      * @brief Get values of operators at a given point 
@@ -54,7 +60,6 @@ protected:
      * @return operator values at given point
      */
    const point_data_t &get_point_data(const index_t point_index);
-
    /**
      * @brief Get values of operators at all vertices of the hypercube. 
      * Provide a reference to correct location in the adaptive hypercube storage. 

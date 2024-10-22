@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-import os
+import os, sys
 
-def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True, redirect_log=False):
+def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -35,7 +35,7 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
         print('Error: wrong physics specified:', physics_type)
         exit(1)
 
-    m.init(output_folder=out_dir)
+    m.init(output_folder=out_dir, platform=platform)
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
@@ -180,8 +180,14 @@ def check_performance_local(m, case, physics_type):
     os.makedirs('ref', exist_ok=True)
 
     pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        pkl_suffix = '_gpu'
+    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
         pkl_suffix = '_iter'
+    else:
+        pkl_suffix = '_odls'
+    print('pkl_suffix=', pkl_suffix)
+
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + physics_type + '.pkl')
     overwrite = 0
@@ -201,7 +207,7 @@ def check_performance_local(m, case, physics_type):
     else:
         return False, -1.0
 
-def run_test(args: list = []):
+def run_test(args: list = [], platform='cpu'):
     if len(args) > 1:
         case = args[0]
         physics_type = args[1]
@@ -210,7 +216,7 @@ def run_test(args: list = []):
         n_time_steps = 20
 
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps)
+        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
@@ -218,6 +224,13 @@ def run_test(args: list = []):
 ##########################################################################################################
 
 if __name__ == '__main__':
+    platform = 'cpu'
+    if len(sys.argv) > 1:
+        platform = sys.argv[1]
+    if platform not in ['cpu', 'gpu']:
+        print('unknown platform specified', platform)
+        exit(1)
+
     physics_list = []
     physics_list += ['geothermal']
     physics_list += ['dead_oil']
@@ -236,7 +249,7 @@ if __name__ == '__main__':
         for case in cases_list:
             out_dir = 'results_' + physics_type + '_' + case
 
-            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps)
+            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
             #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))

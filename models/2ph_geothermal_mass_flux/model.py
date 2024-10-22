@@ -133,7 +133,7 @@ class ModelProperties(PropertyContainer):
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        self.ph = [0]
+        self.ph = np.array([0], dtype=np.intp)
 
         for j in self.ph:
             M = 0

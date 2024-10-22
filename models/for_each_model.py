@@ -64,6 +64,9 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
     n_fails = 0
     if len(accepted_paths) != 0:
         for x in accepted_paths:
+            if 'mpfa' in  x:
+                nt = os.environ['OMP_NUM_THREADS']
+                os.environ['OMP_NUM_THREADS'] = '1'
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
             p = Process(target=spawn_process_function, args=(x, model_procedure,ret_value), )
@@ -71,6 +74,8 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
             p.join(timeout=7200)
             p.terminate()
             n_fails += ret_value.value
+            if 'mpfa' in  x:
+                os.environ['OMP_NUM_THREADS'] = nt
     else:
         for x in p.iterdir():
             if x.is_dir() and (str(x)[0] != '.'):
@@ -85,12 +90,6 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
 
 
 def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], excluded_paths=[], timeout=120):
-    # if __name__ == '__main__':
-
-    # set_start_method('spawn')  # it is already spawned in the function "for_each_model"
-
-    # null = open(os.devnull, 'w')
-    # orig_stdout = sys.stdout
 
     # set working directory to folder which contains tests
     os.chdir(root_path)
@@ -101,6 +100,9 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
     n_fails = 0
     if len(accepted_paths) != 0:
         for x in accepted_paths:
+            if 'mpfa' in  x:
+                nt = os.environ['OMP_NUM_THREADS']
+                os.environ['OMP_NUM_THREADS'] = '1'
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
             starting_time = time.time()
@@ -114,6 +116,8 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
                 print('OK, \t%.2f s' % (ending_time - starting_time))
             else:
                 print('FAIL, \t%.2f s' % (ending_time - starting_time))
+            if 'mpfa' in  x:
+                os.environ['OMP_NUM_THREADS'] = nt
     else:
         for x in p.iterdir():
             if x.is_dir() and (str(x)[0] != '.'):
@@ -126,7 +130,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
                 p.terminate()
     return n_fails
 
-def run_single_test(dir, module_name, args, ret_value):
+def run_single_test(dir, module_name, args, ret_value, platform):
     args_str = '_'.join(args[:-1]) #except last arg (overwrite flag)
     # step in target folder
     os.chdir(dir)
@@ -146,7 +150,7 @@ def run_single_test(dir, module_name, args, ret_value):
         log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
-        ret_value.value, test_time = mod.run_test(args)
+        ret_value.value, test_time = mod.run_test(args, platform=platform)
         log_stream = redirect_all_output(log_file)
         abort_redirection(log_stream)
         if ret_value.value:
@@ -162,7 +166,7 @@ def run_single_test(dir, module_name, args, ret_value):
         print(err)
 
 
-def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
+def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cpu'):
     # set working directory to folder which contains tests
     os.chdir(root_path)
 
@@ -184,7 +188,7 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
             f.close()
             log_stream = redirect_all_output(log_file)
             starting_time = time.time()
-            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
+            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()

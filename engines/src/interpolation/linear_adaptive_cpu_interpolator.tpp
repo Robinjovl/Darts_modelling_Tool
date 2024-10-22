@@ -2,14 +2,17 @@
 
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_adaptive_cpu_interpolator(
-    operator_set_evaluator_iface *supporting_point_evaluator, const std::vector<int> &axesPoints,
-    const std::vector<double> &axesMin, const std::vector<double> &axesMax)
-    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator, axesPoints, axesMin, axesMax)
+    operator_set_evaluator_iface *supporting_point_evaluator, 
+    const std::vector<int> &axesPoints,
+    const std::vector<double> &axesMin, 
+    const std::vector<double> &axesMax, 
+    bool _use_barycentric_interpolation)
+    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator, axesPoints, axesMin, axesMax, _use_barycentric_interpolation)
 {
 }
 
 template <typename index_t, int N_DIMS, int N_OPS>
-void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_point(const std::array<int, N_DIMS> &vertex, std::array<double, N_OPS> &values)
+void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_point(const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values)
 {
     index_t index = this->get_index_from_vertex(vertex);
     auto search = point_data.find(index);
