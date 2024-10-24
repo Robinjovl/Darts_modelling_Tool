@@ -13,10 +13,6 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.density import Spivey2004
 from darts.physics.properties.viscosity import MaoDuan2009
 
-from dartsflash.libflash import PHFlash, FlashParams
-from dartsflash.libflash import CubicEoS, AQEoS
-from dartsflash.components import CompData
-
 
 class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
@@ -48,7 +44,8 @@ class GeothermalPH(Geothermal):
                          idata.obl.min_e, idata.obl.max_e, idata.other.mass_rate, idata.other.cache)
         self.idata = idata
         property_container = GeothermalPHProperties()
-        property_container.flash_ev = PHFlash(idata.fluid.flash_params)
+
+        property_container.flash_ev = idata.fluid.flash_ev
         property_container.rock = [value_vector([1, 0, 273.15])]
         property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
         property_container.rock_energy_ev = custom_rock_energy_evaluator(
@@ -116,10 +113,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
         self.x = np.array(flash_results.X).reshape(self.nph, self.nc)
         self.temperature = flash_results.T
 
-        ph = []
-        for j in range(self.nph):
-            if self.nu[j] > 0:
-                ph.append(j)
+        ph = np.array([j for j in range(self.nph) if self.nu[j] > 0])
 
         return ph
 
@@ -194,17 +188,22 @@ class GeothermalPHFluidProps(FluidProps):
         self.components = ["H2O"]
         self.phases = ['water', 'steam']
 
+        from dartsflash.libflash import PHFlash, FlashParams
+        from dartsflash.libflash import CubicEoS, AQEoS
+        from dartsflash.components import CompData
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw
         pr = CubicEoS(comp_data, CubicEoS.PR)
         aq = AQEoS(comp_data, AQEoS.Jager2003)
 
-        self.flash_params = FlashParams(comp_data)
+        flash_params = FlashParams(comp_data)
 
         # EoS-related parameters
-        self.flash_params.add_eos("PR", pr)
-        self.flash_params.add_eos("AQ", aq)
-        self.flash_params.eos_order = ["AQ", "PR"]
+        flash_params.add_eos("PR", pr)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["AQ", "PR"]
+
+        self.flash_ev = PHFlash(flash_params)
 
         # properties implemented in python
         self.enthalpy_ev = {'water': EoSEnthalpy(aq),

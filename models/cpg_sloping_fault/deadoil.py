@@ -78,7 +78,7 @@ class DeadOilProperties(PropertyContainer):
                          rock_comp=rock_comp, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):
-        ph = [j for j in range(self.nph)]
+        ph = np.array([j for j in range(self.nph)])
 
         for i in range(self.nc):
             self.x[i][i] = 1

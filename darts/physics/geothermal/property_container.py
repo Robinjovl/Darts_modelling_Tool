@@ -10,10 +10,6 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.density import Spivey2004
 from darts.physics.properties.viscosity import MaoDuan2009
 
-from dartsflash.libflash import PHFlash, FlashParams, EoSParams
-from dartsflash.libflash import CubicEoS, AQEoS
-from dartsflash.components import CompData
-
 
 class PropertyContainerIAPWS(PropertyBase):
     """
@@ -106,6 +102,9 @@ class PropertyContainerPH(PropertyBase):
         self.np_fl = len(self.phases)
 
         # PH-flash from DARTS-flash
+        from dartsflash.libflash import PHFlash, FlashParams, EoSParams
+        from dartsflash.libflash import CubicEoS, AQEoS
+        from dartsflash.components import CompData
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw
         pr = CubicEoS(comp_data, CubicEoS.PR)
@@ -165,10 +164,7 @@ class PropertyContainerPH(PropertyBase):
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
         self.temperature = flash_results.T
 
-        ph = []
-        for j in range(self.np_fl):
-            if self.nu[j] > 0:
-                ph.append(j)
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         return ph
 
