@@ -85,8 +85,7 @@ class OtherProps():
     Other user defined properties
     '''
     def __init__(self):
-        self.cache = None
-        self.mass_rate = None
+        pass
 
 class InputData():
     '''

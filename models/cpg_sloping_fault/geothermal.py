@@ -17,7 +17,7 @@ from darts.physics.properties.viscosity import MaoDuan2009
 class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
-                         idata.obl.min_e, idata.obl.max_e, idata.other.mass_rate, idata.other.cache)
+                         idata.obl.min_e, idata.obl.max_e)
         self.idata = idata
         property_container = GeothermalIAPWSProperties()
         rock_compressibility = 1e-5  # [1/bars]
@@ -41,7 +41,7 @@ class GeothermalPH(Geothermal):
     def __init__(self, idata: InputData, timer):
         # Call base class constructor
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
-                         idata.obl.min_e, idata.obl.max_e, idata.other.mass_rate, idata.other.cache)
+                         idata.obl.min_e, idata.obl.max_e)
         self.idata = idata
         property_container = GeothermalPHProperties()
 
