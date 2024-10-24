@@ -40,29 +40,26 @@ class BlackOil(Compositional):
 
 class BlackOilFluidProps(FluidProps):
     def __init__(self, pvt):
-        super().__init__()
-        self.components = ["g", "o", "w"]
-        self.phases = ["gas", "oil", "water"]
-        self.Mw = np.ones(len(self.components))
+        super().__init__(phases_name=["gas", "oil", "water"], components_name=["g", "o", "w"], Mw=np.ones(3))
 
         self.pvt = pvt
-        self.density = dict([('gas', DensityGas(pvt)),
-                             ('oil', DensityOil(pvt)),
-                             ('water', DensityWat(pvt))])
-        self.viscosity = dict([('gas', ViscGas(pvt)),
-                               ('oil', ViscOil(pvt)),
-                               ('water', ViscWat(pvt))])
-        self.rel_perm = dict([('gas', GasRelPerm(pvt)),
-                              ('oil', OilRelPerm(pvt)),
-                              ('water', WatRelPerm(pvt))])
-        self.capillary_pressure = dict([('pcow', CapillaryPressurePcow(pvt)),
-                                        ('pcgo', CapillaryPressurePcgo(pvt))])
+        self.density_ev = dict([('gas', DensityGas(pvt)),
+                                ('oil', DensityOil(pvt)),
+                                ('water', DensityWat(pvt))])
+        self.viscosity_ev = dict([('gas', ViscGas(pvt)),
+                                  ('oil', ViscOil(pvt)),
+                                  ('water', ViscWat(pvt))])
+        self.rel_perm_ev = dict([('gas', GasRelPerm(pvt)),
+                                 ('oil', OilRelPerm(pvt)),
+                                 ('water', WatRelPerm(pvt))])
+        self.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(pvt)),
+                                           ('pcgo', CapillaryPressurePcgo(pvt))])
 
 
 class BlackOilProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z: float = 1e-11, temperature: float = None):
+    def __init__(self, idata: InputData, phases_name, components_name, Mw, min_z: float = 1e-11, temperature: float = None):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(idata, phases_name, components_name, Mw, min_z=min_z, temperature=1.)
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]

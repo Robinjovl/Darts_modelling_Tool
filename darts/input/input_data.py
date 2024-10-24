@@ -1,10 +1,12 @@
 import numpy as np
+from darts.physics.properties.basic import ConstFunc
 
-class RockProps():
+
+class RockProps:
     '''
     Rock hydrodynamic properties
     '''
-    def __init__(self, type_hydr='', type_mech=''):
+    def __init__(self, set_default: bool, type_hydr='', type_mech=''):
         '''
         :param type_hydr: if '' - idothermal flow; if 'thermal' - thermal flow
         :param type_mech: if '' - mechanics off; options: 'poroelasticity', 'thermoporoelasticity'
@@ -14,6 +16,9 @@ class RockProps():
         self.permx = self.permy = self.permz = None  # Permeability [mD]
         self.compressibility = None
         self.density = None
+        self.energy_ev = None  # TODO comment on the definition of rock evaluators here
+        self.compr_ev = None
+        self.density_ev = None
         
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
@@ -40,17 +45,46 @@ class RockProps():
                 return self.perm
                 
 
-class FluidProps():
+class FluidProps:
     '''
     Fluid properties
     '''
-    def __init__(self):
-        self.compressibility = None  #TODO units
-        self.density = None  # Density at reference conditions, #TODO units
-        self.viscosity = None  #TODO units
-        self.Mw = None  # molar weight, [g/mol]
-        
-class InitialSolution():
+    def __init__(self, phases_name: list, components_name: list, Mw: list, nc_sol: int = 0, np_sol: int = 0,
+                 min_z: float = 1e-11, rate_ann_mat: np.ndarray = None):
+        """
+        This is the constructor of the FluidProps class. An instance of this class contains all the properties
+        that are required for simulation.
+        """
+        # Fluid/solid phases and components, rate annihilation matrix for equilibrium chemistry (optional)
+        self.phases_name: list = phases_name
+        self.components_name: list = components_name
+
+        self.nph = len(phases_name)
+        self.nc = len(components_name)
+        self.np_fl = self.nph - np_sol  # number of fluid phases
+        self.np_sol = np_sol  # number of solid phases
+        self.nc_fl = self.nc - nc_sol  # number of fluid components
+        self.nc_sol = nc_sol  # number of solid components
+
+        self.rate_ann_mat: np.ndarray = rate_ann_mat  # rate annihilation matrix (or Element Reduction Matrix)
+        self.Mw: list = Mw  # molar weight, [g/mol]
+
+        # Evaluators for properties
+        self.flash_ev = None
+        self.density_ev: dict = None  # [kg/m3]
+        self.viscosity_ev: dict = None  # [cP]
+        self.enthalpy_ev: dict = None  # [kJ/m3]
+        self.conductivity_ev: dict = None  # [kJ/m.K.day]
+
+        self.rel_perm_ev: dict = None
+        self.rel_well_perm_ev: dict = None
+        self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
+        self.diffusion_ev: dict = {ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[:self.np_fl]}
+        self.kinetic_rate_ev: list = []
+        self.energy_source_ev = None
+
+
+class InitialSolution:
     '''
     Class for initial values
     '''
@@ -66,7 +100,8 @@ class InitialSolution():
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
-class OBLParams():
+
+class OBLParams:
     '''
     OBL range, number of points
     '''
@@ -80,7 +115,8 @@ class OBLParams():
         self.min_z = None
         self.max_z = None
 
-class OtherProps():
+
+class OtherProps:
     '''
     Other user defined properties
     '''
@@ -88,7 +124,8 @@ class OtherProps():
         self.cache = None
         self.mass_rate = None
 
-class InputData():
+
+class InputData:
     '''
     Class for initial values
     '''

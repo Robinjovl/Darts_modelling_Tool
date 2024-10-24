@@ -1,82 +1,23 @@
 import numpy as np
 from darts.engines import value_vector
+from darts.input.input_data import InputData
 from darts.physics.property_base import PropertyBase
-from darts.physics.properties.flash import Flash
-from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
 
 
 class PropertyContainer(PropertyBase):
-    def __init__(self, phases_name: list, components_name: list, Mw: list, nc_sol: int = 0, np_sol: int = 0,
-                 min_z: float = 1e-11, rock_comp: float = 1e-6, rate_ann_mat=None, temperature: float = None):
+    def __init__(self, idata: InputData, constant_temperature: float = None):
         """
         This is the PropertyContainer class for the Compositional engine.
 
-        :param phases_name: List of phases
-        :param components_name: List of components
-        :param Mw: List of molecular weights [g/mol]
-        :param nc_sol: Number of solid components, default is 0
-        :param np_sol: Number of solid phases, default is 0
-        :param min_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
-        :param rock_comp: Rock compressibility, default is 1e-6
-        :param rate_ann_mat: Rate annihilation matrix, optional
-        :param temperature: Constant temperature for isothermal simulation, default is None (thermal)
+        :param constant_temperature: Constant temperature for isothermal simulation, default is None (thermal)
         """
-        # This class contains all the property evaluators required for simulation
-        self.components_name = components_name
-        self.phases_name = phases_name
-        self.nc = len(components_name)
-        self.nph = len(phases_name)
-        self.ns = nc_sol
-        self.nc_fl = self.nc - nc_sol
-        self.np_fl = self.nph - np_sol
-
-        self.rate_ann_mat = rate_ann_mat if rate_ann_mat is not None else np.eye(len(components_name))
-        self.nelem = self.rate_ann_mat.shape[0]
-
-        self.Mw = Mw
-        self.min_z = min_z
-
-        if temperature:  # constant T specified
+        super().__init__(idata)
+        if constant_temperature is not None:  # constant T specified
             self.thermal = False
-            self.temperature = temperature
+            self.temperature = constant_temperature
         else:
             self.thermal = True
             self.temperature = None
-
-        # Allocate (empty) evaluators for functions
-        self.density_ev = {}
-        self.viscosity_ev = {}
-        self.enthalpy_ev = {}
-        self.conductivity_ev = {}
-
-        self.rel_perm_ev = []
-        self.rel_well_perm_ev = []
-        self.rock_energy_ev = RockEnergyEvaluator()
-        self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
-        self.rock_density_ev = ConstFunc(2650.0)
-        self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
-        self.diffusion_ev = {ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[:self.np_fl]}
-        self.kinetic_rate_ev = {}
-        self.energy_source_ev = []
-        self.flash_ev: Flash = 0
-
-        # passing arguments
-        self.x = np.zeros((self.np_fl, self.nc_fl))
-        self.dens = np.zeros(self.nph)
-        self.dens_m = np.zeros(self.nph)
-        self.sat = np.zeros(self.nph)
-        self.nu = np.zeros(self.np_fl)
-        self.mu = np.zeros(self.np_fl)
-        self.kr = np.zeros(self.np_fl)
-        self.pc = np.zeros(self.np_fl)
-        self.enthalpy = np.zeros(self.nph)
-        self.cond = np.zeros(self.nph)
-        self.dX = []
-        self.mass_source = np.zeros(self.nc)
-        self.energy_source = 0.
-
-        self.phase_props = [self.dens, self.dens_m, self.sat, self.nu, self.mu, self.kr, self.pc, self.enthalpy,
-                            self.cond, self.mass_source]
 
         self.output_props = {"sat0": lambda: self.sat[0]}
 
@@ -179,7 +120,7 @@ class PropertyContainer(PropertyBase):
     def evaluate_mass_source(self, pressure, temperature, zc):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
 
-        for j, reaction in self.kinetic_rate_ev.items():
+        for j, reaction in enumerate(self.kinetic_rate_ev):
             dm, self.dX[j] = reaction.evaluate(pressure, temperature, self.x, zc[self.nc_fl + j])
             self.mass_source += dm
 
@@ -248,7 +189,7 @@ class PropertyContainer(PropertyBase):
         if self.energy_source_ev:
             self.energy_source += self.energy_source_ev.evaluate(state)
 
-        for j, reaction in self.kinetic_rate_ev.items():
+        for j, reaction in enumerate(self.kinetic_rate_ev):
             self.energy_source += reaction.evaluate_enthalpy(pressure, temperature, self.x, zc[self.nc_fl + j])
 
         return

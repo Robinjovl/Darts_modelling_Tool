@@ -40,41 +40,35 @@ class DeadOil(Compositional):
 
 class DeadOil2PFluidProps(FluidProps):#, idata: InputData):
     def __init__(self):
-        super().__init__()
-        self.components = ["w", "o"]
-        self.phases = ["water", "oil"]
-        self.Mw = np.ones(len(self.components))
+        super().__init__(phases_name=["water", "oil"], components_name=["w", "o"], Mw=np.ones(2))
 
-        self.density = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
-                             ('oil', DensityBasic(compr=5e-3, dens0=700))])
-        self.viscosity = dict([('water', ConstFunc(0.89)),
-                               ('oil', ConstFunc(1))])
-        self.rel_perm = dict([('water', PhaseRelPerm("water", 0.1, 0.1)),
-                              ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
+        self.density_ev = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
+                                ('oil', DensityBasic(compr=5e-3, dens0=700))])
+        self.viscosity_ev = dict([('water', ConstFunc(0.89)),
+                                  ('oil', ConstFunc(1))])
+        self.rel_perm_ev = dict([('water', PhaseRelPerm("water", 0.1, 0.1)),
+                                 ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
 
 
 class DeadOil3PFluidProps(FluidProps):
     def __init__(self):
-        super().__init__()
-        self.components = ["g", "o", "w"]
-        self.phases = ["gas", "oil", "water"]
-        self.Mw = np.ones(len(self.components))
+        super().__init__(phases_name=["gas", "oil", "water"], components_name=["g", "o", "w"], Mw=np.ones(3))
 
-        self.density = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-                             ('oil', DensityBasic(compr=1e-5, dens0=600)),
-                             ('water', DensityBrineCO2(self.components, compr=1e-5, dens0=1000, co2_mult=0))])
-        self.viscosity = dict([('gas', ConstFunc(0.05)),
-                               ('oil', ConstFunc(0.5)),
-                               ('water', ConstFunc(0.5))])
-        self.rel_perm = dict([('gas', PhaseRelPerm("gas")),
-                              ('oil', PhaseRelPerm("oil")),
-                              ('water', PhaseRelPerm("water"))])
+        self.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
+                                ('oil', DensityBasic(compr=1e-5, dens0=600)),
+                                ('water', DensityBrineCO2(self.components_name, compr=1e-5, dens0=1000, co2_mult=0))])
+        self.viscosity_ev = dict([('gas', ConstFunc(0.05)),
+                                  ('oil', ConstFunc(0.5)),
+                                  ('water', ConstFunc(0.5))])
+        self.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                 ('oil', PhaseRelPerm("oil")),
+                                 ('water', PhaseRelPerm("water"))])
 
 
 class DeadOilProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, temperature: float = None):
+    def __init__(self, idata: InputData, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, temperature: float = None):
         # Call base class constructor
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
+        super().__init__(idata=idata, phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          rock_comp=rock_comp, temperature=temperature)
 
     def run_flash(self, pressure, temperature, zc):
