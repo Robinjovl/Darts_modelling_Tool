@@ -28,7 +28,6 @@ class DartsModel:
     """
     reservoir: ReservoirBase
     physics: PhysicsBase
-    # output: Output
 
     def __init__(self):
         """
@@ -54,7 +53,8 @@ class DartsModel:
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False,
-             itor_mode: str = 'adaptive', itor_type: str = 'multilinear'):
+             itor_mode: str = 'adaptive', itor_type: str = 'multilinear',
+             output_folder = 'output', sol_filename = 'reseroir.h5', restart = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -89,11 +89,6 @@ class DartsModel:
         self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose,
                                   itor_mode=itor_mode, itor_type=itor_type)
 
-        #######################################################################
-        # assert self.output is not None, "Output object has not been defined"
-        # self.output.init_output()
-        #######################################################################
-
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
@@ -108,12 +103,24 @@ class DartsModel:
         self.set_well_controls()
         self.reset()
 
+        self.output_folder = output_folder
+        self.sol_filename = sol_filename
+        # self.well_filename = 'well_data.h5'
+        # self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        # self.well_filepath = os.path.join(self.output_folder, self.well_filename)
+        self.restart = restart
+        self.set_output()
+
     def reset(self):
         """
         Function to initialize the engine by calling 'engine.init()' method.
         """
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
+
+    def set_output(self):
+        self.output = Output(self.timer, self.reservoir, self.physics, self.output_folder, self.sol_filename, self.restart)
+        return
 
     def set_wells(self, verbose: bool = False):
         """
