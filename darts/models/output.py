@@ -3,16 +3,20 @@ import numpy as np
 import h5py
 import xarray as xr
 import matplotlib.pyplot as plt
+import shutil
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node
 from darts.tools.plot_well_rates import *
+# from darts.tools.plot_well_rates import *
+
+#%%
 
 class Output:
     """
     Base class for all output related functionality
     """
-    def __init__(self, timer: timer_node, reservoir, physics, output_folder: str = None, restart: bool = False):
+    def __init__(self, timer: timer_node, reservoir, physics, output_folder, sol_filename, restart):
         super().__init__()
 
         self.reservoir = reservoir
@@ -23,11 +27,12 @@ class Output:
         self.timer.node["output_well"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
 
-        self.sol_filename = 'reservoir.h5'
+        self.sol_filename = sol_filename
         self.well_filename = 'well_data.h5'
-        self.output_folder = 'output'
-        if output_folder is not None:
-            self.output_folder = output_folder
+        self.output_folder = output_folder
+        self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        self.well_filepath = os.path.join(self.output_folder, self.well_filename)
+        self.restart = restart
 
         if restart is False:
             # save initial state of reservoir at t = 0 days
@@ -214,7 +219,7 @@ class Output:
 
         return time, cell_id, X, var_names
 
-    def output_properties(self, output_properties: list = None, timestep: int = None) -> tuple:
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None) -> tuple:
         """
         Function to read *.h5 data and evaluate properties per grid block, per timestep
         :param output_properties: List of properties to evaluate for output
@@ -223,7 +228,11 @@ class Output:
         :rtype: tuple
         """
         # Read binary file
-        path = os.path.join(self.output_folder, self.sol_filename)
+        if filepath is None:
+            path = os.path.join(self.output_folder, self.sol_filename)
+        else:
+            path = filepath
+
         if timestep is None:
             timesteps, cell_id, X, var_names = self.read_specific_data(path)
         else:
@@ -397,6 +406,7 @@ class Output:
         :param m: An instance of DartsModel
         :type m: DartsModel
         """
+
         h5_well_data_address = os.path.join(self.output_folder, self.well_filename)
         h5_well_data = load_hdf5_to_dict(h5_well_data_address)
 
@@ -431,7 +441,7 @@ class Output:
             if rate_type == 'heat_rate' and not self.physics.thermal:
                 continue
 
-            time, Python_rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, pc)
+            time, Python_rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, self.physics.thermal,pc)
 
             """""""""  Plot well rates over time """""""""
             """ Rates for each perforation """
