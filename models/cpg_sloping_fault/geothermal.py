@@ -9,10 +9,6 @@ from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.properties.iapws.custom_rock_property import *
 from darts.physics.property_base import PropertyBase
 
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from darts.physics.properties.density import Spivey2004
-from darts.physics.properties.viscosity import MaoDuan2009
-
 
 class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
@@ -206,6 +202,9 @@ class GeothermalPHFluidProps(FluidProps):
         self.flash_ev = PHFlash(flash_params)
 
         # properties implemented in python
+        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        from darts.physics.properties.density import Spivey2004
+        from darts.physics.properties.viscosity import MaoDuan2009
         self.enthalpy_ev = {'water': EoSEnthalpy(aq),
                             'steam': EoSEnthalpy(pr),
                             'total': lambda: np.nansum(self.nu * self.enthalpy)}
