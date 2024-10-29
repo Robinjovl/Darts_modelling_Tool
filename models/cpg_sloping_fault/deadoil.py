@@ -41,8 +41,8 @@ class DeadOil(Compositional):
 class DeadOil2PFluidProps(FluidProps):#, idata: InputData):
     def __init__(self):
         super().__init__()
-        self.components = ["w", "o"]
-        self.phases = ["water", "oil"]
+        self.components = ["Zo", "Zw"]
+        self.phases = ['oil', 'water']
         self.Mw = np.ones(len(self.components))
 
         self.density = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
