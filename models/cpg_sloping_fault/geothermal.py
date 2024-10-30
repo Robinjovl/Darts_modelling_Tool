@@ -9,19 +9,11 @@ from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.properties.iapws.custom_rock_property import *
 from darts.physics.property_base import PropertyBase
 
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from darts.physics.properties.density import Spivey2004
-from darts.physics.properties.viscosity import MaoDuan2009
-
-from dartsflash.libflash import PHFlash, FlashParams
-from dartsflash.libflash import CubicEoS, AQEoS
-from dartsflash.components import CompData
-
 
 class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
-                         idata.obl.min_e, idata.obl.max_e, idata.other.mass_rate, idata.other.cache)
+                         idata.obl.min_e, idata.obl.max_e)
         self.idata = idata
         property_container = PropertiesIAPWS(idata)
         rock_compressibility = 1e-5  # [1/bar]  #TODO use from idata
@@ -36,9 +28,9 @@ class GeothermalPH(Geothermal):
     def __init__(self, idata: InputData, timer):
         # Call base class constructor
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
-                         idata.obl.min_e, idata.obl.max_e, idata.other.mass_rate, idata.other.cache)
+                         idata.obl.min_e, idata.obl.max_e)
         self.idata = idata
-        property_container = PropertiesPH(idata)
+        property_container = PropertiesPH()
 
         property_container.rock = [value_vector([1, 0, 273.15])]
         property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
@@ -82,10 +74,7 @@ class PropertiesPH(PropertyBase):
         self.x = np.array(flash_results.X).reshape(self.nph, self.nc)
         self.temperature = flash_results.T
 
-        ph = []
-        for j in range(self.nph):
-            if self.nu[j] > 0:
-                ph.append(j)
+        ph = np.array([j for j in range(self.nph) if self.nu[j] > 0])
 
         return ph
 
@@ -154,6 +143,9 @@ class FluidPropsPH(FluidProps):
     def __init__(self):
         super().__init__(phases_name=['water', 'steam'], components_name=["H2O"], Mw=[])
 
+        from dartsflash.libflash import PHFlash, FlashParams
+        from dartsflash.libflash import CubicEoS, AQEoS
+        from dartsflash.components import CompData
         comp_data = CompData(components=self.components_name, setprops=True)
         self.Mw = comp_data.Mw
         ceos = CubicEoS(comp_data, CubicEoS.PR)
@@ -161,27 +153,30 @@ class FluidPropsPH(FluidProps):
                                AQEoS.solute: AQEoS.Ziabakhsh2012,
                                AQEoS.ion: AQEoS.Jager2003})
 
-        self.flash_params = FlashParams(comp_data)
+        flash_params = FlashParams(comp_data)
 
         # EoS-related parameters
-        self.flash_params.add_eos("CEOS", ceos)
-        self.flash_params.add_eos("AQ", aq)
-        self.flash_params.eos_order = ["AQ", "CEOS"]
+        flash_params.add_eos("PR", ceos)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["AQ", "PR"]
 
         # Flash-related parameters
-        self.flash_params.T_min = 250.
-        self.flash_params.T_max = 600.
-        self.flash_params.T_init = 300.
+        flash_params.T_min = 250.
+        flash_params.T_max = 600.
+        flash_params.T_init = 300.
 
         # Create instance of PHFlash object
-        self.flash_ev = PHFlash(self.flash_params)
+        self.flash_ev = PHFlash(flash_params)
 
         # properties implemented in python
+        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        from darts.physics.properties.density import Spivey2004
+        from darts.physics.properties.viscosity import MaoDuan2009
         self.enthalpy_ev = {'water': EoSEnthalpy(aq),
                             'steam': EoSEnthalpy(ceos)}
-        self.density_ev = {'water': Spivey2004(self.components),
+        self.density_ev = {'water': Spivey2004(self.components_name),
                            'steam': EoSDensity(ceos, comp_data.Mw)}
-        self.viscosity_ev = {'water': MaoDuan2009(self.components),
+        self.viscosity_ev = {'water': MaoDuan2009(self.components_name),
                              'steam': ConstFunc(0.01)}
         self.conduction_ev = {'water': ConstFunc(172.8),
                               'steam': ConstFunc(0.)}

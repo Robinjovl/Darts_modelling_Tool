@@ -89,7 +89,5 @@ class ModelGeothermal(Model_CPG):
         idata.obl.max_p = 400.
         idata.obl.min_e = 1000.
         idata.obl.max_e = 25000.
-        idata.other.cache = False
-        idata.other.mass_rate = False
 
         return idata

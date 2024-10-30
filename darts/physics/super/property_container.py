@@ -109,8 +109,7 @@ class PropertyContainer(PropertyBase):
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
 
-        ph = np.where(self.nu > 0)[0]
-        assert(ph.size > 0)
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         if ph.size == 1:
             self.x[ph[0]] = zc

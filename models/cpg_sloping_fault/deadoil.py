@@ -27,9 +27,7 @@ class DeadOil(Compositional):
         self.idata = idata
         self.zero = 1e-13
 
-        temperature = None if thermal else 1.
-        property_container = DeadOilProperties(phases_name=idata.fluid.phases, components_name=idata.fluid.components,
-                                               Mw=idata.fluid.Mw, min_z=self.zero / 10, temperature=temperature)
+        property_container = DeadOilProperties(idata=idata, thermal=thermal)
 
         property_container.density_ev = idata.fluid.density
         property_container.viscosity_ev = idata.fluid.viscosity
@@ -40,7 +38,7 @@ class DeadOil(Compositional):
 
 class DeadOil2PFluidProps(FluidProps):#, idata: InputData):
     def __init__(self):
-        super().__init__(phases_name=["water", "oil"], components_name=["w", "o"], Mw=np.ones(2))
+        super().__init__(phases_name=["oil", "water"], components_name=["o", "w"], Mw=np.ones(2))
 
         self.density_ev = dict([('water', DensityBasic(compr=1e-5, dens0=1014)),
                                 ('oil', DensityBasic(compr=5e-3, dens0=700))])
@@ -66,13 +64,12 @@ class DeadOil3PFluidProps(FluidProps):
 
 
 class DeadOilProperties(PropertyContainer):
-    def __init__(self, idata: InputData, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6, temperature: float = None):
+    def __init__(self, idata: InputData, thermal: bool = False):
         # Call base class constructor
-        super().__init__(idata=idata, phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
-                         rock_comp=rock_comp, temperature=temperature)
+        super().__init__(idata=idata, constant_temperature=None if thermal else 1.)
 
     def run_flash(self, pressure, temperature, zc):
-        ph = [j for j in range(self.nph)]
+        ph = np.array([j for j in range(self.nph)])
 
         for i in range(self.nc):
             self.x[i][i] = 1

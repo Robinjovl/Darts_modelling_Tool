@@ -23,11 +23,9 @@ class BlackOil(Compositional):
                          idata.obl.min_t, idata.obl.max_t)
         self.idata = idata
 
-        temperature = None if thermal else 1.
-        property_container = BlackOilProperties(phases_name=idata.fluid.phases, components_name=idata.fluid.components,
-                                                Mw=idata.fluid.Mw, min_z=idata.obl.min_z, temperature=temperature)
+        property_container = BlackOilProperties(idata=idata, thermal=thermal)
 
-        property_container.flash_ev = flash_black_oil(idata.fluid.pvt)
+        property_container.flash_ev = idata.fluid.flash_ev
         property_container.density_ev = idata.fluid.density
         property_container.viscosity_ev = idata.fluid.viscosity
         property_container.rel_perm_ev = idata.fluid.rel_perm
@@ -43,6 +41,7 @@ class BlackOilFluidProps(FluidProps):
         super().__init__(phases_name=["gas", "oil", "water"], components_name=["g", "o", "w"], Mw=np.ones(3))
 
         self.pvt = pvt
+        self.flash_ev = flash_black_oil(pvt)
         self.density_ev = dict([('gas', DensityGas(pvt)),
                                 ('oil', DensityOil(pvt)),
                                 ('water', DensityWat(pvt))])
@@ -57,9 +56,9 @@ class BlackOilFluidProps(FluidProps):
 
 
 class BlackOilProperties(PropertyContainer):
-    def __init__(self, idata: InputData, phases_name, components_name, Mw, min_z: float = 1e-11, temperature: float = None):
+    def __init__(self, idata: InputData, thermal: bool = False):
         # Call base class constructor
-        super().__init__(idata, phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(idata, constant_temperature=None if thermal else 1.)
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]
@@ -89,11 +88,11 @@ class BlackOilProperties(PropertyContainer):
             self.x[i, i] = 1
 
         if V < 0:
-            self.ph = [1, 2]
+            self.ph = np.array([1, 2])
         else:  # assume oil and water are always exists
             self.x[1][0] = xgo
             self.x[1][1] = 1 - xgo
-            self.ph = [0, 1, 2]
+            self.ph = np.array([0, 1, 2])
 
         for j in self.ph:
             M = 0

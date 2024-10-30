@@ -13,7 +13,6 @@ from deadoil import DeadOil
 
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
-        self.n_points = 400  # OBL points
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir)
 
     def set_physics(self, idata: InputData):
