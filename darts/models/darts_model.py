@@ -109,7 +109,7 @@ class DartsModel:
         # self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         # self.well_filepath = os.path.join(self.output_folder, self.well_filename)
         self.restart = restart
-        self.set_output()
+        # self.set_output()
 
     def reset(self):
         """
@@ -118,8 +118,9 @@ class DartsModel:
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
 
-    def set_output(self):
-        self.output = Output(self.timer, self.reservoir, self.physics, self.output_folder, self.sol_filename, self.restart)
+    def set_output(self, all_phase_props = True):
+        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+                             self.output_folder, self.sol_filename, self.restart, all_phase_props)
         return
 
     def set_wells(self, verbose: bool = False):

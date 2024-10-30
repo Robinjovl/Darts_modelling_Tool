@@ -6,22 +6,25 @@ import matplotlib.pyplot as plt
 import shutil
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.engines import value_vector, timer_node
+from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
 from darts.tools.plot_well_rates import *
 # from darts.tools.plot_well_rates import *
 
 #%%
 
-class Output:
+class Output():
     """
     Base class for all output related functionality
     """
-    def __init__(self, timer: timer_node, reservoir, physics, output_folder, sol_filename, restart):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, restart, all_phase_props):
         super().__init__()
 
         self.reservoir = reservoir
         self.physics = physics
+        self.op_list = op_list
+        self.params = params
 
+        self.timerr = timer
         self.timer = timer.node['output']
         self.timer.node["output_reservoir"] = timer_node()
         self.timer.node["output_well"] = timer_node()
@@ -37,6 +40,53 @@ class Output:
         if restart is False:
             # save initial state of reservoir at t = 0 days
             self.save_data_to_h5(kind = 'reservoir')
+
+        if all_phase_props:
+            phase_props_labels = ['dens', 'dens_m', 'sat', 'nu', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
+
+            for region in self.physics.regions:  # loop over the different sets of operators
+                phase_props = self.physics.property_containers[region].phase_props
+                temp_dict = {}
+                for i, name in enumerate(phase_props_labels):
+                    for j, phase_name in enumerate(self.physics.phases):
+                        temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: phase_props[i][j]
+
+                self.physics.property_containers[region].output_props = temp_dict
+
+            # self.physics.init_physics()
+            # self.reset()
+
+            self.physics.init_physics()
+            self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(op_list), params, timer.node["simulation"])
+            # self.set_output()
+
+            self.properties = list(self.physics.property_containers[0].output_props.keys())
+
+        else:
+            self.properties = list(self.physics.property_containers[0].output_props.keys())
+
+    def filter_phase_props(self, new_prop_keys = ['sat1', 'dens0']):
+        for region in self.physics.regions:
+            output_dictionary = self.physics.property_containers[region].output_props
+            prop_keys = list(output_dictionary.keys())
+            print('AVAILABLE PROPERTIES IN REGION %d ARE %s'%(region, prop_keys))
+
+            for key in new_prop_keys:
+                if key not in prop_keys:
+                    print(f"Warning: '{key}' is not an available property, choose properties out of {prop_keys}")
+                    break
+
+            new_output_dictionary = {}
+            for name in new_prop_keys:
+                new_output_dictionary[name] = output_dictionary[name]
+
+            self.physics.property_containers[region].output_props = new_output_dictionary
+            self.physics.init_physics()
+            self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells),
+                                     op_vector(self.op_list), self.params, self.timerr.node["simulation"])
+            self.properties = list(new_output_dictionary.keys())
+
+        return 0
 
     def load_restart_data(self, filename: str = os.path.join('restart', 'reservoir.h5'), timestep = -1):
         """
@@ -244,17 +294,18 @@ class Output:
         nb = self.reservoir.mesh.n_res_blocks
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
-        prop_idxs = [list(self.physics.property_containers[0].output_props.keys()).index(prop)
-                     for prop in output_properties]
+        if output_properties is not None:
+            prop_idxs = [self.properties.index(prop) for prop in output_properties]
 
         # Loop over timesteps
-        for k, timestep in enumerate(timesteps):
+        for ts, timestep in enumerate(timesteps):
             # Extract vector of states
             for j, variable in enumerate(var_names):
-                property_array[variable][k, :] = X[k, :nb, j]
+                property_array[variable][ts, :] = X[ts, :nb, j]
 
             if output_properties is not None:
-                state = value_vector(np.stack([property_array[var][k] for var in var_names]).T.flatten())
+                states_numpy = np.stack([property_array[var][ts] for var in var_names]).T.flatten()
+                state = value_vector(states_numpy)
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
@@ -264,7 +315,7 @@ class Output:
                     i += 1
 
                 for j, prop in enumerate(output_properties):
-                    property_array[prop][k] = values_numpy[prop_idxs[j]::n_ops]
+                    property_array[prop][ts] = values_numpy[prop_idxs[j]::n_ops]
 
         return timesteps, property_array
 
@@ -641,3 +692,41 @@ class Output:
                     plt.savefig(well_dir + '/well_' + well.name + '_heat_rate.png')
 
                     perf_counter += len(well.perforations)
+
+    # def output_phase_properties(self, phase_props_labels=['dens', 'dens_m', 'sat', 'nu', 'mu', 'kr', 'pc', 'enthalpy', 'cond'], timestep=None, verbose=False):
+    #     """
+    #     By default the PropertyContainer() contains a number of phase properties. With the this function enables fast interpretation of
+    #     phase properties at every grid block.
+    #
+    #     :param phase_props_labels: list of desired phase properties
+    #     :param timestep : desired timestape at which you want to evaluate properties
+    #     :return: property_array: property_array containing all the desired props at each grid cell
+    #     """
+    #
+    #     for region in self.physics.regions:  # loop over the different sets of operators
+    #         phase_props = self.physics.property_containers[region].phase_props
+    #         temp_dict = {}
+    #         for i, name in enumerate(phase_props_labels):
+    #             for j, phase_name in enumerate(self.physics.phases):
+    #                 temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: phase_props[i][j]
+    #
+    #         self.physics.property_containers[region].output_props = temp_dict
+    #
+    #     self.physics.init_physics(verbose=True)
+    #     self.reset()
+    #     self.set_output()
+    #
+    #     target_solution_file = os.path.join('one_to_rule_them_all', 'restart_data.h5')
+    #     filepath = target_solution_file
+    #     timesteps, property_array = self.output_properties(filepath=filepath,
+    #                                                        output_properties=self.output_properties,
+    #                                                        timestep=None)
+    #
+    #     if verbose:
+    #         for i, name in enumerate(property_array.keys()):
+    #             plt.figure()
+    #             plt.title(name)
+    #             plt.plot(property_array[name].T)
+    #             plt.show()
+    #
+    #     return property_array
