@@ -6,7 +6,7 @@ from model_cpg import Model_CPG, fmt
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.engines import value_vector
 
-from geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
+from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 
 
 class ModelGeothermal(Model_CPG):

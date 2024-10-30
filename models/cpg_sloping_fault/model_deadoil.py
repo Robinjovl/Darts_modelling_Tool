@@ -8,7 +8,7 @@ from darts.input.input_data import InputData
 
 from darts.engines import value_vector
 
-from deadoil import DeadOil
+from darts.physics.deadoil import DeadOil
 
 
 class ModelDeadOil(Model_CPG):
