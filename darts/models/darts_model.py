@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 import csv
+from copy import deepcopy
 
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.physics_base import PhysicsBase
@@ -360,11 +361,11 @@ class DartsModel:
 
         #print('X', np.array(self.physics.engine.X))
         """
-        #XX = np.array(self.physics.engine.X)
-        #csv_file_path = 'vectors_data_FI.csv'  # save pressure data
-        #with open(csv_file_path, 'a', newline='') as csvfile:
-        #    csv_writer = csv.writer(csvfile)
-        #    csv_writer.writerow(np.insert(XX, 0, t))
+        XX = np.array(self.physics.engine.X)
+        csv_file_path = 'vectors_data_FI.csv'  # save pressure data
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(np.insert(XX, 0, t))
         return converged
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
@@ -507,11 +508,10 @@ class DartsModel:
     def add_model(self, model):
         self.instances.append(model)
 
-    def run_seq(self, days: float = None, restart_dt: float = 0., verbose: bool = True):
+    def run_seq(self, days: float = None, restart_dt: float = 0., outer_loop =False, verbose: bool = True):
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
-
         # same logic as in engine.run
         if fabs(t) < 1e-15:
             dt = self.params.first_ts
@@ -519,28 +519,82 @@ class DartsModel:
             dt = restart_dt
         else:
             dt = min(self.prev_ts * self.params.mult_ts, self.params.max_ts)
-
+        max_outloop = 2
         ts = 0
         while t < stop_time:
 
-            # Pressure loop
-            converged_P = self.instances[0].run_timestep(dt, t, verbose)
-            P = np.array(self.physics.engine.X[::3])
-            #print('X_P', self.physics.engine.X)
-            # Concentration loop
-            for i in range(len(P)):
-                self.instances[1].physics.engine.X[3 * i] = P[i]
-            converged_C = self.instances[1].run_timestep(dt, t, verbose)
-            for i in range(len(self.physics.engine.X)):
-                if i % 3 != 0:
-                    self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
+            if outer_loop:
+                convergence = False
+                for k in range(max_outloop):
+                    if k==0:
+                        dt_orginal= dt
+                    # Pressure loop
+                    XP_Before = deepcopy(self.instances[0].physics.engine.X)
+                    XC_Before = deepcopy(self.instances[1].physics.engine.X)
+                    converged_P = self.instances[0].run_timestep(dt, t, verbose)
+                    if converged_P:
+                        P = np.array(self.physics.engine.X[::3])
+                        for i in range(len(P)):
+                            self.instances[1].physics.engine.X[3 * i] = P[i]
+                    else:
+                        self.instances[0].physics.engine.X = XP_Before
+                        break
+                    # Concentration loop
+                    converged_C = self.instances[1].run_timestep(dt, t, verbose)
+
+                    if converged_C:
+                        for i in range(len(self.physics.engine.X)):
+                            if i % 3 != 0:
+                                self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
+                    else:
+                        self.instances[1].physics.engine.X = XC_Before
+                        break
+
+                    self.instances[0].physics.engine.assemble_linear_system(dt)
+                    self.apply_rhs_flux(dt, t)
+                    RP = self.instances[0].physics.engine.calc_newton_residual()
+                    RC = self.instances[1].physics.engine.calc_newton_residual()
+                    if RP < (self.params.tolerance_newton) and RC < (self.params.tolerance_newton):
+                        convergence = True
+                        break
+                    else:
+                        self.instances[0].physics.engine.X = XP_Before
+                        self.instances[1].physics.engine.X = XC_Before
+                        dt /= self.params.mult_ts
+                        if verbose:
+                            print("Cut timestep to %2.3f" % dt)
+                        if dt < self.params.min_ts:
+                            break
+                        if k == max_outloop-1:
+                            convergence = True
+                            dt = dt_orginal
+            else:
+                # Pressure loop
+                converged_C = False
+                converged_P = self.instances[0].run_timestep(dt, t, verbose)
+                # Concentration loop
+                if converged_P:
+                    P = np.array(self.physics.engine.X[::3])
+                    for i in range(len(P)):
+                        self.instances[1].physics.engine.X[3 * i] = P[i]
+                    converged_C = self.instances[1].run_timestep(dt, t, verbose)
+                    if converged_C:
+                        for i in range(len(self.physics.engine.X)):
+                            if i % 3 != 0:
+                                self.instances[0].physics.engine.X[i] = self.instances[1].physics.engine.X[i]
+                convergence = True if (converged_P and converged_C) else False
+
+
+
+
+
             #print(self.instances[0].physics.engine.X)
-            #XX = np.array(self.instances[1].physics.engine.X)
-            #csv_file_path = 'vectors_data_SEQ.csv'  # save pressure data
-            #with open(csv_file_path, 'a', newline='') as csvfile:
-            #    csv_writer = csv.writer(csvfile)
-            #    csv_writer.writerow(np.insert(XX, 0, t))
-            if converged_P and converged_C:
+            XX = np.array(self.instances[1].physics.engine.X)
+            csv_file_path = 'vectors_data_SEQ.csv'  # save pressure data
+            with open(csv_file_path, 'a', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+                csv_writer.writerow(np.insert(XX, 0, t))
+            if convergence:
                 t += dt
                 ts += 1
                 if verbose:

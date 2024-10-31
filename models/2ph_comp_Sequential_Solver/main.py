@@ -47,6 +47,7 @@ def plot_sol(n):
 if __name__ == '__main__':
     # ----------------------------------
     SEQ = False
+    outer_loop = True
     days = 10
     reload = False
     Save = True
@@ -61,7 +62,7 @@ if __name__ == '__main__':
         pressure.add_model(pressure)
         pressure.add_model(concentration)
         if not reload:
-            pressure.run_seq(days=days)
+            pressure.run_seq(days=days, outer_loop=outer_loop)
             pressure.print_timers()
             pressure.print_stat()
             time_data = pd.DataFrame.from_dict(pressure.physics.engine.time_data)

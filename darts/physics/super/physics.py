@@ -109,6 +109,7 @@ class Compositional(PhysicsBase):
                     return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
                 elif self.engine == 'P_SEQ':
                     return eval("engine_sequentialp_%s%d_%d" % (platform, self.nc, self.nph))()
+                    #return eval("engine_super_%s%d_%d" % (platform, self.nc, self.nph))()
                 elif self.engine == 'C_SEQ':
                     return eval("engine_sequentialc_%s%d_%d" % (platform, self.nc, self.nph))()
 

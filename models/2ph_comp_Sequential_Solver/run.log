@@ -440,22 +440,22 @@ Number of operators: 28
 Number of points: 200
 Number of interpolations: 44800 
 Number of points used: 3559 (0.044%)
-Total elapsed 7.462000 sec
-	jacobian assembly 7.352000 sec
-		interpolation 7.346000 sec
+Total elapsed 7.340000 sec
+	jacobian assembly 7.232000 sec
+		interpolation 7.225000 sec
 			property 0 interpolation 0.000000 sec
-			reservoir 0 interpolation 8.758000 sec
-				body generation 8.750000 sec
-					point generation 8.733000 sec
-			well controls interpolation 0.025000 sec
-				body generation 0.025000 sec
-					point generation 0.025000 sec
-			wellbore interpolation 0.607000 sec
-				body generation 0.605000 sec
-					point generation 0.604000 sec
-	linear solver setup 0.000000 sec
+			reservoir 0 interpolation 8.388000 sec
+				body generation 8.381000 sec
+					point generation 8.369000 sec
+			well controls interpolation 0.023000 sec
+				body generation 0.023000 sec
+					point generation 0.023000 sec
+			wellbore interpolation 0.602000 sec
+				body generation 0.599000 sec
+					point generation 0.598000 sec
+	linear solver setup 0.001000 sec
 		SUPERLU 0.000000 sec
 	linear solver solve 0.017000 sec
-		SUPERLU 0.011000 sec
+		SUPERLU 0.013000 sec
 	newton update 0.000000 sec
-		composition correction 0.004000 sec
+		composition correction 0.006000 sec
