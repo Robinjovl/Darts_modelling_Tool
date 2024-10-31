@@ -143,23 +143,29 @@ class Geothermal(PhysicsBase):
         enthalpy = np.array(mesh.enthalpy, copy=False)
         enthalpy.fill(enth)
 
-    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad):
+    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad, ref_depth_p=0, p_at_ref_depth=1,
+                                          ref_depth_T=0, T_at_ref_depth=293.15):
         """
         Function to set nonuniform initial reservoir condition
 
         :param mesh: :class:`Mesh` object
         :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
         :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
+        :param ref_depth_p: the reference depth for the pressure, km
+        :param p_at_ref_depth: the value of the pressure at the reference depth, bars
+        :param ref_depth_T: the reference depth for the temperature, km
+        :param T_at_ref_depth: the value of the temperature at the reference depth, K
         """
         assert isinstance(mesh, conn_mesh)
 
         depth = np.array(mesh.depth, copy=True)
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = depth[:pressure.size] / 1000 * pressure_grad + 1
+        pressure[:] = (depth[:pressure.size] / 1000 - ref_depth_p) * pressure_grad + p_at_ref_depth
 
+        # set initial enthalpy through given temperature and pressure
         enthalpy = np.array(mesh.enthalpy, copy=False)
-        temperature = depth[:pressure.size] / 1000 * temperature_grad + 293.15
+        temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
 
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])
