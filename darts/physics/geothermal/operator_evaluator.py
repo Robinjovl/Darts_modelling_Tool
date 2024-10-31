@@ -1,5 +1,5 @@
 from darts.engines import operator_set_evaluator_iface, value_vector
-from darts.physics.operators_base import OperatorsBase
+from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.geothermal.property_container import PropertyContainerIAPWS
 
 

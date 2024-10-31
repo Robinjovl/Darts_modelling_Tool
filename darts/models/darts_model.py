@@ -7,7 +7,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from darts.reservoirs.reservoir_base import ReservoirBase
-from darts.physics.physics_base import PhysicsBase
+from darts.physics.base.physics_base import PhysicsBase
 
 from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
 from darts.engines import print_build_info as engines_pbi

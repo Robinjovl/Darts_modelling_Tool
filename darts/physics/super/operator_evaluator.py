@@ -1,6 +1,6 @@
 import numpy as np
 from darts.engines import operator_set_evaluator_iface, value_vector
-from darts.physics.operators_base import OperatorsBase
+from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
 
 

@@ -7,13 +7,14 @@ from darts.physics.properties.basic import ConstFunc
 
 from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.properties.iapws.custom_rock_property import *
-from darts.physics.property_base import PropertyBase
+from darts.physics.base.property_base import PropertyBase
 
 
 class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
+
         property_container = GeothermalIAPWSProperties()
 
         property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
