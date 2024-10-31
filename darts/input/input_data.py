@@ -6,8 +6,8 @@ class RockProps():
     '''
     def __init__(self, type_hydr='', type_mech=''):
         '''
-        :param type_hydr: if '' - idothermal flow; if 'thermal' - thermal flow
-        :param type_mech: if '' - mechanics off; options: 'poroelasticity', 'thermoporoelasticity'
+        :param type_hydr: if 'isothermal' - isothermal flow; if 'thermal' - thermal flow
+        :param type_mech: if 'none' - mechanics off; other options: 'poroelasticity', 'thermoporoelasticity'
         '''
         self.porosity = None
         self.perm = None  # Permeability tensor, 9 values [mD]
@@ -19,13 +19,13 @@ class RockProps():
             self.heat_capacity = None  # [kJ/m3/K]
             self.conductivity = None   # thermal conductivity [kJ/m/day/K]
         
-        if type_mech != '': # geomechanical properties
+        if type_mech != 'none': # geomechanical properties
             self.E = None   # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
         else: # only hydrodynamic
-            self.compressibility = 1.   # [1/bar]
+            self.compressibility = None   # [1/bar]
 
         if type_mech == 'thermoporoelasticity': # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
