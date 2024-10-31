@@ -4,8 +4,7 @@ from darts.models.cicd_model import CICDModel
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.black_oil import *
-from blackoil import BlackOil
-
+from darts.physics.blackoil import BlackOil, BlackOilFluidProps
 
 # Model class creation here!
 class Model(CICDModel):
@@ -67,8 +66,7 @@ class Model(CICDModel):
                 w.control = self.physics.new_bhp_prod(70)
 
     def set_input_data(self, case):
-        idata = InputData(type_hydr='isothermal', type_mech='none')
-        from blackoil import BlackOilFluidProps
+        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
         pvt = 'physics.in'
         # this sets default properties
         idata.fluid = BlackOilFluidProps(pvt=pvt)
