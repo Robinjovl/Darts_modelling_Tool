@@ -206,4 +206,8 @@ class Model_CPG(CICDModel):
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 
+    def set_input_data_rock(self, case=''):
+        self.idata.rock.compressibility = 1e-5  # [1/bars]
+        self.idata.rock.compressibility_ref_p = 1 # [bars]
+        self.idata.rock.compressibility_ref_T = 273.15  # [K]
 

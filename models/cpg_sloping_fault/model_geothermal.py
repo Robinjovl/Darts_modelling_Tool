@@ -83,6 +83,7 @@ class ModelGeothermal(Model_CPG):
         #init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
+        self.set_input_data_rock(case)
         self.idata.fluid = GeothermalIAPWSFluidProps()
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
