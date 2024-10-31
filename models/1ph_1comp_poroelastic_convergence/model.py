@@ -44,7 +44,7 @@ class Model(THMCModel):
         elif self.mode == 'poroelastic':
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
-        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
         self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1
