@@ -15,8 +15,8 @@ class GeothermalIAPWS(Geothermal):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
         idata.rock.compr_ev = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
-        idata.rock.compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
-        idata.rock.energy_ev = custom_rock_energy_evaluator(property_container.rock)  # Create rock_energy object
+        idata.rock.compaction_ev = custom_rock_compaction_evaluator(idata.rock)
+        idata.rock.energy_ev = custom_rock_energy_evaluator(idata.rock)  # Create rock_energy object
 
         property_container = PropertiesIAPWS(idata)
 
@@ -29,8 +29,8 @@ class GeothermalPH(Geothermal):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
         idata.rock.compr_ev = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
-        idata.rock.compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
-        idata.rock.energy_ev = custom_rock_energy_evaluator(property_container.rock)  # Create rock_energy object
+        idata.rock.compaction_ev = custom_rock_compaction_evaluator(idata.rock)
+        idata.rock.energy_ev = custom_rock_energy_evaluator(idata.rock)  # Create rock_energy object
 
         property_container = PropertiesPH(idata)
         self.add_property_region(property_container)
