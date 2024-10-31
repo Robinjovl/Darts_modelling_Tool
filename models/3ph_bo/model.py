@@ -66,7 +66,7 @@ class Model(CICDModel):
                 w.control = self.physics.new_bhp_prod(70)
 
     def set_input_data(self, case):
-        idata = InputData(type_hydr='isothermal', type_mech='none')
+        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
         pvt = 'physics.in'
         # this sets default properties
         idata.fluid = BlackOilFluidProps(pvt=pvt)

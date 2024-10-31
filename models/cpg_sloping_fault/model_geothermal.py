@@ -92,8 +92,13 @@ class ModelGeothermal(Model_CPG):
             self.idata.initial.initial_pressure = 200.  # bars
             self.idata.initial.initial_temperature = 350.  # K
         elif init_type == 'gradient':         # gradient by depth
-            self.idata.initial.pressure_gradient = 100  # bars/km
-            self.idata.initial.temperature_gradient = 30   # K/km
+            self.idata.initial.reference_depth_for_pressure = 0  # [m]
+            self.idata.initial.pressure_gradient = 100  # [bar/km]
+            self.idata.initial.pressure_at_ref_depth = 1 # [bars]
+
+            self.idata.initial.reference_depth_for_temperature = 0  # [m]
+            self.idata.initial.temperature_gradient = 30  # [K/km]
+            self.idata.initial.temperature_at_ref_depth = 273.15 + 20 # [K]
 
         # well controls
         wctrl = self.idata.wells.controls  # short name
