@@ -50,13 +50,13 @@ public:
      * @brief Get the number of dimensions in interpolation space
      *
      */
-  int get_n_dims() { return N_DIMS; };
+  int get_n_dims() const { return N_DIMS; };
 
   /**
      * @brief Get the number of operators to be interpolated
      *
      */
-  int get_n_ops() { return N_OPS; };
+  int get_n_ops() const { return N_OPS; };
 
   /**
      * @brief Compute interpolation for all operators at the given point

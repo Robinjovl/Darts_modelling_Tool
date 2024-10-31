@@ -42,34 +42,34 @@ public:
      *
      * @param axis index of axis in question
      */
-   int get_axis_n_points(int axis);
+   int get_axis_n_points(int axis) const;
 
    /**
      * @brief Get the parametrization minimum value for given axis
      *
      * @param axis index of axis in question
      */
-   double get_axis_min(int axis);
+   double get_axis_min(int axis) const;
 
    /**
      * @brief Get the parametrization maximum value for given axis
      *
      * @param axis index of axis in question
      */
-   double get_axis_max(int axis);
+   double get_axis_max(int axis) const;
 
    /**
      * @brief Get the number of interpolations that took place
      *
      */
-   uint64_t get_n_interpolations();
+   uint64_t get_n_interpolations() const;
 
    /**
      * @brief Get the total number of supporting points in parameter space
      *
      * @return the total number of supporting points
      */
-   uint64_t get_n_points_total();
+   uint64_t get_n_points_total() const;
 
    /**
      * @brief Get the number of supporting points used (evaluated through supporting_point_evaluator)
@@ -77,7 +77,7 @@ public:
      * 
      * @return the number of supporting points used
      */
-   uint64_t get_n_points_used();
+   uint64_t get_n_points_used() const;
    /**
    * @brief Compute operators values for specified state on device
    * 

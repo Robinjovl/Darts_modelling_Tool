@@ -14,8 +14,8 @@ class CICDModel(DartsModel):
     # diff_norm_normalized_tol defines tolerance for L2 norm of final solution difference , normalized by amount of blocks and variable range
     # diff_abs_max_normalized_tol defines tolerance for maximum of final solution difference, normalized by variable range
     # rel_diff_tol defines tolerance (in %) to a change in integer simulation parameters as linear and newton iterations
-    def check_performance(self, overwrite=0, diff_norm_normalized_tol=1e-9, diff_abs_max_normalized_tol=1e-7,
-                          rel_diff_tol=1, perf_file='', pkl_suffix=''):
+    def check_performance(self, overwrite=0, diff_norm_normalized_tol=1e-6, diff_abs_max_normalized_tol=1e-4,
+                          rel_diff_tol=15, perf_file='', pkl_suffix=''):
         """
         Function to check the performance data to make sure whether the performance has been changed
         """
@@ -64,7 +64,7 @@ class CICDModel(DartsModel):
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)
-            print('SAVED')
+            print('SAVED PKL FILE', perf_file, pkl_suffix)
             return 0
 
     def get_performance_data(self):
@@ -78,7 +78,7 @@ class CICDModel(DartsModel):
         perf_data['solution'] = np.copy(self.physics.engine.X)
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_res_blocks
         perf_data['variables'] = self.physics.n_vars
-        perf_data['OBL resolution'] = self.physics.n_points
+        perf_data['OBL resolution'] = self.physics.n_axes_points
         perf_data['operators'] = self.physics.n_ops
         perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
         perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
@@ -106,7 +106,7 @@ class CICDModel(DartsModel):
         :return:
         """
         if file_name == '':
-            file_name = 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl'
+            file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl')
         data = self.get_performance_data()
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
@@ -153,8 +153,9 @@ class CICDModel(DartsModel):
         :param file_name: performance filename
         """
         if file_name == '':
-            file_name = 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl'
+            file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl')
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0

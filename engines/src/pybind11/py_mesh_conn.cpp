@@ -128,7 +128,9 @@ void pybind_mesh_conn(py::module &m)
 	  .def_readwrite("hooke_rhs", &conn_mesh::hooke_rhs)
 	  .def_readwrite("biot_rhs", &conn_mesh::biot_rhs)
 	  .def_readwrite("darcy_rhs", &conn_mesh::darcy_rhs)
-	  .def_readwrite("vol_strain_rhs", &conn_mesh::vol_strain_rhs);
+	  .def_readwrite("vol_strain_rhs", &conn_mesh::vol_strain_rhs)
+	  .def_readwrite("velocity_appr", &conn_mesh::velocity_appr)
+	  .def_readwrite("velocity_offset", &conn_mesh::velocity_offset);
 
 	py::bind_vector<std::vector<std::vector<index_t>>>(m, "vector_index_vector");
 }

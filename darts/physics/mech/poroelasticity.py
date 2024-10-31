@@ -17,7 +17,8 @@ class Poroelasticity(Compositional):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False, discretizer: str = 'mech_discretizer'):
+                 thermal: bool = False, cache: bool = False, discretizer: str = 'mech_discretizer',
+                 axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -43,9 +44,16 @@ class Poroelasticity(Compositional):
         :type cache: bool
         :param discretizer: Name of discretizer
         :type discretizer: str
+        :param axes_min: Minimum bounds of OBL axes
+        :type axes_min: list or np.ndarray
+        :param axes_max: Maximum bounds of OBL axes
+        :type axes_max: list or np.ndarray
+        :param n_axes_points: Number of points over OBL axes
+        :type n_axes_points: list or np.ndarray
         """
         # Define nc, nph and (iso)thermal
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache,
+                         axes_min, axes_max, n_axes_points)
 
         self.n_dim = 3
         self.discretizer_name = discretizer

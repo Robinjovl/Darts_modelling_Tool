@@ -184,6 +184,9 @@ public:
 	 *  @{
 	 */
 
+	/// @brief space dimension
+	const static uint8_t ND = 3;
+
 	/// @brief vector of unknowns in the current timestep
 	std::vector<value_t> X;
 
@@ -237,6 +240,10 @@ public:
 	std::vector<value_t> op_vals_arr;	// [N_OPS * n_blocks] array of values of operators
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
+
+	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
+	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
+	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;

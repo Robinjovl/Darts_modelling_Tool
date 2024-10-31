@@ -92,13 +92,13 @@ fi
 # ------------------------------------------------------------------------------
 
 rm -rf darts/*.so
-
+rm -rf dist
+	
 # Build loop -------------------------------------------------------------------
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder'
     rm -r build
-    rm -r dist
 else
     if [[ "$skip_req" == false ]]; then
         # update submodules

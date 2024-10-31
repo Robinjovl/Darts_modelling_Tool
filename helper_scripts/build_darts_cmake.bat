@@ -59,11 +59,11 @@ echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
 del darts\*.pyd 2> NUL
-
+rmdir /s /q dist 2> NUL
+  
 if %clean_mode%==true (
   echo - Cleaning up
   rmdir /s /q build 2> NUL
-  rmdir /s /q dist 2> NUL
   goto :eof
 )
 

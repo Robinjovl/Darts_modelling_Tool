@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <cmath>
 
+#include <pybind11/pybind11.h>
+
 #include "engine_base.h"
 #include "csr_matrix.h"
 #include "gpu_tools.h"
@@ -106,6 +108,13 @@ public:
   value_t *RV_d, *PV_d;                // [n_blocks] rock and pore volumes for each block
   value_t *mesh_tran_d, *mesh_tranD_d; // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
   value_t *mesh_hcap_d;                // [n_blocks] rock heat capacity for each block
+
+  value_t *molar_weights_d;            // [n_regions * NC] molar weights of components for reconstruction of Darcy velocities
+  value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
+  value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
+  index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
+  index_t *mesh_op_num_d;              // regions indices for every cell 
+  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory 
 };
 
 template <uint8_t N_VARS>

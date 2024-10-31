@@ -52,13 +52,14 @@ class Geothermal(PhysicsBase):
         # Define OBL axes
         axes_min = value_vector([min_p, min_e])
         axes_max = value_vector([max_p, max_e])
+        n_axes_points = index_vector([n_points] * len(variables))
 
         # Define number of operators:
         n_ops = 12
 
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
-                         axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
+                         axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_operators(self):
         """

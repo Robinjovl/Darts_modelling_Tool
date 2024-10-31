@@ -362,6 +362,10 @@ public:
 
   std::vector <index_t> test_debug;
 
+  /* to reconstruct velocities */
+  std::vector<index_t> velocity_offset;
+  std::vector<value_t> velocity_appr;
+
 private:
   // one-way, unsorted conection list
   std::vector <index_t> one_way_block_m;

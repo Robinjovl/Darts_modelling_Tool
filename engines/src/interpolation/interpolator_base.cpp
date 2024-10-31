@@ -3,12 +3,20 @@
 #include <assert.h>
 #include "interpolator_base.hpp"
 
+namespace std
+{
+  std::string to_string(const __uint128_t& value)
+  {
+    return std::to_string(static_cast<double>(value));
+  };
+};
+
 interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator_,
                                      const std::vector<int> &axes_points,
                                      const std::vector<double> &axes_min, const std::vector<double> &axes_max)
     : supporting_point_evaluator(supporting_point_evaluator_), axes_points(axes_points), axes_min(axes_min), axes_max(axes_max)
 {
-    n_dims = axes_points.size();
+    n_dims = static_cast<int>(axes_points.size());
     assert(axes_min.size() == axes_points.size());
     assert(axes_max.size() == axes_points.size());
     axes_step.resize(n_dims);
@@ -21,10 +29,11 @@ interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_po
 
     //use double to avoid overflow
     n_points_total_fp = 1;
+    n_points_total = 1;
     for (int dim = 0; dim < n_dims; dim++)
-        n_points_total_fp *= axes_points[dim];
+      n_points_total *= axes_points[dim];
 
-    n_points_total = n_points_total_fp;
+    n_points_total_fp = static_cast<double>(n_points_total);
     n_points_used = 0;
     n_interpolations = 0;
 }
@@ -68,32 +77,32 @@ int interpolator_base::evaluate_with_derivatives(const std::vector<double> &stat
     return 0;
 }
 
-int interpolator_base::get_axis_n_points(int axis)
+int interpolator_base::get_axis_n_points(int axis) const
 {
     return axes_points[axis];
 }
 
-double interpolator_base::get_axis_max(int axis)
+double interpolator_base::get_axis_max(int axis) const
 {
     return axes_max[axis];
 }
 
-double interpolator_base::get_axis_min(int axis)
+double interpolator_base::get_axis_min(int axis) const
 {
     return axes_min[axis];
 }
 
-uint64_t interpolator_base::get_n_interpolations()
+uint64_t interpolator_base::get_n_interpolations() const
 {
     return n_interpolations;
 }
 
-uint64_t interpolator_base::get_n_points_total()
+uint64_t interpolator_base::get_n_points_total() const
 {
-    return n_points_total;
+    return static_cast<uint64_t>(n_points_total);
 }
 
-uint64_t interpolator_base::get_n_points_used()
+uint64_t interpolator_base::get_n_points_used() const
 {
-    return n_points_used;
+    return static_cast<uint8_t>(n_points_used);
 }

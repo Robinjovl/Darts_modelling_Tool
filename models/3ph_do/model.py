@@ -92,7 +92,7 @@ class ModelProperties(PropertyContainer):
 
     def run_flash(self, pressure, temperature, zc):
 
-        ph = [0, 1, 2]
+        ph = np.array([0, 1, 2], dtype=np.intp)
 
         for i in range(self.nc):
             self.x[i][i] = 1

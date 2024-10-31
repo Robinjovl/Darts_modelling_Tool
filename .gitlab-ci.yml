@@ -66,7 +66,16 @@ build-linux-3.7:
         PY_VER: '3.7'        # for python image selection in .build-linux
         PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
         ODLS: '-a'
-        
+
+build-linux-3.9-gpu: 
+    rules:
+        - if: $TEST_GPU == "1"   
+    extends: .build-linux-gpu
+    variables:
+        GIT_SUBMODULE_STRATEGY: recursive
+        PY_VER: '3.9'       # for python image selection in .build-linux
+        ODLS: '-a'
+
 ###################################################################################
 build-linux-3.12-ODLS:
     rules: 
@@ -297,6 +306,27 @@ build-windows-3.7-ODLS:
       when: always
       
 ###################################################################################
+     
+.build-linux-gpu:
+    stage: build
+    tags:
+        - linux_gpu
+    before_script:
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
+        - conda activate darts_gitlab_gpu_build
+    script:
+        - echo "build *.so on linux GPU started with ODLS=$ODLS"
+        - ./helper_scripts/build_install_darts_gpu.sh
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 day
+      when: always
+      
+###################################################################################
 
 .build-windows:
     stage: build
@@ -478,6 +508,18 @@ test-linux-3.7:
         - build-linux-3.7
 
 ###################################################################################
+
+test-linux-3.9-gpu:
+    rules: 
+        - if: $TEST_GPU == "1"
+    extends: .test-linux-gpu
+    variables:
+        PY_VER: '3.9'
+        ODLS: '-a'
+    dependencies:
+        - build-linux-3.9-gpu
+      
+###################################################################################
 test-windows-3.12:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -643,25 +685,27 @@ test-windows-3.7-ODLS:
         - apt-get update -qq && apt-get install -y -qq libxcursor1      # for gmsh
         - apt-get update -qq && apt-get install -y -qq libxinerama1     # for gmsh
         - export PYTHONUNBUFFERED=1
-        # complex command to create fake wheel and figure out the proper name for current python and platform
-        - export WHEEL_NAME=`python -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.1.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"`
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         - ls ./dist/*
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
-        - pip install --force-reinstall --no-deps ./dist/$WHEEL_NAME
+        - pip install --force-reinstall --no-deps ./dist/*.whl
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager ./dist/$WHEEL_NAME
+        - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./upload_pkl.sh "$CI_COMMIT_SHORT_SHA" $ODLS
+        - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
+        # test interpolators
+        - cd tests/engines/src/interpolation
+        - python test_interpolation.py
+        - cd ../../../..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - python main.py
@@ -678,6 +722,43 @@ test-windows-3.7-ODLS:
 
 ###################################################################################
 
+.test-linux-gpu:
+    stage: test
+    tags:
+        - linux_gpu
+    before_script:
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes 
+        - conda activate darts_gitlab_gpu_test
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
+        - pip install ./dist/*.whl
+        - export LD_LIBRARY_PATH=`python -c "import os;import darts;print(os.path.dirname(darts.__file__))"`:$LD_LIBRARY_PATH  # help to find discretizer.so when import engines
+    script:
+        # run simulation fot test models set
+        - cd models
+        # passing additional argument LOG to trigger verbose check performance
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
+        - echo "run_test_suite2 returned" $?
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
+        # test discretizer
+        - cd discretizer/tests/compare_discretizers
+        - python main.py
+        - cd ../../..
+        #
+        - echo "test finished"
+    artifacts:
+      paths:
+        - './models/_logs/*.log'
+        - './models/pkl_lin.tar.gz'
+      expire_in: 1 day
+      when: always
+      
+###################################################################################
+
 .test-windows:
     stage: test
     # Will be executed on runner with windows tag - that assumed to run on windows host
@@ -688,22 +769,25 @@ test-windows-3.7-ODLS:
         # enable unbuffered output so that everything goes to log file in a correct order
         - $env:PYTHONUNBUFFERED = 1
         - $env:PYTHONLEGACYWINDOWSSTDIO = 1
-        # complex command to create fake wheel and figure out the proper name for current python and platform
-        - $env:WHEEL_NAME=python.exe -c "from setuptools.dist import Distribution;from distutils.core import  Extension;dist = Distribution({'name':'open_darts', 'version':'1.1.4', 'ext_modules':[Extension('mylib', ['mysrc.pyx', 'native.c'])]});bdist_wheel_cmd = dist.get_command_obj('bdist_wheel');print(bdist_wheel_cmd.wheel_dist_name + '-' + '-'.join(bdist_wheel_cmd.get_tag())+ '.whl');"
+        - $WHEEL_NAME=python -c "import os; print(os.listdir('dist')[0])"
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
-        - pip install --force-reinstall --no-deps .\dist\$env:WHEEL_NAME
+        - pip install --force-reinstall --no-deps .\dist\$WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager .\dist\$env:WHEEL_NAME
+        - pip install --upgrade --upgrade-strategy eager .\dist\$WHEEL_NAME
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\upload_pkl.bat $env:CI_COMMIT_SHORT_SHA $env:ODLS
+        - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
         - cd ..
+        # test interpolators
+        - cd tests\engines\src\interpolation
+        - python test_interpolation.py
+        - cd ..\..\..\..
         # test discretizer
         - cd discretizer\tests\compare_discretizers
         - python main.py

@@ -69,43 +69,65 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
 }
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
-int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
+int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
-  index_t n_blocks = mesh->n_blocks;
-  index_t n_conns = mesh->n_conns;
-  std::vector<value_t> &tran = mesh->tran;
-  std::vector<value_t> &tranD = mesh->tranD;
-  std::vector<value_t> &hcap = mesh->heat_capacity;
-  std::vector<value_t> &kin_fac = mesh->kin_factor; // default value of 1
-  std::vector<value_t> &grav_coef = mesh->grav_coef;
+    index_t n_blocks = mesh->n_blocks;
+    index_t n_res_blocks = mesh->n_res_blocks;
+    index_t n_conns = mesh->n_conns;
+    const std::vector<value_t>& tran = mesh->tran;
+    const std::vector<value_t>& tranD = mesh->tranD;
+    const std::vector<value_t>& hcap = mesh->heat_capacity;
+    const std::vector<value_t>& kin_fac = mesh->kin_factor; // default value of 1
+    const std::vector<value_t>& grav_coef = mesh->grav_coef;
+    const std::vector<value_t>& velocity_appr = mesh->velocity_appr;
+    const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
+    const std::vector<index_t>& op_num = mesh->op_num;
 
-  value_t *Jac = jacobian->get_values();
-  index_t *diag_ind = jacobian->get_diag_ind();
-  index_t *rows = jacobian->get_rows_ptr();
-  index_t *cols = jacobian->get_cols_ind();
-  index_t *row_thread_starts = jacobian->get_row_thread_starts();
+    value_t* Jac = jacobian->get_values();
+    index_t* diag_ind = jacobian->get_diag_ind();
+    index_t* rows = jacobian->get_rows_ptr();
+    index_t* cols = jacobian->get_cols_ind();
+    index_t* row_thread_starts = jacobian->get_row_thread_starts();
 
-  CFL_max = 0;
+    // for reconstruction of phase velocities
+    if (!mesh->velocity_appr.empty() && darcy_velocities.empty())
+        darcy_velocities.resize(n_res_blocks * NP * ND);
+    std::fill(darcy_velocities.begin(), darcy_velocities.end(), 0.0);
+
+    // if velocity reconstruction enabled, also provide molar weights
+    if (!mesh->velocity_appr.empty())
+    {
+      if (molar_weights.empty())
+      {
+        printf("Velocity reconstruction is enabled. Provide molar weights!");
+        exit(-1);
+      }
+    }
+
+    CFL_max = 0;
 
 #ifdef _OPENMP
-  //#pragma omp parallel reduction (max: CFL_max)
+    //#pragma omp parallel reduction (max: CFL_max)
 #pragma omp parallel
-  {
-    int id = omp_get_thread_num();
-    index_t start = row_thread_starts[id];
-    index_t end = row_thread_starts[id + 1];
+    {
+        int id = omp_get_thread_num();
+        index_t start = row_thread_starts[id];
+        index_t end = row_thread_starts[id + 1];
 
-    numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
+        numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
 #else
-  index_t start = 0;
-  index_t end = n_blocks;
-  memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
+    index_t start = 0;
+    index_t end = n_blocks;
+    memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
 #endif //_OPENMP
 
     index_t j, diag_idx, jac_idx;
-    value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
+    value_t p_diff, gamma_p_diff, t_diff, gamma_t_i, gamma_t_j, phi_i, phi_j, phi_avg, phi_0_avg;
     value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
+    value_t phase_presence_mult;
+    index_t cell_conn_idx, cell_conn_num;
+    std::array<value_t, NP> phase_fluxes;
 
     int connected_with_well;
 
@@ -113,289 +135,400 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     { // loop over grid blocks
 
       // initialize the CFL_in and CFL_out
-      for (uint8_t c = 0; c < NC; c++)
-      {
-        CFL_out[c] = 0;
-        CFL_in[c] = 0;
-        connected_with_well = 0;
-      }
-
-      // index of diagonal block entry for block i in CSR values array
-      diag_idx = N_VARS_SQ * diag_ind[i];
-
-      // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
-      for (uint8_t c = 0; c < NE; c++)
-      {
-        RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
-
-        // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
-        if (i < mesh->n_res_blocks)
-          RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
-
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-          Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
-
-          // Include derivatives for reaction term if part of reservoir cells:
-          if (i < mesh->n_res_blocks)
-          {
-            Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
-          }
-        }
-      }
-
-      // index of first entry for block i in CSR cols array
-      index_t csr_idx_start = rows[i];
-      // index of last entry for block i in CSR cols array
-      index_t csr_idx_end = rows[i + 1];
-      // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
-      index_t conn_idx = csr_idx_start - i;
-
-      jac_idx = N_VARS_SQ * csr_idx_start;
-
-      for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
-      { // fill offdiagonal part + contribute to diagonal
-
-        j = cols[csr_idx];
-        // skip diagonal
-        if (i == j)
-          continue;
-
-        value_t trans_mult = 1;
-        value_t trans_mult_der_i[N_VARS];
-        value_t trans_mult_der_j[N_VARS];
-        if (params->trans_mult_exp > 0 && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
-        {
-          // Calculate transmissibility multiplier:
-          phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-          phi_j = op_vals_arr[j * N_OPS + PORO_OP];
-
-          // Take average interface porosity:
-          phi_avg = (phi_i + phi_j) * 0.5;
-          phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-          trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-          for (uint8_t v = 0; v < N_VARS; v++)
-          {
-            trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
-            trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
-          }
-          trans_mult = pow(phi_avg, params->trans_mult_exp);
-        }
-        else
-        {
-          for (uint8_t v = 0; v < N_VARS; v++)
-          {
-            trans_mult_der_i[v] = 0;
-            trans_mult_der_j[v] = 0;
-          }
-        }
-
-        p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
-
-        if (j >= mesh->n_res_blocks)
-          connected_with_well = 1;
-
-        // [2] fill offdiagonal part + contribute to diagonal, only fluid part is considered in energy equation
-        for (uint8_t p = 0; p < NP; p++)
-        { // loop over number of phases for convective operator
-
-          // calculate gravity term for phase p
-          value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] +
-                                 op_vals_arr[j * N_OPS + GRAV_OP + p]) /
-                                2;
-
-          // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
-          value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
-
-          // calculate partial derivatives for gravity and capillary terms
-          value_t grav_pc_der_i[N_VARS];
-          value_t grav_pc_der_j[N_VARS];
-          for (uint8_t v = 0; v < N_VARS; v++)
-          {
-            grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
-            grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
-          }
-
-          double phase_gamma_p_diff = trans_mult * tran[conn_idx] * dt * phase_p_diff;
-
-          if (phase_p_diff < 0)
-          {
-            // mass and energy outflow with effect of gravity and capillarity
-            for (uint8_t c = 0; c < NE; c++)
-            {
-              value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
-
-              if (c < NC)
-                CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
-
-              RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
-              for (uint8_t v = 0; v < N_VARS; v++)
-              {
-                Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                                   tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
-                Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
-
-                if (v == 0)
-                {
-                  Jac[jac_idx + c * N_VARS + v] -= c_flux;
-                  Jac[diag_idx + c * N_VARS + v] += c_flux;
-                }
-              }
-            }
-          }
-          else
-          {
-            // mass and energy inflow with effect of gravity and capillarity
-            for (uint8_t c = 0; c < NE; c++)
-            {
-              value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
-
-              if (c < NC)
-                CFL_in[c] += phase_p_diff * c_flux;
-
-              RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
-              for (uint8_t v = 0; v < N_VARS; v++)
-              {
-                Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                                  tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
-                Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
-                if (v == 0)
-                {
-                  Jac[diag_idx + c * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
-                  Jac[jac_idx + c * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
-                }
-              }
-            }
-          }
-
-        } // end of loop over number of phases for convective operator with gravity and capillarity
-
-        // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
-        phi_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5; // diffusion term depends on total porosity!
-
-        // Only if block connection is between reservoir and reservoir cells!
-        if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
-        {
-          // Add diffusion term to the residual:
-          for (uint8_t c = 0; c < NE; c++)
-          {
-            for (uint8_t p = 0; p < NP; p++)
-            {
-              value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
-
-              if (grad_con < 0)
-              {
-                // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
-                value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[i * N_OPS + UPSAT_OP + p];
-
-                RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
-
-                // Add diffusion terms to Jacobian:
-                for (uint8_t v = 0; v < N_VARS; v++)
-                {
-                  Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-                  Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-
-                  Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v];
-                }
-              }
-              else
-              {
-                // Diffusion flows from cell j to i (high to low), use upstream quantity from cell j for density and saturation:
-                value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[j * N_OPS + UPSAT_OP + p];
-
-                RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
-
-                // Add diffusion terms to Jacobian:
-                for (uint8_t v = 0; v < N_VARS; v++)
-                {
-                  Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-                  Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
-
-                  Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * mesh->tranD[conn_idx] * phi_avg * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v];
-                }
-              }
-            }
-          }
-        }
-
-        // [4] add rock conduction
-        if (THERMAL)
-        {
-          t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
-          gamma_t_diff = tranD[conn_idx] * dt * t_diff;
-
-          if (t_diff < 0)
-          {
-            // rock heat transfers flows from cell i to j
-            RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-            for (uint8_t v = 0; v < N_VARS; v++)
-            {
-              Jac[diag_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-              if (v == T_VAR)
-              {
-                Jac[jac_idx + NC * N_VARS + v] -= tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-                Jac[diag_idx + NC * N_VARS + v] += tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-              }
-            }
-          }
-          else
-          {
-            // rock heat transfers flows from cell j to i
-            RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j]; // energy cond operator
-            for (uint8_t v = 0; v < N_VARS; v++)
-            {
-              Jac[jac_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-              if (v == T_VAR)
-              {
-                Jac[diag_idx + NC * N_VARS + v] += tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-                Jac[jac_idx + NC * N_VARS + v] -= tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-              }
-            }
-          }
-        }
-        conn_idx++;
-      }
-
-      // [5] finally add rock energy
-      // + rock energy (no rock compressibility included in these computations)
-      if (THERMAL)
-      {
-        RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
-
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-          Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
-        } // end of fill offdiagonal part + contribute to diagonal
-      }
-
-      // calc CFL for reservoir cells, not connected with wells
-      if (i < mesh->n_res_blocks && !connected_with_well)
-      {
         for (uint8_t c = 0; c < NC; c++)
         {
-          if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
-          {
-            CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-            CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-          }
+            CFL_out[c] = 0;
+            CFL_in[c] = 0;
+            connected_with_well = 0;
         }
-      }
+
+        // index of diagonal block entry for block i in CSR values array
+        diag_idx = N_VARS_SQ * diag_ind[i];
+
+        // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
+        for (uint8_t c = 0; c < NE; c++)
+        {
+            RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+
+            // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
+            if (i < n_res_blocks)
+                RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+
+            for (uint8_t v = 0; v < N_VARS; v++)
+            {
+                Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
+
+                // Include derivatives for reaction term if part of reservoir cells:
+                if (i < n_res_blocks)
+                {
+                    Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+                }
+            }
+        }
+
+        // index of first entry for block i in CSR cols array
+        index_t csr_idx_start = rows[i];
+        // index of last entry for block i in CSR cols array
+        index_t csr_idx_end = rows[i + 1];
+        // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
+        index_t conn_idx = csr_idx_start - i;
+
+        jac_idx = N_VARS_SQ * csr_idx_start;
+
+        // for velocity reconstruction
+        if (!velocity_offset.empty() && i < n_res_blocks)
+            cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
+
+        cell_conn_idx = 0;
+        for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
+        { // fill offdiagonal part + contribute to diagonal
+
+            j = cols[csr_idx];
+            // skip diagonal
+            if (i == j)
+                continue;
+
+            value_t trans_mult = 1;
+            value_t trans_mult_der_i[N_VARS];
+            value_t trans_mult_der_j[N_VARS];
+            if (params->trans_mult_exp > 0 && i < n_res_blocks && j < n_res_blocks)
+            {
+                // Calculate transmissibility multiplier:
+                phi_i = op_vals_arr[i * N_OPS + PORO_OP];
+                phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+
+                // Take average interface porosity:
+                phi_avg = (phi_i + phi_j) * 0.5;
+                phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
+
+                trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                {
+                    trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
+                    trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
+                }
+                trans_mult = pow(phi_avg, params->trans_mult_exp);
+            }
+            else
+            {
+                for (uint8_t v = 0; v < N_VARS; v++)
+                {
+                    trans_mult_der_i[v] = 0;
+                    trans_mult_der_j[v] = 0;
+                }
+            }
+
+            p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
+
+            if (j >= n_res_blocks)
+                connected_with_well = 1;
+
+            // [2] fill offdiagonal part + contribute to diagonal, only fluid part is considered in energy equation
+            for (uint8_t p = 0; p < NP; p++)
+            { // loop over number of phases for convective operator
+
+              // calculate gravity term for phase p
+                value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] +
+                    op_vals_arr[j * N_OPS + GRAV_OP + p]) /
+                    2;
+
+                // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
+                value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
+
+                // calculate partial derivatives for gravity and capillary terms
+                value_t grav_pc_der_i[N_VARS];
+                value_t grav_pc_der_j[N_VARS];
+                for (uint8_t v = 0; v < N_VARS; v++)
+                {
+                    grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
+                    grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
+                }
+
+                phase_fluxes[p] = 0.0;
+
+                double phase_gamma_p_diff = trans_mult * tran[conn_idx] * dt * phase_p_diff;
+
+                if (phase_p_diff < 0)
+                {
+                    // mass and energy outflow with effect of gravity and capillarity
+                    for (uint8_t c = 0; c < NE; c++)
+                    {
+                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+
+                        if (c < NC)
+                        {
+                            CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
+                            if (molar_weights.size())
+                            phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
+                        }
+
+                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
+                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
+                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
+                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+
+                            if (v == 0)
+                            {
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux;
+                                Jac[diag_idx + c * N_VARS + v] += c_flux;
+                            }
+                        }
+                    }
+                    if (phase_fluxes[p] != 0.0)
+                        phase_fluxes[p] *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[i * N_OPS + GRAV_OP + p];
+                }
+                else
+                {
+                    // mass and energy inflow with effect of gravity and capillarity
+                    for (uint8_t c = 0; c < NE; c++)
+                    {
+                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
+
+                        if (c < NC)
+                        {
+                            CFL_in[c] += phase_p_diff * c_flux;
+                            if (molar_weights.size())
+                            phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
+                        }
+
+                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
+                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
+                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
+                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            if (v == 0)
+                            {
+                                Jac[diag_idx + c * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
+                            }
+                        }
+                    }
+                    if (phase_fluxes[p] != 0.0)
+                        phase_fluxes[p] *= -trans_mult * tran[conn_idx] * phase_p_diff / op_vals_arr[j * N_OPS + GRAV_OP + p];
+                }
+            } // end of loop over number of phases for convective operator with gravity and capillarity
+
+            // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
+            // Only if block connection is between reservoir and reservoir cells!
+            if (i < n_res_blocks && j < n_res_blocks)
+            {
+                // Add diffusion term to the residual:
+                for (uint8_t c = 0; c < NE; c++)
+                {
+                    for (uint8_t p = 0; p < NP; p++)
+                    {
+                        value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
+
+              if (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > params->phase_existence_tolerance)
+                phase_presence_mult = 1.0;
+              else
+                phase_presence_mult = 0.0;
+
+              value_t diff_mob_ups_m = dt * phase_presence_mult * mesh->tranD[conn_idx] * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                                                                          mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+
+                        RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
+
+                        // Add diffusion terms to Jacobian:
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            Jac[diag_idx + c * N_VARS + v] += diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                            Jac[jac_idx + c * N_VARS + v] -= diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+                Jac[diag_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                Jac[jac_idx + c * N_VARS + v] -= grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+              }
+
+                        // respective heat flux
+                        if constexpr (THERMAL)
+                        {
+                            if (c < NC)
+                            {
+                                value_t avg_enthalpy = (op_vals_arr[i * N_OPS + ENTH_OP + p] + op_vals_arr[j * N_OPS + ENTH_OP + p]) / 2.;
+                                RHS[i * N_VARS + NC] -= avg_enthalpy * diff_mob_ups_m * grad_con;
+
+                                for (uint8_t v = 0; v < N_VARS; v++)
+                                {
+                                    Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * diff_mob_ups_m * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                                    Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * diff_mob_ups_m * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+                    Jac[diag_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+                    Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * grad_con * dt * phase_presence_mult * mesh->tranD[conn_idx] * mesh->poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] / 2;
+
+                                    Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con / 2;
+                                    Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * diff_mob_ups_m * grad_con / 2;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // assemble velocities, dispersion is assembled in a separate loop as it requires multiple velocities
+                if (velocity_appr.size())
+                {
+                    index_t vel_idx = ND * velocity_offset[i];
+                    for (uint8_t p = 0; p < NP; p++)
+                    {
+                        for (uint8_t d = 0; d < ND; d++)
+                            darcy_velocities[NP * ND * i + p * ND + d] += velocity_appr[vel_idx + d * cell_conn_num + cell_conn_idx] * phase_fluxes[p];
+                    }
+                }
+            }
+
+            // [4] add rock conduction
+            if (THERMAL)
+            {
+                t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
+                gamma_t_i = tranD[conn_idx] * dt * (1 - mesh->poro[i]) * mesh->rock_cond[i];
+                gamma_t_j = tranD[conn_idx] * dt * (1 - mesh->poro[j]) * mesh->rock_cond[j];
+
+                // rock heat transfers flows from cell i to j
+                RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                {
+                    Jac[diag_idx + NC * N_VARS + v] -= t_diff * gamma_t_i * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] / 2;
+                    Jac[jac_idx + NC * N_VARS + v] -= t_diff * gamma_t_j * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] / 2;
+                    if (v == T_VAR)
+                    {
+                        Jac[jac_idx + NC * N_VARS + v] -= (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
+                        Jac[diag_idx + NC * N_VARS + v] += (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
+                    }
+                }
+            }
+            conn_idx++;
+            if (j < n_res_blocks)
+                cell_conn_idx++;
+        }
+
+        // [5] finally add rock energy
+        // + rock energy (no rock compressibility included in these computations)
+        if (THERMAL)
+        {
+            RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+
+            for (uint8_t v = 0; v < N_VARS; v++)
+            {
+                Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
+            } // end of fill offdiagonal part + contribute to diagonal
+        }
+
+        // calc CFL for reservoir cells, not connected with wells
+        if (i < n_res_blocks && !connected_with_well)
+        {
+            for (uint8_t c = 0; c < NC; c++)
+            {
+                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+                {
+                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+                }
+            }
+        }
 
     } // end of loop over grid blocks
 #ifdef _OPENMP
 #pragma omp critical
     {
-      if (CFL_max < CFL_max_local)
-        CFL_max = CFL_max_local;
+        if (CFL_max < CFL_max_local)
+            CFL_max = CFL_max_local;
     }
   } // end of omp parallel
 #else
-  CFL_max = CFL_max_local;
+    CFL_max = CFL_max_local;
 #endif
+
+  // dispersion
+    if (velocity_appr.size() && dispersivity.size())
+    {
+        value_t avg_dispersivity;
+        std::array<value_t, ND> avg_velocity;
+
+        for (index_t i = 0; i < n_res_blocks; ++i)
+        { // loop over grid blocks
+            if (i > n_res_blocks) // skip wells
+                continue;
+            // index of diagonal block entry for block i in CSR values array
+            index_t diag_idx = N_VARS_SQ * diag_ind[i];
+            // index of first entry for block i in CSR cols array
+            index_t csr_idx_start = rows[i];
+            // index of last entry for block i in CSR cols array
+            index_t csr_idx_end = rows[i + 1];
+            // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
+            index_t conn_idx = csr_idx_start - i;
+
+            index_t jac_idx = N_VARS_SQ * csr_idx_start;
+
+            for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
+            {
+                index_t j = cols[csr_idx];
+
+                if (i == j)
+                  continue;
+
+                if (j < n_res_blocks)
+                {
+                    for (uint8_t p = 0; p < NP; p++)
+                    {
+                        value_t avg_enthalpy = (op_vals_arr[i * N_OPS + ENTH_OP + p] + op_vals_arr[j * N_OPS + ENTH_OP + p]) / 2.;
+
+                        // approximate facial velocity
+                        index_t vel_idx_i = ND * NP * i;
+                        index_t vel_idx_j = ND * NP * j;
+                        for (uint8_t d = 0; d < ND; d++)
+                            avg_velocity[d] = (darcy_velocities[vel_idx_i + p * ND + d] + darcy_velocities[vel_idx_j + p * ND + d]) / 2.0;
+
+                        for (uint8_t c = 0; c < NC; c++)
+                        {
+                            value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + p * NE + c] - op_vals_arr[i * N_OPS + GRAD_OP + p * NE + c];
+
+                            // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
+                            value_t vel_norm = sqrt(avg_velocity[0] * avg_velocity[0] +
+                                avg_velocity[1] * avg_velocity[1] +
+                                avg_velocity[2] * avg_velocity[2]);
+
+                            value_t arith_mean_dispersivity = (dispersivity[NP * NC * op_num[i] + p * NC + c] + dispersivity[NP * NC * op_num[j] + p * NC + c]) / 2.;
+                            if (arith_mean_dispersivity > 0.)
+                                avg_dispersivity = dispersivity[NP * NC * op_num[i] + p * NC + c] * dispersivity[NP * NC * op_num[j] + p * NC + c] / arith_mean_dispersivity;
+                            else
+                                avg_dispersivity = 0.0;
+
+                            value_t disp = dt * avg_dispersivity * mesh->tranD[conn_idx] * vel_norm;
+
+                            RHS[i * N_VARS + c] -= disp * grad_con; // diffusion term
+
+                            // Add diffusion terms to Jacobian:
+                            for (uint8_t v = 0; v < N_VARS; v++)
+                            {
+                                Jac[diag_idx + c * N_VARS + v] += disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                                Jac[jac_idx + c * N_VARS + v] -= disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                            }
+
+                            // respective heat fluxes
+                            if constexpr (THERMAL)
+                            {
+                                RHS[i * N_VARS + NC] -= avg_enthalpy * disp * grad_con;
+
+                                for (uint8_t v = 0; v < N_VARS; v++)
+                                {
+                                    Jac[diag_idx + NC * N_VARS + v] += avg_enthalpy * disp * op_ders_arr[(i * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+                                    Jac[jac_idx + NC * N_VARS + v] -= avg_enthalpy * disp * op_ders_arr[(j * N_OPS + GRAD_OP + p * NE + c) * N_VARS + v];
+
+                                    Jac[diag_idx + NC * N_VARS + v] -= op_ders_arr[(i * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
+                                    Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2;
+                                }
+                            }
+                        }
+                    }
+                }
+                conn_idx++;
+            }
+        }
+    }
 
   for (ms_well *w : wells)
   {
@@ -645,29 +778,13 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
           {
             value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + c * NP + p] - op_vals_arr[i * N_OPS + GRAD_OP + c * NP + p];
 
-            if (grad_con < 0)
-            {
-              // Diffusion flows from cell i to j (high to low), use upstream quantity from cell i for compressibility and saturation (mass or energy):
-              //value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[i * N_OPS + UPSAT_OP + p];
+            // Diffusion flows, use arithmetic mean for compressibility and saturation (mass or energy):
+            //value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * (op_vals_arr[i * N_OPS + UPSAT_OP + p] + op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+            //RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
-              //RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
-
-              value_g_u = grad_con * dt * phi_avg * op_vals_arr[i * N_OPS + UPSAT_OP + p];
-              idx = count + c * N_element + temp_num[k_count];
-              value_dg_dT[idx] -= value_g_u;
-            }
-            else
-            {
-              // Diffusion flows from cell j to i (high to low), use upstream quantity from cell j for density and saturation:
-              //value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * op_vals_arr[j * N_OPS + UPSAT_OP + p];
-
-              //RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
-
-              value_g_u = grad_con * dt * phi_avg * op_vals_arr[j * N_OPS + UPSAT_OP + p];
-              idx = count + c * N_element + temp_num[k_count];
-              value_dg_dT[idx] -= value_g_u;
-
-            }
+            value_g_u = grad_con * dt * phi_avg * (op_vals_arr[i * N_OPS + UPSAT_OP + p] + op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+            idx = count + c * N_element + temp_num[k_count];
+            value_dg_dT[idx] -= value_g_u;
           }
         }
       }
@@ -678,24 +795,14 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
         t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
         gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
-        if (t_diff < 0)
-        {
-          // rock heat transfers flows from cell i to j
-          //RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
+        // rock heat transfers flows from cell i to j
+        //RHS[i * N_VARS + NC] -= gamma_t_diff * (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i] + 
+        //                                        op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i]) / 2;
 
-          value_g_u = dt * t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-          idx = count + NC * N_element + temp_num[k_count];
-          value_dg_dT[idx] -= value_g_u;
-        }
-        else
-        {
-          // rock heat transfers flows from cell j to i
-          //RHS[i * N_VARS + NC] -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j]; // energy cond operator
-          
-          value_g_u = dt * t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-          idx = count + NC * N_element + temp_num[k_count];
-          value_dg_dT[idx] -= value_g_u;
-        }
+        value_g_u = dt * t_diff * (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i] + 
+                                    op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j]) / 2;
+        idx = count + NC * N_element + temp_num[k_count];
+        value_dg_dT[idx] -= value_g_u;
       }
 
       k_count++;

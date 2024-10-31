@@ -49,7 +49,7 @@ public:
   const static uint8_t DENS_OP = NC + NC * NP + NP + 5;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_nce_g_gpu()

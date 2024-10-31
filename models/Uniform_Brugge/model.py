@@ -211,11 +211,11 @@ class ModelProperties(PropertyContainer):
             self.x[i, i] = 1
 
         if V < 0:
-            self.ph = [1, 2]
+            self.ph = np.array([1, 2], dtype=np.intp)
         else:  # assume oil and water are always exists
             self.x[1][0] = xgo
             self.x[1][1] = 1 - xgo
-            self.ph = [0, 1, 2]
+            self.ph = np.array([0, 1, 2], dtype=np.intp)
 
         for j in self.ph:
             M = 0
@@ -261,6 +261,7 @@ class ModelProperties(PropertyContainer):
                 self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 
+        self.ph = np.array(self.ph)
         self.nu = zc
         self.compute_saturation(self.ph)
 
