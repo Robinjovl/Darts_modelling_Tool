@@ -69,6 +69,33 @@ class InitialSolution():
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
+class WellControlsConst():
+    '''
+    constant well controls during the simulation
+    '''
+    def __init__(self):
+        self.type = None  #  'rate' or 'bhp'
+        # bhp
+        self.inj_bhp = None # bars
+        self.prod_bhp = None # bars
+        # rate
+        self.inj_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.inj_bhp_constraint = None # upper limit for bhp, bars
+        self.prod_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.prod_bhp_constraint = None # lower limit for bhp, bars
+        # if thermal
+        self.inj_bht = None  # K
+        # if Compositional
+        self.inj_comp_index = None # injection composition index, [int]
+
+class Wells():
+    '''
+    well definition
+    '''
+    def __init__(self):
+        self.controls = WellControlsConst()
+
+
 class OBLParams():
     '''
     OBL range, number of points
@@ -101,6 +128,7 @@ class InputData():
         self.fluid = FluidProps()
         self.obl = OBLParams()
         self.initial = InitialSolution(init_type)
+        self.wells = Wells()
         self.other = OtherProps()
         
     def check(self):

@@ -29,20 +29,20 @@ class ModelGeothermal(Model_CPG):
             super().set_initial_conditions()
 
     def set_well_controls(self):
+        wctrl = self.idata.wells.controls
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
-                inj_temperature = 300  # K
-                # rate control
-                w.control = self.physics.new_rate_water_inj(5500, inj_temperature)  #  m3/day
-                w.constraint = self.physics.new_bhp_water_inj(300, inj_temperature)  # upper limit for bhp, bars
-                # BHP control
-                #w.control = self.physics.new_bhp_water_inj(250, inj_temperature)  # bars
+                if wctrl.type == 'rate': # rate control
+                    w.control = self.physics.new_rate_water_inj(wctrl.inj_rate, wctrl.inj_bht)
+                    w.constraint = self.physics.new_bhp_water_inj(wctrl.inj_bhp_constraint, wctrl.inj_bht)
+                elif wctrl.type == 'bhp': # BHP control
+                    w.control = self.physics.new_bhp_water_inj(wctrl.inj_bhp, wctrl.inj_bht)
             else:  # PROD well
-                # rate control
-                w.control = self.physics.new_rate_water_prod(5500)  #  m3/day
-                w.constraint = self.physics.new_bhp_prod(70)  # lower limit for bhp, bars
-                # BHP control
-                #w.control = self.physics.new_bhp_prod(100)  # bars
+                if wctrl.type == 'rate': # rate control
+                    w.control = self.physics.new_rate_water_prod(wctrl.prod_rate)
+                    w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+                elif wctrl.type == 'bhp': # BHP control
+                    w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
 
     def get_arrays(self):
         '''
@@ -93,6 +93,20 @@ class ModelGeothermal(Model_CPG):
         elif init_type == 'gradient':         # gradient by depth
             self.idata.initial.pressure_gradient = 100  # bars/km
             self.idata.initial.temperature_gradient = 30   # K/km
+
+        # well controls
+        wctrl = self.idata.wells.controls  # short name
+        wctrl.type = 'rate'
+        #wctrl.type = 'bhp'
+        if wctrl.type == 'bhp':
+            self.idata.wells.controls.inj_bhp = 250 # bars
+            self.idata.wells.controls.prod_bhp = 100 # bars
+        elif wctrl.type == 'rate':
+            self.idata.wells.controls.inj_rate = 5500 # m3/day
+            self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
+            self.idata.wells.controls.prod_rate = 5500 # m3/day
+            self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
+        self.idata.wells.controls.inj_bht = 300  # K
 
         self.idata.obl.n_points = 100
         self.idata.obl.min_p = 50.

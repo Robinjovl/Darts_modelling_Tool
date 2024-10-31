@@ -10,12 +10,11 @@ from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
 
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
+        self.zero = 1e-13
         super().__init__(physics_type='dead_oil', case=case, grid_out_dir=grid_out_dir)
 
-    def set_physics(self, idata: InputData):
-        self.zero = 1e-13
-        self.physics = DeadOil(idata, self.timer, thermal=False)
-        self.inj = value_vector([self.zero])  # injection composition - water
+    def set_physics(self):
+        self.physics = DeadOil(self.idata, self.timer, thermal=False)
         self.ini = value_vector([1 - self.zero])  # initial composition (above water table depth) - oil
 
     def set_initial_conditions(self):  # override origin set_initial_conditions function from darts_model
@@ -65,19 +64,20 @@ class ModelDeadOil(Model_CPG):
         super().set_initial_conditions()
 
     def set_well_controls(self):
+        wctrl = self.idata.wells.controls
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):  # INJ well
-                # BHP control
-                w.control = self.physics.new_bhp_inj(250, self.inj)  # bars
-                # rate control
-                #w.control = self.physics.new_rate_inj(200, self.inj, 0)  # Kmol/day, composition, composition-index
-                #w.constraint = self.physics.new_bhp_inj(250, self.inj)   # bars, composition
+                if wctrl.type == 'rate': # rate control
+                    w.control = self.physics.new_rate_inj(wctrl.inj_rate, wctrl.inj, wctrl.inj_comp_index)
+                    w.constraint = self.physics.new_bhp_inj(wctrl.inj_bhp_constraint, wctrl.inj)
+                elif wctrl.type == 'bhp': # BHP control
+                    w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
             else:  # PROD well
-                # BHP control
-                w.control = self.physics.new_bhp_prod(100)  # bars
-                # rate control
-                #w.control = self.physics.new_rate_prod(200)   # Kmol/day
-                #w.constraint = self.physics.new_bhp_prod(100) # bars
+                if wctrl.type == 'rate': # rate control
+                    w.control = self.physics.new_rate_prod(wctrl.prod_rate)
+                    w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+                elif wctrl.type == 'bhp': # BHP control
+                    w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
 
     def get_arrays(self):
         '''
@@ -115,21 +115,37 @@ class ModelDeadOil(Model_CPG):
               fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
 
     def set_input_data(self, case=''):
-        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
+        self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
 
         # this sets default properties
-        idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
 
         # example - how to change the properties
-        # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-        idata.obl.n_points = 400
-        idata.obl.zero = 1e-13
-        idata.obl.min_p = 0.
-        idata.obl.max_p = 1000.
-        idata.obl.min_t = 10.
-        idata.obl.max_t = 100.
-        idata.obl.min_z = idata.obl.zero
-        idata.obl.max_z = 1 - idata.obl.zero
+        # well controls
+        wctrl = self.idata.wells.controls  # short name
 
-        return idata
+        #wctrl.type = 'rate'
+        wctrl.type = 'bhp'
+
+        wctrl.inj = value_vector([self.zero])  # injection composition - water
+
+        if wctrl.type == 'bhp':
+            self.idata.wells.controls.inj_bhp = 250 # bars
+            self.idata.wells.controls.prod_bhp = 100 # bars
+        elif wctrl.type == 'rate':
+            self.idata.wells.controls.inj_rate = 200 # kmol/day
+            self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
+            self.idata.wells.controls.prod_rate = 200 # kmol/day
+            self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
+        self.idata.wells.controls.inj_bht = 300  # K
+
+        self.idata.obl.n_points = 400
+        self.idata.obl.zero = 1e-13
+        self.idata.obl.min_p = 0.
+        self.idata.obl.max_p = 1000.
+        self.idata.obl.min_t = 10.
+        self.idata.obl.max_t = 100.
+        self.idata.obl.min_z = self.idata.obl.zero
+        self.idata.obl.max_z = 1 - self.idata.obl.zero
