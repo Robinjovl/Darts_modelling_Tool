@@ -8,7 +8,7 @@ from darts.input.input_data import InputData
 
 from darts.engines import value_vector
 
-from darts.physics.deadoil import DeadOil
+from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
 
 
 class ModelDeadOil(Model_CPG):
@@ -119,7 +119,6 @@ class ModelDeadOil(Model_CPG):
 
     def set_input_data(self, case):
         idata = InputData(type_hydr='isothermal', type_mech='none')
-        from deadoil import DeadOil2PFluidProps
 
         # this sets default properties
         idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
