@@ -11,21 +11,22 @@ from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, G
 
 class ModelGeothermal(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
-        self.n_points = 100  # OBL points
         super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir)
 
-    def set_physics(self, idata):
-        self.physics = GeothermalIAPWS(idata, self.timer)
-        # uniform initial conditions
-        T_initial = 350.  # K
-        P_initial = 200.  # bars
-        state_init = value_vector([P_initial,0.])
-        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_initial).evaluate(state_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init}
+    def set_physics(self):
+        self.physics = GeothermalIAPWS(self.idata, self.timer)
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
-         self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh, pressure_grad=100, temperature_grad=30)
+    def set_initial_conditions(self):
+        if self.idata.initial.type == 'gradient':
+            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
+                                                       pressure_grad=self.idata.initial.pressure_gradient,
+                                                       temperature_grad=self.idata.initial.temperature_gradient)
+        elif self.idata.initial.type == 'uniform':
+            state_init = value_vector([self.idata.initial.initial_pressure, 0.])
+            enth_init = self.physics.property_containers[0].enthalpy_ev['total'](self.idata.initial.initial_temperature).evaluate(state_init)
+            self.initial_values = {self.physics.vars[0]: state_init[0],
+                                   self.physics.vars[1]: enth_init}
+            super().set_initial_conditions()
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
@@ -78,16 +79,23 @@ class ModelGeothermal(Model_CPG):
         rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
         print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
 
-    def set_input_data(self, case):
-        idata = InputData(type_hydr='thermal', type_mech='none')
-        idata.fluid = GeothermalIAPWSFluidProps()
+    def set_input_data(self, case=''):
+        #init_type = 'uniform'
+        init_type = 'gradient'
+        self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
+        self.idata.fluid = GeothermalIAPWSFluidProps()
         # example - how to change the properties
-        # idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
 
-        idata.obl.n_points = 100
-        idata.obl.min_p = 50.
-        idata.obl.max_p = 400.
-        idata.obl.min_e = 1000.
-        idata.obl.max_e = 25000.
+        if init_type== 'uniform': # uniform initial conditions
+            self.idata.initial.initial_pressure = 200.  # bars
+            self.idata.initial.initial_temperature = 350.  # K
+        elif init_type == 'gradient':         # gradient by depth
+            self.idata.initial.pressure_gradient = 100  # bars/km
+            self.idata.initial.temperature_gradient = 30   # K/km
 
-        return idata
+        self.idata.obl.n_points = 100
+        self.idata.obl.min_p = 50.
+        self.idata.obl.max_p = 400.
+        self.idata.obl.min_e = 1000.
+        self.idata.obl.max_e = 25000.

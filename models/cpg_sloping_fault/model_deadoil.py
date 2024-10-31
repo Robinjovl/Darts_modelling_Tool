@@ -3,11 +3,8 @@ import pandas as pd
 from scipy import interpolate
 
 from model_cpg import Model_CPG, fmt
-
 from darts.input.input_data import InputData
-
 from darts.engines import value_vector
-
 from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
 
 
@@ -117,8 +114,8 @@ class ModelDeadOil(Model_CPG):
         print(fmt(years), 'years:', 'OIL RATE_prod =', fmt(rate_prod), ' WATER RATE_inj =', fmt(rate_inj), 'BHP_prod =',
               fmt(bhp_prod), 'BHP_inj =', fmt(bhp_inj))
 
-    def set_input_data(self, case):
-        idata = InputData(type_hydr='isothermal', type_mech='none')
+    def set_input_data(self, case=''):
+        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
 
         # this sets default properties
         idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps

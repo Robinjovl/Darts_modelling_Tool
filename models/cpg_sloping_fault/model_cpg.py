@@ -121,8 +121,8 @@ class Model_CPG(CICDModel):
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
 
-        idata = self.set_input_data('')
-        self.set_physics(idata)
+        self.set_input_data()
+        self.set_physics()
 
         # time stepping and convergence parameters
         self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=92, runtime=300, tol_newton=1e-2, tol_linear=1e-4)

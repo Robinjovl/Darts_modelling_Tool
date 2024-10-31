@@ -55,14 +55,17 @@ class InitialSolution():
     Class for initial values
     '''
     def __init__(self, type='uniform'):
+        self.type = type
         if type == 'uniform':
             self.initial_pressure = None  # [bars]
             self.initial_temperature = None  # [K]
         elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
-            self.temperature_gradient = None  # [K/m]
+            self.temperature_gradient = None  # [K/km]
+            self.pressure_at_ref_depth = None # [bars]
             self.reference_depth_for_pressure = None  # [m]
-            self.pressure_gradient = None  # [bar/m]
+            self.pressure_gradient = None  # [bar/km]
+            self.temperature_at_ref_depth = None  # [K]
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
@@ -91,13 +94,13 @@ class InputData():
     '''
     Class for initial values
     '''
-    def __init__(self, type_hydr, type_mech):
+    def __init__(self, type_hydr, type_mech, init_type):
         self.type_hydr = type_hydr
         self.type_mech = type_mech
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
         self.obl = OBLParams()
-        self.initial = InitialSolution()
+        self.initial = InitialSolution(init_type)
         self.other = OtherProps()
         
     def check(self):
