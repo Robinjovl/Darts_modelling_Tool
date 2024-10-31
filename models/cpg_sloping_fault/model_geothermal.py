@@ -85,8 +85,12 @@ class ModelGeothermal(Model_CPG):
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
         self.set_input_data_rock(case)
         self.idata.fluid = GeothermalIAPWSFluidProps()
+
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+
+        #from darts.physics.properties.basic import ConstFunc
+        #self.idata.fluid.conduction_ev['water'] = ConstFunc(172.8)
 
         if init_type== 'uniform': # uniform initial conditions
             self.idata.initial.initial_pressure = 200.  # bars
