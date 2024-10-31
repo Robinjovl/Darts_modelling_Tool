@@ -62,10 +62,10 @@ class InitialSolution():
         elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
             self.temperature_gradient = None  # [K/km]
-            self.pressure_at_ref_depth = None # [bars]
+            self.temperature_at_ref_depth = None  # [K]
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/km]
-            self.temperature_at_ref_depth = None  # [K]
+            self.pressure_at_ref_depth = None # [bars]
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 

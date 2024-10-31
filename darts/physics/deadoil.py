@@ -24,7 +24,6 @@ class DeadOil(Compositional):
         super().__init__(idata.fluid.components, idata.fluid.phases, timer,
                          idata.obl.n_points, idata.obl.min_p, idata.obl.max_p, idata.obl.min_z, idata.obl.max_z,
                          idata.obl.min_t, idata.obl.max_t)
-        self.idata = idata
         self.zero = 1e-13
 
         temperature = None if thermal else 1.

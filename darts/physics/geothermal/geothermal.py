@@ -14,7 +14,6 @@ class GeothermalIAPWS(Geothermal):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
-        self.idata = idata
         property_container = GeothermalIAPWSProperties()
 
         property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
