@@ -50,7 +50,7 @@ class PropertyContainerIAPWS(PropertyBase):
             self.temperature_ev = iapws_temperature_evaluator()                    # Create temperature object
             self.enthalpy_ev = {'water': iapws_water_enthalpy_evaluator(),
                                 'steam': iapws_steam_enthalpy_evaluator(),
-                                'total': iapws_total_enthalpy_evalutor}
+                                'total': iapws_total_enthalpy_evalutor()}
             self.density_ev = {'water': iapws_water_density_evaluator(),
                                'steam': iapws_steam_density_evaluator()}
             self.saturation_ev = {'water': iapws_water_saturation_evaluator(),

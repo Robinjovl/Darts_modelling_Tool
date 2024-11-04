@@ -46,14 +46,13 @@ class iapws_viscosity_evaluator(property_evaluator_iface):
 
 #====================================== Properties for Region 1 and 4 ============================================ 
 class iapws_total_enthalpy_evalutor(property_evaluator_iface):
-    def __init__(self, temp):
+    def __init__(self, ):
         super().__init__()
-        self.T = temp
-    def evaluate(self, state):
+    def evaluate(self, state, temperature):
         P = state[0]*0.1
-        region = _Bound_TP(self.T, P)
+        region = _Bound_TP(temperature, P)
         if (region == 1):
-            h = _Region1(self.T, P)["h"] * 18.015
+            h = _Region1(temperature, P)["h"] * 18.015
         elif (region == 4):
             Steam_sat = iapws_steam_saturation_evaluator()
             rho_steam = iapws_steam_density_evaluator()
@@ -61,7 +60,7 @@ class iapws_total_enthalpy_evalutor(property_evaluator_iface):
             x = Steam_sat.evaluate(state) * rho_steam.evaluate(state) / (Steam_sat.evaluate(state) * rho_steam.evaluate(state) + Steam_sat.evaluate(water) * rho_water.evaluate(state))
             h = _Region4(P, x)["h"] * 18.015
         elif (region == 2):
-            h = _Region2(self.T, P)["h"] * 18.015
+            h = _Region2(temperature, P)["h"] * 18.015
         else:
             raise NotImplementedError('Variables out of bound: p=' + str(P) + ' region=' + str(region))
         return h

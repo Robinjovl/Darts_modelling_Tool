@@ -145,7 +145,7 @@ class Model(CICDModel):
                                                        temperature_grad=self.idata.initial.temperature_gradient)
         elif self.idata.initial.type == 'uniform':
             state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].enthalpy_ev['total'](self.idata.initial.initial_temperature).evaluate(state_init)
+            enth_init = self.physics.property_containers[0].enthalpy_ev['total'].evaluate(state_init, self.idata.initial.initial_temperature)
             self.initial_values = {self.physics.vars[0]: state_init[0],
                                    self.physics.vars[1]: enth_init}
             super().set_initial_conditions()

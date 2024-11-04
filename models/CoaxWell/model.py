@@ -28,7 +28,7 @@ class Model(CICDModel):
 
         T_init = 450.
         state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_init).evaluate(state_init)
+        enth_init = self.physics.property_containers[0].enthalpy_ev['total'].evaluate(state_init, T_init)
         self.initial_values = {self.physics.vars[0]: state_init[0],
                                self.physics.vars[1]: enth_init
                                }
