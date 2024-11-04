@@ -3,69 +3,69 @@ import numpy as np
 from .input_default import input_data_default
 
 def input_data_case_4():
-    input_data = input_data_default()
+    idata = input_data_default()
 
-    input_data['case_name'] = 'case_4'
+    idata.geom['case_name'] = 'case_4'
 
     # geometry
-    input_data['frac_file'] = os.path.join('examples', 'frac_4.txt')
+    idata.geom['frac_file'] = os.path.join('examples', 'frac_4.txt')
 
     # do not use cleaned mesh
-    input_data['mesh_prefix'] = 'raw_lc'
+    idata.geom['mesh_prefix'] = 'raw_lc'
 
     # cell sizes
-    input_data['char_len'] = 30  # near fractures (characteristic length for cleaning and mesh generation) [m]
-    input_data['char_len_boundary'] = 100  # grid size near grid boundaries [m]
-    input_data['char_len_well'] = 5  # grid size near wells [m]
-    input_data['margin'] = 400  # [m]
+    idata.geom['char_len'] = 30  # near fractures (characteristic length for cleaning and mesh generation) [m]
+    idata.geom['char_len_boundary'] = 100  # grid size near grid boundaries [m]
+    idata.geom['char_len_well'] = 5  # grid size near wells [m]
+    idata.geom['margin'] = 400  # [m]
 
     # initial pressure and temperature
-    # uniform initial pressure and temperature
-    input_data['initial_uniform'] = True
-    input_data['uniform_pressure'] = 350.  # bar
-    input_data['uniform_temperature'] = 350.  # K
+    idata.initial.type = 'uniform'
+    idata.initial.initial_pressure = 350.  # bars
+    idata.initial.initial_temperature = 350.  # K
 
     # well locations
-    input_data['inj_well_coords'] = [[0, 0, 25]]  # X, Y, Z (only one perforation)
-    input_data['prod_well_coords'] = [[50, 50, 25]]
+    idata.geom['inj_well_coords'] = [[0, 0, 25]]  # X, Y, Z (only one perforation)
+    idata.geom['prod_well_coords'] = [[50, 50, 25]]
 
     # well in the matrix cells or in the fractures
-    input_data['well_loc_type'] = 'wells_in_nearest_cell'
+    idata.geom['well_loc_type'] = 'wells_in_nearest_cell'
 
     # extrusion - number of layers by Z axis
-    input_data['rsv_layers'] = 1
+    idata.geom['rsv_layers'] = 1
 
-    input_data['z_top'] = 2000  # [m]
-    input_data['height_res'] = 10  # [m]
+    idata.geom['z_top'] = 2000  # [m]
+    idata.geom['height_res'] = 10  # [m]
 
-    input_data['frac_aper'] = 1e-9  # (initial) fracture aperture [m]
+    idata.geom['frac_aper'] = 1e-9  # (initial) fracture aperture [m]
 
     # well controls
-    input_data['rate_prod'] = 0  # m3/day
-    input_data['rate_inj'] = 1000  # m3/day
-    input_data['delta_temp'] = 40  # inj_temp = initial_temp - delta_temp
+    wctrl = idata.wells.controls
+    wctrl.rate_prod = 0  # m3/day
+    wctrl.rate_inj = 1000  # m3/day
+    wctrl.delta_temp = 40 # inj_temp = initial_temp - delta_temp
 
-    input_data['hcap'] = 2200.  # [kJ/m3/K]
-    input_data['conduction'] = 200  # [kJ/m/day/K]
+    idata.rock.heat_capacity = 2200. # [kJ/m3/K]
+    idata.rock.conductivity = 200  # [kJ/m/day/K]
 
-    input_data['permx'] = 100
-    input_data['permy'] = 1
-    input_data['permz'] = 1
+    idata.rock.permx = 100  # [mD]
+    idata.rock.permy = 1  # [mD]
+    idata.rock.permz = 1  # [mD]
 
     # for non-isotropic perm => grid rotation
     SHmax_azimuth = 0  # [°] from Y, clockwise
-    input_data['SHmax_azimuth'] = 90 - SHmax_azimuth  # [°] from X, counter-clockwise
+    idata.stress['SHmax_azimuth'] = 90 - SHmax_azimuth  # [°] from X, counter-clockwise
 
-    return input_data
+    return idata
 
 def input_data_case_4_no_conduction():
-    input_data = input_data_case_4()
-    input_data['case_name'] = 'case_4_no_conduction'
-    input_data['conduction'] = 0  # [kJ/m/day/K]
-    return input_data
+    idata = input_data_case_4()
+    idata.geom['case_name'] = 'case_4_no_conduction'
+    idata.rock.conductivity = 0  # [kJ/m/day/K]
+    return idata
 
 def input_data_case_4_small_capacity():
-    input_data = input_data_case_4()
-    input_data['case_name'] = 'case_4_small_capacity'
-    input_data['hcap'] = 1  # [kJ/m3/K]
-    return input_data
+    idata = input_data_case_4()
+    idata.geom['case_name'] = 'case_4_small_capacity'
+    idata.rock.conductivity = 1  # [kJ/m/day/K]
+    return idata

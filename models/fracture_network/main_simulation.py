@@ -9,11 +9,13 @@ import shutil
 from datetime import datetime
 from darts.tools.plot_darts import plot_temp_darts
 import pickle
+from darts.input.input_data import InputData
+from set_case import set_input_data
 
-def run_simulation(input_data, platform='cpu'):
-    print('Running simulation for case', input_data['case_name'])
+def run_simulation(idata : InputData, platform : str ='cpu'):
+    print('Running simulation for case', idata.geom['case_name'])
 
-    output_directory = 'sol_' + input_data['case_name']
+    output_directory = 'sol_' + idata.geom['case_name']
 
     # rename output dir if exists
     if os.path.exists(output_directory):
@@ -26,7 +28,7 @@ def run_simulation(input_data, platform='cpu'):
 
     redirect_darts_output(os.path.join(output_directory, 'out.log'))
 
-    m = Model(input_data)
+    m = Model(idata)
 
     m.init(verbose=True, output_folder = output_directory, platform=platform)
 
