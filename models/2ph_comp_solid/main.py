@@ -6,7 +6,7 @@ import sys, os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.operators_base import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 
 
 def plot_sol(n):
