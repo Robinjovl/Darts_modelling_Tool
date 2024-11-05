@@ -137,7 +137,8 @@ class Geothermal(PhysicsBase):
         pressure.fill(uniform_pressure)
 
         state = value_vector([uniform_pressure, 0])
-        enth = self.property_containers[0].enthalpy_ev['total'].evaluate(state, uniform_temperature)
+        enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temperature)
+        # enth = self.property_containers[0].enthalpy_ev['total'].evaluate(state, uniform_temperature)
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
         enthalpy.fill(enth)
@@ -168,4 +169,5 @@ class Geothermal(PhysicsBase):
 
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])
-            enthalpy[j] = self.property_containers[0].enthalpy_ev['total'].evaluate(state, temperature[j])
+            enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+            # enthalpy[j] = self.property_containers[0].enthalpy_ev['total'].evaluate(state, temperature[j])

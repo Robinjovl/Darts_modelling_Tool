@@ -1,3 +1,4 @@
+import abc
 import numpy as np
 from darts.engines import value_vector
 
@@ -50,7 +51,6 @@ class GeothermalPH(Geothermal):
         property_container.viscosity_ev = idata.fluid.viscosity_ev
         property_container.relperm_ev = idata.fluid.relperm_ev
         property_container.enthalpy_ev = idata.fluid.enthalpy_ev
-        property_container.enthalpy_ev['total'] = lambda: property_container.nu * property_container.enthalpy
         property_container.conduction_ev = idata.fluid.conduction_ev
 
         self.add_property_region(property_container)
@@ -81,6 +81,10 @@ class GeothermalPropertiesBase(PropertyBase):
 
         self.output_props = {'temperature': lambda: self.temperature}
 
+    @abc.abstractmethod
+    def compute_total_enthalpy(self, state, temperature):
+        pass
+
 
 class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
@@ -95,6 +99,9 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.relperm[j] = self.relperm_ev[phase].evaluate(state)
         return
+
+    def compute_total_enthalpy(self, state, temperature):
+        return self.enthalpy_ev['total'].evaluate(state, temperature)
 
 
 class GeothermalIAPWSFluidProps(FluidProps):
@@ -123,9 +130,10 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
     def __init__(self):
 
         super().__init__()
+        self.phases = ["water", "steam"]
 
     def run_flash(self, pressure, enthalpy):
-        _ = self.flash_ev.evaluate(pressure, enthalpy)
+        _ = self.flash_ev.evaluate_PH(pressure, enthalpy)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.nph, self.nc)
@@ -148,6 +156,20 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
                 self.saturation[j] = (self.nu[j] / self.dens_m[j]) / Vtot
 
         return
+
+    def compute_total_enthalpy(self, state, temperature):
+        _ = self.flash_ev.evaluate_PT(state[0], temperature)
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        x = np.array(flash_results.X).reshape(self.nph, self.nc)
+
+        ph = np.array([j for j in range(self.nph) if nu[j] > 0])
+
+        enthalpy = 0.
+        for j in ph:
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(state[0], temperature, x[j, :])
+
+        return enthalpy
 
     def evaluate(self, state):
         # Clean arrays

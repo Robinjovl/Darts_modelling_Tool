@@ -84,6 +84,9 @@ class PropertyContainerIAPWS(PropertyBase):
             self.relperm[j] = self.relperm_ev[phase].evaluate(state)
         return
 
+    def compute_total_enthalpy(self, state, temperature):
+        return self.enthalpy_ev['total'].evaluate(state, temperature)
+
 
 class PropertyContainerPH(PropertyBase):
     """
@@ -166,6 +169,21 @@ class PropertyContainerPH(PropertyBase):
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         return ph
+
+    def compute_total_enthalpy(self, state, temperature):
+        _ = self.flash_ev.evaluate_PT(state[0], temperature)
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        x = np.array(flash_results.X).reshape(self.nph, self.nc)
+
+        ph = np.array([j for j in range(self.nph) if nu[j] > 0])
+
+        enthalpy = 0.
+        for j in ph:
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(state[0], temperature, x[j, :])
+
+        return enthalpy
+
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
