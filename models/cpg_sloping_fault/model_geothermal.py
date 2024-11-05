@@ -10,11 +10,12 @@ from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, G
 
 
 class ModelGeothermal(Model_CPG):
-    def __init__(self, case='generate', grid_out_dir=None):
+    def __init__(self, case='generate', grid_out_dir=None, iapws_physics: bool = True):
+        self.iapws_physics = iapws_physics
         super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir)
 
-    def set_physics(self, iapws_physics: bool = True):
-        if iapws_physics:
+    def set_physics(self):
+        if self.iapws_physics:
             self.physics = GeothermalIAPWS(self.idata, self.timer)
         else:
             self.physics = GeothermalPH(self.idata, self.timer)
@@ -26,7 +27,7 @@ class ModelGeothermal(Model_CPG):
                                                        temperature_grad=self.idata.initial.temperature_gradient)
         elif self.idata.initial.type == 'uniform':
             state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].enthalpy_ev['total'].evaluate(state_init, self.idata.initial.initial_temperature)
+            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
             self.initial_values = {self.physics.vars[0]: state_init[0],
                                    self.physics.vars[1]: enth_init}
             super().set_initial_conditions()
@@ -87,7 +88,10 @@ class ModelGeothermal(Model_CPG):
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
         self.set_input_data_rock(case)
-        self.idata.fluid = GeothermalIAPWSFluidProps()
+        if self.iapws_physics:
+            self.idata.fluid = GeothermalIAPWSFluidProps()
+        else:
+            self.idata.fluid = GeothermalPHFluidProps()
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
