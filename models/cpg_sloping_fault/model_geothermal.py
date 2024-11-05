@@ -3,7 +3,6 @@ import pandas as pd
 
 from darts.input.input_data import InputData
 from model_cpg import Model_CPG, fmt
-from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.engines import value_vector
 
 from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
@@ -57,10 +56,23 @@ class ModelGeothermal(Model_CPG):
         a = self.reservoir.input_arrays  # include initial arrays and the grid
 
         nv = self.physics.n_vars
-        nb = nv * self.reservoir.mesh.n_res_blocks
+        n_ops = self.physics.n_ops
+        nb = self.reservoir.mesh.n_res_blocks
         Xn = np.array(self.physics.engine.X, copy=False)
-        P = Xn[:nb:nv]
-        T = enthalpy_to_temperature(Xn[:nb])
+        state = value_vector(Xn.T.flatten())
+
+        # Interpolate temperature with property interpolator
+        values = value_vector(np.zeros(n_ops * nb))
+        values_numpy = np.array(values, copy=False)
+        dvalues = value_vector(np.zeros(n_ops * nb * nv))
+        i = 0
+        for region, prop_itor in self.physics.property_itor.items():
+            prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
+            i += 1
+
+        # Get P from state vector and T from interpolated properties
+        P = np.array(state[0:nb*nv:nv])
+        T = values_numpy[0:nb*n_ops:n_ops]
         T -= 273.15  # K to degrees
 
         a.update({'PRESSURE': P, 'TEMPERATURE': T})
