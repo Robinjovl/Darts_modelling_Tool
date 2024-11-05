@@ -1,10 +1,8 @@
+import numpy as np
 from darts.engines import *
-from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.geothermal.operator_evaluator import *
-
-import numpy as np
 
 
 class Geothermal(PhysicsBase):
@@ -92,6 +90,18 @@ class Geothermal(PhysicsBase):
         """
         return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
+    def determine_obl_bounds(self, state_min, state_max):
+        """
+        Function to compute minimum and maximum enthalpy (kJ/kmol)
+
+        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
+        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        """
+        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
+        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
+
+        return
+
     def define_well_controls(self):
         # create well controls
         # water stream
@@ -138,7 +148,6 @@ class Geothermal(PhysicsBase):
 
         state = value_vector([uniform_pressure, 0])
         enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temperature)
-        # enth = self.property_containers[0].enthalpy_ev['total'].evaluate(state, uniform_temperature)
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
         enthalpy.fill(enth)
@@ -170,4 +179,3 @@ class Geothermal(PhysicsBase):
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])
             enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
-            # enthalpy[j] = self.property_containers[0].enthalpy_ev['total'].evaluate(state, temperature[j])
