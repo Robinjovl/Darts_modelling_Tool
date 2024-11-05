@@ -82,6 +82,8 @@ class PropertyContainerIAPWS(PropertyBase):
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.relperm[j] = self.relperm_ev[phase].evaluate(state)
+
+        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
 
     def compute_total_enthalpy(self, state, temperature):
@@ -222,6 +224,6 @@ class PropertyContainerPH(PropertyBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(state)
+            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
 
         return

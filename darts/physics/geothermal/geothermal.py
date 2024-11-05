@@ -42,6 +42,7 @@ class GeothermalPH(Geothermal):
         property_container = GeothermalPHProperties()
 
         property_container.flash_ev = idata.fluid.flash_ev
+        property_container.Mw = idata.fluid.Mw
 
         property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
         property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
@@ -98,6 +99,8 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.relperm[j] = self.relperm_ev[phase].evaluate(state)
+
+        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
 
     def compute_total_enthalpy(self, state, temperature):
@@ -195,7 +198,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(state)
+            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
 
         return
 
@@ -206,13 +209,15 @@ class GeothermalPHFluidProps(FluidProps):
         self.components = ["H2O"]
         self.phases = ['water', 'steam']
 
-        from dartsflash.libflash import PHFlash, FlashParams
+        from dartsflash.libflash import PHFlash, FlashParams, EoSParams, EoS
         from dartsflash.libflash import CubicEoS, AQEoS
         from dartsflash.components import CompData
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw
         ceos = CubicEoS(comp_data, CubicEoS.PR)
+        ceos.set_preferred_roots(0, 0.75, EoS.MAX)
         aq = AQEoS(comp_data, AQEoS.Jager2003)
+        aq.set_eos_range(0, [0.6, 1.])
 
         flash_params = FlashParams(comp_data)
 
