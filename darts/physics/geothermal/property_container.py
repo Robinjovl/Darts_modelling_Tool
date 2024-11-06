@@ -19,6 +19,7 @@ class PropertyContainerIAPWS(PropertyBase):
         Constructor
         :param property_evaluator: determines what property evaluator is used, input is either 'IAPWS' or 'ADGPRS'
         """
+        self.Mw = [18.015]
         self.rock = [value_vector([1, 0, 273.15])]
         self.rock_compaction_ev = custom_rock_compaction_evaluator(self.rock)  # Create rock_compaction object
         self.rock_energy_ev = custom_rock_energy_evaluator(self.rock)  # Create rock_energy object
@@ -65,6 +66,7 @@ class PropertyContainerIAPWS(PropertyBase):
         self.temperature = 0
         self.enthalpy = np.zeros(2)
         self.density = np.zeros(2)
+        self.dens_m = np.zeros(2)
         self.saturation = np.zeros(2)
         self.viscosity = np.zeros(2)
         self.conduction = np.zeros(2)
@@ -78,6 +80,7 @@ class PropertyContainerIAPWS(PropertyBase):
         for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.density[j] = self.density_ev[phase].evaluate(state)
+            self.dens_m[j] = self.density[j] / self.Mw[0]
             self.saturation[j] = self.saturation_ev[phase].evaluate(state)
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)

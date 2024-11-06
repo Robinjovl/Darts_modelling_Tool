@@ -18,6 +18,8 @@ class GeothermalIAPWS(Geothermal):
 
         property_container = GeothermalIAPWSProperties()
 
+        property_container.Mw = [18.015]
+
         property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
         property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
         property_container.rock_energy_ev = custom_rock_energy_evaluator(property_container.rock)  # Create rock_energy object
@@ -62,6 +64,7 @@ class GeothermalPropertiesBase(PropertyBase):
     nph = 2
 
     def __init__(self):
+        self.Mw = np.zeros(self.nc)
         self.nu = np.zeros(self.nph)
         self.x = np.zeros((self.nph, self.nc))
         self.density = np.zeros(self.nph)
@@ -95,6 +98,7 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
         for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.density[j] = self.density_ev[phase].evaluate(state)
+            self.dens_m[j] = self.density[j] / self.Mw[0]
             self.saturation[j] = self.saturation_ev[phase].evaluate(state)
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
@@ -188,8 +192,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
             Mw = np.sum(self.Mw * self.x[j, :])
             self.density[j] = self.density_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
             self.dens_m[j] = self.density[j] / Mw
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :],
-                                                                  self.density[j])
+            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :], self.density[j])
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
 
