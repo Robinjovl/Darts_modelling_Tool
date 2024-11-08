@@ -402,7 +402,7 @@ class StructReservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results of structured reservoir at timestamp t into `.vtk` format.
 
@@ -412,10 +412,10 @@ class StructReservoir(ReservoirBase):
         :type t: float
         :param output_directory: Path to save .vtk file
         :type output_directory: str
-        :param prop_idxs: Dictionary of properties with data array indices for output
-        :type prop_idxs: dict
+        :param prop_names: List of keys for properties
+        :type prop_names: list
         :param data: Data for output
-        :type data: np.ndarray
+        :type data: dict
         """
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
@@ -428,11 +428,11 @@ class StructReservoir(ReservoirBase):
         vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
         cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
+        for prop_name in prop_names:
+            local_data = data[prop_name]
             global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
             global_array[self.discretizer.local_to_global] = local_data
-            cell_data[prop] = global_array
+            cell_data[prop_name] = global_array
 
         if self.vtk_grid_type == 0:
             vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
