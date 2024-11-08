@@ -1,6 +1,6 @@
 import numpy as np
 from darts.engines import value_vector
-from darts.physics.property_base import PropertyBase
+from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
 

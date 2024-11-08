@@ -1,6 +1,6 @@
 import numpy as np
 from darts.engines import value_vector
-from darts.physics.property_base import PropertyBase
+from darts.physics.base.property_base import PropertyBase
 
 from darts.physics.properties.iapws.iapws_property import *
 from darts.physics.properties.iapws.custom_rock_property import *
@@ -19,6 +19,7 @@ class PropertyContainerIAPWS(PropertyBase):
         Constructor
         :param property_evaluator: determines what property evaluator is used, input is either 'IAPWS' or 'ADGPRS'
         """
+        self.Mw = [18.015]
         self.rock = [value_vector([1, 0, 273.15])]
         self.rock_compaction_ev = custom_rock_compaction_evaluator(self.rock)  # Create rock_compaction object
         self.rock_energy_ev = custom_rock_energy_evaluator(self.rock)  # Create rock_energy object
@@ -50,7 +51,7 @@ class PropertyContainerIAPWS(PropertyBase):
             self.temperature_ev = iapws_temperature_evaluator()                    # Create temperature object
             self.enthalpy_ev = {'water': iapws_water_enthalpy_evaluator(),
                                 'steam': iapws_steam_enthalpy_evaluator(),
-                                'total': iapws_total_enthalpy_evalutor}
+                                'total': iapws_total_enthalpy_evalutor()}
             self.density_ev = {'water': iapws_water_density_evaluator(),
                                'steam': iapws_steam_density_evaluator()}
             self.saturation_ev = {'water': iapws_water_saturation_evaluator(),
@@ -65,6 +66,7 @@ class PropertyContainerIAPWS(PropertyBase):
         self.temperature = 0
         self.enthalpy = np.zeros(2)
         self.density = np.zeros(2)
+        self.dens_m = np.zeros(2)
         self.saturation = np.zeros(2)
         self.viscosity = np.zeros(2)
         self.conduction = np.zeros(2)
@@ -78,11 +80,17 @@ class PropertyContainerIAPWS(PropertyBase):
         for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
             self.density[j] = self.density_ev[phase].evaluate(state)
+            self.dens_m[j] = self.density[j] / self.Mw[0]
             self.saturation[j] = self.saturation_ev[phase].evaluate(state)
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
             self.relperm[j] = self.relperm_ev[phase].evaluate(state)
+
+        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
+
+    def compute_total_enthalpy(self, state, temperature):
+        return self.enthalpy_ev['total'].evaluate(state, temperature)
 
 
 class PropertyContainerPH(PropertyBase):
@@ -167,6 +175,21 @@ class PropertyContainerPH(PropertyBase):
 
         return ph
 
+    def compute_total_enthalpy(self, state, temperature):
+        _ = self.flash_ev.evaluate_PT(state[0], temperature)
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        x = np.array(flash_results.X).reshape(self.nph, self.nc)
+
+        ph = np.array([j for j in range(self.nph) if nu[j] > 0])
+
+        enthalpy = 0.
+        for j in ph:
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(state[0], temperature, x[j, :])
+
+        return enthalpy
+
+
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
         if len(ph) == 1:
@@ -204,6 +227,6 @@ class PropertyContainerPH(PropertyBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(state)
+            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
 
         return
