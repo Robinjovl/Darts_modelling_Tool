@@ -531,7 +531,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
@@ -542,8 +542,8 @@ class CPG_Reservoir(ReservoirBase):
         vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
         cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
+        for prop in prop_names:
+            local_data = data[prop]
             global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
             dummy_zeros = np.zeros(
                 self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
