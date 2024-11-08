@@ -13,7 +13,7 @@ class Flash:
         self.ns = nc + ni
 
     @abc.abstractmethod
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_PT(self, pressure, temperature, zc):
         pass
 
     def get_flash_results(self):
@@ -24,7 +24,7 @@ class SinglePhase(Flash):
     def __init__(self, nc):
         super().__init__(nph=1, nc=nc)
 
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_PT(self, pressure, temperature, zc):
         self.nu, self.X = np.array([1.]), np.array([zc])
         return 0
 
@@ -36,7 +36,7 @@ class ConstantK(Flash):
         self.rr_eps = eps
         self.K_values = np.array(ki)
 
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_PT(self, pressure, temperature, zc):
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
         return 0
 
@@ -82,7 +82,7 @@ class SolidFlash(Flash):
         self.nc_sol = nc_sol
         self.np_sol = np_sol
 
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_PT(self, pressure, temperature, zc):
         """Evaluate flash normalized for solids"""
         # Normalize compositions
         zc_sol = zc[self.nc_fl:]
@@ -90,7 +90,7 @@ class SolidFlash(Flash):
         zc_norm = zc[:self.nc_fl]/(1.-zc_sol_tot)
 
         # Evaluate flash for normalized composition
-        error_output = self.flash.evaluate(pressure, temperature, zc_norm)
+        error_output = self.flash.evaluate_PT(pressure, temperature, zc_norm)
         nu = np.array(self.flash.getnu())
         x = np.array(self.flash.getx()).reshape(self.np_fl, self.nc_fl)
 
