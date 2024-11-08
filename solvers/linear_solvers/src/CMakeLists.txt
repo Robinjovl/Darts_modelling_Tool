@@ -8,6 +8,8 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/csr_matrix_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linear_solver_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_superlu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_hypre_amg.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_hypre_ilu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_amg.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_bilu0.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr.cpp
@@ -24,6 +26,8 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linear_solver_base.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linear_solver_prop.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_superlu.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_hypre_amg.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_hypre_ilu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_bos_amg.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_bos_bilu0.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/openDARTS/linear_solvers/linsolv_bos_cpr.hpp
@@ -49,6 +53,7 @@ target_link_libraries(linear_solvers
     auxiliary
     SuperLU
     cblas
+    HYPRE::HYPRE
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

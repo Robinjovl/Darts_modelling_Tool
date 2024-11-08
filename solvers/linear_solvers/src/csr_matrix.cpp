@@ -193,12 +193,12 @@ namespace opendarts
       switch (import_format)
       {
       case opendarts::linear_solvers::sparse_matrix_import_format::csr:
-        std::cout << "\nImporting from csr format not yet implemented! File " << filename << " not written" << std::endl;
-        error_output = 100;
+        std::cout << "\nImporting matrix from file in csr format!" << std::endl;
+        error_output = this->import_matrix_from_file_csr(filename);
         break;
       default:
         std::cout << "\nInvalid matrix import format!" << std::endl;
-        error_output = 10; // invalid matrix export format
+        error_output = 10; // invalid matrix import format
         break;
       }
       return error_output;
@@ -368,12 +368,11 @@ namespace opendarts
           // in the matrix
           // Since each block is n_block_size x n_block_size we need to read the
           // n_block_size^2 values associated to it
-          output_file << "\n"
-                      << "// " << col_idx;
+          output_file << "\n" << col_idx;
           for (opendarts::config::index_t in_block_value_idx = 0; in_block_value_idx < this->b_sqr;
                in_block_value_idx++)
           {
-            output_file << "\t" << this->values[in_row_block_idx * this->b_sqr + in_block_value_idx];
+            output_file << "\t" << std::setprecision(16) << std::fixed << this->values[in_row_block_idx * this->b_sqr + in_block_value_idx];
           }
         }
       }
@@ -386,6 +385,125 @@ namespace opendarts
       // Close the file
       output_file.close();
 
+      return error_output;
+    }
+    
+    template <uint8_t N_BLOCK_SIZE>
+    int csr_matrix<N_BLOCK_SIZE>::import_matrix_from_file_csr(const std::string &filename)
+    {
+      // The csr file format has the following structure
+      // Example for the matrix (3 x 3 with blocks of 2x2)
+      //    1.0 0.0   [0] [0]   -1.0 -3.0
+      //    2.0 3.0   [0] [0]   -2.0  0.0
+      //    [0] [0]   [0] [0]    [0] [0]   |
+      //    [0] [0]   [0] [0]    [0] [0]   | <-- Row 1 is empty
+      //    [0] [0]   [0] [0]    5.0 7.0 |
+      //    [0] [0]   [0] [0]    6.0 8.0 |  <-- Block on row 2 and column 2
+      //                         -------  
+      
+      // // N_ROWS	N_COLS	N_NON_ZEROS	N_BLOCK_SIZE
+      // 3	3	3	2
+      // // Rows indexes[1..n_rows] (with out 0)
+      // 2
+      // 2
+      // 4
+      // // END of Rows indexes
+      // // Values n_non_zeros elements
+      // // COLUMN	VALUE
+      // // ROW 0
+      // 0	 1.0  0.0  2.0  3.0
+      // 2	-1.0 -3.0 -2.0  0.0
+      // // ROW 1
+      // // ROW 2
+      // 2	 5.0  7.0  6.0  8.0
+      // // END OF VALUES
+      // // END OF FILE
+
+      int error_output = 0;
+      std::ifstream csr_file;
+      std::string dummy_line;
+      std::string dummy_string;
+      
+      // Open the file for writting
+      csr_file.open(filename);
+      
+      // Read header line (ignore the contents)
+      // // N_ROWS	N_COLS	N_NON_ZEROS	N_BLOCK_SIZE
+      std::getline(csr_file, dummy_line);
+      
+      // Read matrix structure information
+      opendarts::config::index_t n_rows_input, n_cols_input, n_non_zeros_input, n_block_size_input;
+      csr_file >> n_rows_input >> n_cols_input >> n_non_zeros_input >> n_block_size_input;
+      
+      // Check if block size is compatible with matrix definition
+      if(n_block_size_input != this->n_block_size_)
+      {
+        error_output = 100;
+        return error_output;  // exit immediately
+      }
+      
+      // Initialize the matrix with the file structure information
+      this->init(n_rows_input, n_cols_input, n_non_zeros_input);
+      
+      // Read empty line and rows header line (ignore the contents)
+      // 
+      // // N_ROWS	N_COLS	N_NON_ZEROS	N_BLOCK_SIZE
+      std::getline(csr_file, dummy_line);  // finish previous line 
+      std::getline(csr_file, dummy_line);  // empty line
+      std::getline(csr_file, dummy_line);  // rows header 
+      
+      // Read rows_ptr data 
+      for(opendarts::config::index_t rows_ptr_idx=0; rows_ptr_idx < (n_rows_input + 1); rows_ptr_idx++)
+      {
+        csr_file >> this->rows_ptr[rows_ptr_idx];
+      }
+      
+      // Read end of rows header 
+      // // END Rows points indices
+      std::getline(csr_file, dummy_line);  // finish previous line
+      std::getline(csr_file, dummy_line);
+      
+      // Read cols_ind header
+      // [empty line]
+      // // Values of n_non_zero_elements
+      // // Column index		Block Values
+      std::getline(csr_file, dummy_line);  // empty line
+      std::getline(csr_file, dummy_line);
+      std::getline(csr_file, dummy_line);
+      
+      // Read data per row and per column
+      for(opendarts::config::index_t row_idx=0; row_idx < n_rows_input; row_idx++)
+      {
+        // Read row header
+        std::getline(csr_file, dummy_line);  // ROW [row_idx] (ignore)
+        
+        // Check the start memory index of columns and how many nonzero columns exist in this row
+        opendarts::config::index_t col_idx;  // the column memory index in cols_ind
+        opendarts::config::index_t start_col_idx = this->rows_ptr[row_idx];  // the start memory index of column and data
+        opendarts::config::index_t this_row_nnz_cols = this->rows_ptr[row_idx + 1] - this->rows_ptr[row_idx];  // check how many columns in this row  
+        
+        // Read all non-zero (nnz) columns in this row 
+        for(opendarts::config::index_t col_nnz_idx = 0; col_nnz_idx < this_row_nnz_cols; col_nnz_idx++)
+        {
+          // csr_file >> dummy_string;  // read //, will be removed
+          col_idx = start_col_idx + col_nnz_idx;  // compute the column memory index to know where to place
+          csr_file >> this->cols_ind[col_idx];  // read the column index value for this block of values 
+          
+          // Read data for the whole block
+          opendarts::config::index_t block_data_mem_idx;  // the memory index of the data in the block
+          for(opendarts::config::index_t block_data_idx = 0; block_data_idx < (n_block_size_input * n_block_size_input); block_data_idx++)
+          {
+            block_data_mem_idx = col_idx * n_block_size_input * n_block_size_input + block_data_idx;  // compute the index in memory of this data value
+            csr_file >> this->values[block_data_mem_idx];  // read the value
+          }
+          std::getline(csr_file, dummy_line);  // end line
+        }
+      }
+      
+      // Close the file 
+      csr_file.close();
+      
+      // Return the error value capture during execution
       return error_output;
     }
 
