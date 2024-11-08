@@ -97,7 +97,7 @@ class ModelProperties(PropertyContainer):
     def run_flash(self, pressure, temperature, zc):
 
         zc_r = zc[:-1] / (1 - zc[-1])
-        self.flash_ev.evaluate(pressure, temperature, zc_r)
+        self.flash_ev.evaluate_PT(pressure, temperature, zc_r)
         flash_results = self.flash_ev.get_flash_results()
         nu = np.array(flash_results.nu)
         xr = np.array(flash_results.X).reshape(self.nph-1, self.nc-1)
