@@ -163,7 +163,7 @@ class PropertyContainer(PropertyBase):
             zc = zc[:self.nc_fl] / norm
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        error_output = self.flash_ev.evaluate(pressure, temperature, zc)
+        error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
