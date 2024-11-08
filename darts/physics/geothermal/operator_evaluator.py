@@ -18,7 +18,7 @@ class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy    = pc.rock_energy_ev.evaluate(state)
+        rock_int_energy = pc.rock_energy_ev.evaluate(state, pc.temperature)
 
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
@@ -51,7 +51,7 @@ class acc_flux_custom_iapws_evaluator_python_well(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
+        rock_int_energy = pc.rock_energy_ev.evaluate(state, pc.temperature)
 
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
@@ -84,7 +84,7 @@ class acc_flux_gravity_evaluator_python(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
+        rock_int_energy = pc.rock_energy_ev.evaluate(state, pc.temperature)
 
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
@@ -123,7 +123,7 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
+        rock_int_energy = pc.rock_energy_ev.evaluate(state, pc.temperature)
 
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
