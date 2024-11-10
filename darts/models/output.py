@@ -12,7 +12,7 @@ from darts.tools.plot_well_rates import *
 
 #%%
 
-class Output():
+class Output:
     """
     Base class for all output related functionality
     """
@@ -47,39 +47,49 @@ class Output():
             for region in self.physics.regions:  # loop over the different sets of operators
                 phase_props = self.physics.property_containers[region].phase_props
                 temp_dict = {}
+
+                # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j, phase_name in enumerate(self.physics.phases):
                         temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: phase_props[i][j]
 
+                # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
 
-            # self.physics.init_physics()
-            # self.reset()
-
+            # Initialize physics and engine settings
             self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(op_list), params, timer.node["simulation"])
-            # self.set_output()
+            self.physics.engine.init(self.reservoir.mesh,
+                                     ms_well_vector(self.reservoir.wells),
+                                     op_vector(op_list),
+                                     params,
+                                     timer.node["simulation"])
 
+            # Update the properties list
             self.properties = list(self.physics.property_containers[0].output_props.keys())
 
         else:
+            # If all_phase_props is False, update properties list based on output_props
             self.properties = list(self.physics.property_containers[0].output_props.keys())
 
     def filter_phase_props(self, new_prop_keys = ['sat1', 'dens0']):
         for region in self.physics.regions:
             output_dictionary = self.physics.property_containers[region].output_props
             prop_keys = list(output_dictionary.keys())
-            print('AVAILABLE PROPERTIES IN REGION %d ARE %s'%(region, prop_keys))
+            print(f'Available properties in region {region} are {prop_keys}')
 
+            # Warn if any key is missing in the available properties
             for key in new_prop_keys:
                 if key not in prop_keys:
                     print(f"Warning: '{key}' is not an available property, choose properties out of {prop_keys}")
-                    break
+                    # break
 
+            # Create a new dictionary with only the available keys from new_prop_keys
             new_output_dictionary = {}
             for name in new_prop_keys:
-                new_output_dictionary[name] = output_dictionary[name]
+                if name in output_dictionary: # Only add if the key is available
+                    new_output_dictionary[name] = output_dictionary[name]
 
+            # Update the output properties and reinitialize physics
             self.physics.property_containers[region].output_props = new_output_dictionary
             self.physics.init_physics()
             self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells),
