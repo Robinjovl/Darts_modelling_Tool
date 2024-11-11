@@ -28,7 +28,7 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(case=case, grid_out_dir=out_dir)
+        m = ModelGeothermal(case=case, grid_out_dir=out_dir, iapws_physics=True)
     elif physics_type == 'dead_oil':
         m = ModelDeadOil(case=case, grid_out_dir=out_dir)
     else:

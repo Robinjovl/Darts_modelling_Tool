@@ -81,6 +81,22 @@ else
   echo -e "\n- Building thirdparty libs: START\n"
   cd ../../thirdparty/
   
+  # -- Build Hypre ---------------------------------------------------------------
+  echo -e "\n--- Building Hypre: START\n"
+  cd hypre/src/cmbuild
+  # Setup hypre build with no MPI support (we only use single processor)
+  # Request build of tests and examples just to be sure everything is fine in the build 
+  cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install ..
+  
+  # Build hypre 
+  make 
+  make install
+  
+  # Return to start directory 
+  cd ../../../
+  echo -e "\n--- Building Hypre: DONE!\n"
+  # ------------------------------------------------------------------------------
+  
   # -- Build SuperLU -------------------------------------------------------------
   echo -e "\n--- Building SuperLU: START\n"
   cd SuperLU_5.2.1

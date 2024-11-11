@@ -1,6 +1,6 @@
 import numpy as np
 from darts.engines import value_vector
-from darts.physics.property_base import PropertyBase
+from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
 
@@ -163,13 +163,12 @@ class PropertyContainer(PropertyBase):
             zc = zc[:self.nc_fl] / norm
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        error_output = self.flash_ev.evaluate(pressure, temperature, zc)
+        error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
 
-        ph = np.where(self.nu > 0)[0]
-        assert(ph.size > 0)
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         if ph.size == 1:
             self.x[ph[0]] = zc

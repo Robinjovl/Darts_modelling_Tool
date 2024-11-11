@@ -2,9 +2,7 @@ import numpy as np
 import os
 
 from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
-from darts.discretizer import load_single_float_keyword, load_single_int_keyword
-from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import index_vector as index_vector_discr
+from darts.discretizer import load_single_float_keyword
 from darts.engines import value_vector
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
@@ -24,6 +22,7 @@ def fmt(x):
     return '{:.3}'.format(x)
 
 #####################################################
+
 class Model_CPG(CICDModel):
     def __init__(self, physics_type : str, case : str, grid_out_dir=None):
         super().__init__()
@@ -94,7 +93,7 @@ class Model_CPG(CICDModel):
             make_burden_layers(number_of_burden_layers=self.burden_layers, initial_thickness=10, property_dictionary=arrays,
                                burden_layer_prop_value=1e-5)
 
-        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=1e-1)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=1e-5)
         self.reservoir.discretize()
 
         # store modified arrrays (with burden layers) for output to grdecl
@@ -122,6 +121,7 @@ class Model_CPG(CICDModel):
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
 
+        self.set_input_data()
         self.set_physics()
 
         # time stepping and convergence parameters
@@ -206,4 +206,8 @@ class Model_CPG(CICDModel):
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 
+    def set_input_data_rock(self, case=''):
+        self.idata.rock.compressibility = 1e-5  # [1/bars]
+        self.idata.rock.compressibility_ref_p = 1 # [bars]
+        self.idata.rock.compressibility_ref_T = 273.15  # [K]
 

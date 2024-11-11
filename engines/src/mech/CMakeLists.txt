@@ -36,6 +36,7 @@ target_sources(engines_mechanics
   PRIVATE
     ${OD_ENGINES_MECHANICS_SRC_FILES}
     ${OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+	${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_mechanics
@@ -46,6 +47,7 @@ target_link_libraries(engines_mechanics
     engines_interpolator
 	opendarts_discretizer
     Eigen3::Eigen
+	HYPRE::HYPRE
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

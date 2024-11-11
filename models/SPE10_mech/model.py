@@ -5,6 +5,7 @@ from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
 
 import numpy as np
+import os
 
 from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
@@ -18,7 +19,7 @@ from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
     def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False):
-        self.model_folder = model_folder
+        self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
@@ -33,7 +34,10 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr # cpu_gmres_fs_cpr # cpu_superlu
+        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+            self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+        else:
+            self.params.linear_type = sim_params.cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5

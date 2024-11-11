@@ -6,7 +6,7 @@ import numpy as np
 from darts.engines import value_vector, sim_params
 
 from darts.physics.geothermal.physics import Geothermal
-from darts.physics.geothermal.property_container import PropertyContainer
+from darts.physics.geothermal.property_container import PropertyContainerIAPWS
 
 
 class Model(CICDModel):
@@ -28,7 +28,7 @@ class Model(CICDModel):
 
         T_init = 450.
         state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].enthalpy_ev['total'](T_init).evaluate(state_init)
+        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
         self.initial_values = {self.physics.vars[0]: state_init[0],
                                self.physics.vars[1]: enth_init
                                }
@@ -88,7 +88,7 @@ class Model(CICDModel):
 
     def set_physics(self, n_points):
         # create pre-defined physics for geothermal
-        property_container = PropertyContainer()
+        property_container = PropertyContainerIAPWS()
         self.physics = Geothermal(self.timer, n_points=n_points, min_p=1, max_p=351, min_e=1000, max_e=50000, cache=False)
         self.physics.add_property_region(property_container)
 

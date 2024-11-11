@@ -1,6 +1,7 @@
 from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
+import os
 from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
@@ -16,10 +17,16 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
+
+        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+            linear_type = sim_params.cpu_gmres_fs_cpr
+        else:
+            linear_type = sim_params.cpu_superlu
+
         if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
+            self.params.linear_type = linear_type
         elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+            self.physics.engine.ls_params[-1].linear_type = linear_type
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -32,7 +39,7 @@ class Model(THMCModel):
         else:
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
-        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
         self.idata.rock.density = 2650.
         self.idata.fluid.Mw = 18.015

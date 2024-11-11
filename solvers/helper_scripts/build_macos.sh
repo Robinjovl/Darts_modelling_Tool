@@ -84,13 +84,29 @@ else
   echo "\n- Building thirdparty libs: START\n"
   cd ../../thirdparty/
   
+  # -- Build Hypre ---------------------------------------------------------------
+  echo "\n--- Building Hypre: START\n"
+  cd hypre/src/cmbuild
+  # Setup hypre build with no MPI support (we only use single processor)
+  # Request build of tests and examples just to be sure everything is fine in the build 
+  cmake -D CMAKE_C_COMPILER=gcc-13 -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install ..
+  
+  # Build hypre 
+  make 
+  make install
+  
+  # Return to start directory 
+  cd ../../../
+  echo "\n--- Building Hypre: DONE!\n"
+  # ------------------------------------------------------------------------------
+  
   # -- Build SuperLU -------------------------------------------------------------
   echo "\n--- Building SuperLU: START\n"
   cd SuperLU_5.2.1
 
   # Setup Makefile include files to macOS 
-  cp conf_gcc-11_macOS_m1.mk conf.mk
-  cp make_gcc-11_macOS_m1.inc make.inc 
+  cp conf_gcc-13_macOS_m1.mk conf.mk
+  cp make_gcc-13_macOS_m1.inc make.inc 
 
   # Build SuperLU 
   make 

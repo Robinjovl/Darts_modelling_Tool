@@ -1,10 +1,8 @@
-from darts.engines import *
-from darts.physics.properties.iapws.iapws_property import *
-from darts.physics.physics_base import PhysicsBase
-from darts.physics.operators_base import PropertyOperators
-from darts.physics.geothermal.operator_evaluator import *
-
 import numpy as np
+from darts.engines import *
+from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.geothermal.operator_evaluator import *
 
 
 class Geothermal(PhysicsBase):
@@ -92,6 +90,18 @@ class Geothermal(PhysicsBase):
         """
         return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
+    def determine_obl_bounds(self, state_min, state_max):
+        """
+        Function to compute minimum and maximum enthalpy (kJ/kmol)
+
+        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
+        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        """
+        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
+        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
+
+        return
+
     def define_well_controls(self):
         # create well controls
         # water stream
@@ -137,31 +147,35 @@ class Geothermal(PhysicsBase):
         pressure.fill(uniform_pressure)
 
         state = value_vector([uniform_pressure, 0])
-        E = self.property_containers[0].enthalpy_ev['total'](uniform_temperature)
-        enth = E.evaluate(state)
+        enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temperature)
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
         enthalpy.fill(enth)
 
-    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad):
+    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad, ref_depth_p=0, p_at_ref_depth=1,
+                                          ref_depth_T=0, T_at_ref_depth=293.15):
         """
         Function to set nonuniform initial reservoir condition
 
         :param mesh: :class:`Mesh` object
         :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
         :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
+        :param ref_depth_p: the reference depth for the pressure, km
+        :param p_at_ref_depth: the value of the pressure at the reference depth, bars
+        :param ref_depth_T: the reference depth for the temperature, km
+        :param T_at_ref_depth: the value of the temperature at the reference depth, K
         """
         assert isinstance(mesh, conn_mesh)
 
         depth = np.array(mesh.depth, copy=True)
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = depth[:pressure.size] / 1000 * pressure_grad + 1
+        pressure[:] = (depth[:pressure.size] / 1000 - ref_depth_p) * pressure_grad + p_at_ref_depth
 
+        # set initial enthalpy through given temperature and pressure
         enthalpy = np.array(mesh.enthalpy, copy=False)
-        temperature = depth[:pressure.size] / 1000 * temperature_grad + 293.15
+        temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
 
         for j in range(mesh.n_blocks):
             state = value_vector([pressure[j], 0])
-            E = iapws_total_enthalpy_evalutor(temperature[j])
-            enthalpy[j] = E.evaluate(state)
+            enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])

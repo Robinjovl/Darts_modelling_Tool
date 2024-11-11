@@ -62,6 +62,10 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
 
+if(DEFINED BOS_SOLVERS_DIR)
+  add_compile_definitions(WITH_HYPRE)
+endif()
+
 # Set compiler specific variables
 # Used for compiler flags and other cross compiler variables
 message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
@@ -180,6 +184,8 @@ endif()
 if(NOT DEFINED BOS_SOLVERS_DIR)
   include(thirdparty/thirdparty_superlu.cmake)
 endif()
+
+include(thirdparty/thirdparty_hypre.cmake)
 
 #   thirdparty/bos_solvers ------------------------------------------------------
 if(BOS_SOLVERS_DIR)
