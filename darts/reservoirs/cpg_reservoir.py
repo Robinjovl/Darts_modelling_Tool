@@ -531,7 +531,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
