@@ -792,12 +792,7 @@ class DartsModel:
         timesteps, property_array = self.output_properties(output_properties=props_names, timestep=ith_step)
 
         # Pass to Reservoir.output_to_vtk() method
-        if ith_step is not None:
-            self.reservoir.output_to_vtk(ith_step, timesteps[0], output_directory, list(property_array.keys()), property_array)
-        else:
-            for t, time in enumerate(timesteps):
-                self.reservoir.output_to_vtk(t, time, output_directory, list(property_array.keys()), property_array)
-
+        self.reservoir.output_to_vtk(ith_step, timesteps, output_directory, list(property_array.keys()), property_array)
         self.timer.node["vtk_output"].stop()
 
     def print_timers(self):
