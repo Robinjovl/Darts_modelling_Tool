@@ -9,7 +9,7 @@ from matplotlib import rcParams
 
 from model import Model
 from darts.engines import redirect_darts_output
-from darts.physics.operators_base import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 rcParams["text.usetex"]=False

@@ -46,26 +46,6 @@ build-linux-3.9:
         PY_VER: '3.9'       # for python image selection in .build-linux
         PY_SUF: 'cp39-cp39' # for python path selection in .build-linux-dockcross
         ODLS: '-a'
-        
-build-linux-3.8:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.8'       # for python image selection in .build-linux
-        PY_SUF: 'cp38-cp38' # for python path selection in .build-linux-dockcross
-        ODLS: '-a'
-        
-build-linux-3.7:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.7'        # for python image selection in .build-linux
-        PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
-        ODLS: '-a'
 
 build-linux-3.9-gpu: 
     rules:
@@ -120,26 +100,6 @@ build-linux-3.9-ODLS:
         PY_SUF: 'cp39-cp39'  # for python path selection in .build-linux-dockcross
         ODLS: ''             # build with open-darts linear solvers
         
-build-linux-3.8-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.8'       # for python image selection in .build-linux
-        PY_SUF: 'cp38-cp38' # for python path selection in .build-linux-dockcross
-        ODLS: ''            # build with open-darts linear solvers
-        
-build-linux-3.7-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-linux-dockcross
-    variables:
-        PY_VER: '3.7'        # for python image selection in .build-linux
-        PY_SUF: 'cp37-cp37m' # for python path selection in .build-linux-dockcross
-        ODLS: ''             # build with open-darts linear solvers
-        
 ###################################################################################
 build-windows-3.12:
     rules: 
@@ -182,26 +142,6 @@ build-windows-3.9:
     variables:
         PY_VER: '3.9'
         PYTHONPATH: 'D:\Python39'        
-        ODLS: '-a'
-        
-build-windows-3.8:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-windows
-    variables:
-        PY_VER: '3.8'
-        PYTHONPATH: 'D:\Python38'
-        ODLS: '-a'
-        
-build-windows-3.7:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-windows
-    variables:
-        PY_VER: '3.7'
-        PYTHONPATH: 'D:\Python374'
         ODLS: '-a'
         
 ###################################################################################
@@ -247,26 +187,6 @@ build-windows-3.9-ODLS:
     variables:
         PY_VER: '3.9'
         PYTHONPATH: 'D:\Python39'        
-        ODLS: ''         # build with open-darts linear solvers
-        
-build-windows-3.8-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-windows
-    variables:
-        PY_VER: '3.8'
-        PYTHONPATH: 'D:\Python38'
-        ODLS: ''         # build with open-darts linear solvers
-        
-build-windows-3.7-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .build-windows
-    variables:
-        PY_VER: '3.7'
-        PYTHONPATH: 'D:\Python374'
         ODLS: ''         # build with open-darts linear solvers
         
 ###################################################################################
@@ -406,30 +326,6 @@ test-linux-3.9-ODLS:
         ODLS: ''            # test with open-darts linear solvers
     dependencies:
         - build-linux-3.9-ODLS
-        
-test-linux-3.8-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.8'       # for python image selection in .test-linux
-        PY_SUF: 'cp38-cp38' # for python path selection in .test-linux
-        ODLS: ''            # test with open-darts linear solvers
-    dependencies:
-        - build-linux-3.8-ODLS
-        
-test-linux-3.7-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.7'        # for python image selection in .test-linux
-        PY_SUF: 'cp37-cp37m' # for python path selection in .test-linux
-        ODLS: ''             # test with open-darts linear solvers
-    dependencies:
-        - build-linux-3.7-ODLS
 
 ###################################################################################
 test-linux-3.12:
@@ -482,30 +378,6 @@ test-linux-3.9:
         ODLS: '-a'
     dependencies:
         - build-linux-3.9
-        
-test-linux-3.8:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.8'       # for python image selection in .test-linux
-        PY_SUF: 'cp38-cp38' # for python path selection in .test-linux
-        ODLS: '-a'
-    dependencies:
-        - build-linux-3.8
-        
-test-linux-3.7:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-linux
-    variables:
-        PY_VER: '3.7'        # for python image selection in .test-linux
-        PY_SUF: 'cp37-cp37m' # for python path selection in .test-linux
-        ODLS: '-a'
-    dependencies:
-        - build-linux-3.7
 
 ###################################################################################
 
@@ -570,30 +442,6 @@ test-windows-3.9:
         ODLS: '-a'
     dependencies:
         - build-windows-3.9
-        
-test-windows-3.8:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.8'
-        PYTHONPATH: 'D:\Python38'
-        ODLS: '-a'
-    dependencies:
-        - build-windows-3.8
-        
-test-windows-3.7:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.7'
-        PYTHONPATH: 'D:\Python374'
-        ODLS: '-a'
-    dependencies:
-        - build-windows-3.7
 
 ###################################################################################
 test-windows-3.12-ODLS:
@@ -646,31 +494,7 @@ test-windows-3.9-ODLS:
         ODLS: ''
     dependencies:
         - build-windows-3.9-ODLS
-        
-test-windows-3.8-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.8'
-        PYTHONPATH: 'D:\Python38'
-        ODLS: ''
-    dependencies:
-        - build-windows-3.8-ODLS
-        
-test-windows-3.7-ODLS:
-    rules: 
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
-    extends: .test-windows
-    variables:
-        PY_VER: '3.7'
-        PYTHONPATH: 'D:\Python374'
-        ODLS: ''
-    dependencies:
-        - build-windows-3.7-ODLS
-       
+
 ###################################################################################
 
 .test-linux:
@@ -845,14 +669,10 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.7-ODLS
-        - build-linux-3.8-ODLS
         - build-linux-3.9-ODLS
         - build-linux-3.10-ODLS
         - build-linux-3.11-ODLS  
         - build-linux-3.12-ODLS
-        - build-windows-3.7-ODLS
-        - build-windows-3.8-ODLS
         - build-windows-3.9-ODLS
         - build-windows-3.10-ODLS
         - build-windows-3.11-ODLS

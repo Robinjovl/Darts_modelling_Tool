@@ -1,6 +1,7 @@
 from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
 import numpy as np
+import os
 from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators
 
@@ -28,11 +29,15 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-        elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+            linear_type = sim_params.cpu_gmres_fs_cpr
+        else:
+            linear_type = sim_params.cpu_superlu
 
+        if self.discretizer_name == 'mech_discretizer':
+            self.params.linear_type = linear_type
+        elif self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.ls_params[-1].linear_type = linear_type
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
                                                  fluid_vars=self.physics.vars, mode=self.mode, mesh_filename=self.mesh_filename)

@@ -1,3 +1,25 @@
+# 1.2.0 [15-11-2024]
+- Python 3.7-3.8 support dropped.
+- Changes to physics/engines:
+	- Correct approximation of diffusion fluxes (including energy)
+	- Simple mechanical dispersion term
+	- Predefined physics Geothermal, GeothermalPH, DeadOil and BlackOil
+	- Phase velocities in structured reservoir
+- Changes to OBL interpolation:
+	- Barycentric linear interpolation with Delaunay triangulation
+	- Support of higher-dimensional linear interpolation (requires re-compilation)
+	- Tests
+- Changes to linear solvers:
+	- Hypre added as a submodule
+	- FS_CPR preconditioner by default for mechanical tests (in configuration with iter. solvers)
+	- Tests
+- Changes to CPG model:
+	- well perforations definition by X,Y,Z coordinates in addition to I,J,K indices
+	- setting rock thermal properties based on the porosity
+	- output wells and center points to separate vtk files
+	- added extracted energy plot
+	- added 2 options for physics: geothermal and dead oil
+
 # 1.1.4 [07-09-2024]
 - Generalize super engine physics for solid formulation[(See details)](https://gitlab.com/open-darts/open-darts/-/merge_requests/112)
 - Python 3.12 support

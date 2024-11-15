@@ -7,7 +7,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from darts.reservoirs.reservoir_base import ReservoirBase
-from darts.physics.physics_base import PhysicsBase
+from darts.physics.base.physics_base import PhysicsBase
 
 from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
 from darts.engines import print_build_info as engines_pbi
@@ -710,7 +710,7 @@ class DartsModel:
         nb = self.reservoir.mesh.n_res_blocks
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
-        prop_idxs = [list(self.physics.property_containers[0].output_props.keys()).index(prop)
+        prop_idxs = [list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop)
                      for prop in output_properties]
 
         # Loop over timesteps
@@ -784,33 +784,15 @@ class DartsModel:
             output_directory = self.output_folder
 
         # Find index of properties to output
-        ev_props  = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
-        tot_props = self.physics.vars + ev_props
+        ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
 
-        if output_properties is None:
-            # If None, all variables and properties from property_operators will be passed
-            # prop_idxs = {prop: i for i, prop in enumerate(tot_props)}
-            prop_idxs  = {prop: i for i, prop in enumerate(ev_props)}
-        else:
-            # Else, it finds the indices of output_properties in the output data
-            prop_idxs = {prop: tot_props.index(prop) for prop in output_properties}
+        # If output_properties is None, all variables and properties from property_operators will be passed
+        props_names = output_properties if output_properties is not None else list(ev_props)
 
-        timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
+        timesteps, property_array = self.output_properties(output_properties=props_names, timestep=ith_step)
 
-        prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
-
-        
-        for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
-
-            # Pass to Reservoir.output_to_vtk() method
-            if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
-            else:
-                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
-
+        # Pass to Reservoir.output_to_vtk() method
+        self.reservoir.output_to_vtk(ith_step, timesteps, output_directory, list(property_array.keys()), property_array)
         self.timer.node["vtk_output"].stop()
 
     def print_timers(self):

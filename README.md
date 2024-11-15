@@ -7,7 +7,7 @@
 
 ## Installation
 
-openDARTS is available for Python 3.7 to 3.11.
+openDARTS is available for Python 3.9 to 3.12.
 
 ```bash
 pip install open-darts

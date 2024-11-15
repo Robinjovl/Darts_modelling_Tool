@@ -24,7 +24,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
 
-    test_dirs_mech = ['1ph_1comp_poroelastic_analytics', '1ph_1comp_poroelastic_convergence']
+    test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
     for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
         for discr_name in ['mech_discretizer', 'pm_discretizer']:
@@ -34,7 +34,19 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                 if case == 'terzaghi_two_layers' and mesh == 'hex':
                     continue
                 test_args_mech.append([case, discr_name, mesh])
+
+    test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
+
+    if False:#iter_solvers:# and test_all_models:
+        test_dirs_mech += ['SPE10_mech']
+        physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
+        meshes_list = ['data_10_10_10', 'data_20_40_40']
+        test_args_mech_spe10 = []
+        for physics in physics_list:
+            for mesh in meshes_list:
+                test_args_mech_spe10.append([mesh, physics])
+        test_args_mech += [test_args_mech_spe10]
 
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
@@ -66,7 +78,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # RUN
     n_failed = n_total = 0
     # run tests accepted_dirs/model.py with comparison of pkl files
-    n_failed_m = n_total_m = 0
+    n_failed_m = 0
     if len(accepted_dirs):
         n_failed_m = for_each_model(model_dir, check_performance, accepted_dirs)
     n_total_m = len(accepted_dirs)
@@ -113,7 +125,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # test for adjoint ------------------start---------------------------------
     n_failed_adj = n_total_adj = 0
     import time
-    n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
+    if len(accepted_dirs_adjoint):
+        n_failed_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
     n_total_adj = len(accepted_dirs_adjoint)
     n_failed += n_failed_adj
     n_total += n_total_adj

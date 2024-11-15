@@ -531,7 +531,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
@@ -539,46 +539,51 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        for ts, t in enumerate(time_steps):
 
-        cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
-            global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
-            dummy_zeros = np.zeros(
-                self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
-            v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
-            global_array[self.discr_mesh.local_to_global] = v[:]
-            cell_data[prop] = global_array
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
 
-        if self.vtk_grid_type == 0:
-            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-        else:
-            for key, value in cell_data.items():
+            cell_data = {}
+            for prop in prop_names:
+                local_data = data[prop][ts]
+                global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
+                dummy_zeros = np.zeros(
+                    self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
+                v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
+                global_array[self.discr_mesh.local_to_global] = v[:]
+                cell_data[prop] = global_array
 
-                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                if cell_data[key].size == g_to_l.size:
-                    a = cell_data[key][g_to_l >= 0]
-                else:
-                    a = cell_data[key]
-                self.vtkobj.AppendScalarData(key, a)
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                    g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+                    if cell_data[key].size == g_to_l.size:
+                        a = cell_data[key][g_to_l >= 0]
+                    else:
+                        a = cell_data[key]
+                    self.vtkobj.AppendScalarData(key, a)
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
+                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup('solution')
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
-        vtk_group.save()
+            # in order to have correct timesteps in Paraview, write down group file
+            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+            # and does not support reading, track all written files and times and re-write the complete
+            # group file every time
+
+            self.vtk_filenames_and_times[vtk_file_name] = t
+            vtk_group = VtkGroup('solution')
+            for fname, t in self.vtk_filenames_and_times.items():
+                vtk_group.addFile(fname, t)
+            vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
 

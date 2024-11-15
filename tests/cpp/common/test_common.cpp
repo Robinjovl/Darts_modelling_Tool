@@ -106,7 +106,8 @@ template <uint8_t N_BLOCK_SIZE>
 void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill)
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_Poisson)
 {
   // Constructs a square tridiagonal matrix of dimension n x n with values -2, 0, 2
   // We must have that n >= 2
@@ -161,7 +162,7 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
       value_set = 0.0; // the auxiliary variable to store the value to place in each nonzero value of a block
   for (opendarts::config::index_t row_idx = 0; row_idx < n_rows; row_idx++)
   {
-    // Diagonal -2 element
+    // Diagonal -2 element (if is_SPD=true then the minus becomes a +)
     // When is_test = false the block is set to -2
     // When is_test = true we add more information so that we can see what is going on inside for debugging
     // These blocks will look like this, for example for a 4x4 block sparse matrix
@@ -179,7 +180,14 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
         // If we are filling the matrix in index mode use the value filling rule,
         // here we set the part for the inner block row index. Otherwise just set
         // the value to -2.
-        value_temp = is_index ? -100000 * (this_block_value_row_idx + 1) - 2 : -2;
+        if(is_Poisson)
+        {
+          value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 1 : 1;
+        }
+        else
+        {
+          value_temp = is_index ? -100000 * (this_block_value_row_idx + 1) - 2 : -2;
+        }
         for (opendarts::config::index_t this_block_value_col_idx = 0; this_block_value_col_idx < n_block_size;
              this_block_value_col_idx++)
         {
@@ -225,7 +233,14 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
       // If we are filling the matrix in index mode use the value filling rule,
       // here we set the part for the inner block row index. Otherwise just set
       // the value to 1.
-      value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 1 : 1;
+      if(is_Poisson)
+      {
+        value_temp = is_index ? -100000 * (this_block_value_row_idx + 1) - 2 : -2;
+      }
+      else
+      {
+        value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 1 : 1;
+      }
       for (opendarts::config::index_t this_block_value_col_idx = 0; this_block_value_col_idx < n_block_size;
            this_block_value_col_idx++)
       {
@@ -269,10 +284,14 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
       for (opendarts::config::index_t this_block_value_row_idx = 0; this_block_value_row_idx < n_block_size;
            this_block_value_row_idx++) // set the block data
       {
-        // If we are filling the matrix in index mode use the value filling rule,
-        // here we set the part for the inner block row index. Otherwise just set
-        // the value to 1.
-        value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 2 : 2;
+        if(is_Poisson)
+        {
+          value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 1 : 1;
+        }
+        else
+        {
+          value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 2 : 2;
+        }  
         for (opendarts::config::index_t this_block_value_col_idx = 0; this_block_value_col_idx < n_block_size;
              this_block_value_col_idx++)
         {
@@ -309,52 +328,65 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<1> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<2> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<3> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<4> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<5> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<6> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<7> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<8> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<9> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<10> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<11> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<12> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);
 template void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
     opendarts::linear_solvers::csr_matrix<13> &A,
     opendarts::config::index_t n,
-    opendarts::linear_solvers::testing::block_fill_option block_fill);
+    opendarts::linear_solvers::testing::block_fill_option block_fill,
+    bool is_SPD);

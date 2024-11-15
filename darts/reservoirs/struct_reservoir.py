@@ -402,7 +402,7 @@ class StructReservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, time_steps : float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results of structured reservoir at timestamp t into `.vtk` format.
 
@@ -412,10 +412,10 @@ class StructReservoir(ReservoirBase):
         :type t: float
         :param output_directory: Path to save .vtk file
         :type output_directory: str
-        :param prop_idxs: Dictionary of properties with data array indices for output
-        :type prop_idxs: dict
+        :param prop_names: List of keys for properties
+        :type prop_names: list
         :param data: Data for output
-        :type data: np.ndarray
+        :type data: dict
         """
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
@@ -425,37 +425,41 @@ class StructReservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        for ts, t in enumerate(time_steps):
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
 
-        cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
-            global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
-            global_array[self.discretizer.local_to_global] = local_data
-            cell_data[prop] = global_array
+            cell_data = {}
+            for prop_name in prop_names:
+                local_data = data[prop_name][ts]
+                global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
+                global_array[self.discretizer.local_to_global] = local_data
+                cell_data[prop_name] = global_array
 
-        if self.vtk_grid_type == 0:
-            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-        else:
-            for key, value in cell_data.items():
-                self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
+                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
+            # in order to have correct timesteps in Paraview, write down group file
+            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+            # and does not support reading, track all written files and times and re-write the complete
+            # group file every time
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup('solution')
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
-        vtk_group.save()
+            self.vtk_filenames_and_times[vtk_file_name] = t
+            vtk_group = VtkGroup('solution')
+            for fname, t in self.vtk_filenames_and_times.items():
+                vtk_group.addFile(fname, t)
+            vtk_group.save()
 
     def generate_vtk_grid(self, strict_vertical_layers=True, compute_depth_by_dz_sum=True):
         # interpolate 2d array using grid (xx, yy) and specified method

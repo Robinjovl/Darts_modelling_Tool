@@ -3,18 +3,23 @@ import pandas as pd
 
 from darts.input.input_data import InputData
 from model_cpg import Model_CPG, fmt
-from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.engines import value_vector
 
 from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 
 
 class ModelGeothermal(Model_CPG):
-    def __init__(self, case='generate', grid_out_dir=None):
+    def __init__(self, case='generate', grid_out_dir=None, iapws_physics: bool = True):
+        self.iapws_physics = iapws_physics
         super().__init__(physics_type='geothermal', case=case, grid_out_dir=grid_out_dir)
 
     def set_physics(self):
-        self.physics = GeothermalIAPWS(self.idata, self.timer)
+        if self.iapws_physics:
+            self.physics = GeothermalIAPWS(self.idata, self.timer)
+        else:
+            self.physics = GeothermalPH(self.idata, self.timer)
+            self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],
+                                              state_max=[self.idata.obl.max_p, 575.])
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
@@ -23,7 +28,7 @@ class ModelGeothermal(Model_CPG):
                                                        temperature_grad=self.idata.initial.temperature_gradient)
         elif self.idata.initial.type == 'uniform':
             state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].enthalpy_ev['total'](self.idata.initial.initial_temperature).evaluate(state_init)
+            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
             self.initial_values = {self.physics.vars[0]: state_init[0],
                                    self.physics.vars[1]: enth_init}
             super().set_initial_conditions()
@@ -51,10 +56,23 @@ class ModelGeothermal(Model_CPG):
         a = self.reservoir.input_arrays  # include initial arrays and the grid
 
         nv = self.physics.n_vars
-        nb = nv * self.reservoir.mesh.n_res_blocks
+        n_ops = self.physics.n_ops
+        nb = self.reservoir.mesh.n_res_blocks
         Xn = np.array(self.physics.engine.X, copy=False)
-        P = Xn[:nb:nv]
-        T = enthalpy_to_temperature(Xn[:nb])
+        state = value_vector(Xn.T.flatten())
+
+        # Interpolate temperature with property interpolator
+        values = value_vector(np.zeros(n_ops * nb))
+        values_numpy = np.array(values, copy=False)
+        dvalues = value_vector(np.zeros(n_ops * nb * nv))
+        i = 0
+        for region, prop_itor in self.physics.property_itor.items():
+            prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
+            i += 1
+
+        # Get P from state vector and T from interpolated properties
+        P = np.array(state[0:nb*nv:nv])
+        T = values_numpy[0:nb*n_ops:n_ops]
         T -= 273.15  # K to degrees
 
         a.update({'PRESSURE': P, 'TEMPERATURE': T})
@@ -84,9 +102,16 @@ class ModelGeothermal(Model_CPG):
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
         self.set_input_data_rock(case)
-        self.idata.fluid = GeothermalIAPWSFluidProps()
+        if self.iapws_physics:
+            self.idata.fluid = GeothermalIAPWSFluidProps()
+        else:
+            self.idata.fluid = GeothermalPHFluidProps()
+
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
+
+        #from darts.physics.properties.basic import ConstFunc
+        #self.idata.fluid.conduction_ev['water'] = ConstFunc(172.8)
 
         if init_type== 'uniform': # uniform initial conditions
             self.idata.initial.initial_pressure = 200.  # bars
@@ -117,5 +142,5 @@ class ModelGeothermal(Model_CPG):
         self.idata.obl.n_points = 100
         self.idata.obl.min_p = 50.
         self.idata.obl.max_p = 400.
-        self.idata.obl.min_e = 1000.
-        self.idata.obl.max_e = 25000.
+        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics

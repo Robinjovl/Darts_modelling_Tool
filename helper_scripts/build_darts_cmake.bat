@@ -69,7 +69,7 @@ if %clean_mode%==true (
 
 if %skip_req%==false (
   echo - Update submodules: START
-  rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO
+  rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
   git submodule update --recursive --init || goto :error
   echo - Update submodules: DONE!
 
@@ -83,6 +83,12 @@ if %skip_req%==false (
   cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/ > ../../../make_eigen.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% >> ../../../make_eigen.log || goto :error
   cd ..\..
+
+  rem -- Install Hypre
+  cd hypre\src\cmbuild
+  cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. > ../../../../make_hypre.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ../../../../make_hypre.log || goto :error
+  cd ..\..\..\
 
   echo -- Install SuperLU
   cd SuperLU_5.2.1
@@ -118,7 +124,7 @@ REM build and install
 msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ../make_darts.log || goto :error
 msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% || goto :error
 
-if %testing%==true ctest -C %config% 
+if %testing%==true ctest -C %config%  || goto :error
 
 cd ..
 echo ========================================================================

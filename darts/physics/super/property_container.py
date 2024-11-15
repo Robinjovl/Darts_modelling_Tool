@@ -1,7 +1,7 @@
 import numpy as np
 from darts.engines import value_vector
 from darts.input.input_data import InputData
-from darts.physics.property_base import PropertyBase
+from darts.physics.base.property_base import PropertyBase
 
 
 class PropertyContainer(PropertyBase):
