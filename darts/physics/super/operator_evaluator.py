@@ -178,6 +178,25 @@ class ReservoirOperators(OperatorsSuper):
 
         return 0
 
+class MassFluxOperators(OperatorsBase):
+    def __init__(self, property_container: PropertyContainer, thermal: bool):
+        super().__init__(property_container, thermal)  # Initialize base-class
+
+        nm = self.property.nm
+        self.nc_fl = self.nc - nm
+
+        self.n_ops = self.nph * self.nc_fl
+
+    def evaluate(self, state: value_vector, values: value_vector):
+        for i in range(self.n_ops):
+            values[i] = 0
+
+        _, _, x, rho, _, mu, kr, _, _ = self.property.evaluate(state)
+
+        """ Beta operator here represents mass flux term: """
+        for j in range(self.nph):
+            for i in range(self.nc_fl):
+                values[self.nc_fl * j + i] = x[j][i] * rho[j] * kr[j] / mu[j]
 
 class MassFluxOperators(OperatorsSuper):
     def __init__(self, property_container: PropertyContainer, thermal: bool):
