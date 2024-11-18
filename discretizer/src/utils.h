@@ -2,6 +2,7 @@
 
 #include "linalg/matrix.h"
 #include <vector>
+#include <valarray>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -11,11 +12,14 @@
 #include <cctype>
 #include <locale>
 #include <iterator>
+#include "mesh/mesh.h"
 
 namespace utils
 {
 	using linalg::index_t;
 	using linalg::value_t;
+
+	using mesh::ND;
 
 	static inline std::pair<double, double> interpolateCoordinates(std::vector<double>& edge, double z_edge) {
 		double x_coord = edge[0];
@@ -222,4 +226,11 @@ namespace utils
 
 		return idx;
 	}
+
+	template <typename T>
+	inline std::valarray<T> get_valarray_from_array(const std::array<T, ND> a)
+		{
+			return std::valarray<value_t>(a.data(), a.size());
+		}
+
 }// namespace utils

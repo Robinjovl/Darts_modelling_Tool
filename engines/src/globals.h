@@ -83,7 +83,7 @@ public:
     GPU_AMGX,
     GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
-	GPU_CUSOLVER
+    GPU_CUSOLVER
   };
 
   enum nonlinear_norm_t
@@ -99,12 +99,15 @@ public:
     first_ts = 1;
     max_ts = 10;
     mult_ts = 2;
+    min_ts = 1e-12;
 
     max_i_linear = 50;
     tolerance_linear = 1e-5;
     max_i_newton = 20;
     min_i_newton = 0;
     tolerance_newton = 1e-3;
+    well_tolerance_coefficient = 1e2;
+    stationary_point_tolerance = 1e-3;
     newton_type = NEWTON_LOCAL_CHOP;
     newton_params.push_back(0.1);
 
@@ -122,17 +125,24 @@ public:
     trans_mult_exp = 0;
     obl_min_fac = 10;
     assembly_kernel = 0;
+
+    finalize_mpi = 1;
+
+    phase_existence_tolerance = 1.e-6;
   }
 
   value_t first_ts; // first time step length (days)
   value_t max_ts;   // maximum time step length (days)
   value_t mult_ts;  // multiplication ts factor
+  value_t min_ts;   // minimum time step length (days)
 
   index_t max_i_newton;     // maximum number of newton iterations
   index_t min_i_newton;     // minimum number of newton iterations
   index_t max_i_linear;     // maximum number of linear iterations
   value_t tolerance_newton; // tolerance for newton solver
   value_t tolerance_linear; // tolerance for linear solver
+  value_t well_tolerance_coefficient; // tolerance multiplier for well newton tolerance
+  value_t stationary_point_tolerance; // stationary point tolerance
 
   //Added for debugging purposes:
   index_t tot_newt_count;      // total number of newton iterations (wasted + non-wasted)
@@ -154,6 +164,29 @@ public:
 
   // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
   // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
+
+  index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
+
+  value_t phase_existence_tolerance;    // tolerance defining presence of phase in a cell
+};
+
+class linear_solver_params
+{
+public:
+  sim_params::linear_solver_t linear_type;          // Linear solver type
+  index_t max_i_linear;                 // maximum number of linear iterations
+  value_t tolerance_linear;             // tolerance for linear solver
+
+  linear_solver_params()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    linear_type = sim_params::CPU_SUPERLU;
+#else
+    linear_type = sim_params::CPU_GMRES_CPR_AMG;
+#endif
+    max_i_linear = 50;
+    tolerance_linear = 1e-5;
+  };
 };
 
 /// Main simulation statistics with active and wasted counts
@@ -348,6 +381,20 @@ struct recursive_exposer_ndims_nops
   }
 };
 
+template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
+struct recursive_exposer_ndims_nops2
+{
+    static void expose(pymodule_t& m)
+    {
+        exposer_t<N_DIMS, N_OPS> e;
+
+        e.expose(m);
+
+        recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS - 1, N_OPS>::expose(m);
+        recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, N_OPS - 1>::expose(m);
+    }
+};
+
 // partial specialization to stop recusrion
 
 template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS_A, uint8_t N_OPS_B>
@@ -359,6 +406,28 @@ struct recursive_exposer_ndims_nops<exposer_t, pymodule_t, 1, N_OPS_A, N_OPS_B>
 
     e.expose(m);
   }
+};
+
+template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS>
+struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, N_OPS>
+{
+    static void expose(pymodule_t& m)
+    {
+        exposer_t<1, N_OPS> e;
+
+        e.expose(m);
+    }
+};
+
+template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
+struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, 1>
+{
+    static void expose(pymodule_t& m)
+    {
+        exposer_t<N_DIMS, 1> e;
+
+        e.expose(m);
+    }
 };
 
 #endif

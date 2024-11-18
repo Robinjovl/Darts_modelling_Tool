@@ -83,6 +83,9 @@ namespace mesh
 		// elem ids for each elem type
 		std::unordered_map<ElemType, std::vector<index_t>> elem_type_map;
 		
+		// conn ids for each conn type
+		std::unordered_map<ConnType, std::vector<index_t>> conn_type_map;
+
 		/* Fluxes */
 		// array of fluxes through elements
 		std::vector<value_t> flux_elems;
@@ -122,7 +125,7 @@ namespace mesh
 				get_ijk_from_local_idx(idx, i1, j1, k1);
 		}
 
-		void construct_local_global();
+		void construct_local_global(std::vector<index_t>& global_cell);
 
 		// assume loops order is K-J-I, i.e. I is fastest index. I,J,K are 0-based indices
 		index_t inline get_global_index(const int i1, const int j1, const int k1) const {
@@ -191,7 +194,7 @@ namespace mesh
 		void write_cell_sizes(const std::string fname) const;
 		std::vector<value_t> get_prisms() const;
 		std::vector<value_t> get_centers() const;
-
+		std::vector<value_t> get_nodes_array() const;
 		void print_arrays() const;
 
 		std::vector<int> cpg_elems_nodes(

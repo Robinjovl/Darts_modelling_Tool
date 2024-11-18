@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from darts.engines import value_vector, redirect_darts_output
 from model import Model
 
@@ -9,48 +10,67 @@ redirect_darts_output('binary.log')
 filename = 'out'
 
 # define the model
-m = Model(n_points=1001)
+m = Model()
+
+m.set_reservoir()
+
+zero = 1e-10
+m.set_physics(zero, n_points=1001, temperature=None)
+
+m.initial_values = {"pressure": 100.,
+                    "H2O": 0.99995,
+                    "temperature": 350.
+                    }
+m.inj_stream = [0.00005]
+m.inj_stream += [350.] if m.physics.thermal else []
+m.p_inj = 100.
+m.p_prod = 50.
+
+m.set_sim_params(first_ts=1e-3, mult_ts=1.5, max_ts=5, tol_newton=1e-3, tol_linear=1e-5, it_newton=10, it_linear=50)
 
 # init the model
 m.init()
 
-m.run_python(250)
-m.print_timers()
-m.print_stat()
-
-ne = m.physics.n_vars
-nb = m.reservoir.nb
-
-properties = m.output_properties()
-P = properties[:, 0]
-Z1 = properties[:, 1]
-T = properties[:, 2]
-satV = properties[:, m.physics.n_vars + 0]
-xCO2 = properties[:, m.physics.n_vars + 1]
-
 x = np.cumsum(m.x_axes)
-y = np.linspace(m.reservoir.nz*2, 0, m.reservoir.nz)
+y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)
 X, Y = np.meshgrid(x, y)
 
-fig, axs = plt.subplots(3+m.physics.thermal, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-pres = axs[0].pcolormesh(X, Y, P.reshape(m.reservoir.nz, m.reservoir.nx))
-# pres = axs[0].imshow(P.reshape(m.reservoir.nz, m.reservoir.nx))
-axs[0].set_title('Pressure')
-plt.colorbar(pres, ax=axs[0])
-# sat = axs[1].imshow(satV.reshape(m.reservoir.nz, m.reservoir.nx))
-satv = axs[1].pcolormesh(X, Y, satV.reshape(m.reservoir.nz, m.reservoir.nx))
-axs[1].set_title('Gas saturation')
-plt.colorbar(satv, ax=axs[1])
-# conc = axs[2].imshow(xCO2.reshape(m.reservoir.nz, m.reservoir.nx))
-conc = axs[2].pcolormesh(X, Y, xCO2.reshape(m.reservoir.nz, m.reservoir.nx))
-axs[2].set_title('CO2 concentration')
-plt.colorbar(conc, ax=axs[2])
+properties = m.physics.vars + m.physics.property_operators[0].props_name
+output = m.output_properties()
+nv = m.physics.n_vars
+print_props = list(range(nv)) + [nv, nv + 2, nv + 3]
 
-if m.physics.thermal:
-    # T = Xn[ne-1:m.reservoir.nb * ne:ne]
-    # temp = axs[3].imshow(T.reshape(m.reservoir.nz, m.reservoir.nx))
-    temp = axs[3].pcolormesh(X, Y, T.reshape(m.reservoir.nz, m.reservoir.nx))
-    axs[3].set_title('Temperature')
-    plt.colorbar(temp, ax=axs[3])
-    # plt.xscale('log')
-plt.show()
+# fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+# for i, ith_prop in enumerate(print_props):
+#     #prop = axs[i].pcolormesh(X, Y, output[ith_prop, :].reshape(m.reservoir.nz, m.reservoir.nx))
+#     #plt.colorbar(prop, ax=axs[i])
+#     axs[i].plot(output[ith_prop, :])
+#     axs[i].set_title(properties[ith_prop])
+#
+# plt.savefig('step0.png', format='png')
+
+for t in range(2):
+    m.run(200)
+    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    m.print_timers()
+    m.print_stat()
+
+    #m.params.max_ts = 0.5
+
+    output = m.output_properties()
+
+    fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+    for i, ith_prop in enumerate(print_props):
+        prop = axs[i].pcolormesh(X, Y, output[ith_prop, :].reshape(m.reservoir.nz, m.reservoir.nx))
+        plt.colorbar(prop, ax=axs[i])
+        # axs[i].plot(output[:, ith_prop])
+        axs[i].set_title(properties[ith_prop])
+
+    plt.savefig('step' + str(t+1) + '.png', format='png')
+
+td = pd.DataFrame.from_dict(m.physics.engine.time_data)
+td.to_pickle("darts_time_data.pkl")
+writer = pd.ExcelWriter('time_data.xlsx')
+td.to_excel(writer, sheet_name='Sheet1')
+writer.close()
+

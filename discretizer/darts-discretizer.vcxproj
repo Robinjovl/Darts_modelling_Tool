@@ -114,8 +114,10 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,7 +146,9 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -175,7 +179,9 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;../thirdparty/pybind11</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/eigen;..\thirdparty\pybind11\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -208,7 +214,9 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);OPENDARTS_LINEAR_SOLVERS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11;../thirdparty/eigen</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(PYTHONPATH)/include;../engines/src;../engines/src/interpolation;../engines/lib/darts_linear_solvers/include;../thirdparty/pybind11/include;../thirdparty/eigen\include;../thirdparty/MshIO\include</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -234,58 +242,78 @@ copy /b discretizer_build_info.cpp+,, &gt;NUL</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\thirdparty\MshIO\src\element_utils.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\io_utils.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_curves.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_data.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_elements.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_entities.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_format.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_nodes.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_patches.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_physical_groups.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\load_msh_post_process.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_curves.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_data.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_elements.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_entities.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_format.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_nodes.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_patches.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\save_msh_physical_groups.cpp" />
+    <ClCompile Include="..\thirdparty\MshIO\src\validate_spec.cpp" />
     <ClCompile Include="src\discretizer.cpp" />
     <ClCompile Include="src\discretizer_build_info.cpp" />
+    <ClCompile Include="src\mech_discretizer.cpp" />
     <ClCompile Include="src\mesh\elem.cpp" />
     <ClCompile Include="src\mesh\mesh.cpp" />
-    <ClCompile Include="src\mesh\mshio\element_utils.cpp" />
-    <ClCompile Include="src\mesh\mshio\io_utils.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_curves.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_data.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_elements.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_entities.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_format.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_nodes.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_patches.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_physical_groups.cpp" />
-    <ClCompile Include="src\mesh\mshio\load_msh_post_process.cpp" />
-    <ClCompile Include="src\mesh\mshio\validate_spec.cpp" />
+    <ClCompile Include="src\pybind11\py_approximation.cpp" />
     <ClCompile Include="src\pybind11\py_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_elem.cpp" />
     <ClCompile Include="src\pybind11\py_linalg.cpp" />
     <ClCompile Include="src\pybind11\py_main.cpp" />
+    <ClCompile Include="src\pybind11\py_mech_discretizer.cpp" />
     <ClCompile Include="src\pybind11\py_mesh.cpp" />
     <ClCompile Include="src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\approximation.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\element_utils.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\io_utils.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_curves.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_data.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_elements.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_entities.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_format.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_nanospline_format.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_nodes.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_patches.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_physical_groups.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\load_msh_post_process.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_curves.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_data.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_elements.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_entities.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_format.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_nanospline_format.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_nodes.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_patches.h" />
+    <ClInclude Include="..\thirdparty\MshIO\src\save_msh_physical_groups.h" />
     <ClInclude Include="src\discretizer.h" />
     <ClInclude Include="src\discretizer_build_info.h" />
     <ClInclude Include="src\linalg\matrix.h" />
     <ClInclude Include="src\linalg\vector3.h" />
+    <ClInclude Include="src\mech_discretizer.h" />
     <ClInclude Include="src\mesh\elem.h" />
     <ClInclude Include="src\mesh\mesh.h" />
-    <ClInclude Include="src\mesh\mshio\element_utils.h" />
-    <ClInclude Include="src\mesh\mshio\exception.h" />
-    <ClInclude Include="src\mesh\mshio\io_utils.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_curves.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_data.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_elements.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_entities.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_format.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_nanospline_format.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_nodes.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_patches.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_physical_groups.h" />
-    <ClInclude Include="src\mesh\mshio\load_msh_post_process.h" />
-    <ClInclude Include="src\mesh\mshio\mshio.h" />
-    <ClInclude Include="src\mesh\mshio\mshspec.h" />
-    <ClInclude Include="src\mesh\mshio\mshspecext.h" />
     <ClInclude Include="src\mesh\vtksnapshotter.h" />
     <ClInclude Include="src\pybind11\py_discretizer.h" />
     <ClInclude Include="src\pybind11\py_elem.h" />
     <ClInclude Include="src\pybind11\py_global.h" />
     <ClInclude Include="src\pybind11\py_linalg.h" />
+    <ClInclude Include="src\pybind11\py_mech_discretizer.h" />
     <ClInclude Include="src\pybind11\py_mesh.h" />
     <ClInclude Include="src\utils.h" />
   </ItemGroup>

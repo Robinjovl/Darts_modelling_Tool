@@ -3,8 +3,6 @@
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/config/src/version.cpp ESCAPE_QUOTES)
 # ------------------------------------------------------------------------------
 
-
-
 # Build library to contain base configuration ----------------------------------
 
 # This library will be available in the openDARTS project
@@ -39,7 +37,6 @@ target_link_libraries(config opendarts_compiler_flags)
 
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
-message(STATUS ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(config
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -50,14 +47,15 @@ target_include_directories(config
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${OD_CONFIG_HEADER_FILES})
 source_group(src FILES ${OD_CONFIG_SRC_FILES})
 
-# Install the library file of config
-install(TARGETS config)
+if(ONLY_SOLVERS)
+  # Install the library file of config
+  install(TARGETS config)
 
-# Install the public header files
-# This is now duplicated but once this is added to the main
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-        DESTINATION include
-        COMPONENT header_files
-        FILES_MATCHING PATTERN "*.hpp")
-
+  # Install the public header files
+  # This is now duplicated but once this is added to the main
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+          DESTINATION include
+          COMPONENT header_files
+          FILES_MATCHING PATTERN "*.hpp")
+endif()
 # ------------------------------------------------------------------------------

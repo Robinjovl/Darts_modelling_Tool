@@ -1,4 +1,4 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector
 import numpy as np
@@ -21,40 +21,35 @@ class Model(CICDModel):
         self.mode = mode
         self.well_rate = well_rate
         self.set_reservoir()
+        self.wells_mode = mode
         self.set_physics()
-        self.set_wells()
 
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
 
-        if self.mode == 'rhs':
-            # add outflux to the middle cell
-            self.set_rhs_flux(inflow_cells=np.array([self.reservoir.nx // 2]), inflow_var_idx=0, outflow=outflow)
+        # add outflux to the middle cell
+        self.inflow_cells = np.array([self.reservoir.nx // 2])
+        self.inflow_var_idx = 0
+        self.outflow = outflow if mode == 'rhs' else 0
 
         self.timer.node["initialization"].stop()
+
+        self.initial_values = {self.physics.vars[0]: 200.,
+                               self.physics.vars[1]: 350.
+                               }
 
     def set_reservoir(self):
         """Reservoir construction"""
         # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=5, permy=5,
-                                         permz=5, poro=0.2, depth=100)
+        nx = 100
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1,
+                                         permx=5, permy=5, permz=5, poro=0.2, hcap=2200, rcond=181.44, depth=100)
 
-        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
-
-        hcap.fill(2200)
-        rcond.fill(181.44)
         return
 
     def set_wells(self):
-        if self.mode != 'wells':
-            return
-        # well model or boundary conditions
-        #self.reservoir.add_well("I1")
-        #self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(self.reservoir.wells[-1], self.reservoir.nx//2, 1, 1, multi_segment=False)
-        return
+        if self.wells_mode == 'wells':
+            self.reservoir.add_well("P1")
+            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx//2, 1, 1), multi_segment=False)
 
     def set_physics(self):
         """Physical properties"""
@@ -77,7 +72,6 @@ class Model(CICDModel):
                                                ('gas', EnthalpyBasic(hcap=0.035))])
         property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
                                                    ('gas', ConstFunc(1.))])
-        property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         # create physics
         thermal = True
@@ -85,18 +79,10 @@ class Model(CICDModel):
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
                                      min_t=273.15 + 20, max_t=273.15 + 200, thermal=thermal)
         self.physics.add_property_region(property_container)
-        self.physics.init_physics()
 
         return
 
-    def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=200,
-                                                    uniform_composition=[1], uniform_temp=350)
-
-    def set_boundary_conditions(self):
-        if self.mode != 'wells':
-            return
-
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 #w.control = self.physics.new_rate_inj(200, self.inj, 1)
@@ -106,7 +92,7 @@ class Model(CICDModel):
             else:
                 w.control = self.physics.new_rate_prod(self.well_rate, iph=0)
 
-    def set_rhs_flux(self, inflow_cells: np.array, inflow_var_idx: int, outflow: float):
+    def set_rhs_flux(self, t: float = None):
         '''
         function to specify the inflow or outflow to the cells
         it sets up self.rhs_flux vector on nvar * ncells size
@@ -118,23 +104,22 @@ class Model(CICDModel):
         '''
         nv = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
-        self.rhs_flux = np.zeros(nb * nv)
-        # extract pointer to values corresponding to var_idx
-        rhs_flux_var = self.rhs_flux[inflow_var_idx::nv]
-        # set values for the cells defined in inflow_cells
-        rhs_flux_var[inflow_cells] = outflow
+        rhs_flux = np.zeros(nb * nv)
 
-    # overload base darts run function, because run does not apply_rhs_flux.
-    # in CI/CD only run() is called
-    def run(self):
-        self.run_python(self.runtime)
+        # extract pointer to values corresponding to var_idx
+        rhs_flux_var = rhs_flux[self.inflow_var_idx::nv]
+        # set values for the cells defined in inflow_cells
+        rhs_flux_var[self.inflow_cells] = self.outflow
+
+        return rhs_flux
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
         self.x = np.ones((self.nph, self.nc))
 
     def evaluate(self, state):
@@ -148,7 +133,7 @@ class ModelProperties(PropertyContainer):
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        self.ph = [0]
+        self.ph = np.array([0], dtype=np.intp)
 
         for j in self.ph:
             M = 0
@@ -166,9 +151,7 @@ class ModelProperties(PropertyContainer):
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
-        mass_source = np.zeros(1)
-
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return
 
     def evaluate_at_cond(self, pressure, zc):
 

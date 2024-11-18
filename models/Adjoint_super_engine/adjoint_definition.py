@@ -83,8 +83,8 @@ def prepare_synthetic_observation_data():
 
         if customize_new_operator:
             # time-lapse temperature data
-            time_data_customized = np.array(true_model.physics.engine.time_data_customized)[:, 0:true_model.reservoir.nb]
-            time_data_report_customized = np.array(true_model.physics.engine.time_data_report_customized)[:, 0:true_model.reservoir.nb]
+            time_data_customized = np.array(true_model.physics.engine.time_data_customized)[:, 0:true_model.reservoir.mesh.n_res_blocks]
+            time_data_report_customized = np.array(true_model.physics.engine.time_data_report_customized)[:, 0:true_model.reservoir.mesh.n_res_blocks]
             np.savetxt('_TRUE_%s_darts_time_data_customized_%s_%sdays.txt' % (true_realization, T, report_step), np.array(time_data_customized))
             np.savetxt('_TRUE_%s_darts_time_data_report_customized_%s_%sdays.txt' % (true_realization, T, report_step), np.array(time_data_report_customized))
 
@@ -305,7 +305,6 @@ def process_adjoint(history_matching=False):
     # well temperature----------------------------------
     well_tempr_name = []
     for i, w in enumerate(proxy_model.reservoir.wells):
-        well_tempr_name.append(w.name)
         if "P" in w.name:
             well_tempr_name.append(w.name)
 
@@ -440,7 +439,7 @@ def process_adjoint(history_matching=False):
                     unopt_df.to_pickle('time_data_unopt_%s.pkl' % job_id)
                     if customize_new_operator:
                         unopt_tempr_pred = np.array(proxy_model.physics.engine.time_data_report_customized)[:,
-                                           0:proxy_model.reservoir.nb]
+                                           0:proxy_model.reservoir.mesh.n_res_blocks]
                         np.save('Tempr_distr_unopt_report_%s.npy' % job_id, unopt_tempr_pred)
 
 
@@ -476,9 +475,9 @@ def process_adjoint(history_matching=False):
                     opt_df_pred.to_pickle('time_data_opt_%s.pkl' % job_id)
                     if customize_new_operator:
                         opt_tempr_pred = np.array(proxy_model.physics.engine.time_data_report_customized)[:,
-                                         0:proxy_model.reservoir.nb]
+                                         0:proxy_model.reservoir.mesh.n_res_blocks]
                         tempr_time_data = np.array(proxy_model.physics.engine.time_data_customized)[:,
-                                          0:proxy_model.reservoir.nb]
+                                          0:proxy_model.reservoir.mesh.n_res_blocks]
                         np.save('Tempr_distr_opt_report_%s.npy' % job_id, opt_tempr_pred)
 
                     time_report_opt = opt_df_report_pred['time'].to_numpy()

@@ -45,8 +45,8 @@ public:
 
   const static uint8_t N_STATE = NC_ + THERMAL;
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity, NP enthalpy
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 + /* enthalpy */ NP;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -63,6 +63,7 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 4 + 2 * NP;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -70,13 +71,13 @@ public:
   std::vector<index_t> stoich_coef;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
-  const uint8_t get_n_state() { return N_STATE; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
+  uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_mp_cpu()
   {
@@ -110,7 +111,7 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
 
-  int run_single_newton_iteration(value_t deltat);
+  int assemble_linear_system(value_t deltat);
   //double calc_newton_residual();
 
 

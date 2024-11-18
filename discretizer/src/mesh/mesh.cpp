@@ -1,11 +1,12 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <algorithm>
 #include <numeric>
 #include <unordered_set>
 
 #include "mesh.h"
-#include "mesh/mshio/mshio.h"
+#include "mshio/mshio.h"
 #include "linalg/matrix.h"
 #include "linalg/vector3.h"
 #include "utils.h"
@@ -18,6 +19,7 @@ using std::string;
 using std::vector;
 using std::set;
 using std::pair;
+using std::find;
 using std::distance;
 using std::chrono::steady_clock;
 using std::chrono::duration_cast;
@@ -94,16 +96,41 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 	elem_nodes_sorted.reserve(MAX_PTS_PER_3D_ELEM * num_of_elements);
 	std::vector<index_t> num_elems_of_node(num_of_nodes, 0);
 
+	// lambda function to find specific entity tag
+	auto findInVector = [](auto& vec, index_t entity_tag) -> index_t
+	{
+		auto it = std::find_if(vec.begin(), vec.end(), [entity_tag](const auto& ent)
+		  { return ent.tag == entity_tag; });
+		if (it == vec.end())
+		{
+		  printf("Entity tag %d not found\n", entity_tag);
+		  return -1;
+		}
+		else
+		  return it->physical_group_tags[0];
+	};
+
 	// create all the elements
 	uint8_t stride;
 	index_t counter = 0, offset = 0;
 	for (const auto& region : elem_order)
-	{
+	{	
 		region_ranges[region].first = counter;
 		for (const auto& block : spec.elements.entity_blocks)
 		{
 			const auto& loc_tags = tags.at(region);
-			if (loc_tags.find(block.entity_tag) == loc_tags.end()) continue;
+
+			int block_tag;
+			if (block.entity_dim == 0)
+				block_tag = findInVector(spec.entities.points, block.entity_tag);
+			else if (block.entity_dim == 1)
+				block_tag = findInVector(spec.entities.curves, block.entity_tag);
+			else if (block.entity_dim == 2)
+				block_tag = findInVector(spec.entities.surfaces, block.entity_tag);
+			else if (block.entity_dim == 3)
+				block_tag = findInVector(spec.entities.volumes, block.entity_tag);
+
+			if (loc_tags.find(block_tag) == loc_tags.end()) continue;
 
 			stride = Etype_PTS.at(static_cast<ElemType>(block.element_type)) + 1;
 
@@ -115,7 +142,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags& tags)
 				el.type = static_cast<ElemType>(block.element_type);
 				el.elem_id = counter++;
 				el.n_pts = Etype_PTS.at(el.type);
-				element_tags[el.elem_id] = block.entity_tag;
+				element_tags[el.elem_id] = block_tag;
 				el.pts_offset = offset;
 
 				offset += el.n_pts;
@@ -205,17 +232,22 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	index_t nebr_id, counter = 0, offset = 0, node_id;
 	size_t len;
 	
-	// set of connections to check if particular one was already created
-	unordered_set<std::pair<index_t, index_t>, pair_xor_hash, one_way_connection_comparator> conn_set;
-	conn_set.reserve(ND * num_of_elements);
-	conns.reserve(ND * num_of_elements);
+	// vector of cell's indices pairs to check if particular one was already created
+	vector<vector<index_t>> conn_set;
+	conn_set.resize(num_of_elements);
+	for (index_t i = 0; i < num_of_elements; i++)
+		conn_set[i].reserve(MAX_CONNS_PER_ELEM_GMSH);
+
+	std::vector<size_t> conn_set_size(num_of_elements, 0);
+	vector<index_t>::const_iterator it1, it2;
+	vector<index_t>::iterator it1_end, it2_end;
+
+	conns.reserve(MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 	// vector to store the result of intersections
 	vector<index_t> intersect;
-	intersect.reserve(4 * ND * num_of_elements);
+	intersect.reserve(4 * ND * num_of_elements * 2 * MAX_PTS_PER_3D_ELEM_GMSH);
 	conn_nodes.reserve(4 * MAX_CONNS_PER_ELEM_GMSH * num_of_elements);
 
-	unordered_set<std::pair<index_t,index_t>>::const_iterator it;
-	pair<index_t, index_t> ids;
 	ElemConnectionTable::const_iterator conn_type_it;
 
 	// fault nodes
@@ -240,11 +272,16 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 				if (nebr_id == i) continue;
 				//cout << "node_id=" << node_id << ", nebr_id=" << nebr_id << "\n";
 				const auto& el2 = elems[nebr_id];
+				auto& id1 = conn_set[el1.elem_id];
+				size_t& id_size1 = conn_set_size[el1.elem_id];
+				auto& id2 = conn_set[el2.elem_id];
+				size_t& id_size2 = conn_set_size[el2.elem_id];
+				it1_end = id1.begin() + id_size1;
+				it2_end = id2.begin() + id_size2;
+				it1 = find(id1.begin(), it1_end, el2.elem_id);
+				it2 = find(id2.begin(), it2_end, el1.elem_id);
 
-				ids.first = el1.elem_id;		
-				ids.second = el2.elem_id;
-				it = conn_set.find(ids);
-				if (it == conn_set.end())
+				if (it1 == it1_end && it2 == it2_end)
 				{
 #if 0 // debug
 						int *e1 = elem_nodes_sorted.data();
@@ -305,7 +342,8 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 								fault_nodes.insert(set<index_t>(intersect.end() - len, intersect.end()));
 							}
 
-							conn_set.insert(ids);
+							id1.push_back(el2.elem_id);
+							id_size1++;
 							offset += conn.n_pts;
 
 							conn.type = conn_type_it->second;
@@ -328,7 +366,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 							conn.calculate_area(nodes, conn_nodes);
 							conn.area *= ( init_apertures[el1.elem_id - region_ranges[FRACTURE].first] + init_apertures[el2.elem_id - region_ranges[FRACTURE].first] ) / 2.0;
 							conn.calculate_normal(nodes, conn_nodes, elems, elem_nodes);
-							conn_set.insert(ids);
+							id1[id_size1++] = el2.elem_id;
 							offset += conn.n_pts;
 
 							conn.type = CONN_TYPE_TABLE.at( { el1.loc, el2.loc } );
@@ -383,9 +421,35 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags& tags)
 	conns = new_conns;
 	conn_nodes = new_conn_nodes;
 
+	// save conn ids for each type
+	conn_type_map[MAT_MAT].reserve(conns.size());
+	conn_type_map[MAT_FRAC].reserve(conns.size());
+	conn_type_map[MAT_BOUND].reserve(conns.size());
+	conn_type_map[FRAC_FRAC].reserve(conns.size());
+	conn_type_map[FRAC_BOUND].reserve(conns.size());
+
+	for (const auto& conn : conns)
+	  conn_type_map[conn.type].push_back(conn.conn_id);
+
+	// erase absent
+	for (auto it = conn_type_map.begin(); it != conn_type_map.end();)
+	{
+	  if (it->second.size())
+		it++;
+	  else
+		it = conn_type_map.erase(it);
+	}
+
+	// sort boundary connections
+	std::sort(conn_type_map[MAT_BOUND].begin(), conn_type_map[MAT_BOUND].end(), [&](const index_t& id1, const index_t& id2)
+	  {
+		return conns[id1].elem_id2 < conns[id2].elem_id2;
+	  });
+
 	t2 = steady_clock::now();
 	cout << conns.size() << " connections:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
 }
+
 
 // uses: conns, num_of_elements
 // fills: adj_matrix, adj_matrix_cols, adj_matrix_offset
@@ -394,23 +458,36 @@ void Mesh::generate_adjacency_matrix()
 	steady_clock::time_point t1, t2;
 
 	t1 = steady_clock::now();
-	
 	// Temporary arrays to identify all connections per element
-	std::vector<std::vector<index_t>> adj_2d (num_of_elements, std::vector<index_t> (MAX_CONNS_PER_ELEM));
+	std::vector<std::vector<index_t>> adj_2d;
 	std::vector<size_t> conn_per_element(num_of_elements, 0);
-	std::vector<std::vector<bool>> conn_signs(num_of_elements, std::vector<bool>(MAX_CONNS_PER_ELEM, true));
+	std::vector<std::vector<bool>> conn_signs;
+	// Reserve number of elements for number of rows in connection signs matrix
+	// adjacency matrix
+	adj_2d.resize(num_of_elements);
+	conn_signs.resize(num_of_elements);
 
+
+	for (index_t i = 0; i < num_of_elements; i++)
+	{
+		adj_2d[i].reserve(MAX_CONNS_PER_ELEM);
+		conn_signs[i].reserve(MAX_CONNS_PER_ELEM);
+	}
+	
 	// Append connections per element to 2D array
 	for (auto& conn : conns) 
 	{
 		auto& conn_size1 = conn_per_element[conn.elem_id1];
-		adj_2d[conn.elem_id1][conn_size1++] = conn.conn_id;
-
+		adj_2d[conn.elem_id1].push_back(conn.conn_id);
+		conn_signs[conn.elem_id1].push_back(true);
+		conn_size1++;
+		
 		if (conn.type != MAT_BOUND && conn.type != FRAC_BOUND)
 		{
 			auto& conn_size2 = conn_per_element[conn.elem_id2];
-			adj_2d[conn.elem_id2][conn_size2] = conn.conn_id;
-			conn_signs[conn.elem_id2][conn_size2++] = false;
+			adj_2d[conn.elem_id2].push_back(conn.conn_id);
+			conn_signs[conn.elem_id2].push_back(false);
+			conn_size2++;
 		}
 	}
 
@@ -611,11 +688,11 @@ Mesh::calc_cell_center(const int i, const int j, const int k) const
 }
 
 //
-void Mesh::construct_local_global()
+void Mesh::construct_local_global(std::vector<index_t> & global_cell)
 {
   index_t n_all = get_n_cells_total();
 
-	local_to_global.resize(n_cells);
+	local_to_global.reserve(n_cells);
 	global_to_local.resize(n_all);
 #if 0
 	index_t j = 0;
@@ -625,16 +702,29 @@ void Mesh::construct_local_global()
 			{
 				index_t i = get_global_index(i1, j1, k1);
 #else
-	for (index_t i = 0, j = 0; i < n_all; i++) {
+	index_t gidx = 0, lidx = 0;
+	for (auto gi : global_cell) {
 #endif
-		if (actnum[i] > 0) {
-			local_to_global[j] = i;
-			global_to_local[i] = j;
-			j++;
+		if (gidx && gi == 0) {// gi=0 means we run out active cells, but for the first cell zero index is OK
+			while (gidx < n_all) {
+				global_to_local[gidx++] = -1; // fill the rest array (inactive cells)
+			}
+			break;
 		}
-		else {
-			global_to_local[i] = -1;
+
+		// local_to_global is the same as global_cell except size (it doesn't contain zeros in the end)
+		local_to_global.push_back(gi);
+
+		while (gidx < n_all) { // infinite loop, added condition just in case
+			if (gi == gidx) {
+				global_to_local[gidx++] = lidx;
+				break;
+			}
+			else { // store -1 for inactive cells
+				global_to_local[gidx++] = -1;
+			}
 		}
+		lidx++;
 	}
 }
 
@@ -744,6 +834,37 @@ Mesh::get_centers() const
 	return centers_vec;
 }
 
+// compute node coords for vtk output
+std::vector<value_t>
+Mesh::get_nodes_array() const
+{
+	std::array<double, 8> X;
+	std::array<double, 8> Y;
+	std::array<double, 8> Z;
+
+	std::vector<value_t> nodes_array;
+	nodes_array.resize(8 * 3 * n_cells); // 8 nodes per cell, 3 coordinates (x,y,z) per node
+
+	int idx_cell = 0, idx = 0;
+	std::array<int, 8> permute = { 0,4,5,1,2,6,7,3 }; // need this order for vtk
+	for (int k = 0; k < nz; k++)
+		for (int j = 0; j < ny; j++)
+			for (int i = 0; i < nx; i++) {
+				if (global_to_local[idx_cell++] < 0) // cell is inactive => skip
+					continue;
+				calc_cell_nodes(i, j, k, X, Y, Z);
+
+				index_t start = idx * 8 * 3;
+				for (int ii = 0; ii < 8; ii++) {
+					index_t jj = permute[ii];
+					nodes_array[start + ii * 3 + 0] = X[jj];
+					nodes_array[start + ii * 3 + 1] = Y[jj];
+					nodes_array[start + ii * 3 + 2] = Z[jj];
+				}
+				idx++;
+			}
+	return nodes_array;
+}
 
 std::vector<int>
 Mesh::cpg_elems_nodes(
@@ -797,12 +918,12 @@ Mesh::cpg_elems_nodes(
 	}// loop by all faces
 
 	face_nodes_set.clear();
-
+	size_t initial_points_per_element = 8;
 	num_of_elements = num_of_cells + bnd_faces_num;
 	elems.resize(num_of_elements);
 	element_tags.resize(num_of_elements);
-	elem_nodes.reserve(MAX_PTS_PER_3D_ELEM * num_of_elements);
-	elem_nodes_sorted.reserve(MAX_PTS_PER_3D_ELEM * num_of_elements);
+	elem_nodes.reserve(initial_points_per_element * num_of_elements);	// Remove the max points per 3D element and change it to 8 nodes
+	elem_nodes_sorted.reserve(initial_points_per_element * num_of_elements); // Remove the max points per 3D element and change it to 8 nodes
 	volumes.resize(num_of_elements);
 	centroids.resize(num_of_elements);
 
@@ -1028,6 +1149,12 @@ void Mesh::cpg_connections(
 	std::vector<double_t> x, y, z; // only for the current face direction (face_tag)
 	x.reserve(100); y.reserve(100); z.reserve(100);
 
+	conn_type_map[MAT_MAT].reserve(number_of_faces);
+	conn_type_map[MAT_FRAC].reserve(number_of_faces);
+	conn_type_map[MAT_BOUND].reserve(number_of_faces);
+	conn_type_map[FRAC_FRAC].reserve(number_of_faces);
+	conn_type_map[FRAC_BOUND].reserve(number_of_faces);
+
 	for (index_t c = 0; c < num_of_cells; ++c) {
 
 		//cout << "Cell " << c << "\n";
@@ -1137,11 +1264,21 @@ void Mesh::cpg_connections(
 
 			// Find connection type
 			conn.type = face_is_boundary ? MAT_BOUND : MAT_MAT;
+			conn_type_map[conn.type].push_back(counter - 1);
 
 			conns.push_back(conn);
 		}//faces loop
 
 	}//cells loop
+
+	// erase absent
+	for (auto it = conn_type_map.begin(); it != conn_type_map.end();)
+	{
+	  if (it->second.size())
+		it++;
+	  else
+		it = conn_type_map.erase(it);
+	}
 
 	cout << conns.size() << " connections:\n";
 }

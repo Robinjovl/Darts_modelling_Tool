@@ -1,7 +1,7 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
+import numpy as np
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
-import numpy as np
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -10,6 +10,7 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
+import numpy as np
 
 class Model(CICDModel):
     def __init__(self):
@@ -21,41 +22,30 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-        self.set_wells()
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
 
+        self.initial_values = {self.physics.vars[0]: 50.,
+                               self.physics.vars[1]: self.ini_stream[0],
+                               self.physics.vars[2]: self.ini_stream[1],
+                               self.physics.vars[3]: self.ini_stream[2]
+                               }
+
     def set_reservoir(self):
-        """Reservoir"""
-        self.reservoir = StructReservoir(self.timer, nx=1000, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
+        nx = 1000
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
                                          permz=10, poro=0.3, depth=1000)
 
-        #self.reservoir.set_boundary_volume(yz_plus=1e8)
-
-        # overwrite depth to involve gravity
-        self.depth_start = self.reservoir.depth[0]
-        self.depth_end = self.reservoir.depth[0]                # by changing this, one can change the inclined angle
-
-        # self.layer_1 = np.linspace(self.depth_start, self.depth_end, self.reservoir.nx)       # inclined
-        # for i in range(self.reservoir.nz):
-        #     self.reservoir.depth[i*self.reservoir.nx: (i+1)*self.reservoir.nx] = self.layer_1 + i*self.reservoir.global_data['dz']
         return
 
     def set_wells(self):
-        """well location"""
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1000, j=1, k=1, multi_segment=False)
-
-        # self.reservoir.add_well("P1")
-        # for i in range(int(self.reservoir.nz / 2)):
-        #     self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=self.reservoir.nx, j=1, k=i+1, multi_segment=False)
-        return
+        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
@@ -87,20 +77,10 @@ class Model(CICDModel):
         self.physics = Compositional(components, phases, self.timer,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
-        self.physics.init_physics()
 
         return
 
-    # Initialize reservoir and set boundary conditions:
-    def set_initial_conditions(self):
-        """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, 50, self.ini_stream)
-
-        # composition = np.array(self.reservoir.mesh.composition, copy=False)
-        # n_half = int(self.reservoir.nx * self.reservoir.ny * self.reservoir.nz / 2)
-        # composition[2*n_half:] = 1e-6
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.new_rate_inj(20, self.inj_stream, 0)
@@ -112,14 +92,15 @@ class Model(CICDModel):
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc):
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)
-        nu = self.flash_ev.getnu()
-        xr = self.flash_ev.getx()
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        xr = np.array(flash_results.X).reshape(self.nph-1, self.nc-1)
         V = nu[0]
 
         if V <= 0:
@@ -143,4 +124,4 @@ class ModelProperties(PropertyContainer):
         self.nu[1] = (1 - V) * (1 - zc[-1])
         self.nu[2] = zc[-1]
 
-        return ph
+        return np.array(ph, dtype=np.intp)

@@ -1,30 +1,28 @@
 #ifndef DISCRETIZER_H_
 #define DISCRETIZER_H_
 
-#include "mesh/mesh.h"
+#include "approximation.h"
 
 namespace dis
 {
-	using mesh::index_t;
-	using mesh::value_t;
-	using mesh::Matrix;
 	using mesh::Mesh;
 	using mesh::PhysicalTags;
 	using mesh::Vector3;
 	using mesh::ND;
 
 	const value_t DARCY_CONSTANT = 0.0085267146719160104986876640419948;
-	const uint8_t MAX_STENCIL = 12;
+	const uint8_t MAX_STENCIL = 30;
 	const uint8_t MAX_FLUXES_NUM = 8;
 
-	/* Boundary condition */
-	class BoundaryCondition
+	/**
+	 * @brief Represents a generic boundary condition.
+	 *
+	 * This structure holds data for boundary elements, supporting both Dirichlet and Neumann types.
+	 */
+	struct BoundaryCondition
 	{
-	public:
-		std::vector<value_t> a_p, b_p, r_p;
-		std::vector<value_t> a_th, b_th, r_th;
-		BoundaryCondition() {};
-		~BoundaryCondition() {};
+	  std::vector<value_t> a; ///< Dirichlet type boundary condition values.
+	  std::vector<value_t> b; ///< Neumann type boundary condition values.
 	};
 
 	/* Special class for 2nd rank 3x3 tensor */
@@ -47,73 +45,74 @@ namespace dis
 	};
 
 	/* Here is what we call linear approximation */
-	struct Approximation 
+	struct FlowHeatApproximation 
 	{
-		Approximation() {};
-		Approximation(uint8_t M, uint8_t N)
-		{
-			a = Matrix(M, N);
-			a_homo = Matrix(M, N);
-			a_thermal = Matrix(M, N);
-			rhs = Matrix(M, 1);
-			stencil.resize(N);
-		};
-		Matrix a, a_thermal, a_homo, rhs;
-		std::vector<index_t> stencil;
+	  FlowHeatApproximation() {};
+	  FlowHeatApproximation(index_t stencil_size)
+	  {
+		darcy = LinearApproximation<Pvar>(1, stencil_size);
+		fick = LinearApproximation<Pvar>(1, stencil_size);
+		fourier = LinearApproximation<Tvar>(1, stencil_size);
+	  };
+
+	  LinearApproximation<Pvar> darcy, fick;
+	  LinearApproximation<Tvar> fourier;
+
+	  bool is_same_stencil = true;
 	};
 
 	/* Discretiser */
 	class Discretizer
 	{
 	protected:
-		Mesh* mesh;
-
 		std::unordered_map<index_t, Matrix> pre_grad_A_p, pre_grad_R_p, pre_grad_rhs_p;
 		std::unordered_map<index_t, Matrix> pre_grad_A_th, pre_grad_R_th;
 		std::unordered_map<index_t, Matrix> pre_Wsvd, pre_Zsvd, pre_w_svd;
-		std::vector<Approximation> pre_merged_flux, fluxes;
+		std::vector<FlowHeatApproximation> pre_merged_flux, fluxes;
 
-		void calc_matrix_matrix(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const index_t adj_mat_id2, const bool with_thermal = false);
-		void calc_fault_fault(const mesh::Connection& conn, Approximation& flux);
-		void calc_matrix_boundary(const mesh::Connection& conn, Approximation& flux, const index_t adj_mat_id1, const bool with_thermal = false);
+		void calc_matrix_matrix(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal = false);
+		void calc_fault_fault(const mesh::Connection& conn, FlowHeatApproximation& flux);
+		void calc_matrix_boundary(const mesh::Connection& conn, FlowHeatApproximation& flux, const bool with_thermal = false);
 
-		inline void write_trans(const Approximation& flux)
+		inline void write_trans(const FlowHeatApproximation& flux)
 		{
-			value_t buf, buf_homo;
-			// free term (gravity)
-			flux_rhs.push_back(flux.rhs.values[0]);
-			// stencil & transmissibilities
-			for (uint8_t st_id = 0; st_id < flux.stencil.size(); st_id++)
-			{
-				buf = flux.a.values[st_id];
-				buf_homo = flux.a_homo.values[st_id];
-				if (fabs(buf) > EQUALITY_TOLERANCE)
-				{
-					flux_vals.push_back(buf);
-					flux_vals_homo.push_back(buf_homo);
-					flux_stencil.push_back(flux.stencil[st_id]);
-				}
-			}
-			// offset
-			flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
+		  assert(flux.is_same_stencil);
+		  value_t buf, buf_homo;
+		  // free term (gravity)
+		  flux_rhs.push_back(flux.darcy.rhs.values[0]);
+		  // stencil & transmissibilities
+		  for (uint8_t st_id = 0; st_id < flux.darcy.stencil.size(); st_id++)
+		  {
+			  buf = flux.darcy.a.values[st_id];
+			  buf_homo = flux.fick.a.values[st_id];
+			  if (fabs(buf) > EQUALITY_TOLERANCE)
+			  {
+				  flux_vals.push_back(buf);
+				  flux_vals_homo.push_back(buf_homo);
+				  flux_stencil.push_back(flux.darcy.stencil[st_id]);
+			  }
+		  }
+		  // offset
+		  flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 		};
-		inline void write_trans_thermal(const Approximation& flux)
+		inline void write_trans_thermal(const FlowHeatApproximation& flux)
 		{
+		  assert(flux.is_same_stencil);
 		  value_t buf, buf_homo, buf_t;
 		  // free term (gravity)
-		  flux_rhs.push_back(flux.rhs.values[0]);
+		  flux_rhs.push_back(flux.darcy.rhs.values[0]);
 		  // stencil & transmissibilities
-		  for (uint8_t st_id = 0; st_id < flux.stencil.size(); st_id++)
+		  for (uint8_t st_id = 0; st_id < flux.darcy.stencil.size(); st_id++)
 		  {
-			buf = flux.a.values[st_id];
-			buf_homo = flux.a_homo.values[st_id];
-			buf_t = flux.a_thermal.values[st_id];
+			buf = flux.darcy.a.values[st_id];
+			buf_homo = flux.fick.a.values[st_id];
+			buf_t = flux.fourier.a.values[st_id];
 			if (fabs(buf) + fabs(buf_t) > EQUALITY_TOLERANCE)
 			{
 			  flux_vals.push_back(buf);
 			  flux_vals_homo.push_back(buf_homo);
 			  flux_vals_thermal.push_back(buf_t);
-			  flux_stencil.push_back(flux.stencil[st_id]);
+			  flux_stencil.push_back(flux.darcy.stencil[st_id]);
 			}
 		  }
 		  // offset
@@ -121,8 +120,9 @@ namespace dis
 		};
 		std::vector<index_t> find_connections_to_reconstruct_gradient(const index_t cell_id, const index_t cur_conn_id);
 	public:
+		Mesh* mesh;
 		void set_mesh(Mesh* _mesh);
-		void init();
+		virtual void init();
 
 		Discretizer();
 		~Discretizer();
@@ -140,18 +140,8 @@ namespace dis
 		std::vector<index_t> cell_p;
 
 		/* MPFA */
-
-		// gradient offsets
-		std::vector<index_t> grad_offset;
-		// gradient stencil
-		std::vector<index_t> grad_stencil;
-		// pressure gradient transmissibilities
-		std::vector<value_t> p_grad_vals;
-		// pressure gradient free-term (gravity)
-		std::vector<value_t> p_grad_rhs;
-		// pressure gradient transmissibilities
-		std::vector<value_t> t_grad_vals;
-
+		std::vector<LinearApproximation<Pvar>> p_grads;
+		std::vector<LinearApproximation<Tvar>> t_grads;
 
 		//std::vector<double> pressuregrad;
 		/* Fluxes */
@@ -170,15 +160,13 @@ namespace dis
 		// free-term (gravity) in flux approximation
 		std::vector<value_t> flux_rhs;
 
-		bool USE_CONNECTION_BASED_GRADIENTS;
-
 		// Two-Point Flux Approximation
 		void calc_tpfa_transmissibilities(const PhysicalTags& tags);
 		// Multi-Point Flux Approximation
-		void reconstruct_pressure_gradients_per_cell(const BoundaryCondition& bc);
-		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& bc);
-		void reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc);
-		void calc_mpfa_transmissibilities(BoundaryCondition& _bc, const bool with_thermal = false);
+		void reconstruct_pressure_gradients_per_cell(const BoundaryCondition& _bc);
+		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& _bc_flow, const BoundaryCondition& _bc_heat);
+		// void reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc);
+		void calc_mpfa_transmissibilities(const bool with_thermal = false);
 
 		void calcPermeabilitySimple(const double permx = 1, const double permy = 1, const double permz = 1);
 		void set_permeability(std::vector<value_t> &permx, std::vector<value_t> &permy, std::vector<value_t> &permz);
@@ -189,14 +177,11 @@ namespace dis
 		std::vector<value_t> get_fault_xyz() const;
 		void write_tran_list(std::string fname) const;
 
-		// method which computes the flux between two elements
-		Matrix mergeMatrices(Matrix &m1, Matrix &m2, std::vector<index_t> &cont1, std::vector<index_t> &cont2, std::vector<index_t>& comb_cont);
-		index_t nbContributors(std::vector<index_t>& cont1, std::vector<index_t>& cont2, std::vector<index_t>& comb_cont);
-		BoundaryCondition bc;
+		BoundaryCondition bc_flow, bc_heat;
 
 		static const Matrix I3;
 		static const Matrix I4;
-		Matrix grav_vec;
+		Matrix grav_vec; // gravity_constant * grad(z); density is multiplied in engine
     };
 }
 

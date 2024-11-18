@@ -1,0 +1,1 @@
+%comspec% /k ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" & C:\Users\%USERNAME%\AppData\Local\miniconda3\Scripts\activate.bat C:\Users\%USERNAME%\AppData\Local\miniconda3 & conda activate "%1" & for /f "delims=" %%i in ('python -c "import sys; import os; print(os.path.dirname(sys.executable))"') do set PYTHONPATH=%%i"

@@ -1,4 +1,3 @@
-
 Engines
 #######
 
@@ -9,19 +8,37 @@ Engines
      operator_set_evaluator_iface, operator_set_gradient_evaluator_iface, property_evaluator_iface
    :show-inheritance:
 
-Physics_sup
-###########
+Physics
+#######
 
-.. autoclass:: darts.models.physics_sup.physics_comp_sup.Compositional
+.. autoclass:: darts.physics.physics_base.PhysicsBase
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Geothermal
+***********
+
+.. autoclass:: darts.physics.geothermal.physics.Geothermal
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Super
+******
+
+.. autoclass:: darts.physics.super.physics.Compositional
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
 Properties
-**********
+***********
 
-.. autoclass:: darts.models.physics_sup.property_container.property_container
+.. automodule:: darts.physics.super.property_container
    :members:
    :undoc-members:
    :show-inheritance:
@@ -30,25 +47,61 @@ Properties
 Properties Black Oil
 ====================
 
-.. automodule:: darts.models.physics_sup.properties_black_oil
+.. automodule:: darts.physics.properties.black_oil
    :members:
    :undoc-members:
    :show-inheritance: 
    :special-members: __init__
 
-Properties CCS Thermal
-======================
+Basic Properties
+=================
 
-.. automodule:: darts.models.physics_sup.properties_ccs_thermal
+.. automodule:: darts.physics.properties.basic
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
-Basic Properties
-================
+Conductivity Properties
+========================
 
-.. automodule:: darts.models.physics_sup.properties_basic
+.. automodule:: darts.physics.properties.conductivity
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Enthalpy Properties
+====================
+
+.. automodule:: darts.physics.properties.enthalpy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Density Properties
+====================
+
+.. automodule:: darts.physics.properties.density
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Viscosity Properties
+=====================
+
+.. automodule:: darts.physics.properties.viscosity
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Kinetics Properties
+===================
+
+.. automodule:: darts.physics.properties.kinetics
    :members:
    :undoc-members:
    :show-inheritance:
@@ -57,7 +110,7 @@ Basic Properties
 Operators
 *********
 
-.. automodule:: darts.models.physics_sup.operator_evaluator_sup
+.. automodule:: darts.physics.super.operator_evaluator
    :members:
    :undoc-members:
    :show-inheritance:
@@ -75,35 +128,50 @@ Models
 Reservoirs
 ##########
 
-.. autoclass:: darts.models.reservoirs.struct_reservoir.StructReservoir
+.. autoclass:: darts.reservoirs.reservoir_base.ReservoirBase
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
-.. autoclass:: darts.models.reservoirs.unstruct_reservoir.UnstructReservoir
+.. autoclass:: darts.reservoirs.struct_reservoir.StructReservoir
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
-Discretizer
-###########
+.. autoclass:: darts.reservoirs.unstruct_reservoir.UnstructReservoir
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: darts.reservoirs.cpg_reservoir.CPG_Reservoir
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Mesh
+****
 
 Structured Discretizer
-************************
+======================
 
-.. automodule:: darts.mesh.struct_discretizer
+.. automodule:: darts.reservoirs.mesh.struct_discretizer
 
 .. autoclass:: StructDiscretizer
    :members:
    :special-members: __init__
 
 Unstructured Discretizer
-************************
+========================
 
-.. automodule:: darts.mesh.unstruct_discretizer
+.. automodule:: darts.reservoirs.mesh.unstruct_discretizer
 
 .. autoclass:: UnstructDiscretizer
    :members:
    :special-members: __init__
+
+
+

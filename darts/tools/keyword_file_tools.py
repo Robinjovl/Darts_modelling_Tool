@@ -122,8 +122,11 @@ def save_few_keywords(fname, keys, data):
     for id in range(len(keys)):
         f.write(keys[id])
         for i, val in enumerate(data[id]):
-            if i % 4 == 0: f.write('\n')
-            f.write("%12.10f" % val)
+            if i % 6 == 0: f.write('\n')
+            if type(val) != float:
+                f.write(str(val))
+            else:
+                f.write("%12.10f" % val)
             f.write('\t')
         f.write('\n' + '/' + '\n')
     f.close()

@@ -194,7 +194,6 @@ __pycache__
 # From now on we get rid of static libraries on the repo along with includes
 /lib/darts_linear_solvers/
 /lib/opendarts_linear_solvers/
-*.txt
 /lib/cudpp*
 /scripts/tests/.idea
 .vscode/settings.json

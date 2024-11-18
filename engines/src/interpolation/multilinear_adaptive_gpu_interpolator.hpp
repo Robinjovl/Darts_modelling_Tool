@@ -5,7 +5,12 @@
 #include <array>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/system/cuda/experimental/pinned_allocator.h>
+
+#if 1 //def CUDA12
+#include <thrust/system/cuda/memory_resource.h>
+#else
+#include <pinned_allocator.h>
+#endif
 
 #include "gpu_hashmap_async.h"
 #include "multilinear_gpu_interpolator_base.hpp"
@@ -32,9 +37,19 @@ public:
   using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_coordinates_t;
   using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_data_t;
   using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
+  #if 1 //CUDA12
+  using mr = thrust::cuda::universal_host_pinned_memory_resource;
+  using index_pinned_allocator = thrust::mr::stateless_resource_allocator<index_t, mr >;
+  using value_pinned_allocator = thrust::mr::stateless_resource_allocator<value_t, mr >;
+  using int_pinned_allocator = thrust::mr::stateless_resource_allocator<int, mr >;
+  typedef thrust::host_vector<index_t, index_pinned_allocator> pinned_index_vector_t;
+  typedef thrust::host_vector<value_t, value_pinned_allocator> pinned_value_vector_t;
+  typedef thrust::host_vector<int, int_pinned_allocator> pinned_int_vector_t;
+  #else
   typedef thrust::host_vector<index_t, thrust::cuda::experimental::pinned_allocator<index_t>> pinned_index_vector_t;
   typedef thrust::host_vector<value_t, thrust::cuda::experimental::pinned_allocator<value_t>> pinned_value_vector_t;
   typedef thrust::host_vector<int, thrust::cuda::experimental::pinned_allocator<int>> pinned_int_vector_t;
+  #endif
   /**
      * @brief Construct the interpolator with specified parametrization space
      * 

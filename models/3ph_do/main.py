@@ -4,14 +4,16 @@ import pandas as pd
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.super.operator_evaluator import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
     nc = n.property_container.nc + n.thermal
-    P = Xn[0:n.reservoir.nb * nc:nc]
-    z = np.ones((nc, n.reservoir.nb))
-    phi = np.ones(n.reservoir.nb)
+    nb = n.reservoir.mesh.n_res_blocks
+
+    P = Xn[0:nb * nc:nc]
+    z = np.ones((nc, nb))
+    phi = np.ones(nb)
     sat_ev = props(n.property_container)
     prop = np.zeros(2*n.property_container.nph)
 
@@ -20,7 +22,7 @@ def plot_sol(n):
         z[i][:] = Xn[i + 1:n.reservoir.nb * nc:nc]
         z[-1][:] -= z[i][:]
 
-    for i in range(n.reservoir.nb):
+    for i in range(nb):
         state = Xn[i*nc:(i+1)*nc]
         sat_ev.evaluate(state, prop)
         density_tot = np.sum(prop[0:3] * prop[3:6])
@@ -47,35 +49,38 @@ if __name__ == '__main__':
 
     redirect_darts_output('run.log')
     n = Model()
-    n.params.linear_type = n.params.linear_solver_t.cpu_superlu
+    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
 
-    if 1:
-        n.run_python()
+    if True:
+        n.run(1000)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # n.run_python(300, restart_dt=1e-3)
+        # n.run(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        # n.save_restart_data()
+        n.save_data_to_h5('solution')
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
-        writer.save()
+        time_data.to_excel(writer, sheet_name='Sheet1')
+        writer.close()
     else:
-        n.load_restart_data()
+        # n.load_restart_data()
+        n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
 
-    if 1:
+    if True:
         Xn = np.array(n.physics.engine.X, copy=False)
         nc = n.physics.nc + n.physics.thermal
+        nb = n.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:n.reservoir.nb*nc:nc])
-        plt.show()
+            plt.plot(Xn[i:nb*nc:nc])
+            plt.savefig(str(i) + '.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

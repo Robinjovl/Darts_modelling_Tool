@@ -69,21 +69,26 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   }
 
   int nc = n_vars;
-  int n_ops = 2 * nc;
-
 
   // temperature-based thermal formulation
   if (thermal == 1)
   {
     nc--;
-    n_ops = 2 * nc + 5;
-    time_data[name + " : T (K)"].push_back(state[n_vars - 1]);
+    time_data[name + " : temperature (K)"].push_back(state[n_vars - 1]);
 	/*time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[n_phases] * p_diff * segment_transmissibility);*/
   }
-
+  
   for (int c = 0; c < nc; c++)
   {
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * segment_transmissibility);
+      double c_rate_op = 0;
+
+      for (int j = 0; j < n_phases; j++)
+      {
+          int shift = n_block_size + n_block_size * j;
+          c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+      }
+
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * segment_transmissibility);
   }
 
   int i_p = 0;
@@ -104,7 +109,15 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
     for (int c = 0; c < nc; c++)
     {
-      time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * wi);
+        double c_rate_op = 0;
+
+        for (int j = 0; j < n_phases; j++)
+        {
+            int shift = nc + nc * j;
+            c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+        }
+        time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
+  
     }
     time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_block_size + P_VAR]);
 

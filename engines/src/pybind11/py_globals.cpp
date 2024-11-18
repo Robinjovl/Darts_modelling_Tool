@@ -1,5 +1,5 @@
 #ifdef PYBIND11_ENABLED
-#include <stl_bind.h>
+#include <pybind11/stl_bind.h>
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
@@ -23,13 +23,11 @@ using namespace opendarts::config;
 namespace py = pybind11;
 
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
   // declaration of stream test main function
   // used to check the system bandwidth
   int stream_main();
-#endif // __linux__
-
-
+#endif // defined(__linux__) || defined(__APPLE__)
 
 
 void redirect_darts_output(std::string file_name) {
@@ -61,7 +59,6 @@ void cuda_device_reset()
 }
 #endif
 
-
 void print_build_info()
 {
   std::cout << "darts-linear-solvers built on " << LINSOLV_BUILD_DATE << " by " << LINSOLV_BUILD_MACHINE << " from " << LINSOLV_BUILD_GIT_HASH << std::endl;
@@ -79,6 +76,7 @@ void pybind_globals(py::module &m)
     .def_readwrite("first_ts", &sim_params::first_ts, "Length of the first time step (days)")
     .def_readwrite("max_ts", &sim_params::max_ts)
     .def_readwrite("mult_ts", &sim_params::mult_ts)
+    .def_readwrite("min_ts", &sim_params::min_ts)
     .def_readwrite("max_i_newton", &sim_params::max_i_newton)
     .def_readwrite("max_i_linear", &sim_params::max_i_linear)
     .def_readwrite("tolerance_newton", &sim_params::tolerance_newton)
@@ -88,12 +86,23 @@ void pybind_globals(py::module &m)
     .def_readwrite("linear_type", &sim_params::linear_type)
     .def_readwrite("linear_params", &sim_params::linear_params)
     .def_readwrite("nonlinear_norm_type", &sim_params::nonlinear_norm_type)
-	  .def_readwrite("log_transform", &sim_params::log_transform)
+	.def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("trans_mult_exp", &sim_params::trans_mult_exp)
     .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
-    .def_readwrite("assembly_kernel", &sim_params::assembly_kernel);
-  
+    .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
+    .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
+    .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
+    .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
+    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance);
+
+  py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
+    .def(py::init<>())
+    .def_readwrite("max_i_linear", &linear_solver_params::max_i_linear)
+    .def_readwrite("tolerance_linear", &linear_solver_params::tolerance_linear)
+    .def_readwrite("linear_type", &linear_solver_params::linear_type);
+  py::bind_vector<std::vector<linear_solver_params>>(m, "vector_linear_solver_params", py::module_local());
+
   py::enum_<sim_params::newton_solver_t>(sim_params, "newton_solver_t", "Available types of newton solvers")
     .value("newton_std", sim_params::newton_solver_t::NEWTON_STD)
     .value("newton_global_chop", sim_params::newton_solver_t::NEWTON_GLOBAL_CHOP)
@@ -153,11 +162,9 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#ifdef __linux__
+#ifdef defined(__linux__) || defined(__APPLE__)
   m.def("stream", &stream_main, "Launch stream bandwidth test");
-#endif // __linux__
-
-
+#endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);

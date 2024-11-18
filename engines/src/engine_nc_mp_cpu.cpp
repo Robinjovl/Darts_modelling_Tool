@@ -87,7 +87,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			linear_solver->set_prec(cpr);
 			break;
 		}
-#ifndef __linux__
+#ifdef _WIN32
 #if 0 // can be enabled if amgdll.dll is available \
 	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
 		case sim_params::CPU_GMRES_CPR_AMG1R5:
@@ -99,7 +99,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif
-#endif
+#endif //_WIN32
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;

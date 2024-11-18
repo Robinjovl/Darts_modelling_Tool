@@ -32,7 +32,7 @@ public:
   const static uint8_t T_VAR = NC;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 + /* enthalphy */ NP;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -49,11 +49,12 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 4 + 2 * NP;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_super_gpu()
@@ -61,10 +62,10 @@ public:
     free_device_data(mesh_grav_coef_d);
   }
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
 
   engine_super_gpu()
   {
@@ -82,10 +83,10 @@ public:
 
   int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
            std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
-           sim_params *params_, timer_node *timer_);
+           sim_params *params_, timer_node *timer_) override;
 
-  int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
-  int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+  int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
+  int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
 
 public:
   value_t *RV_d;              // [n_blocks] rock volumes for each block

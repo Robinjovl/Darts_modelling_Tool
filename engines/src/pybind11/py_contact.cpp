@@ -1,8 +1,8 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl_bind.h>
-#include <stl.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/stl.h>
 
 #include "mech/contact.h"
 //#include "mech/pm_discretizer.hpp"
@@ -105,6 +105,8 @@ void pybind_contact(py::module &m)
 			.def(py::init<>()) \
 			.def_readwrite("theta", &RSF_props::theta) \
 			.def_readwrite("theta_n", &RSF_props::theta_n) \
+			.def_readwrite("mu_rate", &RSF_props::mu_rate) \
+			.def_readwrite("mu_state", &RSF_props::mu_state) \
 			.def_readwrite("ref_velocity", &RSF_props::vel0) \
 			.def_readwrite("crit_distance", &RSF_props::Dc) \
 			.def_readwrite("a", &RSF_props::a) \
@@ -113,7 +115,7 @@ void pybind_contact(py::module &m)
 			.def_readwrite("law", &RSF_props::law)
 			.def(py::pickle(
 				[](const RSF_props& p) { // __getstate__
-					py::tuple t(7);
+					py::tuple t(9);
 
 					t[0] = p.theta;
 					t[1] = p.theta_n;
@@ -122,7 +124,8 @@ void pybind_contact(py::module &m)
 					t[4] = p.a;
 					t[5] = p.b;
 					t[6] = p.min_vel;
-					//t[7] = p.law;
+					t[7] = p.mu_rate;
+					t[8] = p.mu_state;
 
 					return t;
 				},
@@ -136,7 +139,8 @@ void pybind_contact(py::module &m)
 					p.a = t[4].cast<value_t>();
 					p.b = t[5].cast<value_t>();
 					p.min_vel = t[6].cast<value_t>();
-					//p.law = t[7].cast<StateLaw>();
+					p.mu_rate = t[7].cast<std::vector<value_t>>();
+					p.mu_state = t[8].cast<std::vector<value_t>>();
 
 					return p;
 				}));

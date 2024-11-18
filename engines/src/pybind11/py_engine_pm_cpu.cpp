@@ -1,7 +1,7 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 #include "mech/engine_pm_cpu.hpp"
@@ -20,7 +20,6 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def("post_explicit", &engine_pm_cpu::post_explicit) \
 		.def("update_uu_jacobian", &engine_pm_cpu::update_uu_jacobian) \
 		.def_readwrite("find_equilibrium", &engine_pm_cpu::FIND_EQUILIBRIUM) \
-		.def_readwrite("print_linear_system", &engine_pm_cpu::PRINT_LINEAR_SYSTEM) \
 		.def_readwrite("time_dependent_discretization", &engine_pm_cpu::TIME_DEPENDENT_DISCRETIZATION) \
 		.def_readwrite("explicit_scheme", &engine_pm_cpu::EXPLICIT_SCHEME) \
 		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \
@@ -30,6 +29,7 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("t_dim", &engine_pm_cpu::t_dim) \
 		.def_readwrite("x_dim", &engine_pm_cpu::x_dim) \
 		.def_readwrite("p_dim", &engine_pm_cpu::p_dim) \
+		.def_readwrite("m_dim", &engine_pm_cpu::m_dim) \
 		.def_readwrite("dev_u", &engine_pm_cpu::dev_u) \
 		.def_readwrite("dev_p", &engine_pm_cpu::dev_p) \
 		.def_readwrite("dev_g", &engine_pm_cpu::dev_g) \
@@ -58,6 +58,8 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("RHS", &engine_pm_cpu::RHS) \
 		.def_readwrite("jacobian_explicit_scheme", &engine_pm_cpu::jacobian_explicit_scheme) \
 		.def_readwrite("contact_solver", &engine_pm_cpu::contact_solver) \
+		.def_readwrite("ls_params", &engine_pm_cpu::ls_params) \
+		.def_readwrite("active_linear_solver_id", &engine_pm_cpu::active_linear_solver_id) \
 		.def_property_readonly_static("P_VAR", [](py::object) {return engine_pm_cpu::P_VAR; }) \
 		.def_property_readonly_static("Z_VAR", [](py::object) {return engine_pm_cpu::Z_VAR; }) \
 		.def_property_readonly_static("U_VAR", [](py::object) {return engine_pm_cpu::U_VAR; }) \

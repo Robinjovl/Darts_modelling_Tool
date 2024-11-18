@@ -100,7 +100,7 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 			linear_solver->set_prec(cpr);
 			break;
 		}
-#ifndef __linux__
+#ifdef _WIN32
 #if 0 // can be enabled if amgdll.dll is available \
 	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
 		case sim_params::CPU_GMRES_CPR_AMG1R5:
@@ -112,7 +112,7 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 			break;
 		}
 #endif
-#endif
+#endif //_WIN32
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -498,7 +498,7 @@ int engine_elasticity_cpu<ND>::assemble_jacobian_array(value_t dt, std::vector<v
 };
 
 template <uint8_t ND>
-int engine_elasticity_cpu<ND>::run_single_newton_iteration(value_t deltat)
+int engine_elasticity_cpu<ND>::assemble_linear_system(value_t deltat)
 {
 	newton_update_coefficient = 1.0;
 

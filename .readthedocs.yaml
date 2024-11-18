@@ -14,7 +14,7 @@ build:
     - make
   jobs:
     pre_install:
-      - bash ./build_darts.sh 1 4
+      - bash ./helper_scripts/build_darts_cmake.sh -j 8
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

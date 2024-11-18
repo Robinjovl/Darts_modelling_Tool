@@ -1,6 +1,6 @@
 #include "py_linalg.h"
-#include "stl_bind.h"
-#include "stl.h"
+#include <pybind11/stl_bind.h>
+#include <pybind11/stl.h>
 
 #include <valarray>
 #include <array>

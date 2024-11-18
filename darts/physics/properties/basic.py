@@ -3,7 +3,6 @@ import numpy as np
 
 class ConstFunc:
     def __init__(self, value):
-        super().__init__()
         self.value = value
 
     def evaluate(self, dummy1=0, dummy2=0, dummy3=0, dummy4=0):
@@ -28,8 +27,8 @@ class PhaseRelPerm:
             self.n = n
         else:  # water
             self.kre = kre
-            self.sr = 0
-            self.sr1 = 0
+            self.sr = sgr
+            self.sr1 = swc
             self.n = n
 
     def evaluate(self, sat):
@@ -38,9 +37,54 @@ class PhaseRelPerm:
         elif sat <= self.sr:
             kr = 0
         else:
-            # general Brook-Corey
+            # general Brooks-Corey
             kr = self.kre * ((sat - self.sr) / (1 - self.Sgr - self.Swc)) ** self.n
 
+        return kr
+
+
+class PhaseRelPerm_VG:  # Van Genuchten
+    def __init__(self, phase, swc=0.20, sgr=0, kre=1., n=4.367):
+        self.phase = phase
+        self.Swc = swc
+        self.Sgr = sgr
+        if phase == "oil":
+            self.kre = kre
+            self.sr = swc
+            self.sr1 = sgr
+            self.n = n
+            self.m = 1 - 1/n
+        elif phase == 'gas':
+            self.kre = kre
+            self.sr = sgr
+            self.sr1 = swc
+            self.n = n
+            self.m = 1 - 1/n
+        else:  # water
+            self.kre = 1
+            self.sr = 0
+            self.sr1 = 0
+            self.n = n
+            self.m = 1 - 1/n
+
+    def evaluate(self, sat):
+        if self.phase == "oil":
+            Se = (sat - self.Swc) / (1 - self.Sgr - self.Swc)
+            if sat >= 1 - self.sr1:
+                kr = self.kre
+            elif sat <= self.sr:
+                kr = 0
+            else:
+                kr = np.sqrt(Se) * (1 - (1 - Se ** (1/self.m)) ** self.m) ** 2
+
+        elif self.phase == 'gas':
+            Se = ((1-sat) - self.Swc) / (1 - self.Sgr - self.Swc)
+            if sat >= 1 - self.sr1:
+                kr = self.kre
+            elif sat <= self.sr:
+                kr = 0
+            else:
+                kr = (1 - Se) ** (1/3) * (1 - Se ** (1/self.m)) ** (2*self.m)
         return kr
 
 
@@ -58,23 +102,42 @@ class CapillaryPressure:
         :param sat: saturation
         :return: Pc
         '''
-        Se = (sat[1] - self.swc)/(1 - self.swc)
-        if Se < self.eps:
-            Se = self.eps
-        pc = self.p_entry * Se ** (-1/self.labda)
+        if self.nph > 1:
+            Se = (sat[1] - self.swc)/(1 - self.swc)
+            if Se < self.eps:
+                Se = self.eps
+            pc = self.p_entry * Se ** (-1/self.labda)
 
-        Pc = np.zeros(self.nph, dtype=object)
-        Pc[1] = pc
-
+            Pc = np.zeros(self.nph, dtype=object)
+            Pc[1] = pc
+        else:
+            Pc = [0.0]
         return Pc
 
 
-class Diffusion:
-    def __init__(self, diff_coeff=0.):
-        self.D = diff_coeff
+class CapillaryPressure_VG:  # Van Genuchten
+    def __init__(self, nph=2, p_entry=0, swc=0, labda=3.3e-6, n=4.367): #[labda [Pa^-1]]
+        self.nph = nph
+        self.swc = swc
+        self.p_entry = p_entry
+        self.labda = labda
+        self.eps = 1e-3
+        self.n = n
+        self.m = 1 - 1/n
 
-    def evaluate(self):
-        return self.D
+    def evaluate(self, sat):
+        '''
+        default evaluator of capillary pressure Pc based on pow
+        :param sat: saturation
+        :return: Pc
+        '''
+        Se = (sat - self.swc)/(1 - self.swc)
+        if Se < self.eps:
+            Se = self.eps
+        pc = 1 / self.labda * (Se ** (-1/self.m) - 1) ** (1/self.n)
+        Pc = np.zeros(self.nph, dtype=object)
+        Pc[1] = pc
+        return Pc
 
 
 class RockCompactionEvaluator:

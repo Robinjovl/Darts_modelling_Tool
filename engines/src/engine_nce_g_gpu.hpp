@@ -49,7 +49,7 @@ public:
   const static uint8_t DENS_OP = NC + NC * NP + NP + 5;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_nce_g_gpu()
@@ -62,10 +62,10 @@ public:
     free_device_data(mesh_grav_coef_d);
   }
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const { return N_VARS; };
+  uint8_t get_n_ops() const { return N_OPS; };
+  uint8_t get_n_comps() const { return NC; };
+  uint8_t get_z_var() const { return Z_VAR; };
 
   engine_nce_g_gpu() { engine_name = std::to_string(NP) + "-phase " + std::to_string(NC) + "-component enthalpy-based thermal flow with gravity GPU engine"; };
 

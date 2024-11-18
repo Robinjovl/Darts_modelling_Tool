@@ -1,0 +1,5 @@
+#include "discretizer_build_info.h"
+
+const char *DISCRETIZER_BUILD_DATE {__DATE__ " " __TIME__};  // __DATE__ and __TIME__ are compiler macros
+const char *DISCRETIZER_BUILD_MACHINE {"@opendarts_discretizer_BUILD_USERNAME@""@""@opendarts_discretizer_BUILD_HOSTNAME@"};
+const char *DISCRETIZER_BUILD_GIT_HASH {"@GIT_SHA1@"};

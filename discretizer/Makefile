@@ -5,16 +5,21 @@ include conf_gcc.mk
 INCLUDEFLAGS = -I./src \
 				-I../engines/src \
 				-I../engines/src/interpolation \
-				-I$(LINEAR_SOLVERS_DIR)/include  \
-				-I../thirdparty/pybind11 \
+				-I../thirdparty/pybind11/include \
+				-I../thirdparty \
 				-I../thirdparty/eigen \
+				-I../thirdparty/MshIO/src \
+				-I../thirdparty/MshIO/include \
 				$(shell python3-config --includes)
+
 #LFLAGS = $(shell python3-config --libs)
 
 SOURCEDIR = ./src
+MSHIODIR = ../thirdparty/MshIO/src
 
 DFLAGS      = -DPYBIND11_ENABLED -D_GLIBCXX_USE_CXX11_ABI=0
 CPPSOURCES = $(shell find $(SOURCEDIR) -name '*.cpp')
+CPPSOURCES += $(shell find $(MSHIODIR) -name '*.cpp')
 CSOURCES = $(shell find ./src/opm -name '*.c')
 CPPOBJECTS = $(CPPSOURCES:%.cpp=%.o)
 COBJECTS = $(CSOURCES:%.c=%.o)

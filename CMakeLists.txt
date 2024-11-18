@@ -1,0 +1,245 @@
+cmake_minimum_required (VERSION 3.21)
+project (openDARTS LANGUAGES CXX VERSION 0.2)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+# Load cmake modules -----------------------------------------------------------
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
+
+include(FeatureSummary)
+include(GetGitRevisionDescription) # to extract git information (available in source)
+include(BundleCMakeStaticLibs) # to bundle a static lib and its dependencies into a single static lib
+# ------------------------------------------------------------------------------
+
+
+# Get environment information for the build and IDEs ---------------------------
+
+# Give the user some feedback on what is going on
+message(CHECK_START "Defining build settings")  # build settings
+
+# Get cmake source dir
+set(opendarts_SOURCE_DIR ${CMAKE_SOURCE_DIR})
+
+# Get hostname and username 
+cmake_host_system_information(RESULT opendarts_BUILD_HOSTNAME QUERY HOSTNAME)
+if(WIN32)
+  set(opendarts_BUILD_USERNAME $ENV{USERNAME})
+else()
+  set(opendarts_BUILD_USERNAME $ENV{USER})
+endif()
+
+# Show build information
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  username: ${opendarts_BUILD_USERNAME}")
+message(STATUS "  hostname: ${opendarts_BUILD_HOSTNAME}")
+
+# Get git information
+get_git_head_revision(GIT_REFSPEC GIT_SHA1)
+git_local_changes(GIT_DIRTY)
+
+# Show git information 
+message(STATUS "  git refspec: ${GITREFSPEC}")
+message(STATUS "  git hash: ${GIT_SHA1}")
+message(STATUS "  git dirtiness: ${GIT_DIRTY}")
+
+# Check the build type:
+#   ST: single threaded (Default)
+#   MT: multi threaded
+#   GPU: GPU support (not available yet)
+if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
+  set(OPENDARTS_CONFIG "ST") 
+elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
+  if(NOT DEFINED BOS_SOLVERS_DIR)
+    message(FATAL_ERROR "openDARTS MT requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
+  endif()
+elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
+  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+else()
+  message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
+endif()
+
+message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
+
+# Determine the type of compiler we have and set compiler flags and other compiler 
+# specific flags
+
+if(DEFINED BOS_SOLVERS_DIR)
+  add_compile_definitions(WITH_HYPRE)
+endif()
+
+# Set compiler specific variables
+# Used for compiler flags and other cross compiler variables
+message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  # Compiler flags 
+  #add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
+  #set(opendarts_cxx_compiler_flags, "-W3")
+  
+  message(STATUS "  Setting MSVC compiler and linker flags")
+  # Compiler flags 
+  set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
+  
+  # Linker flags
+  set(opendarts_cxx_linker_flags "")
+
+  if(${OPENDARTS_CONFIG} STREQUAL "MT")
+    list(APPEND opendarts_cxx_compiler_flags "/openmp")
+    list(APPEND opendarts_cxx_linker_flags "/openmp")
+  endif()
+
+  message("COMPILER FLAGS:" opendarts_cxx_compiler_flags)
+
+  # Compiler specific helper variables 
+   
+  # Flags cmake to import external libraries as msvc like files: .lib and .dll instead of .a and .so
+  set(import_externals_as_msvc TRUE)
+  
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  message(STATUS "  Setting GNU compiler and linker flags")
+  # Compiler flags 
+  # We can also switch -fno-lto to -flto to compile everything with this flag.
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  
+  # Linker flags
+  set(opendarts_cxx_linker_flags "")
+
+  if(${OPENDARTS_CONFIG} STREQUAL "MT")
+    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+    list(APPEND opendarts_cxx_linker_flags "-fopenmp")
+  endif()
+
+  if(SET_CXX11_ABI_0)
+    list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
+  endif()
+  
+  # Compiler specific helper variables (currently not needed)
+
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  message(STATUS "  Setting Clang compiler and linker flags")
+  # Compiler flags 
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC")
+  
+  # Linker flags
+  # Reasons:
+  #   -Wl,-no_compact: used because in Clang compilers we get linker warning of
+  #                    being unable to create compact unwinding. This is relevant 
+  #                    for efficient exceptions, but this comes from SuperLU, so 
+  #                    we deactivate compact unwinding warnings.  
+  set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
+
+  if(${OPENDARTS_CONFIG} STREQUAL "MT")
+    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+    list(APPEND opendarts_cxx_linker_flags "-fopenmp")
+  endif()
+
+  if(SET_CXX11_ABI_0)
+    list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
+  endif()
+  
+  # Compiler specific helper variables (currently not needed)
+  
+endif()
+
+message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
+message(STATUS "   Linker flags  : ${opendarts_cxx_linker_flags}")
+
+# Setup options
+option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests are not built, to save time
+add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
+option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
+add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
+
+# Report options for this build
+feature_summary(WHAT ENABLED_FEATURES DISABLED_FEATURES PACKAGES_FOUND)
+feature_summary(FILENAME ${CMAKE_CURRENT_BINARY_DIR}/features.log WHAT ALL)
+message(STATUS "   The list of features was also saved to file: ${CMAKE_CURRENT_BINARY_DIR}/features.log\n")
+
+message(CHECK_PASS "done!")  # build settings
+# ------------------------------------------------------------------------------
+
+
+# Setup testing ----------------------------------------------------------------
+
+# Report Enable or disable testing via option flag
+if(ENABLE_TESTING)
+  enable_testing()
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Thirdparty libraries ---------------------------------------------------------
+# Reports we started looking for thirdparty libraries and initializes the flag 
+# that checks if all have been found 
+message(CHECK_START "Importing thirdparty libraries")
+unset(thirdparty_missing_components)
+
+if(NOT ONLY_SOLVERS)
+  #   thirdparty/eigen ---------------------------------------------------------
+  include(thirdparty/thirdparty_eigen.cmake)
+
+  #   thirdparty/pybind11 ------------------------------------------------------
+  include(thirdparty/thirdparty_pybind11.cmake)
+endif()
+
+#   thirdparty/SuperLU ---------------------------------------------------------
+if(NOT DEFINED BOS_SOLVERS_DIR)
+  include(thirdparty/thirdparty_superlu.cmake)
+endif()
+
+include(thirdparty/thirdparty_hypre.cmake)
+
+#   thirdparty/bos_solvers ------------------------------------------------------
+if(BOS_SOLVERS_DIR)
+  include(thirdparty/thirdparty_bos_solvers.cmake)
+endif()
+
+# Finalize reporting and check if all libraries have been added ----------------
+message(CHECK_PASS "done!")
+# ------------------------------------------------------------------------------
+
+
+# Build dummy library to contain compiler flags --------------------------------
+add_library(opendarts_compiler_flags INTERFACE)
+
+target_compile_features(opendarts_compiler_flags
+  INTERFACE
+  cxx_std_11
+)
+
+target_compile_options(opendarts_compiler_flags 
+  INTERFACE
+    ${opendarts_cxx_compiler_flags}
+)
+
+target_link_options(opendarts_compiler_flags 
+  INTERFACE
+    ${opendarts_cxx_linker_flags}
+)
+# ------------------------------------------------------------------------------
+
+
+# openDARTS Linear solvers -----------------------------------------------------
+if(NOT DEFINED BOS_SOLVERS_DIR)
+  add_subdirectory(solvers)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Engines ----------------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(engines)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Discretizer ------------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(discretizer)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Include the tests ------------------------------------------------------------
+if(ENABLE_TESTING)
+  add_subdirectory(tests)
+endif()
+# ------------------------------------------------------------------------------

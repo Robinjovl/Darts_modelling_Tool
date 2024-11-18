@@ -517,7 +517,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
                 rate = time_data.at(well_ + " : " + opt_phase + " rate (m3/day)");
 
                 //std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));
-                std::transform(rate.begin(), rate.end(), rate.begin(), std::bind1st(std::multiplies<double>(), -1));  // adding minus sign here to make sure the production rate is positive
+                std::transform(rate.begin(), rate.end(), rate.begin(), [](double val) { return -1 * val; });  // adding minus sign here to make sure the production rate is positive
                 q_p.push_back(rate);
             }
 
@@ -807,7 +807,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	std::vector<std::vector<value_t>>  q_Q;
 	std::vector<value_t> rate_diff;
 	q_Q.clear();
-	index_t ww = 0;
+	index_t ww = 0, idx_well = 0;
 
 
     if (objfun_prod_phase_rate)
@@ -979,13 +979,24 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
         ms_well* w;
         for (std::string well_ : prod_well_name)
         {
-            for (ms_well* well : wells)
-            {
-                if (well->name == well_)
-                {
-                    w = well;
-                }
-            }
+            //for (ms_well* well : wells)
+            //{
+            //    if (well->name == well_)
+            //    {
+            //        w = well;
+            //    }
+            //}
+
+			// recover the well definition from forward simulation, e.g. control and constraints
+			idx_well = 0;
+			for (ms_well* well : wells)
+			{
+				if (well->name == well_)
+				{
+					w = &(well_control_arr[idx_sim_ts][idx_well]);
+				}
+				idx_well++;
+			}
 
             // find upstream state
             value_t p_diff = X[w->well_head_idx * w->n_block_size + w->P_VAR] - X[w->well_body_idx * w->n_block_size + w->P_VAR];
@@ -1076,13 +1087,24 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
         ms_well* w;
         for (std::string well_ : inj_well_name)
         {
-            for (ms_well* well : wells)
-            {
-                if (well->name == well_)
-                {
-                    w = well;
-                }
-            }
+            //for (ms_well* well : wells)
+            //{
+            //    if (well->name == well_)
+            //    {
+            //        w = well;
+            //    }
+            //}
+
+			// recover the well definition from forward simulation, e.g. control and constraints
+			idx_well = 0;
+			for (ms_well* well : wells)
+			{
+				if (well->name == well_)
+				{
+					w = &(well_control_arr[idx_sim_ts][idx_well]);
+				}
+				idx_well++;
+			}
 
 			// find upstream state
 			value_t p_diff = X[w->well_head_idx * w->n_block_size + w->P_VAR] - X[w->well_body_idx * w->n_block_size + w->P_VAR];
@@ -1166,13 +1188,24 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
         ms_well* w;
 		for (std::string well_ : BHP_well_name)
 		{
-            for (ms_well* well : wells)
-            {
-                if (well->name == well_)
-                {
-                    w = well;
-                }
-            }
+            //for (ms_well* well : wells)
+            //{
+            //    if (well->name == well_)
+            //    {
+            //        w = well;
+            //    }
+            //}
+
+			// recover the well definition from forward simulation, e.g. control and constraints
+			idx_well = 0;
+			for (ms_well* well : wells)
+			{
+				if (well->name == well_)
+				{
+					w = &(well_control_arr[idx_sim_ts][idx_well]);
+				}
+				idx_well++;
+			}
 
             // adding minus sign on "bhp_BHP" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 			// corresponding to ms_well::check_constraints
@@ -1191,7 +1224,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			ww++;
 		}
 	}
-
 
 
 
@@ -1218,41 +1250,53 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			else
 				upstream_idx = w->well_body_idx; // producer
 
-			//index_t nc = n_vars;
-			//index_t n_ops = 2 * nc;
-
-			std::vector<value_t> state;
-			std::vector<index_t> block_idx = { 0 };
-			std::vector<value_t> rates;
-			std::vector<value_t> rates_derivs;
-
-			rates.resize(w->n_phases);
-			rates_derivs.resize(w->n_phases * n_vars);
-
-			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
-			w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
-			double ders_term, vals_term;
-			for (uint8_t v = 0; v < n_vars; v++)
+
+			if (w->thermal)  // for thermal super_engine_cpu and super_engine_mp_cpu
 			{
-				ders_term = 0.0;
-				vals_term = 0.0;
-
-                index_t p_idx = 0;  // the index of the phase in DARTS model definition
-				for (std::string phase : w->phase_names)
-				{
-					if (phase == "temperature")
-					{
-                        // adding minus sign on "wt_WT" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-						ders_term += rates_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
-						//vals_term += rates[p] * (-wt_WT[ww]);
-					}
-                    p_idx++;
-				}
-
-				Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+				index_t v = n_vars - 1;  // derivatives w.r.t. temperature
+				Temp_dj_dx[upstream_idx * n_vars + v] += 1 * (-wt_WT[ww]);
 			}
+			else 
+			{
+				//index_t nc = n_vars;
+				//index_t n_ops = 2 * nc;
+
+				std::vector<value_t> state;
+				std::vector<index_t> block_idx = { 0 };
+				std::vector<value_t> rates;
+				std::vector<value_t> rates_derivs;
+
+				rates.resize(w->n_phases);
+				rates_derivs.resize(w->n_phases * n_vars);
+
+				state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+				w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+
+
+				double ders_term, vals_term;
+				for (uint8_t v = 0; v < n_vars; v++)
+				{
+					ders_term = 0.0;
+					vals_term = 0.0;
+
+					index_t p_idx = 0;  // the index of the phase in DARTS model definition
+					for (std::string phase : w->phase_names)
+					{
+						if (phase == "temperature")
+						{
+							// adding minus sign on "wt_WT" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
+							ders_term += rates_derivs[p_idx * n_vars + v] * (-wt_WT[ww]);
+							//vals_term += rates[p] * (-wt_WT[ww]);
+						}
+						p_idx++;
+					}
+
+					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+				}
+			}
+
 			ww++;
 		}
 	}
@@ -1309,156 +1353,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 	return 0;
 };
-
-
-
-
-
-
-/*!
-
- @details
-
-	This base method runs simulation for particular time period. It use various
-	parameters kept from the previous run in internal structures. The timestep
-	managements is performed based on internal parameters (see 'params' class)
-
- @param n_days - number of days for simulation
-
- @note this procedure involve several internal parameters including:
-	- mesh - mesh information for simulation
-	- params - all parameters for simulation
-	- wells - well input used in simulation
-	- Xn and X - solution for initial and following timesteps
-  */
-int engine_base::run(value_t n_days)
-{
-	int last_ts = 0;
-
-	const char n_vars = get_n_vars();
-	const char n_ops = get_n_ops();
-	const uint8_t nc = get_n_comps();
-
-	stop_time = n_days + t;
-
-	if (fabs(t) < 1e-15)
-		prev_usual_dt = params->first_ts / params->mult_ts;
-	else
-		prev_usual_dt = params->max_ts;
-
-	dt = evaluate_next_dt();
-
-	for (; t + 1e-10 < stop_time;)
-	{
-		int converged = run_timestep(dt, t);
-
-		if (!converged) // no convergence reached
-		{
-			dt /= params->mult_ts;
-			prev_usual_dt = dt;
-
-			// terminate if not converging
-			if (dt < params->first_ts)
-				return 0;
-		}
-		else //convergence reached
-		{
-			dt = evaluate_next_dt();
-		}
-	} // end of timestep loop
-
-	return 0;
-}
-
-/*!
- @details
-
-	This base method runs simulation for a single timetep. For compatibility
-	between different runs, optional value for a current timetep can be provided.
-	.
-
- @param n_days - number of days for simulation
- @param time - starting time for the timestep
-
- @note this procedure involve several internal parameters including:
-	- mesh - mesh information for simulation
-	- params - all parameters for simulation
-	- wells - well input used in simulation
-	- Xn and X - solution for initial and following timesteps
-  */
-
-int engine_base::run_timestep(value_t deltat, value_t time)
-{
-	int r_code;
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	int converged;
-
-	int total_file_count = 0;
-
-	timer->start();
-
-	for (n_newton_last_dt = 0, n_linear_last_dt = 0;; n_newton_last_dt++)
-	{
-		run_single_newton_iteration(deltat);
-		newton_residual_last_dt = calc_newton_residual();
-		well_residual_last_dt = calc_well_residual();
-
-		// exit if target tolerance or maximum amount of newton iterations are reached
-		if ((newton_residual_last_dt < params->tolerance_newton && well_residual_last_dt < well_tolerance_coefficient * params->tolerance_newton) || n_newton_last_dt == params->max_i_newton)
-		{
-			if (n_newton_last_dt > params->min_i_newton)
-			{
-				break;
-			}
-		}
-
-		int error = solve_linear_equation();
-
-		if (0) //changed this to write jacobian to file!
-		{
-			Jacobian->write_matrix_to_file("jac_nc_dar.csr");
-			write_vector_to_file("jac_nc_dar.rhs", RHS);
-			write_vector_to_file("jac_nc_dar.sol", dX);
-			//apply_newton_update(deltat);
-			//write_vector_to_file("X_nc_dar", X);
-			//write_vector_to_file("Xn_nc_dar", Xn);
-			//exit(0);
-			//return 0;
-		}
-		// stop newton process if any error in solver occurs
-		if (error)
-		{
-			break;
-		}
-
-		timer->node["newton update"].start();
-		apply_newton_update(deltat);
-		timer->node["newton update"].stop();
-
-	} // end of newton loop
-	converged = post_newtonloop(dt, time);
-	timer->stop();
-
-	return converged;
-}
-
-double
-engine_base::evaluate_next_dt()
-{
-	// calculate next dt neglecting dt reduction because of reports
-	double usual_dt = std::min(prev_usual_dt * params->mult_ts, params->max_ts);
-	prev_usual_dt = usual_dt;
-	double next_dt = usual_dt;
-
-	double stop_dt = stop_time - t;
-	// if we not at the stop point already
-	if (stop_dt > 0)
-		next_dt = std::min(next_dt, stop_dt);
-
-	return next_dt;
-}
 
 int engine_base::print_timestep(value_t time, value_t deltat)
 {
@@ -1533,7 +1427,7 @@ int engine_base::print_stat()
 
 	r_code += sprintf(buffer + r_code, "Number of points: %d\n", acc_flux_op_set_list[0]->get_axis_n_points(0));
 	r_code += sprintf(buffer + r_code, "Number of interpolations: %lu \n", acc_flux_op_set_list[0]->get_n_interpolations());
-	r_code += sprintf(buffer + r_code, "Number of points used: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_points_used(), (acc_flux_op_set_list[0]->get_n_points_used() * 100.0 / acc_flux_op_set_list[0]->get_n_points_total()));
+	r_code += sprintf(buffer + r_code, "Number of points generated: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_points_used(), (acc_flux_op_set_list[0]->get_n_points_used() * 100.0 / acc_flux_op_set_list[0]->get_n_points_total()));
 	//r_code += sprintf(buffer + r_code, "Number of hypercubes used: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_hypercubes_used(), (acc_flux_op_set_list[0]->get_n_hypercubes_used() * 100.0 / acc_flux_op_set_list[0]->get_n_hypercubes_total()));
 	/*
 	r_code += sprintf (buffer + r_code, "OMIPS: %.4lf \n", acc_flux_op_set->get_n_interpolations() / interpolation_timer / 1000000);
@@ -1958,7 +1852,7 @@ int engine_base::apply_newton_update(value_t dt)
 	return 0;
 }
 
-void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
+void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vector<value_t>& dX)
 {
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
@@ -2011,6 +1905,64 @@ void engine_base::apply_composition_correction(std::vector<value_t> &X, std::vec
 			n_corrected++;
 		}
 	}
+	if (n_corrected)
+		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+}
+
+
+void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
+{
+	double sum_z, new_z, last_z, neg_z;
+	index_t nb = mesh->n_blocks;
+	index_t n_corrected = 0, c_min;
+
+	for (index_t i = 0; i < nb; i++)
+	{
+		last_z = 1;
+		neg_z = min_zc;
+		c_min = -1;
+		for (char c = 0; c < nc - 1; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+			last_z -= new_z; // keep track of last component
+			// find smallest component < min_z
+			if (new_z < neg_z)
+			{
+				neg_z = new_z;
+				c_min = c;
+			}
+		}
+
+		if (last_z < neg_z) // check if last component is the smallest < min_z
+		{
+			double last_dz = 0;
+			for (char c = 0; c < nc - 1; c++)
+				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
+			last_z -= last_dz; // find old_z = new_z - dX for last component
+
+			if (last_dz != 0)
+			{
+			  // compute fraction of update to be at min_zc
+			  double frac = (min_zc - last_z) / (last_dz);
+			  for (char c = 0; c < nc - 1; c++)
+				dX[i * n_vars + z_var + c] *= frac;
+			  n_corrected++;
+			}
+		}
+		else if (c_min >= 0)
+		{
+			// compute fraction of update to be at min_zc 
+			double frac = -(min_zc - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
+			if (dX[i * n_vars + z_var + c_min]  != 0)
+			{
+			  // correct update to be at min_zc for the smallest component
+			  for (char c = 0; c < nc - 1; c++)
+				dX[i * n_vars + z_var + c] *= frac;
+			  n_corrected++;
+			}
+		}
+	}
+
 	if (n_corrected)
 		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
@@ -2550,7 +2502,7 @@ int engine_base::test_assembly(int n_times, int kernel_number, int dump_jacobian
 
 	for (int i = 0; i < n_times; i++)
 	{
-		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+		for (auto r = 0; r < acc_flux_op_set_list.size(); r++)
 		{
 			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
 			if (result < 0)
@@ -2604,7 +2556,7 @@ int engine_base::test_spmv(int n_times, int kernel_number, int dump_result)
 	return 0;
 }
 
-int engine_base::run_single_newton_iteration(value_t deltat)
+int engine_base::assemble_linear_system(value_t deltat)
 {
 	// switch constraints if needed
 	timer->node["jacobian assembly"].start();
@@ -2666,6 +2618,20 @@ int engine_base::solve_linear_equation()
 	timer->node["linear solver solve"].start();
 	r_code = linear_solver->solve(&RHS[0], &dX[0]);
 	timer->node["linear solver solve"].stop();
+
+	if (print_linear_system) //changed this to write jacobian to file!
+	{
+	  const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	  Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+	  Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
+	  //Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+	  write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+	  write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+	  output_counter++;
+	}
 
 	if (r_code)
 	{
@@ -2770,8 +2736,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 		if (opt_history_matching)
 		{
 			X_t.push_back(X);
-			dt_t.push_back(dt);
-			t_t.push_back(t);
+			//dt_t.push_back(dt);
+			//t_t.push_back(t);
+			dt_t.push_back(deltat);
+			t_t.push_back(time + deltat);
 			if (is_mp)
 			{
 				Xop_t.push_back(Xop_mp);

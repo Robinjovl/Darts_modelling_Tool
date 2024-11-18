@@ -278,8 +278,14 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     if (h == HYPERCUBE_BUFFER_SIZE || (i == (n_states_idxs - 1) && h))
     {
       //printf("Flushing buffer size %d!\n", h);
+
+#if 1 //CUDA12
+      thrust::copy(new_hypercube_data.begin(), new_hypercube_data.end(), new_hypercube_data_buffer.begin());
+      thrust::copy(new_hypercube_index.begin(), new_hypercube_index.end(), new_hypercube_index_buffer.begin());
+#else
       memcpy(new_hypercube_data_buffer.data(), new_hypercube_data.data(), h * sizeof(value_t) * N_OPS * N_VERTS);
       memcpy(new_hypercube_index_buffer.data(), new_hypercube_index.data(), h * sizeof(index_t));
+#endif
 
       cudaMemcpyAsync(thrust::raw_pointer_cast(new_hypercube_data_buffer_d.data()),
                       thrust::raw_pointer_cast(new_hypercube_data_buffer.data()), h * sizeof(value_t) * N_OPS * N_VERTS,

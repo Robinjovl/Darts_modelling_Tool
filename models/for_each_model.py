@@ -1,31 +1,20 @@
 from darts.engines import *
+from darts.tools.logging import redirect_all_output, abort_redirection
 import os, sys, shutil
 from pathlib import Path
 
 from multiprocessing import Process, set_start_method, Value
-
+import time
 import importlib
 
 import signal
+import time
 
 original_stdout = os.dup(1)
 
 def _sigterm_handler():
     print("received SIGABRT")
     sys.exit()
-
-def redirect_all_output(log_file, append = True):
-    if append:
-        log_stream = open(log_file, "a+")
-    else:
-        log_stream = open(log_file, "w")
-    # this way truly all messages from both Python and C++, printf or std::cout, will be redirected
-    os.dup2(log_stream.fileno(), sys.stdout.fileno())
-    return log_stream
-
-def abort_redirection(log_stream):
-    os.dup2(original_stdout, sys.stdout.fileno())
-    log_stream.close()
 
 def spawn_process_function(model_path, model_procedure, ret_value):
     # step in target folder
@@ -64,12 +53,7 @@ def spawn_process_function_adjoint(model_path, model_procedure, ret_value):
         print(err)
 
 def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths=[], timeout=120):
-    # if __name__ == '__main__':
-
     set_start_method('spawn')
-
-    # null = open(os.devnull, 'w')
-    # orig_stdout = sys.stdout
 
     # set working directory to folder which contains tests
     os.chdir(root_path)
@@ -80,6 +64,9 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
     n_fails = 0
     if len(accepted_paths) != 0:
         for x in accepted_paths:
+            if 'mpfa' in  x:
+                nt = os.environ['OMP_NUM_THREADS']
+                os.environ['OMP_NUM_THREADS'] = '1'
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
             p = Process(target=spawn_process_function, args=(x, model_procedure,ret_value), )
@@ -87,6 +74,8 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
             p.join(timeout=7200)
             p.terminate()
             n_fails += ret_value.value
+            if 'mpfa' in  x:
+                os.environ['OMP_NUM_THREADS'] = nt
     else:
         for x in p.iterdir():
             if x.is_dir() and (str(x)[0] != '.'):
@@ -101,12 +90,6 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
 
 
 def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], excluded_paths=[], timeout=120):
-    # if __name__ == '__main__':
-
-    # set_start_method('spawn')  # it is already spawned in the function "for_each_model"
-
-    # null = open(os.devnull, 'w')
-    # orig_stdout = sys.stdout
 
     # set working directory to folder which contains tests
     os.chdir(root_path)
@@ -117,13 +100,24 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
     n_fails = 0
     if len(accepted_paths) != 0:
         for x in accepted_paths:
+            if 'mpfa' in  x:
+                nt = os.environ['OMP_NUM_THREADS']
+                os.environ['OMP_NUM_THREADS'] = '1'
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
+            starting_time = time.time()
             p = Process(target=spawn_process_function_adjoint, args=(x, model_procedure, ret_value), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
             n_fails += ret_value.value
+            ending_time = time.time()
+            if not ret_value.value:
+                print('OK, \t%.2f s' % (ending_time - starting_time))
+            else:
+                print('FAIL, \t%.2f s' % (ending_time - starting_time))
+            if 'mpfa' in  x:
+                os.environ['OMP_NUM_THREADS'] = nt
     else:
         for x in p.iterdir():
             if x.is_dir() and (str(x)[0] != '.'):
@@ -136,7 +130,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
                 p.terminate()
     return n_fails
 
-def run_single_test(dir, module_name, args, ret_value):
+def run_single_test(dir, module_name, args, ret_value, platform):
     args_str = '_'.join(args[:-1]) #except last arg (overwrite flag)
     # step in target folder
     os.chdir(dir)
@@ -156,7 +150,7 @@ def run_single_test(dir, module_name, args, ret_value):
         log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
-        ret_value.value, test_time = mod.run_test(args)
+        ret_value.value, test_time = mod.run_test(args, platform=platform)
         log_stream = redirect_all_output(log_file)
         abort_redirection(log_stream)
         if ret_value.value:
@@ -172,11 +166,13 @@ def run_single_test(dir, module_name, args, ret_value):
         print(err)
 
 
-def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
-    # set_start_method('spawn')
-
+def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cpu'):
     # set working directory to folder which contains tests
     os.chdir(root_path)
+
+    logs_folder = os.path.join(os.path.abspath(os.pardir), '_logs')
+    if not os.path.exists(logs_folder):
+        os.makedirs(logs_folder)
 
     n_failed = 0
     n_tot = 0
@@ -185,10 +181,22 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0'):
         for arg in test_args[i]:
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
-            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value), )
+
+            # erase previous log file if existed
+            log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
+            f = open(log_file, "w")
+            f.close()
+            log_stream = redirect_all_output(log_file)
+            starting_time = time.time()
+            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
+            abort_redirection(log_stream)
+            ending_time = time.time()
+            str_status = 'OK' if not ret_value.value else 'FAIL'
+            print('Test ' + dir + ' ' + '_'.join(arg) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+
             n_failed += ret_value.value
             n_tot += 1
 

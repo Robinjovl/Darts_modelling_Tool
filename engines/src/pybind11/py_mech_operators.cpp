@@ -1,8 +1,8 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl_bind.h>
-#include <stl.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/stl.h>
 
 PYBIND11_MAKE_OPAQUE(std::vector<std::vector<value_t>>);
 PYBIND11_MAKE_OPAQUE(std::vector<std::vector<std::vector<value_t>>>);

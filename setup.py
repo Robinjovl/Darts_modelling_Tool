@@ -10,7 +10,7 @@ setup(
     # Add packages that are inside folder darts-package
     packages = find_packages(
     	where = '.',
-        exclude = ['darts-discretizer', 'darts-engines', 'models', 'opendarts_linear_solvers', 'docs', 'thirdparty']),
+        exclude = ['discretizer', 'engines', 'models', 'solvers', 'docs', 'thirdparty']),
 
     # Now only include already built libraries, and build_info, otherwise it will not find the file when using darts.
     package_data={'darts': ['*.pyd', '*.so', '*.dll', 'build_info.txt']},

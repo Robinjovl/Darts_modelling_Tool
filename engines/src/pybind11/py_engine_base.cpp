@@ -1,7 +1,7 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 #include "engine_base.h"
@@ -11,13 +11,11 @@ namespace py = pybind11;
 void pybind_engine_base (py::module &m)
 {
 	py::class_<engine_base>(m, "engine_base", "Base simulator engine class")  \
-		.def("run", &engine_base::run, py::call_guard<py::gil_scoped_release>())  \
-		.def("run_timestep", &engine_base::run_timestep, py::call_guard<py::gil_scoped_release>())  \
 		.def("report", &engine_base::report)  \
 		.def("print_stat", &engine_base::print_stat)  \
 		.def("test_assembly", &engine_base::test_assembly)  \
 		.def("test_spmv", &engine_base::test_spmv)  \
-		.def("run_single_newton_iteration", &engine_base::run_single_newton_iteration, py::call_guard<py::gil_scoped_release>())  \
+		.def("assemble_linear_system", &engine_base::assemble_linear_system, py::call_guard<py::gil_scoped_release>())  \
 		.def("calc_newton_residual", &engine_base::calc_newton_residual, py::call_guard<py::gil_scoped_release>())  \
 		.def("calc_well_residual", &engine_base::calc_well_residual, py::call_guard<py::gil_scoped_release>())  \
 		.def("apply_newton_update", &engine_base::apply_newton_update, py::call_guard<py::gil_scoped_release>())  \
@@ -28,6 +26,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("RHS", &engine_base::RHS) \
 		.def_readwrite("t", &engine_base::t) \
 		.def_readwrite("op_vals_arr", &engine_base::op_vals_arr) \
+		.def_readwrite("op_ders_arr", &engine_base::op_ders_arr) \
 		.def_readwrite("timer", &engine_base::timer) \
 		.def_readwrite("CFL_max", &engine_base::CFL_max) \
 		.def_readwrite("n_newton_last_dt", &engine_base::n_newton_last_dt) \
@@ -35,12 +34,17 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("stat", &engine_base::stat) \
 		.def_readwrite("n_linear_last_dt", &engine_base::n_linear_last_dt) \
 		.def_readwrite("op_vals_arr_n", &engine_base::op_vals_arr_n) \
+		.def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 		.def_readwrite("time_data", &engine_base::time_data) \
 		.def_readwrite("time_data_report", &engine_base::time_data_report) \
 		.def_readwrite("engine_name", &engine_base::engine_name) \
 		.def_readwrite("params", &engine_base::params) \
 		.def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 		.def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
+		.def_readwrite("print_linear_system", &engine_base::print_linear_system) \
+		.def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
+		.def_readwrite("molar_weights", &engine_base::molar_weights) \
+		.def_readwrite("dispersivity", &engine_base::dispersivity) \
 		.def("add_value_to_Q", &engine_base::add_value_to_Q)  \
 		.def("clear_Q", &engine_base::clear_Q)  \
 		.def("calc_adjoint_gradient_dirac_all", &engine_base::calc_adjoint_gradient_dirac_all, py::call_guard<py::gil_scoped_release>())  \
@@ -91,6 +95,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("component_index", &engine_base::component_index) \
 		.def_readwrite("phase_index", &engine_base::phase_index) \
 		.def_readwrite("prod_phase_name", &engine_base::prod_phase_name) \
+		.def_readwrite("prev_usual_dt", &engine_base::prev_usual_dt)\
 		.def_readwrite("inj_phase_name", &engine_base::inj_phase_name) \
 		.def_readwrite("unit", &engine_base::unit) \
 		.def_readwrite("Temp_dj_dx", &engine_base::Temp_dj_dx) \

@@ -1,7 +1,7 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 #include "engine_super_cpu.hpp"

@@ -1,213 +1,213 @@
 import numpy as np
-import time
+import os
 
-from darts.models.reservoirs.cpg_reservoir import CPG_Reservoir, save_array
-from darts.discretizer import load_single_float_keyword, load_single_int_keyword
-from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import index_vector as index_vector_discr
+from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
+from darts.discretizer import load_single_float_keyword
 from darts.engines import value_vector
 
-from darts.models.reservoirs.struct_reservoir import StructReservoir
-from darts.tools.keyword_file_tools import save_few_keywords
+from darts.tools.gen_cpg_grid import gen_cpg_grid
 
+from darts.models.cicd_model import CICDModel
 
-# inherit from darts-models/2ph_do model to use its physics; self.reservoir will be replaced in this file
-# add path to import
-import os, sys, inspect
-current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-darts_dir = os.path.dirname(current_dir)  # 1 level up
-model_dir = os.path.join(darts_dir, '2ph_do')
-#model_dir = os.path.join(darts_dir, 'Uniform_Brugge')
-sys.path.insert(0, model_dir)
-from model import Model as DO_Model
+def get_case_files(case: str):
+    prefix = os.path.join('meshes', case)
+    grid_file = os.path.join(prefix, 'grid.grdecl')
+    prop_file = os.path.join(prefix, 'reservoir.in')
+    sch_file = os.path.join(prefix, 'sch.inc')
+    assert os.path.exists(grid_file)
+    assert os.path.exists(prop_file)
+    return grid_file, prop_file, sch_file
 
-#from model_3ph_bo import Model as BO_Model
-class Model(DO_Model):
-    def __init__(self, discr_type='cpp', gridfile='', propfile='', sch_fname='', n_points=1000):
-        # measure time spend on reading/initialization
-        #self.timer.node["initialization"].start()
-        # call base class constructor
-        #super().__init__(pvt='physics.in')
+def fmt(x):
+    return '{:.3}'.format(x)
+
+#####################################################
+
+class Model_CPG(CICDModel):
+    def __init__(self, physics_type : str, case : str, grid_out_dir=None):
         super().__init__()
-        self.n_points = n_points
+        self.physics_type = physics_type
+        self.case = case
+        self.generate_grid = 'generate' in case
 
-        self.discr_type = discr_type
-        self.gridfile = gridfile
-        self.propfile = propfile
-        self.sch_fname = sch_fname
+        if self.generate_grid:
+            if case == 'generate_51x51x1':   # 4x4x0.1 km
+                self.nx = 51
+                self.ny = 51
+                self.nz = 1
+                self.dx = 4000. / self.nx
+                self.dy = self.dx
+                self.dz = 100. / self.nz
+                self.start_z = 2000  # top reservoir depth
+            elif case == 'generate_5x3x4':
+                self.nx = 5
+                self.ny = 3
+                self.nz = 4
+                self.start_z = 1000  # top reservoir depth
+                # non-uniform layers thickness
+                self.dx = np.array([500, 200, 100, 300, 500])
+                self.dy = np.array([1000, 700, 300])
+                self.dz = np.array([100, 150, 180, 120])
+            elif case == 'generate_100x100x100':
+                self.nx = self.ny = self.nz = 100
+                self.dx = self.dy = 10
+                self.dz = 1
+                self.start_z = 2000  # top reservoir depth
+            poro = 0.2
+            permx = 100
+            permy = 100
+            permz = 10
+        else:  # read from files
+            # setup filenames
+            gridfile, propfile, schfile = get_case_files(case)
+            self.gridfile = gridfile
+            self.propfile = gridfile if propfile == '' else propfile
 
-        if discr_type == 'cpp':
-            self.reservoir = CPG_Reservoir(self.gridfile, self.propfile)
-        elif discr_type == 'python':
-            self.init_struct_rsv()
-        #self.timer.node["initialization"].stop()
-    def init_struct_rsv(self):
-        self.dims_cpp = index_vector_discr()
-        load_single_int_keyword(self.dims_cpp, self.gridfile, "SPECGRID", 3)
-        self.dims = np.array(self.dims_cpp, copy=False)
+        if self.generate_grid:
+            if grid_out_dir is None:
+                gridname = None
+                propname = None
+            else:  # save generated grid to grdecl files
+                os.makedirs(grid_out_dir, exist_ok=True)
+                gridname = os.path.join(grid_out_dir, 'grid.grdecl')
+                propname = os.path.join(grid_out_dir, 'reservoir.in')
+            arrays = gen_cpg_grid(nx=self.nx, ny=self.ny, nz=self.nz,
+                                  dx=self.dx, dy=self.dy, dz=self.dz, start_z=self.start_z,
+                                  permx=permx, permy=permy, permz=permz, poro=poro,
+                                  gridname=gridname, propname=propname)
+        else:
+            # read grid and props.
+            # Use read_arrays(self.gridfile, self.gridfile) if all the data is in a single file
+            arrays = read_arrays(self.gridfile, self.propfile)
+            check_arrays(arrays)
+            if self.physics_type == 'dead_oil':  # set inactive cells with small porosity (isothermal case)
+                arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
+            elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
+                for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
+                    arrays[arr][arrays['PORO'] < 1e-5] = 1e-5
 
-        self.permx_cpp, self.permy_cpp, self.permz_cpp = value_vector_discr(), value_vector_discr(), value_vector_discr()
-        load_single_float_keyword(self.permx_cpp, self.propfile, 'PERMX', -1)
-        load_single_float_keyword(self.permy_cpp, self.propfile, 'PERMY', -1)
-        self.permx = np.array(self.permx_cpp, copy=False)
-        self.permy = np.array(self.permy_cpp, copy=False)
-        for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
-            if self.permx.size == 0 or self.permy.size == 0:
-                load_single_float_keyword(self.permx_cpp, self.propfile, perm_str, -1)
-                self.permy_cpp = self.permx_cpp
-                self.permx = np.array(self.permx_cpp, copy=False)
-                self.permy = np.array(self.permy_cpp, copy=False)
-        load_single_float_keyword(self.permz_cpp, self.propfile, 'PERMZ', -1)
-        self.permz = np.array(self.permz_cpp, copy=False)
+        self.burden_layers = 0
+        if self.physics_type == 'geothermal':
+            self.burden_layers = 4
+            # add over- and underburden layers
+            make_burden_layers(number_of_burden_layers=self.burden_layers, initial_thickness=10, property_dictionary=arrays,
+                               burden_layer_prop_value=1e-5)
 
-        self.poro_cpp = value_vector_discr()
-        load_single_float_keyword(self.poro_cpp, self.propfile, 'PORO', -1)
-        self.poro = np.array(self.poro_cpp, copy=False)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=1e-5)
+        self.reservoir.discretize()
 
-        self.coord_cpp = value_vector_discr()
-        load_single_float_keyword(self.coord_cpp, self.gridfile, 'COORD', -1)
-        self.coord = np.array(self.coord_cpp, copy=False)
+        # store modified arrrays (with burden layers) for output to grdecl
+        self.reservoir.input_arrays = arrays
 
-        self.zcorn_cpp = value_vector_discr()
-        load_single_float_keyword(self.zcorn_cpp, self.gridfile, 'ZCORN', -1)
-        self.zcorn = np.array(self.zcorn_cpp, copy=False)
+        volume = np.array(self.reservoir.mesh.volume, copy=False)
+        poro = np.array(self.reservoir.mesh.poro, copy=False)
+        print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
-        self.actnum_cpp = index_vector_discr()
-        self.actnum = np.array([])
-        for fname in [self.gridfile, self.propfile]:
-            if self.actnum.size == 0:
-                load_single_int_keyword(self.actnum_cpp, fname, 'ACTNUM', -1)
-                self.actnum = np.array(self.actnum_cpp, copy=False)
-        if self.actnum.size == 0:
-            self.actnum = np.ones(self.dims[0] * self.dims[1] * self.dims[2])
-            print('No ACTNUM found in input files. ACTNUM=1 will be used')
+        # add "open" boundaries
+        bv = 1e10   # boundary volume
+        self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
+        self.reservoir.apply_volume_depth()
 
-        self.depth = 0
-        self.dx, self.dy, self.dz = [], [], []
-        self.dx, self.dy, self.dz = 0, 0, 0
+        poro_shale_threshold = 1e-3
+        poro = np.array(self.reservoir.mesh.poro)
+        self.reservoir.conduction[poro <= poro_shale_threshold] = 2.2 * 86.4 # Shale conductivity kJ/m/day/K
+        self.reservoir.conduction[poro > poro_shale_threshold] = 3 * 86.4 # Sandstone conductivity kJ/m/day/K
+        self.reservoir.hcap[poro <= poro_shale_threshold] = 2300 # Shale heat capacity kJ/m3/K
+        self.reservoir.hcap[poro > poro_shale_threshold] = 2450 # Sandstone heat capacity kJ/m3/K
 
-        # make cells with zero porosity (make sense if not thermal)
-        # self.actnum[self.poro == 0.0] = 0
+        # add hcap and rcond to be saved into mesh.vtu
+        l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
+        g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
+        self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap, l2g, g2l),
+                                           'rock_conduction': make_full_cube(self.reservoir.conduction, l2g, g2l) })
 
-        # makes sense for thermal
-        #self.poro = np.array(self.reservoir.mesh.poro, copy=False)
-        #self.poro[self.poro == 0.0] = 1.E-4
+        self.set_input_data()
+        self.set_physics()
 
-        self.reservoir = StructReservoir(self.timer, nx=self.dims[0], ny=self.dims[1], nz=self.dims[2],
-                                         dx=self.dx, dy=self.dy, dz=self.dz,
-                                         permx=self.permx, permy=self.permy, permz=self.permz, poro=self.poro,
-                                         depth=self.depth, actnum=self.actnum, coord=self.coord, zcorn=self.zcorn,
-                                         is_cpg=True)
+        # time stepping and convergence parameters
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=92, runtime=300, tol_newton=1e-2, tol_linear=1e-4)
 
-    def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=200,
-                                                    uniform_composition=[0.001])
-                                                    #uniform_composition=[0.001225901537, 0.7711341309])
-        #self.set_initial_pressure_from_file(self.gridfile)
+        self.timer.node["initialization"].stop()
 
-    def set_initial_pressure_from_file(self, fname):
+    def set_wells(self):
+        # one can read well locations from a file
+        #self.reservoir.read_and_add_perforations(self.sch_fname)
+
+        # add wells and perforations, 1-based indices
+        if self.case == 'generate_51x51x1':
+            i1, j1 = self.nx // 2 - int(500 // self.dx), self.ny // 2  # I = 0.5 km to the left from the center
+            i2, j2 = self.nx // 2 + int(500 // self.dx), self.ny // 2  # I = 0.5 km to the right from the center
+        elif self.case == 'generate_5x3x4':
+            i1, j1 = 1, 1
+            i2, j2 = 5, 3
+            #i1, j1, k1 = self.reservoir.get_ijk_from_xyz(250.0, 500.0, 890.0)
+            #i2, j2, k2 = self.reservoir.get_ijk_from_xyz(1350.0, 1850.0, 1700.0)
+        elif self.case == 'generate_100x100x100':
+            i1, j1 = 50, 20
+            i2, j2 = 50, 80
+        elif self.case == 'brugge':
+            i1, j1 = 41, 31  # production well
+            i2, j2 = 96, 31  # injection well
+        elif self.case == 'case_40x40x10':
+            i1, j1 = 10, 20  # production well
+            i2, j2 = 30, 20  # injection well
+        elif self.case == 'your_case':
+            pass
+
+        self.reservoir.add_well('PRD')
+        for k in range(1 + self.burden_layers,  self.reservoir.nz+1-self.burden_layers):
+            self.reservoir.add_perforation('PRD', cell_index=(i1, j1, k), well_index=None, multi_segment=False,
+                                           verbose=True)
+        self.reservoir.add_well('INJ')
+        for k in range(1 + self.burden_layers, self.reservoir.nz+1-self.burden_layers):
+            self.reservoir.add_perforation('INJ', cell_index=(i2, j2, k), well_index=None, multi_segment=False,
+                                           verbose=True)
+        print('PRD well:', i1, j1, 'INJ well:', i2, j2)
+
+    def set_initial_pressure_from_file(self, fname : str):
         # set initial pressure
         p_cpp = value_vector()
         load_single_float_keyword(p_cpp, fname, 'PRESSURE', -1)
         p_file = np.array(p_cpp, copy=False)
-
         p_mesh = np.array(self.reservoir.mesh.pressure, copy=False)
         try:
             actnum = np.array(self.reservoir.actnum, copy=False) # CPG Reservoir
-            #nb = self.reservoir.mesh.n_cells
         except:
             actnum = self.reservoir.global_data['actnum']  #Struct reservoir
-        nb = self.reservoir.mesh.n_blocks
         p_mesh[:self.reservoir.mesh.n_res_blocks * 2] = p_file[actnum > 0]
 
-    def set_boundary_conditions(self):
-        for i, w in enumerate(self.reservoir.wells):
-            if "INJ" in w.name:
-                w.control = self.physics.new_bhp_inj(250, self.inj)
-            else:
-                w.control = self.physics.new_bhp_prod(100)
 
-    def add_wells(self, mode='generate', sch_fname=None, well_index=-1, verbose=False):
-        self.read_and_add_perforations(sch_fname, well_index=well_index, verbose=verbose)
-
-    def set_boundary_conditions(self):
-        for i, w in enumerate(self.reservoir.wells):
-            if "INJ" in w.name:
-                w.control = self.physics.new_bhp_inj(250, value_vector([0.999]))
-            else:
-                w.control = self.physics.new_bhp_prod(100)
-
-    def set_wells(self):
-        for i, w in enumerate(self.reservoir.wells):
-            if "INJ" in w.name:
-                w.control = self.physics.new_bhp_inj(250, value_vector([0.999]))
-            else:
-                w.control = self.physics.new_bhp_prod(100)
-
-    #TODO: combine this function with save_few_keywords
-    def save_cubes(self, fname, arr_list = [], arr_names = []):
+    def save_grdecl(self, fname):
         '''
-        arr - list of numpy arrays to save, size=nactive
-        arr_names - list of array names (keyword)
+        saves cubes into a text file (grdecl format), nx*ny*nz values, I is the fastest index
+        fname - file name to output
         '''
-        Xn = np.array(self.physics.engine.X, copy=False)
-        P = Xn[0:self.reservoir.mesh.n_res_blocks * 2:2]
-        try:
-            actnum = np.array(self.reservoir.actnum, copy=False)  # CPG Reservoir doesn't have 'global_data' object
+        arrays_save = self.get_arrays()
+        actnum = self.reservoir.global_data['actnum']
+        suffix = 'struct'
+        if type(self.reservoir) == CPG_Reservoir:
             suffix = 'cpg'
-        except:
-            actnum = self.reservoir.global_data['actnum']  # Struct Reservoir
-            suffix = 'struct'
         fname_suf = fname + '_' + suffix + '.grdecl'
 
-        arr_list += [P]
-        arr_names += ['PRESSURE']
+        if suffix == 'cpg':
+            local_to_global = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
+            global_to_local = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
 
-        save_array(actnum, fname_suf, 'ACTNUM', actnum, 'w')
-        for i in range(len(arr_list)):
-            save_array(arr_list[i], fname_suf, arr_names[i], actnum, 'a')
-
-    def read_and_add_perforations(self, sch_fname, well_index=-1, verbose=False):
-        '''
-        read COMPDAT from SCH file in Eclipse format, add wells and perforations
-        note: uses only I,J,K1,K2 parameters from COMPDAT
-        '''
-        if sch_fname is None:
+            save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
+            for arr_name in arrays_save.keys():
+                make_full = True
+                if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
+                    make_full = False
+                save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
+        else:
+            print('save_array is not implemented yet for Struct Reservoir')
             return
-        print('reading wells (COMPDAT) from', sch_fname)
-        well_dia = 0.152
-        well_rad = well_dia / 2
 
-        keep_reading = True
-        prev_well_name = ''
-        with open(sch_fname) as f:
-            while keep_reading:
-                buff = f.readline()
-                if 'COMPDAT' in buff:
-                    while True:  # be careful here
-                        buff = f.readline()
-                        if len(buff) != 0:
-                            CompDat = buff.split()
-                            wname = CompDat[0].strip('"').strip("'") #remove quotas (" and ')
-                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
-                                # define well
-                                if wname == prev_well_name:
-                                    pass
-                                else:
-                                    self.reservoir.add_well(wname)
-                                    prev_well_name = wname
-                                # define perforation
-                                i1 = int(CompDat[1])
-                                j1 = int(CompDat[2])
-                                k1 = int(CompDat[3])
-                                k2 = int(CompDat[4])
-                                for i in range(k1, k2 + 1):
-                                    self.reservoir.add_perforation(self.reservoir.wells[-1],
-                                                                   i1, j1, i,
-                                                                   well_radius=well_rad, well_index=well_index,
-                                                                   multi_segment=False, verbose=verbose)
+    def well_is_inj(self, wname : str):  # determine well control by its name
+        return "INJ" in wname
 
-                            if len(CompDat) != 0 and '/' == CompDat[0]:
-                                keep_reading = False
-                                break
-        print('WELLS read from SCH file:', len(self.reservoir.wells))
+    def set_input_data_rock(self, case=''):
+        self.idata.rock.compressibility = 1e-5  # [1/bars]
+        self.idata.rock.compressibility_ref_p = 1 # [bars]
+        self.idata.rock.compressibility_ref_T = 273.15  # [K]
+

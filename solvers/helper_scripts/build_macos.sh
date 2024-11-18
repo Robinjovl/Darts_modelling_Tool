@@ -1,6 +1,5 @@
 #!/bin/zsh
 
-
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
 set -e
@@ -12,11 +11,15 @@ set -e
 Help_Info()
 {
   # Help information ---------------------------------------------------------
-  echo "$(basename "$0") [-hc]"
+  echo "$(basename "$0") [-hcmgjt]"
   echo "   Script to install opendarts-linear_solvers on macOS."
   echo "USAGE: "
   echo "   -h : displays this help menu."
   echo "   -c : cleans up build to prepare a new fresh build."
+  echo "   -t : Enable testing: ctest of solvers."
+  echo "   -m : Mode in which solvers are build [Release, Debug]."
+  echo "   -j : Number of threads for compilation."
+  echo "   -g : g++ version, example: g++-13"
   # ------------------------------------------------------------------------------
 }
 
@@ -28,8 +31,12 @@ Help_Info()
 
 # Read input arguments ---------------------------------------------------------
 clean_mode=false  # set mode to clean up, cleans build to prepare for fresh new build
+testing=false     # Whether to enable the testing (ctest) of solvers.
+config="Release"  # default configuration (install).
+NT=8              # Number of threads by default 8
+gpp_version=g++-13 # Version of g++ 
 
-while getopts :ch option;
+while getopts ":chtm:j:g:" option;
 do
     case "$option" in
         h) # Display help 
@@ -37,6 +44,14 @@ do
            exit;;
         c) # Clean mode
            clean_mode=true;;
+        t) # Testing
+           testing=true;; 
+        m) # Select a mode
+           config=${OPTARG};;
+        j) # Number of threads
+           NT=${OPTARG};; 
+        g) # gpp version
+           gpp_version=${OPTARG};;
     esac
 done
 # ------------------------------------------------------------------------------
@@ -54,7 +69,8 @@ if [[ "$clean_mode" == true ]]; then
     
     # Clearning solvers
     echo '\n   Cleaning opendarts-solvers'
-    rm -r ../build_make
+    rm -r ../../build
+    rm -r ../../engines/lib/solvers
 else
   # Build 
   
@@ -68,13 +84,29 @@ else
   echo "\n- Building thirdparty libs: START\n"
   cd ../../thirdparty/
   
+  # -- Build Hypre ---------------------------------------------------------------
+  echo "\n--- Building Hypre: START\n"
+  cd hypre/src/cmbuild
+  # Setup hypre build with no MPI support (we only use single processor)
+  # Request build of tests and examples just to be sure everything is fine in the build 
+  cmake -D CMAKE_C_COMPILER=gcc-13 -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install ..
+  
+  # Build hypre 
+  make 
+  make install
+  
+  # Return to start directory 
+  cd ../../../
+  echo "\n--- Building Hypre: DONE!\n"
+  # ------------------------------------------------------------------------------
+  
   # -- Build SuperLU -------------------------------------------------------------
   echo "\n--- Building SuperLU: START\n"
   cd SuperLU_5.2.1
 
   # Setup Makefile include files to macOS 
-  cp conf_gcc-11_macOS_m1.mk conf.mk
-  cp make_gcc-11_macOS_m1.inc make.inc 
+  cp conf_gcc-13_macOS_m1.mk conf.mk
+  cp make_gcc-13_macOS_m1.inc make.inc 
 
   # Build SuperLU 
   make 
@@ -90,31 +122,35 @@ else
   cd ../solvers/helper_scripts
   echo "\n- Building thirdparty libs: DONE!\n"
   # ------------------------------------------------------------------------------
-  
-  # Build opendarts-linear_solvers -----------------------------------------------
-  echo "\n- Building opendarts-solvers: START\n"
-  # Setup build folder 
-  cd ..
-  mkdir -p build_make
-  cd build_make
 
   # Setup install folder 
   mkdir -p ../../engines/lib/solvers
+  
+  # Setup build folder
+  rm -rf ../../build # Deletes previous build version incase it has not been cleaned up
+  mkdir -p ../../build
+  cd ../../build
 
-  # Setup build with cmake 
-  cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=../../engines/lib/solvers -D SET_CXX11_ABI_0=TRUE -D ENABLE_TESTING=TRUE ../
+  # Setup build with cmake
+  if [[ "$testing" == true ]]; then
+   cmake -D CMAKE_BUILD_TYPE=$config -D CMAKE_INSTALL_PREFIX=../engines/lib/solvers -D ONLY_SOLVERS=ON -D CMAKE_CXX_COMPILER=$gpp_version -D ENABLE_TESTING=ON ../
+  else
+   cmake -D CMAKE_BUILD_TYPE=$config -D CMAKE_INSTALL_PREFIX=../engines/lib/solvers -D ONLY_SOLVERS=ON -D CMAKE_CXX_COMPILER=$gpp_version ../
+  fi
 
-  # Build 
-  make
+  # Build
+  make -j $NT
 
   # Test it
-  ctest 
+  if [[ "$testing" == true ]]; then
+    ctest
+  fi
 
   # Install it
-  make install
+  make install -j $NT
   
-  cd ../helper_scripts
-  echo "\n- Building opendarts-solvers: DONE!\n"
+  # Return to root
+  cd ..
   # ------------------------------------------------------------------------------
   
   # Close up information ---------------------------------------------------------
@@ -123,4 +159,4 @@ else
   echo "========================================================================\n"
   # ------------------------------------------------------------------------------
 fi
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------

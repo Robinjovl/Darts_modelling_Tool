@@ -19,6 +19,7 @@ import os.path as osp
 from typing import List
 sq_norm = lambda x: np.inner(x, x)
 
+
 class OptModuleSettings:
     def __init__(self):
         self.terminated_runs = 0
@@ -136,10 +137,10 @@ class OptModuleSettings:
         self.binary_array = []
         self.save_error = False
         self.label = ''
-        
+
         # MPFA
         self.n_fm = 0
-        
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 #---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
@@ -550,18 +551,18 @@ class OptModuleSettings:
             self.col_idx_original = []
             self.col_idx_original = list(range(self.x_idx[-1]))
             self.col_idx = self.col_idx_original
-    
+
             self.perforation_idx = []
             for i, w in enumerate(self.reservoir.wells):
                 for p, per in enumerate(w.perforations):
                     self.perforation_idx.append(per[1])
-    
+
             self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
             for i in range(np.size(self.perforation_idx)):
                 for j in range(np.size(self.perforation_idx)):
                     if self.perforation_idx[j] < self.perforation_idx[i]:
                         self.sort_perforation_idx[i] += 1
-    
+
             temp_idx = self.sort_perforation_idx.astype(int)
             n_T_res = np.size(self.col_idx) - np.size(temp_idx)
             col_idx_well = self.col_idx[np.size(self.col_idx) - np.size(temp_idx):]
@@ -1697,7 +1698,7 @@ class OptModuleSettings:
             self.make_single_forward_simulation(x)  # convert rate control to BHP control
 
         return GRAD
-    
+
     def grad_adjoint_method_mpfa_all(self, x: np.array) -> np.array:
         '''
         The preparation of the adjoint gradient for transmissibility and well index
@@ -3136,7 +3137,7 @@ class model_modifier_aggregator:
             if type(m) == flux_multiplier_modifier:
                 temp_grad = m.set_grad(grad_original)
                 grad = np.append(grad, temp_grad)
-                
+
 
         return grad
 

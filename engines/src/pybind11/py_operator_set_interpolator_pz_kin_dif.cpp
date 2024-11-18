@@ -1,7 +1,7 @@
 #ifdef PYBIND11_ENABLED
-#include <pybind11.h>
+#include <pybind11/pybind11.h>
 #include "py_globals.h"
-#include <stl.h>
+#include <pybind11/stl.h>
 
 #include "py_interpolator_exposer.hpp"
 

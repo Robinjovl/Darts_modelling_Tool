@@ -9,7 +9,7 @@ n = Model()
 n.init()
 
 time = 10
-n.run_python(time)
+n.run(time)
 
 Xn = np.array(n.physics.engine.X, copy=False)
 P = Xn[0::2]

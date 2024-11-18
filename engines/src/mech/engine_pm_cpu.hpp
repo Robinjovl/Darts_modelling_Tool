@@ -55,13 +55,14 @@ public:
   // number of variables per jacobian matrix block
   const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_dim() { return ND_; };
-  const uint8_t get_n_comps() { return NC_; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_dim() const { return ND_; };
+  uint8_t get_n_comps() const override { return NC_; };
+  uint8_t get_z_var() const override { return Z_VAR; };
 
-  engine_pm_cpu() { engine_name = "Single phase " + std::to_string(NC_) + "-component isothermal poromechanics CPU engine"; };
+  engine_pm_cpu();
+  ~engine_pm_cpu();
 
   //inline index_t get_z_idx(char c, index_t block_idx) { return block_idx * N_VARS + c + 1; };
 
@@ -82,7 +83,7 @@ public:
 
   int solve_linear_equation();
   void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
-  int run_single_newton_iteration(value_t deltat);
+  int assemble_linear_system(value_t deltat);
   int post_newtonloop(value_t deltat, value_t time, index_t converged);
   int post_explicit(value_t deltat, value_t time);
   // fluxes at current and previous time steps, fluxes for reference state at current and previous time steps
@@ -115,14 +116,18 @@ public:
   
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
+  std::vector<linsolv_iface*> linear_solvers;
+  std::vector<linear_solver_params> ls_params;
+  index_t active_linear_solver_id;
 
 public:
-  bool FIND_EQUILIBRIUM, PRINT_LINEAR_SYSTEM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
+  bool FIND_EQUILIBRIUM, TIME_DEPENDENT_DISCRETIZATION, EXPLICIT_SCHEME, SCALE_ROWS, SCALE_DIMLESS;
   pm::ContactSolver contact_solver;
   
-  value_t t_dim, x_dim, p_dim;
+  value_t t_dim, x_dim, p_dim, m_dim;
 protected:
   void scale_rows();
   void make_dimensionless();
+  void dimensionalize_unknowns();
 };
 #endif /* CPU_SIMULATOR_PM_HPP */

@@ -1,4 +1,4 @@
-from darts.models.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params
 import numpy as np
@@ -20,36 +20,32 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-        self.set_wells()
 
         self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=5, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 
-    def set_reservoir(self):
-        """Reservoir construction"""
-        # reservoir geometry： for realistic case, one just needs to load the data and input it
-        self.reservoir = StructReservoir(self.timer, nx=100, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
-                                         permz=300, poro=0.2, depth=100)
+        self.initial_values = {self.physics.vars[0]: 400,
+                               self.physics.vars[1]: self.ini,
+                               }
 
-        hcap = np.array(self.reservoir.mesh.heat_capacity, copy=False)
-        rcond = np.array(self.reservoir.mesh.rock_cond, copy=False)
+    def set_reservoir(self):
+        nx = 100
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1,
+                                         permx=300, permy=300, permz=300, poro=0.2, hcap=0, rcond=0, depth=100)
         return
 
     def set_wells(self):
-        # well model or boundary conditions
         self.reservoir.add_well("I1")
-        self.reservoir.add_perforation(well=self.reservoir.wells[-1], i=1, j=1, k=1, multi_segment=False)
-
+        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation(self.reservoir.wells[-1], 100, 1, 1, multi_segment=False)
-        return
+        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
 
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
-        components = ['w', 'o']
-        phases = ['wat', 'oil']
+        components = ["w", "o"]
+        phases = ["wat", "oil"]
 
         self.inj = value_vector([zero])
         self.ini = value_vector([1 - zero])
@@ -67,15 +63,10 @@ class Model(CICDModel):
         self.physics = Compositional(components, phases, self.timer,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
         self.physics.add_property_region(property_container)
-        self.physics.init_physics()
 
         return
 
-    def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=400,
-                                                      uniform_composition=self.ini)
-
-    def set_boundary_conditions(self):
+    def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.new_rate_inj(200, self.inj, 1)
@@ -90,7 +81,7 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
 
     def evaluate(self, state):
         """
@@ -110,9 +101,9 @@ class ModelProperties(PropertyContainer):
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        ph = [0, 1]
+        self.ph = np.array([0, 1], dtype=np.intp)
 
-        for j in ph:
+        for j in self.ph:
             # molar weight of mixture
             M = np.sum(self.x[j, :] * self.Mw)
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
@@ -120,15 +111,13 @@ class ModelProperties(PropertyContainer):
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
         self.nu = zc
-        self.compute_saturation(ph)
+        self.compute_saturation(self.ph)
 
-        for j in ph:
+        for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
-        mass_source = np.zeros(self.nc)
-
-        return ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return
 
     def evaluate_at_cond(self, pressure, zc):
         self.sat[:] = 0
