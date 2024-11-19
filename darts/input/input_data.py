@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union, List, Dict
 
 class RockProps():
     '''
@@ -69,31 +70,147 @@ class InitialSolution():
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
-class WellControlsConst():
+class WellControl():
     '''
     constant well controls during the simulation
     '''
     def __init__(self):
-        self.type = None  #  'rate' or 'bhp'
-        # bhp
-        self.inj_bhp = None # bars
-        self.prod_bhp = None # bars
-        # rate
-        self.inj_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        self.inj_bhp_constraint = None # upper limit for bhp, bars
-        self.prod_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        self.prod_bhp_constraint = None # lower limit for bhp, bars
+        self.reset()
+
+    def reset(self):
+        self.type = None  # 'prod' or 'inj'
+        self.mode = None  # 'rate' or 'bhp'
+        # bhp control
+        self.bhp = None # bars
+        # rate control
+        self.rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.bhp_constraint = None # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K
         # if Compositional
         self.inj_comp_index = None # injection composition index, [int]
 
-class Wells():
+    def prod_rate_control(self, rate, bhp_constraint):
+        self.reset()
+        self.type = 'prod'
+        self.mode = 'rate'
+        self.rate = rate
+        self.bhp_constraint = bhp_constraint
+
+    def prod_bhp_control(self, bhp):
+        self.reset()
+        self.type = 'prod'
+        self.mode = 'bhp'
+        self.bhp = bhp
+
+    def inj_rate_control(self, rate, bhp_constraint, temperature=None, comp_index=None):
+        self.reset()
+        self.type = 'inj'
+        self.mode = 'rate'
+        self.rate = rate
+        self.bhp_constraint = bhp_constraint
+        # if thermal
+        self.inj_bht = temperature  # K
+        # if Compositional
+        self.inj_comp_index = comp_index # injection composition index, [int]
+
+    def inj_bhp_control(self, bhp, temperature=None, comp_index=None):
+        self.reset()
+        self.type = 'inj'
+        self.mode = 'bhp'
+        self.bhp = bhp
+        # if thermal
+        self.inj_bht = temperature  # K
+        # if Compositional
+        self.inj_comp_index = comp_index # injection composition index, [int]
+
+class WellLocIJK():
+    '''
+    well location for structured grid, 1-based integer grid cell indices I,J,K
+    '''
+    def __init__(self):
+        self.I = None
+        self.J = None
+        self.K = None
+
+class WellLocXYZ():
+    '''
+    well location for any kind of grid, real coordinates X, Y, Z
+    '''
+    def __init__(self):
+        self.X = None
+        self.Y = None
+        self.Z = None
+
+class Well():
+    '''
+    well definition
+    '''
+    def __init__(self, loc_type : str):
+        self.controls = [] # List[WellControl]
+        if loc_type == 'ijk':
+            self.location = WellLocIJK()
+        elif loc_type == 'xyz':
+            self.location = WellLocXYZ()
+        else:
+            print('Unknown loc_type', loc_type)
+            exit(1)
+
+class WellData():
     '''
     well definition
     '''
     def __init__(self):
-        self.controls = WellControlsConst()
+        self.wells = dict()
+
+    def add_well(self, name : str, loc_type : str, loc_ijk: Union[int, tuple] = None, loc_xyz: Union[float, tuple] = None):
+        w = Well(loc_type=loc_type)
+        if loc_ijk is not None and loc_type == 'ijk':
+            w.location.I, w.location.J, w.location.K = loc_ijk
+        elif loc_xyz is not None and loc_type == 'xyz':
+            w.location.X, w.location.Y, w.location.Z = loc_xyz
+        else:
+            print('Unknown loc_type', loc_type)
+            exit(1)
+        self.wells[name] = w
+
+    def add_control(self, name : str, time : float, type : str, mode : str, rate : float, bhp : float,
+                    bhp_constraint : float, inj_temp : float, inj_comp_index : float):
+        '''
+        :param name: well name
+        :param time: simulation timestep, [days]
+        :param type: 'inj' or 'prod'
+        :param mode: 'rate' or 'bhp'
+        :param rate: well rate, unit depends on physics, can be None if bhp-controlled
+        :param bhp: bottom hole pressure, can be None if rate-controlled
+        :param bhp_constraint: bottom hole pressure constraint (min for prod and max for inj wells)
+        :param inj_temp: injection temperature, [K]
+        :param inj_comp_index # injection composition index, [int], for Compositional physics
+        :return:
+        '''
+        self.wells[name].controls.append((time, WellControl(type=type, mode=mode, rate=rate, bhp=bhp,
+                                                            bhp_constraint=bhp_constraint, inj_temp=inj_temp,
+                                                            inj_comp_index=inj_comp_index)))
+
+    def add_prod_rate_control(self, name, rate, bhp_constraint, time=0):
+        wctrl = WellControl()
+        wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint)
+        self.wells[name].controls.append((time, wctrl))
+
+    def prod_bhp_control(self, name, bhp, time=0):
+        wctrl = WellControl()
+        wctrl.prod_bhp_control(bhp=bhp)
+        self.wells[name].controls.append((time, wctrl))
+
+    def add_inj_rate_control(self, name, rate, bhp_constraint, temperature=None, comp_index=None, time=0):
+        wctrl = WellControl()
+        wctrl.inj_rate_control(rate=rate, bhp_constraint=bhp_constraint, temperature=temperature, comp_index=comp_index)
+        self.wells[name].controls.append((time, wctrl))
+
+    def add_inj_bhp_control(self, name, bhp, temperature=None, comp_index=None, time=0):
+        wctrl = WellControl()
+        wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, comp_index=comp_index)
+        self.wells[name].controls.append((time, wctrl))
 
 
 class OBLParams():
@@ -128,7 +245,7 @@ class InputData():
         self.fluid = FluidProps()
         self.obl = OBLParams()
         self.initial = InitialSolution(init_type)
-        self.wells = Wells()
+        self.well_data = WellData()
         self.other = OtherProps()
         
     def check(self):

@@ -116,6 +116,7 @@ class ModelDeadOil(Model_CPG):
 
     def set_input_data(self, case=''):
         self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
+        super().set_input_data(case)  # call a parent class function from model_cpg.py  for geometry and rock props setup
 
         # this sets default properties
         self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
