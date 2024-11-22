@@ -553,12 +553,6 @@ if __name__ == '__main__':
     #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
-    #run(case='lab_uniform', discretizer='mech_discretizer', mesh='box')
-    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='box')
-    #run(case='lab_uniform', discretizer='mech_discretizer', mesh='cylinder')
-    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinder')
-    #run(case='lab_2rocks', discretizer='mech_discretizer', mesh='cylinderfine')
-
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
     #run(case='terzaghi', discretizer='pm_discretizer', mesh='wedge')
@@ -573,9 +567,8 @@ if __name__ == '__main__':
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-
     test_all = False
-    #test_all = True
+    test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:

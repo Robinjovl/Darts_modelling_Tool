@@ -57,7 +57,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.mandel_north_dirichlet_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
                 self.mandel_north_dirichlet_pm_discretizer(idata=idata)
-        elif case == 'terzaghi'  or ('lab' in case and 'uniform' in case):
+        elif case == 'terzaghi':
             if discretizer == 'mech_discretizer':
                 self.terzaghi_mech_discretizer(idata=idata)
             elif discretizer == 'pm_discretizer':
@@ -72,11 +72,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.terzaghi_two_layers_no_analytics_pm_discretizer(idata=idata)
         elif case == 'bai':
             self.bai_thermoporoelastic_consolidation(idata=idata)
-        elif 'lab' in case and '2rocks' in case:
-            if discretizer == 'mech_discretizer':
-                self.two_layers_mech_discretizer(idata=idata)
-            elif discretizer == 'pm_discretizer':
-                self.two_layers_pm_discretizer(idata=idata)
         else:
             print('Error: wrong case', case)
             exit(-1)

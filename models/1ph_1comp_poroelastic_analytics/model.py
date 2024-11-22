@@ -53,21 +53,12 @@ class Model(THMCModel):
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
 
-        if 'lab' in case:
-            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, prop=case.split('_')[1])
-        else:
-            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
+        self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
 
-        if 'lab' not in case:
-            self.idata.initial.initial_temperature = 0  # [K]
-            self.idata.initial.initial_pressure = 0  # [bar]
-            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-            self.idata.initial.initial_composition = None  # not used in this test
-        else:
-            self.idata.initial.initial_temperature = 20  # [K]
-            self.idata.initial.initial_pressure = 1  # [bar]
-            self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
-            self.idata.initial.initial_composition = None  # not used in this test
+        self.idata.initial.initial_temperature = 0  # [K]
+        self.idata.initial.initial_pressure = 0  # [bar]
+        self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
+        self.idata.initial.initial_composition = None  # not used in this test
 
         if 'box' in self.mesh or 'cylinder' in self.mesh:
             # 1 to 500 kN
@@ -91,42 +82,13 @@ class Model(THMCModel):
                 vertic = self.bc_type.LOAD(self.idata.other.load_vertic, [0.0, 0.0, 0.0])
                 f_bottom = self.bc_type.AQUIFER(p_init)
 
-        if 'box' in self.mesh:
-            # define correspondence between the physical tags in msh file and mesh elements types
-            bnd_tags['BND_X-1'] = 991
-            bnd_tags['BND_X-2'] = 981
-            bnd_tags['BND_X+'] = 992
-            bnd_tags['BND_Y-'] = 993
-            bnd_tags['BND_Y+'] = 994
-            bnd_tags['BND_Z-'] = 995
-            bnd_tags['BND_Z+'] = 996
-
-            self.idata.boundary = {}
-            b = {'flow': NO_FLOW, 'mech': confining, 'temp': self.bc_type.NO_FLOW}
-            self.idata.boundary[bnd_tags['BND_X-1']] = b
-            self.idata.boundary[bnd_tags['BND_X-2']] = b
-            self.idata.boundary[bnd_tags['BND_X+']] = b
-            self.idata.boundary[bnd_tags['BND_Y-']] = {'flow': f_bottom, 'mech': self.bc_type.STUCK(0, [0,0,0]), 'temp': NO_FLOW}
-            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': f_top, 'mech': vertic, 'temp': NO_FLOW}
-            self.idata.boundary[bnd_tags['BND_Z-']] = b
-            self.idata.boundary[bnd_tags['BND_Z+']] = b
-        elif 'cylinder' in self.mesh:
-            bnd_tags['BND_Z-'] = 992
-            bnd_tags['BND_Z+'] = 993
-            bnd_tags['BND_SIDE'] = 991
-
-            self.idata.boundary = {}
-            self.idata.boundary[bnd_tags['BND_SIDE']] = {'flow': NO_FLOW, 'mech': confining, 'temp': NO_FLOW}
-            self.idata.boundary[bnd_tags['BND_Z-']] = {'flow': f_bottom, 'mech': self.bc_type.STUCK(0, [0, 0, 0]), 'temp': NO_FLOW}
-            self.idata.boundary[bnd_tags['BND_Z+']] = {'flow': f_top, 'mech': vertic, 'temp': NO_FLOW}
-        else:  # 'rect', 'hex' and others meshes, used in mandel, terzaghi and bai cases
-            bnd_tags['BND_X-'] = 991
-            bnd_tags['BND_X+'] = 992
-            bnd_tags['BND_Y-'] = 993
-            bnd_tags['BND_Y+'] = 994
-            bnd_tags['BND_Z-'] = 995
-            bnd_tags['BND_Z+'] = 996
-            self.idata.mesh.matrix_tags = [99991]
+        bnd_tags['BND_X-'] = 991
+        bnd_tags['BND_X+'] = 992
+        bnd_tags['BND_Y-'] = 993
+        bnd_tags['BND_Y+'] = 994
+        bnd_tags['BND_Z-'] = 995
+        bnd_tags['BND_Z+'] = 996
+        self.idata.mesh.matrix_tags = [99991]
 
         if case == 'mandel':
             self.idata.rock.porosity = 0.375
@@ -243,76 +205,6 @@ class Model(THMCModel):
                                                        'temp': self.bc_type.AQUIFER(self.idata.initial.initial_temperature + 50)}
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
-        elif case == 'lab_uniform':
-            self.idata.mesh.matrix_tags = [99991]
-
-            self.idata.rock.density = 3000. #TODO
-
-            self.idata.rock.porosity = 0.02 #Porosity of Dinantian ~0,01-3%
-            self.idata.rock.perm = 0.02 # not measured yet
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = self.idata.rock.perm
-
-            self.idata.rock.E = 20 * 1e+4 # 10-35 GPa = *10^4 to bars
-            self.idata.rock.nu = 0.25  #0.25
-            self.idata.rock.biot = 1 # ?
-            #TODO bulk_modulus 20Gpa
-            self.idata.rock.compressibility = get_rock_compressibility(
-                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
-                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-
-            self.idata.rock.th_expn = 1e-5  #linear
-            #self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-            self.idata.rock.conductivity = 200 #0.836 * 86400.0 * 1000
-            self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
-            self.idata.rock.heat_capacity = 2200  # [kJ/m3/K]
-
-            self.idata.fluid.compressibility = 0.0  #TODO why zero here
-            self.idata.fluid.viscosity = 1.0
-
-            self.idata.other.F = -1.e-5
-
-        elif case == 'lab_2rocks':
-            self.idata.mesh.matrix_tags = [99991, 99992]
-
-            self.idata.rock.density = 3000.  # TODO
-
-
-            biot_1, biot_2 = 1, 1
-            nu_1, nu_2 = 0.25, 0.25
-            E_1, E_2 = 28 * 1e+4, 8 * 1e+4   # 10-35 GPa = *10^4 to bars
-            poro_1, poro_2 = 0.02, 0.02
-            perm_1, perm_2 = 0.02, 0.02
-
-            self.idata.rock.porosity = np.array([poro_1, poro_2])
-            self.idata.rock.perm = np.array([perm_1, perm_2])
-            self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = self.idata.rock.perm
-
-            self.idata.rock.E = np.array([E_1, E_2])
-            self.idata.rock.biot = np.array([biot_1, biot_2])
-            self.idata.rock.nu = np.array([nu_1, nu_2])
-            self.idata.other.kd = get_bulk_modulus(self.idata.rock.E, self.idata.rock.nu)
-            self.idata.rock.compressibility = get_rock_compressibility(
-                kd=self.idata.other.kd, biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-
-            self.idata.rock.th_expn = 1e-5  #linear
-            #self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-            self.idata.rock.conductivity = 200 #0.836 * 86400.0 * 1000
-            self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
-            self.idata.rock.heat_capacity = 2200  # [kJ/m3/K]
-
-            self.idata.fluid.compressibility = 1.e-10
-            self.idata.fluid.viscosity = 1.0
-
-            self.idata.make_prop_arrays()
-            self.idata.rock.compressibility = get_rock_compressibility(
-                kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
-                biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-
-            self.idata.fluid.compressibility = 0.0  #TODO why zero here
-            self.idata.fluid.viscosity = 1.0
-
-            self.idata.other.F = -1.e-5
-
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
         if case == 'terzaghi_two_layers':
@@ -325,25 +217,15 @@ class Model(THMCModel):
             self.idata.other.skempton = b * m * M / (1 + b ** 2 * m * M)
             self.idata.other.c = TC.darcy_constant * self.idata.rock.perm / self.idata.fluid.viscosity * M / (1 + b ** 2 * m * M)
             assert (np.fabs(self.idata.other.skempton[1] - self.idata.other.skempton[0]) < 1.e-6)
-        
-        if 'lab' not in case:
-            if case == 'bai':
-                nt = 60
-                max_dt = 0.1
-                self.idata.sim.time_steps = np.logspace(-7, np.log10(max_dt), nt)
-            else:
-                nt = 60  # number of timesteps
-                max_dt = 30  # timestep length, days
-                self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
+
+        if case == 'bai':
+            nt = 60
+            max_dt = 0.1
+            self.idata.sim.time_steps = np.logspace(-7, np.log10(max_dt), nt)
         else:
-            # time step list
-            T = 10  # simulation time, sec.
-            dt = 1  # simulation timestep, sec.
-            # convert to days
-            sec_to_days = 86400.
-            T /= sec_to_days
-            dt /= sec_to_days
-            self.idata.sim.time_steps = np.arange(dt, T, dt)
+            nt = 60  # number of timesteps
+            max_dt = 30  # timestep length, days
+            self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

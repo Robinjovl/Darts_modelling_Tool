@@ -538,8 +538,11 @@ class UnstructReservoirMech():
                         else:
                             self.props[m][prop] = val[i]
                     else:
-                        print('in set_props_tags: ', prop + ' is None')
-                        #exit(1)
+                        if prop in ['permx', 'permy', 'permz'] and 'perm' in self.props[m]:
+                            pass
+                        else:
+                            print('in set_props_tags: ', prop + ' is None')
+                            exit(1)
 
     def init_heterogeneous_properties(self):
         '''
