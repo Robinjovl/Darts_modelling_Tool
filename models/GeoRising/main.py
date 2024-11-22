@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-m = Model()
+m = Model(iapws_physics=True)
 
-m.init()
+m.init()#(platform='gpu')
 m.output_to_vtk(ith_step=0, output_directory='vtk')
 m.run(365)
 m.print_timers()

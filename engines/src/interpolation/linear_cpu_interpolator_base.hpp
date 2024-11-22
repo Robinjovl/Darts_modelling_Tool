@@ -2,8 +2,10 @@
 #define E0E335E5_CB89_46FA_B098_6A9185E06492
 
 #include <array>
-
+#include <vector>
+#include <pybind11/pybind11.h>
 #include "interpolator_base.hpp"
+#include "mech/matrix.h"
 
 /**
  * @brief  Interpolator base for static/adaptive piecewise linear interpolator.
@@ -19,26 +21,28 @@ public:
     /**
      * @brief Construct an interpolator with specified parametrization space
      * 
-     * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-     * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                  Minimum value for each axis
-     * @param[in] axes_max                  Maximum for each axis
+     * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
+     * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
+     * @param[in] axes_min                        Minimum value for each axis
+     * @param[in] axes_max                        Maximum for each axis
+     * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
      */
     linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                  const std::vector<int> &axes_points,
                                  const std::vector<double> &axes_min,
-                                 const std::vector<double> &axes_max);
+                                 const std::vector<double> &axes_max,
+                                 bool _use_barycentric_interpolation);
     /**
      * @brief Get the number of dimensions in interpolation space
      *
      */
-    int get_n_dims() { return N_DIMS; };
+    int get_n_dims() const { return N_DIMS; };
 
     /**
      * @brief Get the number of operators to be interpolated
      *
      */
-    int get_n_ops() { return N_OPS; };
+    int get_n_ops() const { return N_OPS; };
     /**
      * @brief Compute interpolation for all operators at the given point
      *
@@ -60,9 +64,24 @@ public:
     int interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
                                      std::vector<double> &interp_values, std::vector<double> &derivatives) override;
 
+    /**
+     * @brief Structure that stores pre-processed information 
+     *        required to perform linear interpolation on Delaunay triangulated of hypercube.
+     */
+    struct Delaunay
+    {
+      Delaunay() {};
+      /// inverses of transformation matrices to barycentric coordinates
+      std::vector<linalg::Matrix<double>> barycentric_matrices;
+      /// Delaunay triangulation structure from scipy.spatial
+      pybind11::object tri;
+    };
+
+    bool use_barycentric_interpolation; ///< flag that enables barycentric interpolation on Delaunay simplices
 protected:
-    std::array<std::array<int, N_DIMS>, N_DIMS + 1> standard_simplex; ///< a standard simplex
-    std::array<index_t, N_DIMS> axes_mult;                            /// multiplication factor used for transferring supporting point to point index
+    std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> standard_simplex; ///< a standard simplex
+    std::array<index_t, N_DIMS> axes_mult;                            ///< multiplication factor used for transferring supporting point to point index
+    Delaunay tri_info;                                                ///< contains Delaunay triangulation and barycentric transformations
 
     int transform_last_axis; ///< apply transformation z'=1-z for the last axis
 
@@ -76,7 +95,7 @@ protected:
      * @param[in] point_index Index of the point in the std::vector points
      *      The argument point_index is used only when std::vector points consists of multiple points.
      */
-    void find_hypercube(const std::vector<double> &points, std::array<int, N_DIMS> &hypercube,
+    void find_hypercube(const std::vector<double> &points, std::array<index_t, N_DIMS> &hypercube,
                         std::array<double, N_DIMS> &scaled_point, const int point_index = 0);
     /**
      * @brief Compute which simplex the given point is located in using standard triangulation
@@ -88,8 +107,8 @@ protected:
      *      2. computing weights of the barycentric interpolation
      * @param[out] simplex An array of vertices which forms simplex in N_DIMS-dimensional space
      */
-    void find_simplex(const std::array<int, N_DIMS> &hypercube, const std::array<double, N_DIMS> &scaled_point,
-                      std::array<int, N_DIMS> &tri_order, std::array<std::array<int, N_DIMS>, N_DIMS + 1> &simplex);
+    void find_simplex(const std::array<index_t, N_DIMS> &hypercube, const std::array<double, N_DIMS> &scaled_point,
+                      std::array<int, N_DIMS> &tri_order, std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> &simplex);
     /**
      * @brief Get values of operators at the given supporting point
      * Implementation depends on underlying storage. If static storage is used, the function simply reads
@@ -101,7 +120,7 @@ protected:
      * @param[in] vertex The indexes of coordinates the given supporting point along axes
      * @param[out] values The operator values at the given point
      */
-    virtual void get_supporting_point(const std::array<int, N_DIMS> &vertex, std::array<double, N_OPS> &values) = 0;
+    virtual void get_supporting_point(const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values) = 0;
     /**
      * @brief Given a supporting point, compute its index.
      *
@@ -110,14 +129,24 @@ protected:
      * @param[in] vertex The indexes of coordinates the given supporting point along axes
      * @return The index of point among all supporting point
      */
-    index_t get_index_from_vertex(const std::array<int, N_DIMS> &vertex);
+    index_t get_index_from_vertex(const std::array<index_t, N_DIMS> &vertex);
     /**
      * @brief Transfer a vertex to its coordinates.
      *
      * @param[in] vertex The indexes of the given supporting point along axes
      * @param[out] point The coordinates of the supporting point
      */
-    void get_point_from_vertex(const std::array<int, N_DIMS> &vertex, std::vector<double> &point);
+    void get_point_from_vertex(const std::array<index_t, N_DIMS> &vertex, std::vector<double> &point);
+    /**
+     * @brief Loads Delaunay triangulation and data for associated barycentric interpolation.
+     *
+     * @param[in] filename The name of binary datafile
+     */
+    void load_delaunay_triangulation(const std::string filename);
+    /**
+     * @brief Calculate Delaunay triangulation and associated barycentric transformations.
+     */
+    void find_delaunay_and_barycentric();
 };
 
 #include "linear_cpu_interpolator_base.tpp"

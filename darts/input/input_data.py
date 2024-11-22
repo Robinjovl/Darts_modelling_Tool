@@ -6,8 +6,8 @@ class RockProps():
     '''
     def __init__(self, type_hydr='', type_mech=''):
         '''
-        :param type_hydr: if '' - idothermal flow; if 'thermal' - thermal flow
-        :param type_mech: if '' - mechanics off; options: 'poroelasticity', 'thermoporoelasticity'
+        :param type_hydr: if 'isothermal' - isothermal flow; if 'thermal' - thermal flow
+        :param type_mech: if 'none' - mechanics off; other options: 'poroelasticity', 'thermoporoelasticity'
         '''
         self.porosity = None
         self.perm = None  # Permeability tensor, 9 values [mD]
@@ -19,13 +19,13 @@ class RockProps():
             self.heat_capacity = None  # [kJ/m3/K]
             self.conductivity = None   # thermal conductivity [kJ/m/day/K]
         
-        if type_mech != '': # geomechanical properties
+        if type_mech != 'none': # geomechanical properties
             self.E = None   # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
         else: # only hydrodynamic
-            self.compressibility = 1.   # [1/bar]
+            self.compressibility = None   # [1/bar]
 
         if type_mech == 'thermoporoelasticity': # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
@@ -55,14 +55,17 @@ class InitialSolution():
     Class for initial values
     '''
     def __init__(self, type='uniform'):
+        self.type = type
         if type == 'uniform':
             self.initial_pressure = None  # [bars]
             self.initial_temperature = None  # [K]
         elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
-            self.temperature_gradient = None  # [K/m]
+            self.temperature_gradient = None  # [K/km]
+            self.temperature_at_ref_depth = None  # [K]
             self.reference_depth_for_pressure = None  # [m]
-            self.pressure_gradient = None  # [bar/m]
+            self.pressure_gradient = None  # [bar/km]
+            self.pressure_at_ref_depth = None # [bars]
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
@@ -107,13 +110,14 @@ class InputData():
     '''
     Class for initial values
     '''
-    def __init__(self, type_hydr, type_mech):
+    def __init__(self, type_hydr, type_mech, init_type):
         self.type_hydr = type_hydr
         self.type_mech = type_mech
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
         self.obl = OBLParams()
-        self.initial = InitialSolution()
+        self.initial = InitialSolution(init_type)
+        #self.wells = Wells()
         self.mesh = MeshData()
         self.boundary = None
         self.sim = Simulation()
@@ -121,7 +125,7 @@ class InputData():
         
     def check(self):
         assert self.type_hydr in ['isothermal', 'thermal'], 'input_data: Unknown type_hydr'
-        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity'], 'input_data: Unknown type_mech'
+        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity', 'none'], 'input_data: Unknown type_mech'
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):

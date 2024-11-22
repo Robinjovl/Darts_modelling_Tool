@@ -130,6 +130,13 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
     print('case:' + case, 'discr_name:' + discr_name, 'mesh: ' + mesh, 'overwrite: ' + overwrite, sep=', ')
     import platform
 
+    try:
+        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
     nt = 20
     max_dt = 200
     t = np.logspace(-3, np.log10(max_dt), nt)
@@ -466,11 +473,11 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
 
     m.print_timers()
 
-def run_test(args: list = []):
-    if len(args) > 3:
+def run_test(args: list = [], platform='cpu'):
+    if len(args) == 4:
         return test(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
     else:
-        print('Not enough arguments provided')
+        print('Wrong number of arguments provided to the run_test:', args)
         return 1, 0.0
 
 

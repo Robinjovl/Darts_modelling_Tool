@@ -1,8 +1,8 @@
 import numpy as np
 from darts.engines import *
-from darts.physics.physics_base import PhysicsBase
+from darts.physics.base.physics_base import PhysicsBase
 
-from darts.physics.operators_base import PropertyOperators
+from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
 
 
@@ -18,11 +18,12 @@ class Compositional(PhysicsBase):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False):
+                 thermal: bool = False, cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
 
         It defines the OBL grid for P-z or P-T-z compositional simulation.
+        Use axes_min, axes_max, n_axes_points to define non-uniform OBL properties for different compositions.
 
         :param components: List of components
         :type components: list
@@ -42,6 +43,12 @@ class Compositional(PhysicsBase):
         :type thermal: bool
         :param cache: Switch to cache operator values
         :type cache: bool
+        :param axes_min: (optional) Minimum bounds of OBL axes
+        :type axes_min: (optional) list or np.ndarray
+        :param axes_max: (optional) Maximum bounds of OBL axes
+        :type axes_max: (optional) list or np.ndarray
+        :param n_axes_points: (optional) Number of points over OBL axes
+        :type n_axes_points: (optional) list or np.ndarray
         """
         # Define nc, nph and (iso)thermal
         nc = len(components)
@@ -52,18 +59,37 @@ class Compositional(PhysicsBase):
         variables = ['pressure'] + components[:-1]
         if self.thermal:
             variables += ['temperature']
-            axes_min = value_vector([min_p] + [min_z] * (nc - 1) + [min_t])
-            axes_max = value_vector([max_p] + [max_z] * (nc - 1) + [max_t])
-        else:
-            axes_min = value_vector([min_p] + [min_z] * (nc - 1))
-            axes_max = value_vector([max_p] + [max_z] * (nc - 1))
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1
+        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1 + nph
+
+        # axes_min
+        if axes_min is None:
+            if self.thermal:
+                axes_min = value_vector([min_p] + [min_z] * (nc - 1) + [min_t])
+            else:
+                axes_min = value_vector([min_p] + [min_z] * (nc - 1))
+        else:
+            axes_min = value_vector(axes_min)
+
+        # axes_max
+        if axes_max is None:
+            if self.thermal:
+                axes_max = value_vector([max_p] + [max_z] * (nc - 1) + [max_t])
+            else:
+                axes_max = value_vector([max_p] + [max_z] * (nc - 1))
+        else:
+            axes_max = value_vector(axes_max)
+
+        # n_axes_points
+        if n_axes_points is None:
+            n_axes_points = index_vector([n_points] * n_vars)
+        else:
+            n_axes_points = index_vector(n_axes_points)
 
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
-                         axes_min=axes_min, axes_max=axes_max, n_points=n_points, timer=timer, cache=cache)
+                         axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
         """

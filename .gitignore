@@ -14,7 +14,7 @@ lib64/
 *.egg
 build/
 bin/
-*.nc
+thirdparty/install
 
 # cache
 docs/_build
@@ -35,3 +35,5 @@ darts/build_info.txt
 /.idea/*
 *x64*
 *.log
+*.nc
+*.h5

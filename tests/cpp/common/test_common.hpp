@@ -56,7 +56,8 @@ namespace opendarts
       void generate_tridiagonal_matrix(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &A,
           opendarts::config::index_t n,
           opendarts::linear_solvers::testing::block_fill_option block_fill =
-              opendarts::linear_solvers::testing::block_fill_option::constant_filled_block);
+              opendarts::linear_solvers::testing::block_fill_option::constant_filled_block,
+              bool is_Poisson = false);
 
     } // namespace testing
   }   // namespace linear_solvers

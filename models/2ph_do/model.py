@@ -101,7 +101,7 @@ class ModelProperties(PropertyContainer):
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        self.ph = [0, 1]
+        self.ph = np.array([0, 1], dtype=np.intp)
 
         for j in self.ph:
             # molar weight of mixture

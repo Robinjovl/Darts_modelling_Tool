@@ -201,7 +201,7 @@ class ReservoirBase:
         pass
 
     @abc.abstractmethod
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results at timestamp t into `.vtk` format.
 
@@ -211,10 +211,10 @@ class ReservoirBase:
         :type t: float
         :param output_directory: Path to save .vtk file
         :type output_directory: str
-        :param prop_idxs: Dictionary of properties with data array indices for output
-        :type prop_idxs: dict
+        :param prop_names: List of keys for properties
+        :type prop_names: list
         :param data: Data for output
-        :type data: np.ndarray
+        :type data: dict
         """
         pass
 

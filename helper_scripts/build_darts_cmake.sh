@@ -92,19 +92,19 @@ fi
 # ------------------------------------------------------------------------------
 
 rm -rf darts/*.so
-
+rm -rf dist
+	
 # Build loop -------------------------------------------------------------------
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder'
     rm -r build
-    rm -r dist
 else
     if [[ "$skip_req" == false ]]; then
         # update submodules
         echo -e "\n- Update submodules: START \n"
         # clean-up previous versions.
-        rm -rf thirdparty/eigen thirdparty/pybind11
+        rm -rf thirdparty/eigen thirdparty/pybind11 thirdparty/mshIO thirdparty/hypre
         git submodule sync --recursive
         git submodule update --recursive --init
         echo -e "\n- Update submodules: DONE! \n"
@@ -116,9 +116,18 @@ else
         cd thirdparty
         mkdir -p build/eigen
         cd build/eigen
-        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  2>&1 | tee ../../../make_eigen.log
-        make install -j $NT 2>&1 | tee -a ../../../make_eigen.log
+        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
+        make install -j $NT &>> ../../../make_eigen.log
         cd ../../
+
+        echo -e "\n-- Install Hypre: START\n"
+        cd hypre/src/cmbuild
+        # Setup hypre build with no MPI support (we only use single processor)
+        # Request build of tests and examples just to be sure everything is fine in the build 
+        cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
+        make install -j $NT &>> ../../../../make_hypre.log
+        cd ../../../
+        echo -e "\n--- Building Hypre: DONE!\n"
 
         echo -e "\n-- Install SuperLU \n"
         cd SuperLU_5.2.1
@@ -131,8 +140,8 @@ else
   	        cp make_gcc_linux.inc make.inc
         fi
 
-        make -j $NT 2>&1 | tee ../../make_superlu.log
-        make install -j $NT 2>&1 | tee -a ../../make_superlu.log
+        make -j $NT &> ../../make_superlu.log
+        make install -j $NT &>> ../../make_superlu.log
         cd ../../
 
         if [[ "$bos_solvers_artifact" == true ]]; then
@@ -175,10 +184,10 @@ else
     fi
 
     echo "CMake options: $cmake_options" # Report to user the CMake options
-    cmake $cmake_options .. 2>&1 | tee ../make_darts.log
+    cmake $cmake_options .. &> ../make_darts.log
 
     # Build and install openDARTS
-    make install -j $NT 2>&1 | tee -a ../make_darts.log
+    make install -j $NT &>> ../make_darts.log
 
     # Test
     if [[ "$testing" == true ]]; then

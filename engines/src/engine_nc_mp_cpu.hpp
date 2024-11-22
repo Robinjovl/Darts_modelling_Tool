@@ -39,7 +39,7 @@ public:
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   const uint8_t get_n_vars() override { return N_VARS; };
   const uint8_t get_n_ops() { return N_OPS; };

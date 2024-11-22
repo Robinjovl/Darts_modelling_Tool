@@ -39,8 +39,11 @@ sys.path.insert(0, os.path.join(parentdir2, 'python'))
 class CPG_Reservoir(ReservoirBase):
     def __init__(self, timer: timer_node, arrays=None, faultfile: str = None, minpv: float = 0., cache: bool = False):
         """
-        Class constructor for UnstructReservoir class
-        :param arrays: dictionary of numpy arrays with grid and props
+        Class constructor for CPG_Reservoir class (corner-point geometry)
+        :param arrays: dictionary of numpy arrays with grid (COORD, ZCORN, ACTNUM) and props (PORO, PERMX, PERMY, PERMZ)
+        :param faultfile: file name with fault locations (IJK) and fault transmicssibility multipliers
+        :param minpv: cells with poro volume smaller than minpv will be set inactive
+        :param cache:
         """
         super().__init__(timer, cache)
 
@@ -104,7 +107,12 @@ class CPG_Reservoir(ReservoirBase):
         tran = mpfa_tran[::2][ids]
         tranD = mpfa_tranD[::2][ids]
 
-        # self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
+        print('tran  mean=', tran.mean(),  'tran  max=', tran.max())
+        print('tranD mean=', tranD.mean(), 'tranD max=', tranD.max())
+        #max_tranD = 1e3
+        #tranD[tranD > max_tranD] = max_tranD
+
+        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
         if self.faultfile is not None:
             self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
             # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
@@ -523,7 +531,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
@@ -531,46 +539,51 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        for ts, t in enumerate(time_steps):
 
-        cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
-            global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
-            dummy_zeros = np.zeros(
-                self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
-            v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
-            global_array[self.discr_mesh.local_to_global] = v[:]
-            cell_data[prop] = global_array
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
 
-        if self.vtk_grid_type == 0:
-            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-        else:
-            for key, value in cell_data.items():
+            cell_data = {}
+            for prop in prop_names:
+                local_data = data[prop][ts]
+                global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
+                dummy_zeros = np.zeros(
+                    self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
+                v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
+                global_array[self.discr_mesh.local_to_global] = v[:]
+                cell_data[prop] = global_array
 
-                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                if cell_data[key].size == g_to_l.size:
-                    a = cell_data[key][g_to_l >= 0]
-                else:
-                    a = cell_data[key]
-                self.vtkobj.AppendScalarData(key, a)
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                    g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+                    if cell_data[key].size == g_to_l.size:
+                        a = cell_data[key][g_to_l >= 0]
+                    else:
+                        a = cell_data[key]
+                    self.vtkobj.AppendScalarData(key, a)
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
+                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup('solution')
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
-        vtk_group.save()
+            # in order to have correct timesteps in Paraview, write down group file
+            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+            # and does not support reading, track all written files and times and re-write the complete
+            # group file every time
+
+            self.vtk_filenames_and_times[vtk_file_name] = t
+            vtk_group = VtkGroup('solution')
+            for fname, t in self.vtk_filenames_and_times.items():
+                vtk_group.addFile(fname, t)
+            vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
 
@@ -675,11 +688,136 @@ class CPG_Reservoir(ReservoirBase):
         self.depth[:] = self.depth_all_cells
         self.volume[:] = self.volume_all_cells
 
+    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
+        '''
+        read COMPDAT from SCH file in Eclipse format, add wells and perforations
+        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
+        :param: sch_fname - path to file
+        '''
+        if sch_fname is None:
+            return
+        print('reading wells (COMPDAT) from', sch_fname)
+        well_dia = 0.152
+        well_rad = well_dia / 2
+
+        keep_reading = True
+        prev_well_name = ''
+        with open(sch_fname) as f:
+            while keep_reading:
+                buff = f.readline()
+                if 'COMPDAT' in buff:
+                    while True:  # be careful here
+                        buff = f.readline()
+                        if len(buff) != 0:
+                            CompDat = buff.split()
+                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
+                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                                # define well
+                                if wname == prev_well_name:
+                                    pass
+                                else:
+                                    reservoir.add_well(wname)
+                                    prev_well_name = wname
+                                # define perforation
+                                i1 = int(CompDat[1])
+                                j1 = int(CompDat[2])
+                                k1 = int(CompDat[3])
+                                k2 = int(CompDat[4])
+
+                                well_index = None
+                                if len(CompDat) > 7:
+                                    if CompDat[7] != '*':
+                                        well_index = float(CompDat[7])
+
+                                for k in range(k1, k2 + 1):
+                                    reservoir.add_perforation(wname, cell_index=(i1, j1, k), well_radius=well_rad,
+                                                              well_index=well_index, well_indexD=well_indexD,
+                                                              multi_segment=False, verbose=verbose)
+
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
+                                keep_reading = False
+                                break
+        print('WELLS read from SCH file:', len(reservoir.wells))
+
+    def create_vtk_wells(self, output_directory: str):
+        import vtk
+        well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
+        # Append multiple cylinders into one polydata
+        appendFilter = vtk.vtkAppendPolyData()
+
+        def create_tube(center, prolongation=1000):
+            # Create points for the polyline
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+
+            # Create a polyline that connects the points
+            lines = vtk.vtkCellArray()
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)  # Number of points
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+            lines.InsertNextCell(line)
+
+            # Create a polydata to hold the points and the polyline
+            polyData = vtk.vtkPolyData()
+            polyData.SetPoints(points)
+            polyData.SetLines(lines)
+
+            # Apply vtkTubeFilter to create a tube around the polyline
+            tubeFilter = vtk.vtkTubeFilter()
+            tubeFilter.SetInputData(polyData)
+            tubeFilter.SetRadius(35)  # Tube radius
+            tubeFilter.SetNumberOfSides(50)  # Smoothness of the tube
+            tubeFilter.Update()
+
+            return tubeFilter.GetOutput()
+
+        for w in self.wells:
+            for p in w.perforations:
+                well_block, res_block_local, well_index, well_indexD = p
+                c = self.centroids_all_cells[res_block_local].values
+                cyl = create_tube(c)
+                appendFilter.AddInputData(cyl)
+                break  # use only the first perf
+
+        # Update the append filter to combine the polydata
+        appendFilter.Update()
+
+        # Write the cylinders to a VTK file
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(appendFilter.GetOutputPort())
+        writer.Write()
+
+    def get_ijk_from_xyz(self, x, y, z):
+        '''
+        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        '''
+        def find_cell_index(centers_flattened, coord) -> int:
+            min_dis = None
+            idx = None
+            for j, centroid in enumerate(centers_flattened):
+               dis = np.linalg.norm(np.array(coord) - centroid.values)
+               if (min_dis is not None and dis < min_dis) or min_dis is None:
+                   min_dis = dis
+                   idx = j
+            return idx
+        def get_ijk(idx, nx, ny, nz):
+            k = idx // (nx * ny)
+            j = (idx - k * (nx * ny)) // nx
+            i = idx % nx
+            return (i + 1, j + 1, k + 1)
+
+        centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        idx = find_cell_index(centers, np.array([x, y, z]))
+        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        return ijk
 
 #####################################################################
 
 def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w',
-               make_full=True):
+               make_full=True, inactive_value='min'):
     '''
     writes numpy array of n_active_cell size to text file in GRDECL format with n_cells_total
     :param arr: numpy array to write
@@ -687,10 +825,12 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
     :param keyword: keyword for array
     :param actnum: actnum array
     :param mode: 'w' to rewrite the file or 'a' to append
+    :param make_full: set this to True if passing arr only in active cells, and to False if it as already nx*ny*nz
+    :param inactive_value: if 'min' the value in inactive cells will be set to arr.min(), otherwise to the specified val
     :return: None
     '''
     if make_full:
-        arr_full = make_full_cube(arr, local_to_global, global_to_local)
+        arr_full = make_full_cube(arr, local_to_global, global_to_local, inactive_value)
     else:
         arr_full = arr
     with open(fname, mode) as f:
@@ -706,7 +846,7 @@ def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.arra
         print('Array saved to file', fname, ' (keyword ' + keyword + ')')
 
 
-def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array):
+def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: np.array, inactive_value='min'):
     '''
     returns 1d-array of size nx*ny*nz, filled with zeros where actnum is zero
     :param cube: 1d-array of size n_active_cells
@@ -715,7 +855,11 @@ def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: n
     '''
     if global_to_local.size == cube.size:
         return cube
-    cube_full = np.zeros(global_to_local.size)
+    if inactive_value == 'min':
+        inactive_value_ = cube.min()
+    else:
+        inactive_value_ = inactive_value
+    cube_full = np.zeros(global_to_local.size) + inactive_value_
     cube_full[local_to_global] = cube
     return cube_full
 
@@ -774,6 +918,9 @@ def read_arrays(gridfile: str, propfile: str):
         arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 
+    return arrays
+
+def check_arrays(arrays):
     # check dims of loaded arrays
     nx, ny, nz = arrays['SPECGRID']
     n_cells_all =  nx * ny * nz
@@ -788,9 +935,6 @@ def read_arrays(gridfile: str, propfile: str):
             assert arrays[a_name].shape == zcorn_dims, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
         else:
             assert arrays[a_name].shape == n_cells_all, 'Error: arrray ' + a_name + ' dimensions are not correct!' + str(arrays[a_name].shape)
-
-    return arrays
-
 
 def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, property_dictionary,
                        burden_layer_prop_value=1e-5):
@@ -835,3 +979,4 @@ def make_burden_layers(number_of_burden_layers: int, initial_thickness: float, p
     # update the grid dimension in z direction for both overburden and underburden layers
     property_dictionary['SPECGRID'][-1] += 2 * number_of_burden_layers
     return property_dictionary
+

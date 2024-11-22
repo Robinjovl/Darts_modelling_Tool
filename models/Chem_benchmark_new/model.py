@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.operators_base import PropertyOperators
+from darts.physics.base.operators_base import PropertyOperators
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
@@ -312,8 +312,8 @@ class Model(CICDModel):
             density[ii] = pc.dens
             density_m[ii] = pc.dens_m
 
-            X[ii, :, 0] = pc.x[1]
-            X[ii, :, 1] = pc.x[0]
+            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
+            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
@@ -380,8 +380,8 @@ class Model(CICDModel):
 
         pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            X[ii, :, 0] = pc.x[1]
-            X[ii, :, 1] = pc.x[0]
+            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
+            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 

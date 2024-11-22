@@ -65,7 +65,7 @@ public:
   const static uint8_t DENS_OP = NC + NC * NP + NP + 5;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
