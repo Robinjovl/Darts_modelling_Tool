@@ -711,7 +711,7 @@ class DartsModel:
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
         prop_idxs = [list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop)
-                     for prop in output_properties]
+                     for prop in output_properties] if output_properties is not None else []
 
         # Loop over timesteps
         for k, timestep in enumerate(timesteps):
