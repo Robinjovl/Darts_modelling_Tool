@@ -48,7 +48,10 @@ class Model(THMCModel):
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
 
-        self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, prop=case.split('_')[1])
+        if 'lab' in case:
+            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, prop=case.split('_')[1])
+        else:
+            self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh)
 
         if 'lab' not in case:
             self.idata.initial.initial_temperature = 0  # [K]
@@ -271,7 +274,7 @@ class Model(THMCModel):
 
             biot_1, biot_2 = 1, 1
             nu_1, nu_2 = 0.25, 0.25
-            E_1, E_2 = 28 * 1e+4, 28 * 1e+4   # 10-35 GPa = *10^4 to bars
+            E_1, E_2 = 28 * 1e+4, 8 * 1e+4   # 10-35 GPa = *10^4 to bars
             poro_1, poro_2 = 0.02, 0.02
             perm_1, perm_2 = 0.02, 0.02
 
