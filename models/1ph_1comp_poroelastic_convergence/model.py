@@ -53,7 +53,7 @@ class Model(THMCModel):
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
         self.bc_type = bound_cond()  # get predefined constants for boundary conditions
-        NO_FLOW = self.bc_type.NO_FLOW  # short name
+
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
         bnd_tags['BND_X-'] = 991
@@ -65,7 +65,7 @@ class Model(THMCModel):
         self.idata.mesh.matrix_tags = [99991]
 
         self.idata.boundary = {}
-        nf_s = {'flow': NO_FLOW, 'temp': NO_FLOW, 'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0])}
+        nf_s = {'flow': self.bc_type.AQUIFER(0), 'temp': self.bc_type.AQUIFER(0), 'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0])}
         self.idata.boundary[bnd_tags['BND_X-']] = nf_s
         self.idata.boundary[bnd_tags['BND_X+']] = nf_s
         self.idata.boundary[bnd_tags['BND_Y-']] = nf_s
