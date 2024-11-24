@@ -173,7 +173,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.unstr_discr = UnstructDiscretizer(mesh_file=self.mesh_filename, physical_tags=physical_tags)
 
-        self.set_boundary_conditions(idata)
+        self.set_boundary_conditions(idata=idata)
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=1.E-4)
         self.unstr_discr.calc_cell_neighbours()
 
@@ -233,7 +233,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)
@@ -297,7 +297,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)

@@ -567,7 +567,7 @@ if __name__ == '__main__':
     # run(case='mandel', discretizer='pm_discretizer', mesh='hex')
     # run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
-    test_all = False
+    #test_all = False
     test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
