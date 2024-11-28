@@ -7,7 +7,7 @@ from darts.physics.properties.iapws.custom_rock_property import *
 from darts.physics.properties.basic import ConstFunc
 
 
-class PropertyContainerIAPWS(PropertyBase):
+class PropertyContainer(PropertyBase):
     """
     Class responsible for collecting all needed properties in geothermal simulation
     """

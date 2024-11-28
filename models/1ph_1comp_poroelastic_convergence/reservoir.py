@@ -30,10 +30,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         thermoporoelasticity = True if mode == 'thermoporoelastic' else False
         super().__init__(timer, discretizer, thermoporoelasticity, fluid_vars)
         # define correspondence between the physical tags in msh file and mesh elements types
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
-                    bnd_xm_tag=991, bnd_xp_tag=992,
-                    bnd_ym_tag=993, bnd_yp_tag=994,
-                    bnd_zm_tag=995, bnd_zp_tag=996)
+        self.bnd_tags = idata.mesh.bnd_tags
+        self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
+
         self.mesh_filename = mesh_filename
 
         # Specify elastic properties, mesh & boundaries
@@ -69,7 +68,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.f[:] = self.f_prep
 
         self.wells = []
-
 
     def calc_deviations(self, engine):
         vol = np.array(self.mesh.volume, copy=False)
@@ -134,26 +132,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         self.pz_bounds[:] = self.pz_bounds_rhs
         #self.init_wells()
-    def set_boundary_conditions(self):
-        self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.AQUIFER(0),
-                                                             'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0]),
-                                                             'temp': self.bc_type.AQUIFER(0) }
+    def set_boundary_conditions(self, idata):
+        self.boundary_conditions = idata.boundary
+        self.bnd_tags = idata.mesh.bnd_tags
         self.set_boundary_conditions_pm_discretizer()
 
     # pm_discretizer: poroelastic
@@ -192,7 +173,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         self.unstr_discr = UnstructDiscretizer(mesh_file=self.mesh_filename, physical_tags=physical_tags)
 
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.unstr_discr.load_mesh(permx=1, permy=1, permz=1, frac_aper=1.E-4)
         self.unstr_discr.calc_cell_neighbours()
 
@@ -252,7 +233,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)
@@ -316,7 +297,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
     def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: InputData):
         self.mesh_data = meshio.read(self.mesh_filename)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         self.init_uniform_properties(idata=idata)

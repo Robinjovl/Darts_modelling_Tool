@@ -166,19 +166,10 @@ class PropertyContainer(PropertyBase):
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
 
-        # Re-normalize with solid components
-        if self.ns > 0:
-            X = np.zeros((self.nph, self.nc))
-            X[:self.np_fl, :self.nc_fl] = self.x
-            for jj, j in enumerate(range(self.np_fl, self.nph)):
-                self.nu = np.append(self.nu, zc[self.nc_fl + jj])
-                X[j, self.nc_fl + jj] = 1.
-            self.x = X
-
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         if ph.size == 1:
-            self.x[ph[0], :self.nc_fl] = zc_norm
+            self.x[ph[0]] = zc_norm
 
         return ph
 

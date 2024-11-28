@@ -213,6 +213,7 @@ if __name__ == '__main__':
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
     if os.getenv('OMP_NUM_THREADS') == None:  
         os.environ['OMP_NUM_THREADS'] = '1'
+    print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 
     # cpu/gpu
     platform = 'cpu'

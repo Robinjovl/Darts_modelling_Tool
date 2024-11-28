@@ -5,7 +5,7 @@ from darts.input.input_data import InputData
 from model_cpg import Model_CPG, fmt
 from darts.engines import value_vector
 
-from darts.physics.geothermal.geothermal import GeothermalIAPWS, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
+from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 
 
 class ModelGeothermal(Model_CPG):
@@ -15,7 +15,7 @@ class ModelGeothermal(Model_CPG):
 
     def set_physics(self):
         if self.iapws_physics:
-            self.physics = GeothermalIAPWS(self.idata, self.timer)
+            self.physics = Geothermal(self.idata, self.timer)
         else:
             self.physics = GeothermalPH(self.idata, self.timer)
             self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],

@@ -36,18 +36,20 @@ y = np.linspace(m.reservoir.nz*2+1, 0, m.reservoir.nz)
 X, Y = np.meshgrid(x, y)
 
 properties = m.physics.vars + m.physics.property_operators[0].props_name
-output = m.output_properties()
+print_props = m.physics.vars + ['satV', 'xCO2', 'yH2O']
+timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=0)
 nv = m.physics.n_vars
-print_props = list(range(nv)) + [nv, nv + 2, nv + 3]
 
-# fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-# for i, ith_prop in enumerate(print_props):
-#     #prop = axs[i].pcolormesh(X, Y, output[ith_prop, :].reshape(m.reservoir.nz, m.reservoir.nx))
-#     #plt.colorbar(prop, ax=axs[i])
-#     axs[i].plot(output[ith_prop, :])
-#     axs[i].set_title(properties[ith_prop])
-#
-# plt.savefig('step0.png', format='png')
+fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+for i, ith_prop in enumerate(print_props):
+    if m.reservoir.nz > 1:
+        prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
+        plt.colorbar(prop, ax=axs[i])
+    else:
+        axs[i].plot(output[ith_prop])
+    axs[i].set_title(ith_prop)
+
+plt.savefig('step0.png', format='png')
 
 for t in range(2):
     m.run(200)
@@ -57,14 +59,16 @@ for t in range(2):
 
     #m.params.max_ts = 0.5
 
-    output = m.output_properties()
+    timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=t+1)
 
     fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
     for i, ith_prop in enumerate(print_props):
-        prop = axs[i].pcolormesh(X, Y, output[ith_prop, :].reshape(m.reservoir.nz, m.reservoir.nx))
-        plt.colorbar(prop, ax=axs[i])
-        # axs[i].plot(output[:, ith_prop])
-        axs[i].set_title(properties[ith_prop])
+        if m.reservoir.nz > 1:
+            prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
+            plt.colorbar(prop, ax=axs[i])
+        else:
+            axs[i].plot(output[ith_prop])
+        axs[i].set_title(ith_prop + str(t+1))
 
     plt.savefig('step' + str(t+1) + '.png', format='png')
 
