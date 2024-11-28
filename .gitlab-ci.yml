@@ -626,6 +626,56 @@ test-windows-3.9-ODLS:
 
 ###################################################################################
 
+upload_wheels:
+    stage: deploy
+    image: python:3.9
+    rules: 
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux
+    before_script:
+        - apt-get update -qq && apt-get install -y -qq smbclient
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter 
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.9
+        - build-linux-3.10
+        - build-linux-3.11  
+        - build-linux-3.12
+        - build-windows-3.9
+        - build-windows-3.10
+        - build-windows-3.11
+        - build-windows-3.12
+
+upload_wheels_odls:
+    stage: deploy
+    image: python:3.9
+    rules: 
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux
+    before_script:
+        - apt-get update -qq && apt-get install -y -qq smbclient
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls 
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.9-ODLS
+        - build-linux-3.10-ODLS
+        - build-linux-3.11-ODLS  
+        - build-linux-3.12-ODLS
+        - build-windows-3.9-ODLS
+        - build-windows-3.10-ODLS
+        - build-windows-3.11-ODLS
+        - build-windows-3.12-ODLS
+        
+###################################################################################
+
 deploy-pypi:
     # Publish the release
     # Runs only for the main branch and if tag has a pattern: v#.#.#, for example "v1.2.3"

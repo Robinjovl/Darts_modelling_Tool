@@ -14,11 +14,20 @@ class CICDModel(DartsModel):
     # diff_norm_normalized_tol defines tolerance for L2 norm of final solution difference , normalized by amount of blocks and variable range
     # diff_abs_max_normalized_tol defines tolerance for maximum of final solution difference, normalized by variable range
     # rel_diff_tol defines tolerance (in %) to a change in integer simulation parameters as linear and newton iterations
-    def check_performance(self, overwrite=0, diff_norm_normalized_tol=1e-6, diff_abs_max_normalized_tol=1e-4,
-                          rel_diff_tol=15, perf_file='', pkl_suffix=''):
+    def check_performance(self, overwrite=0, diff_norm_normalized_tol_=1e-9, diff_abs_max_normalized_tol_=1e-7,
+                          rel_diff_tol_=1, perf_file='', pkl_suffix=''):
         """
         Function to check the performance data to make sure whether the performance has been changed
         """
+        diff_norm_normalized_tol = diff_norm_normalized_tol_
+        diff_abs_max_normalized_tol = diff_abs_max_normalized_tol_
+        rel_diff_tol = rel_diff_tol_ 
+        nt = int(os.environ['OMP_NUM_THREADS'])
+        if nt > 1: # use a looser tolerance for comparison of multithreaded run
+            diff_norm_normalized_tol = 1e-6
+            diff_abs_max_normalized_tol = 1e-4
+            rel_diff_tol = 30 
+        
         fail = 0
         data_et = self.load_performance_data(perf_file, pkl_suffix=pkl_suffix)
         if data_et and not overwrite:
