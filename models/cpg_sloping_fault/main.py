@@ -10,13 +10,11 @@ import matplotlib.pyplot as plt
 import time
 import os, sys
 
-def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True, redirect_log=False, platform='cpu'):
+def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
     :param out_dir: directory name for outpult files
-    :param dt: timestep length, [days]
-    :param n_time_steps: number of timestep
     :param export_vtk:
     :return:
     '''
@@ -41,26 +39,9 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
 
     m.save_grdecl(os.path.join(out_dir, 'res_init'))
 
-    t = 0
-    for ti in range(n_time_steps):
-        m.run(dt)
-        t += dt
-        # save to grdecl file after each time step
-        #m.save_grdecl(os.path.join(out_dir, 'res_' + str(ti+1)))
-        m.physics.engine.report()
-        m.print_well_rate()
+    m.run_simulation()
 
-    # output center points to VTK
-    from pyevtk.hl import pointsToVTK
-    fname = os.path.join(out_dir, 'centers')
-    c_cpg = m.reservoir.centroids_all_cells[:m.reservoir.discr_mesh.n_cells]
-    c = np.zeros((m.reservoir.discr_mesh.n_cells, 3))
-    for i in range(m.reservoir.discr_mesh.n_cells):
-        cv = c_cpg[i].values
-        c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
-    x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-    if c is not None:
-        pointsToVTK(fname, x, y, z)
+    m.centers_to_vtk(out_dir)
 
     m.save_grdecl(os.path.join(out_dir, 'res_last'))
     
@@ -70,7 +51,7 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
     if export_vtk:
         # read h5 file and write vtk
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(n_time_steps):
+        for ith_step in range(len(m.idata.sim.time_steps)):
             m.output_to_vtk(ith_step=ith_step)
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25
@@ -233,23 +214,20 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['dead_oil']
+    #physics_list += ['dead_oil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
+    #cases_list += ['generate_5x3x4']
     cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
-    cases_list += ['case_40x40x10']
+    #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
-
-    dt = 365.25  # one report timestep length, [days]
-    n_time_steps = 20
 
     for physics_type in physics_list:
         for case in cases_list:
             out_dir = 'results_' + physics_type + '_' + case
 
-            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
+            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
             #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))

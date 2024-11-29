@@ -33,15 +33,16 @@ class ModelGeothermal(Model_CPG):
                                    self.physics.vars[1]: enth_init}
             super().set_initial_conditions()
 
-    def set_well_controls(self, t: float = 0., verbose=True):
+    def set_well_controls(self, time: float = 0., verbose=True):
         '''
-        :param t: simulation time, [days]
+        :param time: simulation time, [days]
         :return:
         '''
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
+            wctrl = self.idata.well_data.wells[w.name].controls[0][1]
             for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if wctrl_t[0] >= t:  # check time
+                if wctrl_t[0] >= time:  # check time
                     wctrl = wctrl_t[1]
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
@@ -65,7 +66,7 @@ class ModelGeothermal(Model_CPG):
                 print('Unknown well ctrl.type', wctrl.type)
                 exit(1)
             if verbose:
-                print('set_well_controls: t=', t, 'well=', w.name, w.control, w.constraint)
+                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
                 assert w.control is not None, 'well control is not initialized!' + w.name
                 assert w.constraint is not None, 'well control is not initialized!' + w.name
 
@@ -102,20 +103,27 @@ class ModelGeothermal(Model_CPG):
         return a
 
     def print_well_rate(self):
+        inj_well = prd_well = None
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):
                 inj_well = w
             else:
-                prod_well = w
+                prd_well = w
         time_data = pd.DataFrame.from_dict(self.physics.engine.time_data)
-        years = np.array(time_data['time'])[-1]/365.
-        pr_col_name = time_data.filter(like=prod_well.name + ' : water rate').columns.to_list()
-        pt_col_name = time_data.filter(like=prod_well.name + ' : temperature').columns.to_list()
-        ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
-        rate_prod = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
-        temp_prod = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
-        rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
-        print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prod), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prod))
+        years = np.array(time_data['time'])[-1]/365.25
+
+        rate_inj = rate_prd = temp_prd = temp_inj = 0.
+        if prd_well is not None:
+            pr_col_name = time_data.filter(like=prd_well.name + ' : water rate').columns.to_list()
+            pt_col_name = time_data.filter(like=prd_well.name + ' : temperature').columns.to_list()
+            rate_prd = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
+            temp_prd = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
+        if inj_well is not None:
+            ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
+            it_col_name = time_data.filter(like=inj_well.name + ' : temperature').columns.to_list()
+            rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
+            temp_inj = np.array(time_data[it_col_name])[-1][0]  # pick the last timestep value
+        print(fmt(years), 'years:', 'RATE_prod =', fmt(rate_prd), 'RATE_inj =', fmt(rate_inj), 'TEMP_prod =', fmt(temp_prd), 'TEMP_inj =', fmt(temp_inj))
 
     def set_input_data(self, case=''):
         #init_type = 'uniform'
@@ -151,19 +159,27 @@ class ModelGeothermal(Model_CPG):
         wells = wdata.wells  # short name
         wctrl_type = 'rate'
         #wctrl_type = 'bhp'
+        #wctrl_type = 'periodic'
 
         if wctrl_type == 'bhp':
             for w in wells:
                 if self.well_is_inj(w):
                     wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prod_bhp_control(name=w, bhp_constraint=100) # m3/day | bars
+                    wdata.add_prd_bhp_control(name=w, bhp_constraint=100) # m3/day | bars
         elif wctrl_type == 'rate':
             for w in wells:
                 if self.well_is_inj(w):
                     wdata.add_inj_rate_control(name=w, rate=5500, bhp_constraint=300, temperature=300)  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prod_rate_control(name=w, rate=5500, bhp_constraint=70) # m3/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=5500, bhp_constraint=70) # m3/day | bars
+        elif wctrl_type == 'periodic':
+            y2d = 365.25
+            wdata.add_inj_rate_control(time=0,   name='W', rate=5500, bhp_constraint=300, temperature=300)
+            wdata.add_prd_rate_control(time=1*y2d, name='W', rate=0, bhp_constraint=300)
+            wdata.add_prd_rate_control(time=2*y2d, name='W', rate=5500, bhp_constraint=300)
+            wdata.add_prd_rate_control(time=3*y2d, name='W', rate=0, bhp_constraint=300)
+            wdata.add_inj_rate_control(time=4*y2d, name='W', rate=5500, bhp_constraint=300, temperature=300)
         else:
             print('Unknown wctrl_type', wctrl_type)
             exit(1)

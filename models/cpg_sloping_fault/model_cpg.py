@@ -160,6 +160,11 @@ class Model_CPG(CICDModel):
         class InputDataGeom():  # to group geometry input data
             def __init__(self):
                 pass
+
+        dt = 365.25  # one report timestep length, [days]
+        n_time_steps = 20
+        self.idata.sim.time_steps = np.zeros(n_time_steps) + dt
+
         self.idata.generate_grid = 'generate' in case
         self.idata.geom = InputDataGeom()
         geom = self.idata.geom  # a short name
@@ -178,6 +183,7 @@ class Model_CPG(CICDModel):
                 # vertical wells locations, 1-based indices
                 well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(geom.nx // 2 - int(500 // geom.dx), geom.ny // 2, -1)) # I = 0.5 km to the left from the center
                 well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(geom.nx // 2 + int(500 // geom.dx), geom.ny // 2, -1))# I = 0.5 km to the right from the center
+                #well_data.add_well(name='W', loc_type='ijk', loc_ijk=(geom.nx // 2 , geom.ny // 2, -1))
             elif case == 'generate_5x3x4':
                 geom.nx = 5
                 geom.ny = 3
@@ -232,3 +238,27 @@ class Model_CPG(CICDModel):
         # the cells with lower poro will be treated as shale when setting the rock thermal properties
         self.idata.rock.poro_shale_threshold = 1e-3
         ############################################################################
+
+    def run_simulation(self):
+        time = 0.0
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            self.run(dt)
+            time += dt
+            # save to grdecl file after each time step
+            #self.save_grdecl(os.path.join(out_dir, 'res_' + str(ti+1)))
+            self.physics.engine.report()
+            self.print_well_rate()
+            self.set_well_controls(time=time)
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        from pyevtk.hl import pointsToVTK
+        fname = os.path.join(out_dir, 'centers')
+        c_cpg = self.reservoir.centroids_all_cells[:self.reservoir.discr_mesh.n_cells]
+        c = np.zeros((self.reservoir.discr_mesh.n_cells, 3))
+        for i in range(self.reservoir.discr_mesh.n_cells):
+            cv = c_cpg[i].values
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        if c is not None:
+            pointsToVTK(fname, x, y, z)
