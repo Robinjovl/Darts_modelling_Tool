@@ -50,7 +50,7 @@ class Model_CPG(CICDModel):
             # Use read_arrays(self.idata.gridfile, self.idata.gridfile) if all the data is in a single file
             arrays = read_arrays(self.idata.gridfile, self.idata.propfile)
             check_arrays(arrays)
-            if self.physics_type == 'dead_oil':  # set inactive cells with small porosity (isothermal case)
+            if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
                 arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
             elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
                 for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:

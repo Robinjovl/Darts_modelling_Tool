@@ -27,7 +27,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     if physics_type == 'geothermal':
         m = ModelGeothermal(case=case, grid_out_dir=out_dir, iapws_physics=True)
-    elif physics_type == 'dead_oil':
+    elif physics_type == 'deadoil':
         m = ModelDeadOil(case=case, grid_out_dir=out_dir)
     else:
         print('Error: wrong physics specified:', physics_type)
@@ -213,7 +213,7 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    #physics_list += ['dead_oil']
+    #physics_list += ['deadoil']
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
