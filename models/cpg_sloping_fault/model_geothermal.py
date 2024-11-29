@@ -44,6 +44,7 @@ class ModelGeothermal(Model_CPG):
             for wctrl_t in self.idata.well_data.wells[w.name].controls:
                 if wctrl_t[0] >= time:  # check time
                     wctrl = wctrl_t[1]
+                    break
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
@@ -176,11 +177,12 @@ class ModelGeothermal(Model_CPG):
         elif wctrl_type == 'periodic':
             wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
-            wdata.add_inj_rate_control(time=0*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
-            wdata.add_prd_rate_control(time=1*y2d, name=wname, rate=0,    bhp_constraint=5)
-            wdata.add_prd_rate_control(time=2*y2d, name=wname, rate=5500, bhp_constraint=5)
-            wdata.add_prd_rate_control(time=3*y2d, name=wname, rate=0,    bhp_constraint=5)
-            wdata.add_inj_rate_control(time=4*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
+            for i in range(0, len(self.idata.sim.time_steps), 4):
+                # inj - stop - prod - stop
+                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
+                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    bhp_constraint=5)
+                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, bhp_constraint=5)
+                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    bhp_constraint=5)
         else:
             print('Unknown wctrl_type', wctrl_type)
             exit(1)
