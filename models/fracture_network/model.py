@@ -154,7 +154,7 @@ class Model(CICDModel):
         return "I" in wname
 
     def set_well_controls(self):
-        wctrl = self.idata.wells.controls
+        wctrl = self.idata.well_data.controls
         inj_rate = wctrl.inj_rate
         prod_rate = wctrl.prod_rate
 
