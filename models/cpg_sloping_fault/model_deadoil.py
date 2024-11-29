@@ -63,21 +63,59 @@ class ModelDeadOil(Model_CPG):
         # call base-class function from dart to transfer self.initial_values to actual arrays used in computation
         super().set_initial_conditions()
 
-    def set_well_controls(self):
-        wctrl = self.idata.wells.controls
-        for i, w in enumerate(self.reservoir.wells):
-            if self.well_is_inj(w.name):  # INJ well
-                if wctrl.type == 'rate': # rate control
-                    w.control = self.physics.new_rate_inj(wctrl.inj_rate, wctrl.inj, wctrl.inj_comp_index)
-                    w.constraint = self.physics.new_bhp_inj(wctrl.inj_bhp_constraint, wctrl.inj)
-                elif wctrl.type == 'bhp': # BHP control
+    # def set_well_controls(self):
+    #     wctrl = self.idata.wells.controls
+    #     for i, w in enumerate(self.reservoir.wells):
+    #         if self.well_is_inj(w.name):  # INJ well
+    #             if wctrl.type == 'rate': # rate control
+    #                 w.control = self.physics.new_rate_inj(wctrl.inj_rate, wctrl.inj, wctrl.inj_comp_index)
+    #                 w.constraint = self.physics.new_bhp_inj(wctrl.inj_bhp_constraint, wctrl.inj)
+    #             elif wctrl.type == 'bhp': # BHP control
+    #                 w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
+    #         else:  # PROD well
+    #             if wctrl.type == 'rate': # rate control
+    #                 w.control = self.physics.new_rate_prod(wctrl.prod_rate)
+    #                 w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+    #             elif wctrl.type == 'bhp': # BHP control
+    #                 w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
+    def set_well_controls(self, time: float = 0., verbose=True):
+        '''
+        :param time: simulation time, [days]
+        :return:
+        '''
+        for w in self.reservoir.wells:
+            # find next well control in controls list for different timesteps
+            wctrl = self.idata.well_data.wells[w.name].controls[0][1]  # pick the first control (for the case if it is just one)
+            for wctrl_t in self.idata.well_data.wells[w.name].controls:
+                if wctrl_t[0] >= time:  # check time
+                    wctrl = wctrl_t[1]
+                    break
+            if wctrl.type == 'inj':  # INJ well
+                if wctrl.mode == 'rate': # rate control
+                    w.control = self.physics.new_rate_inj(wctrl.rate, wctrl.inj, wctrl.inj_comp_index)
+                    w.constraint = self.physics.new_bhp_inj(wctrl.bhp_constraint, wctrl.inj)
+                elif wctrl.mode == 'bhp': # BHP control
                     w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
-            else:  # PROD well
-                if wctrl.type == 'rate': # rate control
-                    w.control = self.physics.new_rate_prod(wctrl.prod_rate)
+                else:
+                    print('Unknown well ctrl.mode', wctrl.mode)
+                    exit(1)
+            elif wctrl.type == 'prod':  # PROD well
+                if wctrl.mode == 'rate': # rate control
+                    w.control = self.physics.new_rate_prod(wctrl.rate)
                     w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
-                elif wctrl.type == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
+                elif wctrl.mode == 'bhp': # BHP control
+                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
+                else:
+                    print('Unknown well ctrl.mode', wctrl.mode)
+                    exit(1)
+            else:
+                print('Unknown well ctrl.type', wctrl.type)
+                exit(1)
+            if verbose:
+                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
+            assert w.control is not None, 'well control is not initialized!' + w.name
+            if w.constraint is not None and wctrl.mode == 'rate':
+                print('well control is not initialized!' + w.name)
 
     def get_arrays(self):
         '''
@@ -123,24 +161,25 @@ class ModelDeadOil(Model_CPG):
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-
         # well controls
-        wctrl = self.idata.wells.controls  # short name
+        wdata = self.idata.well_data
+        wells = wdata.wells  # short name
+        # set default injection composition
+        wdata.inj = value_vector([self.zero])  # injection composition - water
 
-        #wctrl.type = 'rate'
-        wctrl.type = 'bhp'
-
-        wctrl.inj = value_vector([self.zero])  # injection composition - water
-
-        if wctrl.type == 'bhp':
-            self.idata.wells.controls.inj_bhp = 250 # bars
-            self.idata.wells.controls.prod_bhp = 100 # bars
-        elif wctrl.type == 'rate':
-            self.idata.wells.controls.inj_rate = 200 # kmol/day
-            self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
-            self.idata.wells.controls.prod_rate = 200 # kmol/day
-            self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
-        self.idata.wells.controls.inj_bht = 300  # K
+        if 'wbhp' in case:
+            for w in wells:
+                if self.well_is_inj(w):
+                    wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
+                else:  # prod
+                    wdata.add_prd_bhp_control(name=w, bhp=100)  # m3/day | bars
+        elif 'wrate' in case:
+            for w in wells:
+                if self.well_is_inj(w):
+                    wdata.add_inj_rate_control(name=w, rate=200, bhp_constraint=300,
+                                               temperature=300)  # m3/day | bars | K
+                else:  # prod
+                    wdata.add_prd_rate_control(name=w, rate=200, bhp_constraint=70)  # m3/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
