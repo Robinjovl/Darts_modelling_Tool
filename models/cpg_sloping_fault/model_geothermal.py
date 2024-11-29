@@ -174,12 +174,13 @@ class ModelGeothermal(Model_CPG):
                 else: # prod
                     wdata.add_prd_rate_control(name=w, rate=5500, bhp_constraint=70) # m3/day | bars
         elif wctrl_type == 'periodic':
+            wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
-            wdata.add_inj_rate_control(time=0,   name='W', rate=5500, bhp_constraint=300, temperature=300)
-            wdata.add_prd_rate_control(time=1*y2d, name='W', rate=0, bhp_constraint=300)
-            wdata.add_prd_rate_control(time=2*y2d, name='W', rate=5500, bhp_constraint=300)
-            wdata.add_prd_rate_control(time=3*y2d, name='W', rate=0, bhp_constraint=300)
-            wdata.add_inj_rate_control(time=4*y2d, name='W', rate=5500, bhp_constraint=300, temperature=300)
+            wdata.add_inj_rate_control(time=0*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
+            wdata.add_prd_rate_control(time=1*y2d, name=wname, rate=0,    bhp_constraint=5)
+            wdata.add_prd_rate_control(time=2*y2d, name=wname, rate=5500, bhp_constraint=5)
+            wdata.add_prd_rate_control(time=3*y2d, name=wname, rate=0,    bhp_constraint=5)
+            wdata.add_inj_rate_control(time=4*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
         else:
             print('Unknown wctrl_type', wctrl_type)
             exit(1)

@@ -93,43 +93,45 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         abort_redirection(log_stream)
     print('Failed' if failed else 'Ok')
 
-    return failed, sim_time, time_data, time_data_report
+    return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
 ##########################################################################################################
-def plot_results(time_data, time_data_report, physics_type, out_dir):
-    well_name = 'PRD'
+def plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir):
     plt.rc('font', size=12)
 
-    if physics_type == 'geothermal':
-        ax1 = plot_temp_darts(well_name, time_data_report)
-        ax1.set(xlabel="Days", ylabel="temperature [degrees]")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'well_temperature_' + case + '.png'))
-        plt.close()
-
-        # use time_data here as we are going to compute a cumulative plot
-        ax1 = plot_extracted_energy_darts(time_data)
-        ax1.set(xlabel="Days", ylabel="energy [PJ]")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'energy_extracted_' + case + '.png'))
-        plt.close()
-    else:
-        # rate plotting
-        ax1 = plot_total_prod_oil_rate_darts(time_data_report)
-        ax1.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
-        plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + case + '.png'), )
-        plt.close()
-
-        if False:
-            #TODO need to get proper volumetric rates to compute the watercut
-            wcut = f'{well_name}' + ' watercut'
-            results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
-            ax3 = results.plot(x='time', y=wcut, label=wcut)
-            ax3.set_ylim(0, 1)
-            ax3.set(xlabel="Days", ylabel="Water cut [-]")
+    for well_name in wells:
+        if well_is_inj(well_name):
+            continue
+        if physics_type == 'geothermal':
+            ax1 = plot_temp_darts(well_name, time_data_report)
+            ax1.set(xlabel="Days", ylabel="temperature [degrees]")
             plt.tight_layout()
-            plt.savefig(os.path.join(out_dir, 'water_cut_' + case + '.png'))
+            plt.savefig(os.path.join(out_dir, 'well_temperature_' + well_name + '_' + case + '.png'))
             plt.close()
+
+            # use time_data here as we are going to compute a cumulative plot
+            ax1 = plot_extracted_energy_darts(time_data)
+            ax1.set(xlabel="Days", ylabel="energy [PJ]")
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir, 'energy_extracted_' + well_name + '_' + case + '.png'))
+            plt.close()
+        else:
+            # rate plotting
+            ax1 = plot_total_prod_oil_rate_darts(time_data_report)
+            ax1.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
+            plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + well_name + '_' + case + '.png'), )
+            plt.close()
+
+            if False:
+                #TODO need to get proper volumetric rates to compute the watercut
+                wcut = f'{well_name}' + ' watercut'
+                results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+                ax3 = results.plot(x='time', y=wcut, label=wcut)
+                ax3.set_ylim(0, 1)
+                ax3.set(xlabel="Days", ylabel="Water cut [-]")
+                plt.tight_layout()
+                plt.savefig(os.path.join(out_dir, 'water_cut_' + well_name + '_' + case + '.png'))
+                plt.close()
 
     rate_units = 'm3/day' if physics_type == 'geothermal' else 'kmol/day'
 
@@ -146,7 +148,7 @@ def plot_results(time_data, time_data_report, physics_type, out_dir):
     plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
     plt.close()
 
-    for well_name in ['PRD', 'INJ']:
+    for well_name in wells:
         ax = plot_bhp_darts(well_name, time_data_report)
         ax.set(xlabel="Days", ylabel="BHP [bar]")
         plt.savefig(os.path.join(out_dir, 'well_' + well_name + '_bhp_' + case + '.png'))
@@ -227,10 +229,10 @@ if __name__ == '__main__':
         for case in cases_list:
             out_dir = 'results_' + physics_type + '_' + case
 
-            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
+            failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
             #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
-            plot_results(time_data, time_data_report, physics_type, out_dir)
+            plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir)
 
