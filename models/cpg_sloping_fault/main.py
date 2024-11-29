@@ -195,11 +195,8 @@ def run_test(args: list = [], platform='cpu'):
         case = args[0]
         physics_type = args[1]
 
-        dt = 365.25  # one report timestep length, [days]
-        n_time_steps = 20
-
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
+        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
