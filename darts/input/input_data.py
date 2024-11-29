@@ -206,7 +206,7 @@ class WellData():
         wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint)
         self.wells[name].controls.append((time, wctrl))
 
-    def prod_bhp_control(self, name, bhp, time=0):
+    def add_prd_bhp_control(self, name, bhp, time=0):
         wctrl = WellControl()
         wctrl.prod_bhp_control(bhp=bhp)
         self.wells[name].controls.append((time, wctrl))
