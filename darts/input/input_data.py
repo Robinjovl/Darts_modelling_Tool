@@ -79,7 +79,7 @@ class MeshData():
         self.matrix_tags = None
         self.mesh_filename = None
         
-class WellControlsConst():
+class WellControl():
     '''
     constant well controls during the simulation
     '''
@@ -132,7 +132,7 @@ class WellControlsConst():
         self.inj_bht = temperature  # K
         # if Compositional
         self.inj_comp_index = comp_index # injection composition index, [int]
-
+        
 class WellLocIJK():
     '''
     well location for structured grid, 1-based integer grid cell indices I,J,K
@@ -201,7 +201,7 @@ class WellData():
                                                             bhp_constraint=bhp_constraint, inj_temp=inj_temp,
                                                             inj_comp_index=inj_comp_index)))
 
-    def add_prod_rate_control(self, name, rate, bhp_constraint, time=0):
+    def add_prd_rate_control(self, name, rate, bhp_constraint, time=0):
         wctrl = WellControl()
         wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint)
         self.wells[name].controls.append((time, wctrl))
@@ -260,7 +260,7 @@ class InputData():
         self.fluid = FluidProps()
         self.obl = OBLParams()
         self.initial = InitialSolution(init_type)
-        self.wells = Wells()
+        self.well_data = WellData()
         self.mesh = MeshData()
         self.boundary = None
         self.sim = Simulation()
