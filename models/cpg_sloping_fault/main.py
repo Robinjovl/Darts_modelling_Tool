@@ -225,11 +225,17 @@ if __name__ == '__main__':
     #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
-    for physics_type in physics_list:
-        for case in cases_list:
-            out_dir = 'results_' + physics_type + '_' + case
+    well_controls = []
+    well_controls += ['wrate']
+    #well_controls += ['wbhp']
+    #well_controls += ['wperiodic']
 
-            failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
+    for physics_type in physics_list:
+        for case_geom in cases_list:
+            for wctrl in well_controls:
+                case = case_geom + '_' + wctrl
+                out_dir = 'results_' + physics_type + '_' + case
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
             #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))

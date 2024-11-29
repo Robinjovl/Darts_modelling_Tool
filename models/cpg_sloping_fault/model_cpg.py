@@ -171,7 +171,7 @@ class Model_CPG(CICDModel):
 
         well_data = self.idata.well_data
         if self.idata.generate_grid:
-            if case == 'generate_51x51x1':   # 4x4x0.1 km
+            if 'generate_51x51x1' in case:   # 4x4x0.1 km
                 geom.nx = 51
                 geom.ny = 51
                 geom.nz = 1
@@ -181,10 +181,13 @@ class Model_CPG(CICDModel):
                 geom.start_z = 2000  # top reservoir depth
                 geom.burden_layers = 4  # the number of overburden layers (= the number of underburden layers), used only in the thermal case
                 # vertical wells locations, 1-based indices
-                well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(geom.nx // 2 - int(500 // geom.dx), geom.ny // 2, -1)) # I = 0.5 km to the left from the center
-                well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(geom.nx // 2 + int(500 // geom.dx), geom.ny // 2, -1))# I = 0.5 km to the right from the center
-                #well_data.add_well(name='W', loc_type='ijk', loc_ijk=(geom.nx // 2 , geom.ny // 2, -1))
-            elif case == 'generate_5x3x4':
+                if 'wperiodic' in case:
+                    well_data.add_well(name='W', loc_type='ijk', loc_ijk=(geom.nx // 2, geom.ny // 2, -1))
+                else:
+                    well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(geom.nx // 2 - int(500 // geom.dx), geom.ny // 2, -1)) # I = 0.5 km to the left from the center
+                    well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(geom.nx // 2 + int(500 // geom.dx), geom.ny // 2, -1))# I = 0.5 km to the right from the center
+
+            elif 'generate_5x3x4' in case:
                 geom.nx = 5
                 geom.ny = 3
                 geom.nz = 4
@@ -197,7 +200,7 @@ class Model_CPG(CICDModel):
                 well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(1, 1, -1))
                 well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(3, 3, -1))
                 #one might use wells.add_well(name='PRD', loc_type='xyz', loc_xyz=(250.0, 500.0, 890.0))
-            elif case == 'generate_100x100x100':
+            elif 'generate_100x100x100' in case:
                 geom.nx = geom.ny = geom.nz = 100
                 geom.dx = geom.dy = 10
                 geom.dz = 1
@@ -242,13 +245,13 @@ class Model_CPG(CICDModel):
     def run_simulation(self):
         time = 0.0
         for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            self.set_well_controls(time=time)
             self.run(dt)
             time += dt
             # save to grdecl file after each time step
             #self.save_grdecl(os.path.join(out_dir, 'res_' + str(ti+1)))
             self.physics.engine.report()
             self.print_well_rate()
-            self.set_well_controls(time=time)
 
     def centers_to_vtk(self, out_dir):
         # output center points to VTK

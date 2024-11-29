@@ -40,7 +40,7 @@ class ModelGeothermal(Model_CPG):
         '''
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
-            wctrl = self.idata.well_data.wells[w.name].controls[0][1]
+            wctrl = self.idata.well_data.wells[w.name].controls[0][1]  # pick the first control (for the case if it is just one)
             for wctrl_t in self.idata.well_data.wells[w.name].controls:
                 if wctrl_t[0] >= time:  # check time
                     wctrl = wctrl_t[1]
@@ -68,8 +68,9 @@ class ModelGeothermal(Model_CPG):
                 exit(1)
             if verbose:
                 print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
-                assert w.control is not None, 'well control is not initialized!' + w.name
-                assert w.constraint is not None, 'well control is not initialized!' + w.name
+            assert w.control is not None, 'well control is not initialized!' + w.name
+            if w.constraint is not None and wctrl.mode == 'rate':
+                print('well control is not initialized!' + w.name)
 
     def get_arrays(self):
         '''
@@ -158,34 +159,30 @@ class ModelGeothermal(Model_CPG):
         # well controls
         wdata = self.idata.well_data
         wells = wdata.wells  # short name
-        wctrl_type = 'rate'
-        #wctrl_type = 'bhp'
-        #wctrl_type = 'periodic'
 
-        if wctrl_type == 'bhp':
+        if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
                     wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prd_bhp_control(name=w, bhp_constraint=100) # m3/day | bars
-        elif wctrl_type == 'rate':
+                    wdata.add_prd_bhp_control(name=w, bhp=100) # m3/day | bars
+        elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w):
                     wdata.add_inj_rate_control(name=w, rate=5500, bhp_constraint=300, temperature=300)  # m3/day | bars | K
                 else: # prod
                     wdata.add_prd_rate_control(name=w, rate=5500, bhp_constraint=70) # m3/day | bars
-        elif wctrl_type == 'periodic':
+        elif 'wperiodic' in case:
             wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
             for i in range(0, len(self.idata.sim.time_steps), 4):
-                # inj - stop - prod - stop
+                # iterate [inj - stop - prod - stop]
                 wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
                 wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    bhp_constraint=5)
                 wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, bhp_constraint=5)
                 wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    bhp_constraint=5)
         else:
-            print('Unknown wctrl_type', wctrl_type)
-            exit(1)
+            assert False, 'Unknown wctrl_type' +  case
 
         self.idata.obl.n_points = 100
         self.idata.obl.min_p = 50.

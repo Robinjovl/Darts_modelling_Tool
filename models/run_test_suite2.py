@@ -54,9 +54,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if iter_solvers:  # run this case only for the build with iterative solvers
         cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
     test_args_cpg = []
-    for case in cpg_cases_list:
+    for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'dead_oil']:
-            test_args_cpg.append([case, physics_type])
+            for wctrl in ['wrate']:
+                case = case_geom + '_' + wctrl
+                test_args_cpg.append([case, physics_type])
     test_args_cpg = [test_args_cpg]
 
     # DFN (python discr)
