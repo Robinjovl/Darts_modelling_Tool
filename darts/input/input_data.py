@@ -301,11 +301,11 @@ class InputData():
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         '''
-        no_array_obj = ['fluid', 'obl', 'mesh', 'initial', 'wells', 'other']
+        array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
-            if k in no_array_obj:
+            if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
@@ -318,7 +318,7 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
-            if k in no_array_obj:
+            if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
