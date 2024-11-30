@@ -63,26 +63,13 @@ class ModelDeadOil(Model_CPG):
         # call base-class function from dart to transfer self.initial_values to actual arrays used in computation
         super().set_initial_conditions()
 
-    # def set_well_controls(self):
-    #     wctrl = self.idata.wells.controls
-    #     for i, w in enumerate(self.reservoir.wells):
-    #         if self.well_is_inj(w.name):  # INJ well
-    #             if wctrl.type == 'rate': # rate control
-    #                 w.control = self.physics.new_rate_inj(wctrl.inj_rate, wctrl.inj, wctrl.inj_comp_index)
-    #                 w.constraint = self.physics.new_bhp_inj(wctrl.inj_bhp_constraint, wctrl.inj)
-    #             elif wctrl.type == 'bhp': # BHP control
-    #                 w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
-    #         else:  # PROD well
-    #             if wctrl.type == 'rate': # rate control
-    #                 w.control = self.physics.new_rate_prod(wctrl.prod_rate)
-    #                 w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
-    #             elif wctrl.type == 'bhp': # BHP control
-    #                 w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
     def set_well_controls(self, time: float = 0., verbose=True):
         '''
         :param time: simulation time, [days]
         :return:
         '''
+        inj_stream_base = [self.physics.zero * 100]
+
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
             wctrl = self.idata.well_data.wells[w.name].controls[0][1]  # pick the first control (for the case if it is just one)
@@ -91,18 +78,21 @@ class ModelDeadOil(Model_CPG):
                     wctrl = wctrl_t[1]
                     break
             if wctrl.type == 'inj':  # INJ well
+                inj_stream = inj_stream_base
+                if self.physics.thermal:
+                    inj_stream += [wctrl.inj_bht]
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_inj(wctrl.rate, wctrl.inj, wctrl.inj_comp_index)
-                    w.constraint = self.physics.new_bhp_inj(wctrl.bhp_constraint, wctrl.inj)
+                    w.control = self.physics.new_rate_inj(wctrl.rate, inj_stream, wctrl.comp_index)
+                    w.constraint = self.physics.new_bhp_inj(wctrl.bhp_constraint, inj_stream)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
+                    w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.comp_index)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_prod(wctrl.rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+                    w.control = self.physics.new_rate_prod(wctrl.rate, wctrl.comp_index)
+                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
                     w.control = self.physics.new_bhp_prod(wctrl.bhp)
                 else:
@@ -170,16 +160,16 @@ class ModelDeadOil(Model_CPG):
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
+                    wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_bhp_control(name=w, bhp=100)  # m3/day | bars
+                    wdata.add_prd_bhp_control(name=w,bhp=100)  # kmol/day | bars
         elif 'wrate' in case:
             for w in wells:
-                if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, rate=200, bhp_constraint=300,
-                                               temperature=300)  # m3/day | bars | K
+                if self.well_is_inj(w): # inject water
+                    wdata.add_inj_rate_control(name=w, rate=200, comp_index=1, bhp_constraint=300,
+                                               temperature=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=200, bhp_constraint=70)  # m3/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=200, comp_index=0, bhp_constraint=70)  # kmol/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13

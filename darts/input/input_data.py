@@ -97,14 +97,16 @@ class WellControl():
         # if thermal
         self.inj_bht = None  # K
         # if Compositional
-        self.inj_comp_index = None # injection composition index, [int]
+        self.comp_index = None # composition index, [int]
 
-    def prod_rate_control(self, rate, bhp_constraint):
+    def prod_rate_control(self, rate, bhp_constraint, comp_index=None):
         self.reset()
         self.type = 'prod'
         self.mode = 'rate'
         self.rate = rate
         self.bhp_constraint = bhp_constraint
+        # if Compositional
+        self.comp_index = comp_index # production composition index, [int]
 
     def prod_bhp_control(self, bhp):
         self.reset()
@@ -121,7 +123,7 @@ class WellControl():
         # if thermal
         self.inj_bht = temperature  # K
         # if Compositional
-        self.inj_comp_index = comp_index # injection composition index, [int]
+        self.comp_index = comp_index # injection composition index, [int]
 
     def inj_bhp_control(self, bhp, temperature=None, comp_index=None):
         self.reset()
@@ -131,7 +133,7 @@ class WellControl():
         # if thermal
         self.inj_bht = temperature  # K
         # if Compositional
-        self.inj_comp_index = comp_index # injection composition index, [int]
+        self.comp_index = comp_index # injection composition index, [int]
         
 class WellLocIJK():
     '''
@@ -184,7 +186,7 @@ class WellData():
         self.wells[name] = w
 
     def add_control(self, name : str, time : float, type : str, mode : str, rate : float, bhp : float,
-                    bhp_constraint : float, inj_temp : float, inj_comp_index : float):
+                    bhp_constraint : float, inj_temp : float, comp_index : float):
         '''
         :param name: well name
         :param time: simulation timestep, [days]
@@ -194,16 +196,16 @@ class WellData():
         :param bhp: bottom hole pressure, can be None if rate-controlled
         :param bhp_constraint: bottom hole pressure constraint (min for prod and max for inj wells)
         :param inj_temp: injection temperature, [K]
-        :param inj_comp_index # injection composition index, [int], for Compositional physics
+        :param comp_index # injection composition index, [int], for Compositional physics
         :return:
         '''
         self.wells[name].controls.append((time, WellControl(type=type, mode=mode, rate=rate, bhp=bhp,
                                                             bhp_constraint=bhp_constraint, inj_temp=inj_temp,
-                                                            inj_comp_index=inj_comp_index)))
+                                                            comp_index=comp_index)))
 
-    def add_prd_rate_control(self, name, rate, bhp_constraint, time=0):
+    def add_prd_rate_control(self, name, rate, bhp_constraint, comp_index=None, time=0):
         wctrl = WellControl()
-        wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint)
+        wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint, comp_index=comp_index)
         self.wells[name].controls.append((time, wctrl))
 
     def add_prd_bhp_control(self, name, bhp, time=0):

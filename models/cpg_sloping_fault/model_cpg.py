@@ -186,7 +186,6 @@ class Model_CPG(CICDModel):
                 else:
                     well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(geom.nx // 2 - int(500 // geom.dx), geom.ny // 2, -1)) # I = 0.5 km to the left from the center
                     well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(geom.nx // 2 + int(500 // geom.dx), geom.ny // 2, -1))# I = 0.5 km to the right from the center
-
             elif 'generate_5x3x4' in case:
                 geom.nx = 5
                 geom.ny = 3
