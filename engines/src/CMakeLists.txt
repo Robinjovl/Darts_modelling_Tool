@@ -330,6 +330,7 @@ target_sources(engines_engines
   PRIVATE
     ${OD_ENGINES_ENGINES_SRC_FILES}
     ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+	${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_engines
@@ -338,6 +339,7 @@ target_link_libraries(engines_engines
     linear_solvers
     engines_interpolator
     Eigen3::Eigen
+	HYPRE::HYPRE
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

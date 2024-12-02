@@ -18,7 +18,7 @@ namespace dis
   // 'Tvar' - temperature
   enum VarName { Uvar, Pvar, Tvar };
   
-  template <VarName Var> constexpr index_t var_block_size;
+  template <VarName Var> constexpr index_t var_block_size = 0;
   template <> constexpr index_t var_block_size<Uvar> = 3; // number of veriables for the displacements (ux, uy, uz)
   template <> constexpr index_t var_block_size<Pvar> = 1; // number of veriables for the pressure (p)
   template <> constexpr index_t var_block_size<Tvar> = 1; // number of veriables for the heat (T)

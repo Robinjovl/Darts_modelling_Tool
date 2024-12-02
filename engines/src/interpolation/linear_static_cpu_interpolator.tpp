@@ -2,9 +2,12 @@
 
 template <typename index_t, int N_DIMS, int N_OPS>
 linear_static_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_static_cpu_interpolator(
-    operator_set_evaluator_iface *supporting_point_evaluator, const std::vector<int> &axes_points,
-    const std::vector<double> &axes_min, const std::vector<double> &axes_max)
-    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+    operator_set_evaluator_iface *supporting_point_evaluator, 
+    const std::vector<int> &axes_points,
+    const std::vector<double> &axes_min, 
+    const std::vector<double> &axes_max, 
+    bool _use_barycentric_interpolation)
+    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max, _use_barycentric_interpolation)
 {
     this->n_points_used = this->n_points_total;
 }

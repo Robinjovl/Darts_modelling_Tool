@@ -6,8 +6,8 @@ class RockProps():
     '''
     def __init__(self, type_hydr='', type_mech=''):
         '''
-        :param type_hydr: if '' - idothermal flow; if 'thermal' - thermal flow
-        :param type_mech: if '' - mechanics off; options: 'poroelasticity', 'thermoporoelasticity'
+        :param type_hydr: if 'isothermal' - isothermal flow; if 'thermal' - thermal flow
+        :param type_mech: if 'none' - mechanics off; other options: 'poroelasticity', 'thermoporoelasticity'
         '''
         self.porosity = None
         self.perm = None  # Permeability tensor, 9 values [mD]
@@ -19,13 +19,13 @@ class RockProps():
             self.heat_capacity = None  # [kJ/m3/K]
             self.conductivity = None   # thermal conductivity [kJ/m/day/K]
         
-        if type_mech != '': # geomechanical properties
+        if type_mech != 'none': # geomechanical properties
             self.E = None   # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
         else: # only hydrodynamic
-            self.compressibility = 1.   # [1/bar]
+            self.compressibility = None   # [1/bar]
 
         if type_mech == 'thermoporoelasticity': # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
@@ -55,16 +55,54 @@ class InitialSolution():
     Class for initial values
     '''
     def __init__(self, type='uniform'):
+        self.type = type
         if type == 'uniform':
             self.initial_pressure = None  # [bars]
             self.initial_temperature = None  # [K]
         elif type == 'gradient':
             self.reference_depth_for_temperature = None  # [m]
-            self.temperature_gradient = None  # [K/m]
+            self.temperature_gradient = None  # [K/km]
+            self.temperature_at_ref_depth = None  # [K]
             self.reference_depth_for_pressure = None  # [m]
-            self.pressure_gradient = None  # [bar/m]
+            self.pressure_gradient = None  # [bar/km]
+            self.pressure_at_ref_depth = None # [bars]
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
+
+class MeshData():
+    '''
+    tags
+    '''
+    def __init__(self):
+        self.bnd_tags = None
+        self.matrix_tags = None
+        self.mesh_filename = None
+        
+class WellControlsConst():
+    '''
+    constant well controls during the simulation
+    '''
+    def __init__(self):
+        self.type = None  #  'rate' or 'bhp'
+        # bhp
+        self.inj_bhp = None # bars
+        self.prod_bhp = None # bars
+        # rate
+        self.inj_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.inj_bhp_constraint = None # upper limit for bhp, bars
+        self.prod_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.prod_bhp_constraint = None # lower limit for bhp, bars
+        # if thermal
+        self.inj_bht = None  # K
+        # if Compositional
+        self.inj_comp_index = None # injection composition index, [int]
+
+class Wells():
+    '''
+    well definition
+    '''
+    def __init__(self):
+        self.controls = WellControlsConst()
 
 class OBLParams():
     '''
@@ -80,6 +118,13 @@ class OBLParams():
         self.min_z = None
         self.max_z = None
 
+class Simulation():
+    '''
+
+    '''
+    def __init__(self):
+        self.time_steps = None
+
 class OtherProps():
     '''
     Other user defined properties
@@ -91,23 +136,27 @@ class InputData():
     '''
     Class for initial values
     '''
-    def __init__(self, type_hydr, type_mech):
+    def __init__(self, type_hydr, type_mech, init_type):
         self.type_hydr = type_hydr
         self.type_mech = type_mech
         self.rock = RockProps(type_hydr, type_mech)
         self.fluid = FluidProps()
         self.obl = OBLParams()
-        self.initial = InitialSolution()
+        self.initial = InitialSolution(init_type)
+        self.wells = Wells()
+        self.mesh = MeshData()
+        self.boundary = None
+        self.sim = Simulation()
         self.other = OtherProps()
         
     def check(self):
         assert self.type_hydr in ['isothermal', 'thermal'], 'input_data: Unknown type_hydr'
-        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity'], 'input_data: Unknown type_mech'
+        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity', 'none'], 'input_data: Unknown type_mech'
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            if k == 'initial':  # do not check initial currently #TODO
+            if k in ['initial', 'mesh', 'sim']:  # do not check initial currently #TODO
                 continue
             for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
@@ -135,9 +184,12 @@ class InputData():
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         '''
+        no_array_obj = ['fluid', 'obl', 'mesh', 'initial', 'wells', 'other']
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
+            if k in no_array_obj:
+                continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
@@ -149,7 +201,7 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
-            if k == 'fluid' or k == 'obl':
+            if k in no_array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):

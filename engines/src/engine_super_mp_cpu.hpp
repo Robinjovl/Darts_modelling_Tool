@@ -45,8 +45,8 @@ public:
 
   const static uint8_t N_STATE = NC_ + THERMAL;
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2*NP gravity and capillarity, 1 porosity, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 2 /*temperature and pressure*/;
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2*NP gravity and capillarity, 1 porosity, NP enthalpy, 2 temperature and pressure
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -60,8 +60,9 @@ public:
   const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE;
   const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + NP;
   const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 2;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + 1;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -69,7 +70,7 @@ public:
   std::vector<index_t> stoich_coef;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const override { return N_VARS; };
   uint8_t get_n_ops() const override { return N_OPS; };

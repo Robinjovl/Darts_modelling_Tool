@@ -268,7 +268,7 @@ class UnstructReservoir(ReservoirBase):
             print('Writing mesh data to VTK file')
             meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
 
@@ -278,10 +278,10 @@ class UnstructReservoir(ReservoirBase):
         :type t: float
         :param output_directory: Path to save .vtk file
         :type output_directory: str
-        :param prop_idxs: Dictionary of properties with data array indices for output
-        :type prop_idxs: dict
+        :param prop_names: List of keys for properties
+        :type prop_names: list
         :param data: Data for output
-        :type data: np.ndarray
+        :type data: dict
         """
         # First check if output directory already exists:
         os.makedirs(output_directory, exist_ok=True)
@@ -294,7 +294,7 @@ class UnstructReservoir(ReservoirBase):
         output_idxs = self.discretizer.vtk_output_cell_idxs['matrix'] if not self.discretizer.frac_cells_tot \
             else {**self.discretizer.vtk_output_cell_idxs['fracture'], **self.discretizer.vtk_output_cell_idxs['matrix']}
         geometries = output_nodes.keys()
-        cell_data = {key: [[] for geometry in geometries] for key in prop_idxs.keys()}
+        cell_data = {prop: [[] for geometry in geometries] for prop in prop_names}
 
         # Distinguish fracture cells from matrix cells
         cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
@@ -306,19 +306,25 @@ class UnstructReservoir(ReservoirBase):
             cell_data['matrix_cell_bool'][ith_geometry] += np.ones(len(cell_idxs)).tolist()  # fill matrix cells with ones
             ith_geometry += 1
 
-        # Loop over output properties
-        for prop, idx in prop_idxs.items():
-            # Loop over fracture and matrix cells (in that order)
-            for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
-                cell_data[prop][ith_geometry] += data[idx, cell_idxs].tolist()
+        for ts, t in enumerate(time_steps):
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
 
-        # Temporarily store mesh_data in copy:
-        mesh = meshio.Mesh(
-            points=self.discretizer.mesh_data.points,  # list of point coordinates
-            cells=output_nodes,  # list of cell geometries and idxs for reporting
-            # Each item in cell data must match the cells array
-            cell_data=cell_data
-        )
+            # Loop over output properties
+            for prop in prop_names:
+                # Loop over fracture and matrix cells (in that order)
+                for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
+                    cell_data[prop][ith_geometry] += data[prop][ts][cell_idxs].tolist()
 
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+            # Temporarily store mesh_data in copy:
+            mesh = meshio.Mesh(
+                points=self.discretizer.mesh_data.points,  # list of point coordinates
+                cells=output_nodes,  # list of cell geometries and idxs for reporting
+                # Each item in cell data must match the cells array
+                cell_data=cell_data
+            )
+
+            print('Writing data to VTK file for {:d}-th reporting step'.format(ts))
+            meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ts), mesh)

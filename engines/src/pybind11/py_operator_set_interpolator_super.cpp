@@ -34,30 +34,34 @@ void pybind_operator_set_interpolator_super(py::module &m)
 {
   // N_OPS = A * NC + B
   expose_recursive_exposer<
-    //  engine_super_*
-	//    NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 2 /*temperature and pressure*/
-    //    N_OPS = NE * (2 * NP + 2) + 3 * NP + 3 
+    /*  engine_super_*
+        N_OPS = NC * (2 * NP + 2) + 4 * NP + 3
+    */
 
-    ABPair<4, 6>,     // thermal problem, single phase
+    // NP = 1: A =  4, B =  7 (th)
+    ABPair<4, 7>,     // thermal problem
 
-    ABPair<6, 9>,    // thermal problem, two phase
+    // NP = 2: A =  6, B = 11 (th)
+    ABPair<6, 11>,    // thermal problem, two phase
 
-    ABPair<8, 12>,    // three phases thermal
+    // NP = 3: A =  8, B = 15 (th) ???
+    ABPair<8, 15>,    // single phase thermal
 
-    ABPair<10, 15>,   // isothermal problem, 4 phases
+    // NP = 4: A = 10, B = 19 (th)
+    ABPair<10, 19>,   // isothermal problem, three phases
 
     // ???
-    //ABPair<4, 4>,     // geothermal problem, three phases
+    ABPair<4, 4>,     // geothermal problem, three phases
 
-    //  engine_super_elastic_*
-	//    NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 2 /*temperature and pressure*/ + 1 /*weight*/
-    //    N_OPS = NE * (2 * NP + 2) + 3 * NP + 3 + 1 
+    /*  engine_super_elastic_*
+        N_OPS = NC * (2 * NP + 2) + 4 * NP + 4
+    */
 
     // NP = 1: A =  4, B =  8
-    ABPair<4, 7>,     // poroelasticity, single-phase
+    ABPair<4, 8>,     // poroelasticity, single-phase
 
-    // NP = 1: A =  6, B =  8
-    ABPair<6, 10>     // poroelasticity, two-phase
+    // NP = 1: A =  6, B =  12
+    ABPair<6, 12>     // poroelasticity, two-phase
   >(m);
 }
 

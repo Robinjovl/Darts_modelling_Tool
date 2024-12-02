@@ -1,4 +1,3 @@
-#ifndef WITH_GPU
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -568,9 +567,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 #ifdef _OPENMP
   //#pragma omp parallel reduction (max: CFL_max)
+  if (!row_thread_starts)
+  {
+	  std::cout<<"row_thread_starts are not initialized! Check that linear solvers were compiled with OpenMP\n";
+	  exit(1);
+  }
 #pragma omp parallel
   {
     int id = omp_get_thread_num();
+
     index_t start = row_thread_starts[id];
     index_t end = row_thread_starts[id + 1];
 
@@ -2225,4 +2230,3 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //	}
 //	return residual;
 //}
-#endif // WITH_GPU

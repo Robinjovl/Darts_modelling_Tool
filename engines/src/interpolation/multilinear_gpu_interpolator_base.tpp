@@ -113,32 +113,32 @@ void multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hyp
   }
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-int multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_n_points(int axis)
+int multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_n_points(int axis) const
 {
   return axes_points[axis];
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_max(int axis)
+double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_max(int axis) const
 {
   return axes_max[axis];
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_min(int axis)
+double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_min(int axis) const 
 {
   return axes_min[axis];
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_interpolations()
+uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_interpolations() const 
 {
   return n_interpolations;
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_total()
+uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_total() const
 {
   return n_points_total;
 }
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_used()
+uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_used() const
 {
   return n_points_used;
 }

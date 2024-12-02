@@ -151,6 +151,8 @@ class StructDiscretizer:
                 d_cumsum = self.len_cell_xdir.cumsum(axis=0)
                 self.centroids_all_cells[1:, :, :, 0] = (d_cumsum[:-1, :, :] + d_cumsum[1:, :, :]) * 0.5
 
+            self.centroids_all_cells = np.reshape(self.centroids_all_cells, (self.nx * self.ny * self.nz, 3), order='F')
+
         self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
         self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
         self.perm_z_cell = self.convert_to_3d_array(permz, 'permz')
@@ -398,6 +400,49 @@ class StructDiscretizer:
         np.seterr(**old_settings)
 
         return cell_m, cell_p, tran, tran_thermal
+
+    def discretize_velocities(self, cell_m, cell_p, geom_coef, n_res_blocks):
+        # filter well connections
+        inds = np.where(np.logical_and(cell_m < n_res_blocks, cell_p < n_res_blocks))[0]
+        cell_m = cell_m[inds]
+        cell_p = cell_p[inds]
+
+        # find indices/directions of boundary cells - TODO
+
+        # approximate normals
+        dr = self.centroids_all_cells[cell_p] - self.centroids_all_cells[cell_m]
+        n = dr * geom_coef[:, np.newaxis]
+
+        # unique elements & and starting positions of each element
+        _, idx_start = np.unique(cell_m, return_index=True)
+
+        # group indices of elements with the same value (cell_m is already sorted)
+        res = np.split(np.arange(cell_m.size), idx_start[1:])
+
+        # form matrices for each cell
+        all_elements = []
+        offsets = [0]
+        current_offset = 0
+        for i in range(n_res_blocks):
+            A = n[res[i]]
+            A_T = A.T
+            A_TA = A_T @ A
+
+            # Use pseudoinverse if the matrix rank is less than the number of columns
+            if np.linalg.matrix_rank(A_TA) < A_TA.shape[0]:
+                least_squares = np.linalg.pinv(A_TA) @ A_T
+            else:
+                least_squares = np.linalg.inv(A_TA) @ A_T
+
+            # Flatten the matrix and add it to the all_elements array
+            flattened_matrix = least_squares.flatten()
+            all_elements.extend(flattened_matrix)
+
+            # Update the current offset and add it to the offsets array
+            current_offset += A.shape[0]
+            offsets.append(current_offset)
+
+        return np.array(all_elements), np.array(offsets, dtype=np.int32)
 
     def calc_cpg_discr(self):
         """

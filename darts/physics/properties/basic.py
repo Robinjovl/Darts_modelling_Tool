@@ -27,8 +27,8 @@ class PhaseRelPerm:
             self.n = n
         else:  # water
             self.kre = kre
-            self.sr = 0
-            self.sr1 = 0
+            self.sr = sgr
+            self.sr1 = swc
             self.n = n
 
     def evaluate(self, sat):

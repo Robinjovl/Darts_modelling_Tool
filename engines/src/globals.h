@@ -127,6 +127,8 @@ public:
     assembly_kernel = 0;
 
     finalize_mpi = 1;
+
+    phase_existence_tolerance = 1.e-6;
   }
 
   value_t first_ts; // first time step length (days)
@@ -164,6 +166,8 @@ public:
   // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
+
+  value_t phase_existence_tolerance;    // tolerance defining presence of phase in a cell
 };
 
 class linear_solver_params

@@ -1,6 +1,8 @@
 from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
+from darts.reservoirs.unstruct_reservoir_mech import bound_cond
 import numpy as np
+import os
 from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators
 
@@ -28,11 +30,15 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-        elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = sim_params.cpu_superlu # cpu_gmres_fs_cpr # cpu_superlu
+        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+            linear_type = sim_params.cpu_gmres_fs_cpr
+        else:
+            linear_type = sim_params.cpu_superlu
 
+        if self.discretizer_name == 'mech_discretizer':
+            self.params.linear_type = linear_type
+        elif self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.ls_params[-1].linear_type = linear_type
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
                                                  fluid_vars=self.physics.vars, mode=self.mode, mesh_filename=self.mesh_filename)
@@ -44,7 +50,28 @@ class Model(THMCModel):
         elif self.mode == 'poroelastic':
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
-        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech)
+        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
+
+        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
+
+        self.idata.mesh.bnd_tags = {}
+        bnd_tags = self.idata.mesh.bnd_tags  # short name
+        bnd_tags['BND_X-'] = 991
+        bnd_tags['BND_X+'] = 992
+        bnd_tags['BND_Y-'] = 993
+        bnd_tags['BND_Y+'] = 994
+        bnd_tags['BND_Z-'] = 995
+        bnd_tags['BND_Z+'] = 996
+        self.idata.mesh.matrix_tags = [99991]
+
+        self.idata.boundary = {}
+        nf_s = {'flow': self.bc_type.AQUIFER(0), 'temp': self.bc_type.AQUIFER(0), 'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0])}
+        self.idata.boundary[bnd_tags['BND_X-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_X+']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Y-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Y+']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Z-']] = nf_s
+        self.idata.boundary[bnd_tags['BND_Z+']] = nf_s
 
         self.idata.rock.density = 2650.0
         self.idata.rock.porosity = 0.1

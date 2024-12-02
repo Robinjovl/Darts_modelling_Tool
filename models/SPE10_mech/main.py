@@ -1,5 +1,6 @@
 from model import Model
 import numpy as np
+import os
 from darts.engines import redirect_darts_output, timer_node
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
@@ -113,7 +114,7 @@ def run_timestep_python(m, dt, t):
 def run(model_folder, physics_type):
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
     m.init()
-    redirect_darts_output('log.txt')
+    #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
     m.output_directory = 'sol_cpp_' + physics_type + model_folder.split('data')[-1]
@@ -135,22 +136,98 @@ def run(model_folder, physics_type):
     m.params.first_ts = first_ts
     m.set_boundary_conditions_after_initialization()
 
+    sim_time = 20 # days
+    m.time_steps = []
+    data = []
     # Run over all reporting time-steps:
     ith_step = 0
-    while m.physics.engine.t < 20:
+    while m.physics.engine.t < sim_time:
         run_python(m=m, days=size_report_step)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
         ith_step += 1
+        m.time_steps.append(m.physics.engine.t)
+        data.append(m.get_performance_data(is_last_ts=(m.physics.engine.t >= sim_time)))
 
     m.print_timers()
     m.print_stat()
 
-# run(model_folder='meshes/data_10_10_10', physics_type='single_phase')
-# run(model_folder='meshes/data_10_10_10', physics_type='single_phase_thermal')
-# run(model_folder='meshes/data_10_10_10', physics_type='dead_oil')
-# run(model_folder='meshes/data_10_10_10', physics_type='dead_oil_thermal')
+    return m, data
 
-# run(model_folder='meshes/data_20_40_40', physics_type='single_phase')
-# run(model_folder='meshes/data_20_40_40', physics_type='single_phase_thermal')
-# run(model_folder='meshes/data_20_40_40', physics_type='dead_oil')
-run(model_folder='meshes/data_20_40_40', physics_type='dead_oil_thermal')
+def test(mesh_type, physics_type, overwrite='0'):
+    '''
+    :param overwrite: write pkl file even if it exists
+    :return: tuple (bool failed, float64 time)
+    '''
+    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, 'overwrite: ' + overwrite, sep=', ')
+    import platform
+
+    try:
+        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
+    m, data = run(mesh_type, physics_type)
+
+    pkl_suffix = ''
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        pkl_suffix = '_iter'
+    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
+                             '_' + mesh_type + '_' + physics_type + '.pkl')
+    failed = 0
+
+    is_plk_exist = os.path.isfile(file_name)
+    if is_plk_exist:
+        ref_data = m.load_performance_data(file_name=file_name)
+
+    for ith_step, dt in enumerate(m.time_steps):
+        if is_plk_exist:
+            sol_data_step = data[ith_step]
+            ref_data_step = ref_data[ith_step]
+            failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
+                                             png_suffix=mesh_type+'_'+physics_type+'_'+str(ith_step))
+
+    if not is_plk_exist or overwrite == '1':
+        m.save_performance_data(data=data, file_name=file_name)
+        return False, 0.0
+
+    if is_plk_exist:
+        return (failed > 0), data[-1]['simulation time']
+    else:
+        return False, -1.0
+
+def run_test(args: list = [], platform='cpu'):
+    if len(args) == 3:
+        return test(mesh_type=args[0], physics_type=args[1], overwrite=args[2])
+    else:
+        print('Wrong number of arguments provided to the run_test:', args)
+        return 1, 0.0
+
+if __name__ == '__main__':
+    try:
+        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
+    test_all = False
+    #test_all = True
+    physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
+    meshes_list = ['data_10_10_10', 'data_20_40_40']
+    if test_all:
+        for physics in physics_list:
+            for mesh in meshes_list:
+                run(model_folder=mesh, physics_type=physics)
+
+
+    #run(model_folder='data_10_10_10', physics_type='single_phase')
+    #run(model_folder='data_10_10_10', physics_type='single_phase_thermal')
+    #run(model_folder='data_10_10_10', physics_type='dead_oil')
+    #run(model_folder='data_10_10_10', physics_type='dead_oil_thermal')
+
+    #run(model_folder='data_20_40_40', physics_type='single_phase')
+    #run(model_folder='data_20_40_40', physics_type='single_phase_thermal')
+    #run(model_folder='data_20_40_40', physics_type='dead_oil')
+    #run(model_folder='data_20_40_40', physics_type='dead_oil_thermal')
