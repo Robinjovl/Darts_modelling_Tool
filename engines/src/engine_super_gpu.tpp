@@ -294,13 +294,12 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @tparam UPSAT_OP Index for upstream saturation operators.
  * @tparam GRAD_OP Index for gradient operators.
  * @tparam KIN_OP Index for kinetic operators.
- * @tparam RE_INTER_OP Index for reservoir interface operators.
- * @tparam RE_TEMP_OP Index for reservoir temperature operators.
- * @tparam ROCK_COND Index for rock conductivity.
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
  * @tparam PORO_OP Index for porosity operators.
  * @tparam ENTH_OP Index for enthalpy operators.
+ * @tparam TEMP_OP Index for temperature operators.
+ * @tparam PRES_OP Index for pressure operators.
  * @tparam THERMAL Enable or disable thermal effects.
  *
  * @param[in] n_blocks Total number of blocks.
@@ -560,35 +559,15 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     if (THERMAL && (c == NE - 1))
     {
       t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
-      gamma_t_diff = tranD[conn_idx] * dt * t_diff;
+      gamma_t_i = tranD[conn_idx] * dt * (1 - poro[i]) * rock_cond[i];
+      gamma_t_j = tranD[conn_idx] * dt * (1 - poro[j]) * rock_cond[j];
 
-      if (t_diff < 0)
+      // rock heat transfers flows from cell i to j
+      rhs -= t_diff * (gamma_t_i + gamma_t_j) / 2;
+      for (uint8_t v = 0; v < N_VARS; v++)
       {
-        // rock heat transfers flows from cell i to j
-        if (v == 0)
-        {
-          rhs -= gamma_t_diff * (1 - poro[i]) * rock_cond[i];
-        }
-        jac_diag -= gamma_t_diff * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] * (1 - poro[i]) * rock_cond[i];
-        if (v == T_VAR)
-        {
-          jac_offd -= tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
-          jac_diag += tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
-        }
-      }
-      else
-      {
-        // rock heat transfers flows from cell j to i
-        if (v == 0)
-        {
-          rhs -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j]; // energy cond operator
-        }
-        jac_offd -= gamma_t_diff * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] * (1 - poro[j]) * rock_cond[j];
-        if (v == T_VAR)
-        {
-          jac_diag += tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j];
-          jac_offd -= tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j];
-        }
+        jac_offd -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+        jac_diag += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
       }
     }
     // write down offdiag value
