@@ -42,6 +42,10 @@ void redirect_darts_output(std::string file_name) {
   std::cout.rdbuf(log_stream.rdbuf());
 }
 
+void print_darts(const std::string msg) {
+    std::cout << msg << endl;
+}
+
 #ifdef WITH_GPU
 void set_gpu_device(int device_idx)
 {
@@ -159,6 +163,7 @@ void pybind_globals(py::module &m)
   m.def("redirect_darts_output", &redirect_darts_output, "Redirect darts standard output to a file. \n"
                                                          "If empty filename is specified, then no output will be produced.",
         "file_name"_a);
+  m.def("print_darts", &print_darts);
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 

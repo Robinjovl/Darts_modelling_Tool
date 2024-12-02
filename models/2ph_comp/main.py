@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import sys
 from model import Model
-from darts.engines import value_vector, redirect_darts_output
+from darts.engines import value_vector, redirect_darts_output, print_darts
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 
@@ -43,10 +43,12 @@ def plot_sol(n):
 
     plt.show()
 
+
 if __name__ == '__main__':
-
-
     redirect_darts_output('run.log')
+
+    print_darts('Hi from python!')
+
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
