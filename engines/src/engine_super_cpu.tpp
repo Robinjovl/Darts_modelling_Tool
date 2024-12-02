@@ -568,22 +568,22 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
   CFL_max = 0;
 
-//#ifdef _OPENMP
-//  //#pragma omp parallel reduction (max: CFL_max)
-//#pragma omp parallel
-//  {
-//    int id = omp_get_thread_num();
-//
-//    //index_t start = row_thread_starts[id];
-//    //index_t end = row_thread_starts[id + 1];
-//
-//    //index_t start = row_T_thread_starts[id];
-//    //index_t end = row_T_thread_starts[id + 1];
-//#else
-//  index_t start = 0;
-//  index_t end = n_blocks;
-//
-//#endif //_OPENMP
+  //#ifdef _OPENMP
+  //  //#pragma omp parallel reduction (max: CFL_max)
+  //#pragma omp parallel
+  //  {
+  //    int id = omp_get_thread_num();
+  //
+  //    //index_t start = row_thread_starts[id];
+  //    //index_t end = row_thread_starts[id + 1];
+  //
+  //    //index_t start = row_T_thread_starts[id];
+  //    //index_t end = row_T_thread_starts[id + 1];
+  //#else
+  //  index_t start = 0;
+  //  index_t end = n_blocks;
+  //
+  //#endif //_OPENMP
 
   index_t start = 0;
   index_t end = n_blocks;
@@ -792,8 +792,6 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
         t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
         gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
-        if (t_diff < 0)
-        {
           // rock heat transfers flows from cell i to j
           //RHS[i * N_VARS + NC] -= gamma_t_diff * ((1 - mesh->poro[i]) * mesh->rock_cond[i] +
           //                                        (1 - mesh->poro[j]) * mesh->rock_cond[j]) / 2;
