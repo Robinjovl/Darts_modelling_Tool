@@ -69,7 +69,7 @@ public:
   const static uint8_t N_STATE = NC_ + THERMAL;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 /*weight*/  + 2 /*temperature and pressure*/;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/ + 1 /*weight*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -83,7 +83,8 @@ public:
   const static uint8_t GRAV_OP = KIN_OP + NE;
   const static uint8_t PC_OP = GRAV_OP + NP;
   const static uint8_t PORO_OP = PC_OP + NP;
-  const static uint8_t TEMP_OP = PORO_OP + 1;
+  const static uint8_t ENTH_OP = PORO_OP + 1;
+  const static uint8_t TEMP_OP = ENTH_OP + NP;
   const static uint8_t PRES_OP = TEMP_OP + 1;
   const static uint8_t ROCK_DENS = PRES_OP + 1;
   
