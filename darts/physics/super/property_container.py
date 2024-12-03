@@ -133,12 +133,8 @@ class PropertyContainer(PropertyBase):
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
-        Vtot = 0
-        for j in ph:
-            Vtot += self.nu[j] / self.dens_m[j]
-
-        for j in ph:
-            self.sat[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+        vol = [self.nu[j] / self.dens_m[j] for j in ph]
+        self.sat[ph] = vol / np.sum(vol)
 
         return
         
