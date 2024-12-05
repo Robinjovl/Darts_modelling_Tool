@@ -85,7 +85,7 @@ class ModelDeadOil(Model_CPG):
                     w.control = self.physics.new_rate_inj(wctrl.rate, inj_stream, wctrl.comp_index)
                     w.constraint = self.physics.new_bhp_inj(wctrl.bhp_constraint, inj_stream)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.comp_index)
+                    w.control = self.physics.new_bhp_inj(wctrl.bhp, inj_stream)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
@@ -160,9 +160,9 @@ class ModelDeadOil(Model_CPG):
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # kmol/day | bars | K
+                    wdata.add_inj_bhp_control(name=w, bhp=250, temperature=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_bhp_control(name=w,bhp=100)  # kmol/day | bars
+                    wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w): # inject water
