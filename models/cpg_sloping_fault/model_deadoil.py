@@ -104,8 +104,8 @@ class ModelDeadOil(Model_CPG):
             if verbose:
                 print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
             assert w.control is not None, 'well control is not initialized!' + w.name
-            if w.constraint is not None and wctrl.mode == 'rate':
-                print('well control is not initialized!' + w.name)
+            if verbose and w.constraint is not None and wctrl.mode == 'rate':
+                print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def get_arrays(self):
         '''
@@ -166,8 +166,15 @@ class ModelDeadOil(Model_CPG):
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=200, comp_index=1, bhp_constraint=300,
-                                               temperature=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=200, comp_index=1, bhp_constraint=300, temperature=300)  # kmol/day | bars | K
+                else:  # prod
+                    wdata.add_prd_rate_control(name=w, rate=200, comp_index=0, bhp_constraint=70)  # kmol/day | bars
+        elif 'wperiodic' in case:
+            wname = list(wdata.wells.keys())[0]  # single well
+            y2d = 365.25
+            for w in wells:
+                if self.well_is_inj(w): # inject water
+                    wdata.add_inj_rate_control(name=w, rate=200, comp_index=1, bhp_constraint=300, temperature=300)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_rate_control(name=w, rate=200, comp_index=0, bhp_constraint=70)  # kmol/day | bars
 
