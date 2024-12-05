@@ -284,7 +284,7 @@ class WellOperators(OperatorsSuper):
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+                self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
 

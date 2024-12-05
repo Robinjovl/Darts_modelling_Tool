@@ -2270,6 +2270,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   {
     wells[iw]->well_head_idx = well_head_idx; // well head
     wells[iw]->well_body_idx = well_head_idx + 1; // well body
+	if (wells[iw]->model_type == "ms_well")
+	{
+		wells[iw]->well_body_idx += wells[iw]->num_segments - 2;
+	}
     
     index_t n_segments = 0;
     // connections between well segments and reservoir
@@ -2278,15 +2282,36 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       index_t i_w, i_r;
       value_t wi, wid;
       std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
-      add_conn(i_w + well_head_idx + 1, i_r, wi, wid);
+	  if (wells[iw]->model_type == "basic_well")
+	  {
+		  add_conn(i_w + well_head_idx + 1, i_r, wi, wid);
+	  }
+	  else if (wells[iw]->model_type == "ms_well")
+	  {
+		  add_conn(i_w + well_head_idx + wells[iw]->num_segments - 1, i_r, wi, wid);
+	  }
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
-    // connections between segments
-    for (index_t p = 0; p < n_segments; p++)
-    {
-      add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0); // connection between them
-    }
+    // connections between segments of basic_well
+	if (wells[iw]->model_type == "basic_well")
+	{
+		for (index_t p = 0; p < n_segments; p++)
+		{
+			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0); // connection between them
+		}
+	}
+	// connections between segments of ms_well
+	if (wells[iw]->model_type == "ms_well")
+	{
+		for (index_t seg = 0; seg < (wells[iw]->num_segments-1); seg++)
+		{
+			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0); // connection between them
+		}
+		n_segments += wells[iw]->num_segments - 2;
+	}
+	
+
     well_head_idx += n_segments + 1;
     wells[iw]->n_segments = n_segments;
   }
@@ -2294,58 +2319,86 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
 
   // Resize mesh arrays by number of well blocks and head blocks (one per well)
-  volume.resize(well_head_idx);
-  poro.resize(well_head_idx);
-  pressure.resize(well_head_idx);
-  temperature.resize(well_head_idx);
-  enthalpy.resize(well_head_idx);
-  int nc_1 = composition.size() / n_blocks;
-  composition.resize(well_head_idx * nc_1);
-  op_num.resize(well_head_idx);
-  depth.resize(well_head_idx + n_bounds);
+  index_t total_num_segments = 0;
+  for (index_t iw = 0; iw < wells.size(); iw++)
+  {
+	  total_num_segments += wells[iw]->n_segments + 1;   // 1 is the wellhead segment
+  }
+  index_t total_num_segments_cells = total_num_segments + n_blocks;
 
-  heat_capacity.resize(well_head_idx);
-  rock_cond.resize(well_head_idx + n_bounds);
-  mob_multiplier.resize(2 * well_head_idx);
+  volume.resize(total_num_segments_cells);
+  poro.resize(total_num_segments_cells);
+  pressure.resize(total_num_segments_cells);
+  temperature.resize(total_num_segments_cells);
+  enthalpy.resize(total_num_segments_cells);
+  int nc_1 = composition.size() / n_blocks;
+  composition.resize(total_num_segments_cells * nc_1);
+  op_num.resize(total_num_segments_cells);
+  depth.resize(total_num_segments_cells + n_bounds);
+
+  heat_capacity.resize(total_num_segments_cells);
+  rock_cond.resize(total_num_segments_cells + n_bounds);
+  mob_multiplier.resize(2 * total_num_segments_cells);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    // depth of the well head block - well controls work at this depth
-    depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
-    for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
-    {
-      volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
-      poro[wells[iw]->well_head_idx + p] = 1;
-      op_num[wells[iw]->well_head_idx + p] = 0;
-      heat_capacity[wells[iw]->well_head_idx + p] = 0;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
-      if (p > 0)// p==0 is a ghost cell for the well treatment
-      {
-        int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-        int w_i = wells[iw]->well_head_idx + p;
-        // copy properties for the well blocks from the reservoir blocks
-        pressure[w_i] = pressure[r_i];
-        temperature[w_i] = temperature[r_i];
-        rock_cond[w_i] = rock_cond[r_i];
-        // depth of well segments
-        depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-        std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
-      }
-    }
+	if (wells[iw]->model_type == "basic_well")
+	{
+		// depth of the well head block - well controls work at this depth
+		depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
+		for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		{
+			volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
+			poro[wells[iw]->well_head_idx + p] = 1;
+			op_num[wells[iw]->well_head_idx + p] = 0;
+			heat_capacity[wells[iw]->well_head_idx + p] = 0;
+			mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
+			mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
+			if (p > 0)// p==0 is a ghost cell for the well treatment
+			{
+				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
+				int w_i = wells[iw]->well_head_idx + p;
+				// copy properties for the well blocks from the reservoir blocks
+				pressure[w_i] = pressure[r_i];
+				temperature[w_i] = temperature[r_i];
+				rock_cond[w_i] = rock_cond[r_i];
+				// depth of well segments
+				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
+			}
+		}
+	}
+	if (wells[iw]->model_type == "ms_well")
+	{
+		std::copy(wells[iw]->segments_depths.begin(), wells[iw]->segments_depths.end(), depth.begin() + wells[iw]->well_head_idx);
+		std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
+		std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
+		op_num[wells[iw]->well_head_idx] = 0; // In this line, I must also specify the number of operators for the other wellbore segments.
+		// The following lines are not applied to ms_well yet.
+		//for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		//{
+		//	heat_capacity[wells[iw]->well_head_idx + p] = 0;
+		//	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
+		//	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
+		//}
+
+		// The rest of the varialbles of the wellbore segments, such as pressure, temperature, and composition, will be specified by the user later.
+	}
   }
-  n_blocks = well_head_idx;
+
+
+  n_blocks = total_num_segments_cells;
 
   return 0;
 }
 
-// segment_transmissibility of the first well used
+// well_transmissibility of the first well used
 int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
 {
 	if (verbose)
 		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
 																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
-	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
+	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->well_transmissibility, 0);
 	return 0;
 }
 
@@ -2413,7 +2466,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// connections between segments
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0, P_VAR); // connection between them
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR); // connection between them
 		}
 		well_head_idx += n_segments + 1;
 		wells[iw]->n_segments = n_segments;

@@ -40,8 +40,11 @@ public:
 
   ms_well()
   {
-    segment_volume = 0.07; // 1 m high, 0.3 m diameter
-    segment_transmissibility = 100000;
+    segment_volume = 0; // 1 m high, 0.3 m diameter
+    segments_volumes = {};
+    segments_depths = {};
+    num_segments = 0;
+    well_transmissibility = 100000;
     control = 0;
     constraint = 0;
     well_head_depth = 0;
@@ -109,8 +112,12 @@ public:
 
   // These properties are only used in discretization, before simulation starts
   std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
+  std::string model_type;
+  std::vector<value_t> segments_depths;
+  std::vector<value_t> segments_volumes;
+  index_t num_segments;
   value_t segment_volume;
-  value_t segment_transmissibility;
+  value_t well_transmissibility;
   value_t well_head_depth;
   value_t well_body_depth;
   value_t segment_depth_increment;

@@ -243,6 +243,9 @@ class DartsModel:
 
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
+        if any(well.model_type == "ms_well" for well in self.reservoir.wells):
+            assert hasattr(self,'wells_initial_conditions'), "Initial conditions of the multi-segmented well/wells are not defined!"
+
         for i, variable in enumerate(self.physics.vars):
             # Check if variable exists in initial values dictionary
             if variable not in initial_values.keys():
@@ -273,6 +276,36 @@ class DartsModel:
             else:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
+
+                # # For initial composition
+                # vectors_to_interleave = [self.wells_initial_conditions[key]
+                #                          for key in self.wells_initial_conditions
+                #                          if key not in {"initial_pressure", "initial_temperature"}]
+                # max_length = max(len(vec) for vec in vectors_to_interleave)  # Determine the longest vector
+                # wells_initial_composition = []
+                # for i in range(max_length):
+                #     for vec in vectors_to_interleave:
+                #         if i < len(vec):  # Ensure we don't go out of bounds
+                #             wells_initial_composition.append(vec[i])
+            start = self.reservoir.mesh.n_res_blocks
+            end = start
+            for well in self.reservoir.wells:
+                if well.model_type == "basic_well":
+                    end += 2
+                elif well.model_type == "ms_well":
+                    end += well.num_segments
+                if well.model_type == "ms_well":
+                    if variable == 'pressure':
+                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
+                        values[start:end:] = wells_initial_pressure_profile[::-1]
+                    elif variable == 'temperature':
+                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"]
+                        values[start:end:] = wells_initial_temperature_profile[::-1]
+                    elif variable not in ['pressure', 'temperature']:
+                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
+                        values[start * (self.physics.nc-1) + c:end * (self.physics.nc-1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[::-1]
+
+                start = end
 
         return
 
@@ -827,8 +860,8 @@ class DartsModel:
                     (block_m[self.well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
             # find id of well_head -> well_body connection in the connection list
             well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
-            assert(len(well_head_conn_id) == 1)
-            self.well_head_conn_id[well.name] = well_head_conn_id[0]
+            # assert(len(well_head_conn_id) == 1)
+            # self.well_head_conn_id[well.name] = well_head_conn_id[0]
 
     def reconstruct_velocities(self):
         # velocity discretization

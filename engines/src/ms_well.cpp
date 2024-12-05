@@ -16,7 +16,7 @@ using namespace opendarts::linear_solvers;
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
   if (constraint)
-    if (constraint->check_constraint_violation(dt, well_head_idx, segment_transmissibility, n_vars, n_block_size, P_VAR, X))
+    if (constraint->check_constraint_violation(dt, well_head_idx, well_transmissibility, n_vars, n_block_size, P_VAR, X))
     {
       // constraint violation occured, switch control and constrain
       std::swap(control, constraint);
@@ -30,7 +30,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
 {
 
-  control->add_to_jacobian(dt, well_head_idx, segment_transmissibility, n_vars, n_block_size, P_VAR, X, jac_well_head, RHS);
+  control->add_to_jacobian(dt, well_head_idx, well_transmissibility, n_vars, n_block_size, P_VAR, X, jac_well_head, RHS);
 
   return 0;
 }
@@ -38,7 +38,7 @@ int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_we
 int ms_well::add_to_csr_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
 {
 
-  control->add_to_csr_jacobian(dt, well_head_idx, segment_transmissibility, n_vars, X, jac_well_head, RHS);
+  control->add_to_csr_jacobian(dt, well_head_idx, well_transmissibility, n_vars, X, jac_well_head, RHS);
 
   return 0;
 }
@@ -63,9 +63,9 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     if (phase_names[i] == "temperature")
       time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[i]);
     else if (phase_names[i] == "energy")
-      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * well_transmissibility);
     else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * p_diff * well_transmissibility);
   }
 
   int nc = n_vars;
@@ -75,7 +75,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   {
     nc--;
     time_data[name + " : temperature (K)"].push_back(state[n_vars - 1]);
-	/*time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[n_phases] * p_diff * segment_transmissibility);*/
+	/*time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[n_phases] * p_diff * well_transmissibility);*/
   }
   
   for (int c = 0; c < nc; c++)
@@ -88,7 +88,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
           c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
       }
 
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * segment_transmissibility);
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * well_transmissibility);
   }
 
   int i_p = 0;
@@ -156,7 +156,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
     if (phase_names[i] == "temperature")
       time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[i]);
     else if (phase_names[i] == "energy")
-      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * well_transmissibility);
     else
       time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * velocity);   // // V_phase =  * V_mix S_phase ;      rate_i= S_i
   }
@@ -175,8 +175,8 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
   for (int c = 0; c < nc; c++)
   {
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * segment_transmissibility);
-    //time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * velocity * segment_transmissibility);
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * well_transmissibility);
+    //time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * velocity * well_transmissibility);
   }
 
   int i_p = 0;
@@ -215,30 +215,39 @@ int ms_well::initialize_control(std::vector<value_t>& X)
 {
   std::cout << "Well " << name << " initialized with " << control->name << std::endl;
 
-#if 1
-  for (auto &p : perforations)
+  if (model_type == "basic_well")
   {
-    index_t i_w, i_r;
-    value_t wi, wid;
-    std::tie(i_w, i_r, wi, wid) = p;
-    i_w += well_body_idx;
+  #if 1
+      for (auto& p : perforations)
+      {
+          index_t i_w, i_r;
+          value_t wi, wid;
+          std::tie(i_w, i_r, wi, wid) = p;
+          i_w += well_body_idx;
 
-    // move the state from X
-    std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-    // copy neighbour state
-    std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-    // initialize
-    control->initialize_well_block(state, state_neighbour);
-    // move initialized state back to X
-    std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+          // move the state from X
+          std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+          // copy neighbour state
+          std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+          // initialize
+          control->initialize_well_block(state, state_neighbour);
+          // move initialized state back to X
+          std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
+      }
+  #endif
   }
-#endif
+
   // move the state from X
   std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
   // copy neighbour state
   std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
   // initialize
   control->initialize_well_block(state, state_neighbour);
+  // if well model is ms_well, there is not need to change the pressure. The following if statement places the original value of wellhead pressure in wellhead state.
+  if (model_type == "ms_well")
+  {
+      state[0] = X[well_head_idx * n_block_size + P_VAR];
+  }
   // move initialized state back to X
   std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
   return 0;
