@@ -332,48 +332,43 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
 
 
 class RateOperators(operator_set_evaluator_iface):
-    def __init__(self, property_container):
+    """
+    If the well is rate-controlled, this class is used to evaluate the flux operator.
+    """
+    def __init__(self, property_container, ctrl_rate_props: dict):
+        """
+        :param property_container: Property container
+        :param ctrl_rate_props: This dict consists of two keys:
+        The key "ctrl_rate_type" is the type of the rate. The available types are: "phase_molar_rate", "phase_mass_rate",
+        "phase_volumetric_rate", and "phase_advective_heat_rate".
+        The key "ctrl_phase_name" is the index of the phase the rate of which is controlled.
+        """
         super().__init__()
 
-        self.nc = property_container.nc
-        self.nc_fl = property_container.nc_fl
-        self.nph = property_container.nph
-        self.np_fl = property_container.np_fl
         self.n_ops = property_container.nph
-
         self.property = property_container
 
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
+        self.ctrl_rate_type = ctrl_rate_props["ctrl_rate_type"]
+        self.ctrl_phase_index = property_container.phases_name.index(ctrl_rate_props["ctrl_phase_name"])
+
+    def evaluate(self, state: value_vector, values: value_vector):
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
 
         self.property.evaluate(vec_state_as_np)
 
-        flux = np.zeros(self.nc_fl)
-        # step-1
-        for j in self.property.ph:
-            for i in range(self.nc_fl):
-                flux[i] += self.property.dens_m[j] * self.property.kr[j] * self.property.x[j][i] / self.property.mu[j]
-        # step-2
-        flux_sum = np.sum(flux)
+        ph_idx = self.ctrl_phase_index
 
-        # (sat_sc, dens_m_sc) = self.property.evaluate_at_cond(1, self.flux/flux_sum)
-        sat_sc = self.property.sat[:self.np_fl]
-        dens_m_sc = self.property.dens_m[:self.np_fl]
+        if ph_idx in self.property.ph:
+            if self.ctrl_rate_type == "phase_molar_rate":
+                vec_values_as_np[0] = self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            elif self.ctrl_rate_type == "phase_mass_rate":
+                vec_values_as_np[0] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            elif self.ctrl_rate_type == "phase_volumetric_rate":
+                vec_values_as_np[0] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            elif self.ctrl_rate_type == "phase_advective_heat_rate":
+                vec_values_as_np[0] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx]
+                                       * self.property.kr[ph_idx] / self.property.mu[ph_idx])
 
-        # step-3
-        total_density = np.sum(sat_sc * dens_m_sc)
-        # step-4
-        for j in self.property.ph:
-            vec_values_as_np[j] = self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
-            # sat_sc[j] * flux_sum / total_density
-
-        # print(state, values)
         return 0

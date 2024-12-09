@@ -1,9 +1,9 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
-from darts.physics.super.physics import Compositional
+from physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
@@ -65,9 +65,13 @@ class Model(CICDModel):
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('oil', PhaseRelPerm("oil"))])
 
+        ctrl_rate_props = {"ctrl_rate_type": "phase_molar_rate",
+                           "ctrl_phase_name": "gas"}
+
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10,
+                                     ctrl_rate_props=ctrl_rate_props)
         self.physics.add_property_region(property_container)
 
         return
@@ -77,7 +81,9 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                # w.control = self.physics.new_rate_gas_inj(20, self.inj_stream)
-                w.control = self.physics.new_bhp_inj(140, inj_stream)
+                # If the well is rate-controlled, ctrl_rate_props must be specified in the instance of
+                # the Compositional class.
+                w.control = self.physics.new_rate_inj(200, inj_stream)
+                # w.control = self.physics.new_bhp_inj(140, inj_stream)
             else:
                 w.control = self.physics.new_bhp_prod(50)
