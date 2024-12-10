@@ -250,30 +250,42 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                 if (phase_p_diff < 0)
                 {
+                    // calculate phase volumetric rate
+                    value_t phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+
+                    // calculate partial derivatives for phase volumetric rates
+                    value_t phase_vol_rate_der_i[N_VARS];
+                    value_t phase_vol_rate_der_j[N_VARS];
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        phase_vol_rate_der_i[v] = tran[conn_idx] * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * phase_p_diff + op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v]);
+                        phase_vol_rate_der_j[v] = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v];
+                    }
+
                     // mass and energy outflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+                        value_t c_flux_coef = trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                         if (c < NC)
                         {
-                            CFL_out[c] -= phase_p_diff * c_flux; // subtract negative value of flux
+                            CFL_out[c] -= phase_volumetric_rate * c_flux_coef; // subtract negative value of flux
                             if (molar_weights.size())
                             phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[i] + c];
                         }
 
-                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[diag_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c]);
-                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                                phase_volumetric_rate * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt);
+                            Jac[diag_idx + c * N_VARS + v] += phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] += phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                             if (v == 0)
                             {
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux;
-                                Jac[diag_idx + c * N_VARS + v] += c_flux;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux_coef;
+                                Jac[diag_idx + c * N_VARS + v] += c_flux_coef;
                             }
                         }
                     }
@@ -282,29 +294,41 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else
                 {
+                    // calculate phase volumetric rate
+                    value_t phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
+
+                    // calculate partial derivatives for phase volumetric rates
+                    value_t phase_vol_rate_der_i[N_VARS];
+                    value_t phase_vol_rate_der_j[N_VARS];
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        phase_vol_rate_der_i[v] = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_i[v];
+                        phase_vol_rate_der_j[v] = tran[conn_idx] * (op_ders_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff + op_vals_arr[j * N_OPS + LAMBDA_OP + p] * grav_pc_der_j[v]);
+                    }
+
                     // mass and energy inflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
-                        value_t c_flux = trans_mult * tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
+                        value_t c_flux_coef = trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                         if (c < NC)
                         {
-                            CFL_in[c] += phase_p_diff * c_flux;
+                            CFL_in[c] += phase_volumetric_rate * c_flux_coef;
                             if (molar_weights.size())
                             phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * molar_weights[NC * op_num[j] + c];
                         }
 
-                        RHS[i * N_VARS + c] -= phase_p_diff * c_flux; // flux operators only
+                        RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            Jac[jac_idx + c * N_VARS + v] -= (phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] +
-                                tran[conn_idx] * dt * phase_p_diff * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c]);
-                            Jac[diag_idx + c * N_VARS + v] += c_flux * grav_pc_der_i[v];
-                            Jac[jac_idx + c * N_VARS + v] += c_flux * grav_pc_der_j[v];
+                            Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
+                                phase_volumetric_rate * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
+                            Jac[diag_idx + c * N_VARS + v] += phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] += phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             if (v == 0)
                             {
-                                Jac[diag_idx + c * N_VARS + v] += c_flux; //-= Jac[jac_idx + c * N_VARS];
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux;  // -tran[conn_idx] * dt * op_vals[NC + c];
+                                Jac[diag_idx + c * N_VARS + v] += c_flux_coef;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux_coef;
                             }
                         }
                     }
