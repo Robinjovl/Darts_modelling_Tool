@@ -96,8 +96,11 @@ class Model_CPG(CICDModel):
         self.set_physics()
 
         # time stepping and convergence parameters
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=92, runtime=300, tol_newton=1e-2, tol_linear=1e-4)
-        #self.params.linear_type = self.params.linear_solver_t.cpu_superlu
+        sim = self.idata.sim  # short name
+        self.set_sim_params(first_ts=sim.first_ts, mult_ts=sim.mult_ts, max_ts=sim.max_ts, runtime=sim.runtime,
+                            tol_newton=sim.tol_newton, tol_linear=sim.tol_linear)
+        if hasattr(sim, 'linear_type'):
+            self.params.linear_type = sim.linear_type
 
         self.timer.node["initialization"].stop()
 
@@ -161,9 +164,18 @@ class Model_CPG(CICDModel):
             def __init__(self):
                 pass
 
-        dt = 365.25  # one report timestep length, [days]
-        n_time_steps = 20
+        dt = 1  # one report timestep length, [days]
+        n_time_steps = 30
         self.idata.sim.time_steps = np.zeros(n_time_steps) + dt
+
+        # time stepping and convergence parameters
+        self.idata.sim.first_ts = 0.01
+        self.idata.sim.mult_ts = 2
+        self.idata.sim.max_ts = 92
+        self.idata.sim.runtime = 300
+        self.idata.sim.tol_newton = 1e-2
+        self.idata.sim.tol_linear = 1e-4
+        #self.idata.sim.linear_type = self.params.linear_solver_t.cpu_superlu
 
         self.idata.generate_grid = 'generate' in case
         self.idata.geom = InputDataGeom()
