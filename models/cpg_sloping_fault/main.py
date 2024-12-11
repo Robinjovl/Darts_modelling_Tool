@@ -1,14 +1,16 @@
-from darts.engines import redirect_darts_output
-from darts.tools.plot_darts import *
-from darts.tools.logging import redirect_all_output, abort_redirection
-from model_geothermal import ModelGeothermal
-from model_deadoil import ModelDeadOil
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
 import os, sys
+
+from darts.engines import redirect_darts_output
+from darts.tools.plot_darts import *
+from darts.tools.logging import redirect_all_output, abort_redirection
+
+from model_geothermal import ModelGeothermal
+from model_deadoil import ModelDeadOil
+
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
@@ -37,13 +39,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
-    m.save_grdecl(os.path.join(out_dir, 'res_init'))
+    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
     m.run_simulation()
 
-    m.centers_to_vtk(out_dir)
+    m.reservoir.centers_to_vtk(out_dir)
 
-    m.save_grdecl(os.path.join(out_dir, 'res_last'))
+    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     
     m.print_timers()
     m.print_stat()

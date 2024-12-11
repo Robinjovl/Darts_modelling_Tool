@@ -2,11 +2,12 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
-from model_cpg import Model_CPG, fmt
 from darts.input.input_data import InputData
 from darts.engines import value_vector
 from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
 
+from model_cpg import Model_CPG, fmt
+from set_case import set_input_data
 
 class ModelDeadOil(Model_CPG):
     def __init__(self, case='generate', grid_out_dir=None):
@@ -144,7 +145,7 @@ class ModelDeadOil(Model_CPG):
 
     def set_input_data(self, case=''):
         self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
-        super().set_input_data(case)  # call a parent class function from model_cpg.py  for geometry and rock props setup
+        set_input_data(self.idata, case)
 
         # this sets default properties
         self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps

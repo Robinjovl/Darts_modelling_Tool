@@ -18,6 +18,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 import datetime, time
 import darts
 from pyevtk import hl, vtk
+from pyevtk.hl import pointsToVTK
 import warnings
 
 try:
@@ -813,6 +814,38 @@ class CPG_Reservoir(ReservoirBase):
         idx = find_cell_index(centers, np.array([x, y, z]))
         ijk = get_ijk(idx, self.nx, self.ny, self.nz)
         return ijk
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        c = np.zeros((self.discr_mesh.n_cells, 3))
+        for i in range(self.discr_mesh.n_cells):
+            cv = c_cpg[i].values
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        if c is not None:
+            pointsToVTK(fname, x, y, z)
+
+    def save_grdecl(self, arrays_save, fname):
+        '''
+        saves cubes into a text file (grdecl format), nx*ny*nz values, I is the fastest index
+        arrays - dictionary of numpy arrays, dimension of n active cells
+        fname - file name to output
+        '''
+
+        actnum = self.global_data['actnum']
+        fname_suf = fname + '.grdecl'
+
+        local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
+        global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
+
+        save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
+        for arr_name in arrays_save.keys():
+            make_full = True
+            if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
+                make_full = False
+            save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
 
 #####################################################################
 

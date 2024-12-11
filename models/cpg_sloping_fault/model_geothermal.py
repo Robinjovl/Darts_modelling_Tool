@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
 
-from darts.input.input_data import InputData
-from model_cpg import Model_CPG, fmt
 from darts.engines import value_vector
-
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
+
+from darts.input.input_data import InputData
+from set_case import set_input_data
+from model_cpg import Model_CPG, fmt
 
 
 class ModelGeothermal(Model_CPG):
@@ -131,7 +132,7 @@ class ModelGeothermal(Model_CPG):
         #init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
-        super().set_input_data(case)  # call a parent class function from model_cpg.py  for geometry and rock props setup
+        set_input_data(self.idata, case)
 
         if self.iapws_physics:
             self.idata.fluid = GeothermalIAPWSFluidProps()
