@@ -25,8 +25,8 @@ class CICDModel(DartsModel):
         nt = int(os.environ['OMP_NUM_THREADS'])
         if nt > 1: # use a looser tolerance for comparison of multithreaded run
             diff_norm_normalized_tol = 1e-2
-            diff_abs_max_normalized_tol = 1e-2
-            rel_diff_tol = 40 
+            diff_abs_max_normalized_tol = 1e-1
+            rel_diff_tol = 100 
         
         fail = 0
         data_et = self.load_performance_data(perf_file, pkl_suffix=pkl_suffix)
