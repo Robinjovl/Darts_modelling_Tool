@@ -54,7 +54,7 @@ class DartsModel:
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False,
              itor_mode: str = 'adaptive', itor_type: str = 'multilinear',
-             output_folder = 'output', sol_filename = 'reseroir.h5', restart = False):
+             restart = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -103,12 +103,12 @@ class DartsModel:
         self.set_well_controls()
         self.reset()
 
-        self.output_folder = output_folder
-        self.sol_filename = sol_filename
+        # self.output_folder = output_folder
+        # self.sol_filename = sol_filename
         # self.well_filename = 'well_data.h5'
         # self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         # self.well_filepath = os.path.join(self.output_folder, self.well_filename)
-        self.restart = restart
+        # self.restart = restart
         # self.set_output()
 
     def reset(self):
@@ -118,9 +118,16 @@ class DartsModel:
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
 
-    def set_output(self, all_phase_props = True):
-        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
-                             self.output_folder, self.sol_filename, self.restart, all_phase_props)
+    def set_output(self, output_folder = 'output', sol_filename = 'reservoir_solution.h5', restart = False, all_phase_props = True, precision = 'd'):
+        """
+       Function to initialize output class
+        : param output_folder: folder for h5 output files
+        : param sol_filename: filename of output file
+        : param restart: Boolean to check if existing file should be overwritten or appended, deault is False (overwritten)
+        : param all_phase_props: Boolean to output all phase properties
+        : param precision: data precision of saved data ('s' single precision, 'd' double precssion)
+        """
+        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params, output_folder, sol_filename, restart, all_phase_props, precision)
         return
 
     def set_wells(self, verbose: bool = False):

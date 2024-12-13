@@ -16,7 +16,7 @@ class Output:
     """
     Base class for all output related functionality
     """
-    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, restart, all_phase_props):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, restart, all_phase_props, precision):
         super().__init__()
 
         self.reservoir = reservoir
@@ -35,23 +35,26 @@ class Output:
         self.output_folder = output_folder
         self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
-        self.restart = restart
+        self.precision = precision
 
-        if restart is False:
-            # save initial state of reservoir at t = 0 days
-            self.save_data_to_h5(kind = 'reservoir')
+        self.restart = restart
+        if self.restart is False:
+            self.save_data_to_h5(kind='reservoir')
 
         if all_phase_props:
             phase_props_labels = ['dens', 'dens_m', 'sat', 'nu', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
 
             for region in self.physics.regions:  # loop over the different sets of operators
-                phase_props = self.physics.property_containers[region].phase_props
                 temp_dict = {}
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j, phase_name in enumerate(self.physics.phases):
-                        temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: phase_props[i][j]
+                        temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+
+                for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
+                    for j, phase_name in enumerate(self.physics.phases):  # loop over phases
+                        temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j,i]
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
@@ -98,20 +101,27 @@ class Output:
 
         return 0
 
-    def load_restart_data(self, filename: str = os.path.join('restart', 'reservoir.h5'), timestep = -1):
+    def load_restart_data(self, filename: str = os.path.join('restart', 'reservoir_solution.h5'), timestep: int = -1):
         """
-        Function to load data from previous simulation and uses them for following simulation.
-        :param output_folder: restart_data filename
-        :type output_folder: str
+        Loads data from a previous simulation and sets it for the current simulation.
+        :param filename (str): Path to the restart file (default: 'restart/reservoir_solution.h5').
+        :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
         """
+
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"The restart file does not exist: {filename}")
+
+        # Read data from the file
         time, cell_id, X, var_names = self.read_specific_data(filename, timestep)
 
-        print('Restarting from %s at time = %f days' % (filename, time[0]))
+        print(f"Restarting from {filename} at time = {time[0]:.6f} days")
 
+        # Update the simulation engine with the loaded data
         self.physics.engine.t = time[0]
         self.physics.engine.X = value_vector(X.flatten())
         self.physics.engine.Xn = value_vector(X.flatten())
 
+        # Save the data
         self.save_data_to_h5(kind='reservoir')
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
@@ -123,8 +133,14 @@ class Output:
         :param description: description for *.h5
         :param add_static_data: flag to add static output
         """
+
+        precision_map = {
+            'd': np.float64, # Double precision
+            's': np.float32  # Single precision
+        }
+
         with h5py.File(filename, 'w') as f:
-            ## static data group
+            # add static data group
             if add_static_data:
                 static_group = f.create_group('static')
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
@@ -132,7 +148,7 @@ class Output:
                 static_group.create_dataset('block_m', data=block_m)
                 static_group.create_dataset('block_p', data=block_p)
 
-            ## dynamic data group
+            # add dynamic data group
             dynamic_group = f.create_group('dynamic')
             dynamic_group.create_dataset('time', shape=(0,), maxshape=(None,))
 
@@ -141,13 +157,15 @@ class Output:
                 nb = cell_ids.size
                 cell_ids_dataset = dynamic_group.create_dataset('cell_id', shape=(nb,), dtype=np.int32)
                 cell_ids_dataset[:] = cell_ids
-                dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
-                                             maxshape=(None, nb, self.physics.n_vars), dtype = np.float64)
+
+            dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
+                                         maxshape=(None, nb, self.physics.n_vars), dtype=precision_map[self.precision])
 
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
-            var_names = dynamic_group.create_dataset('variable_names', (self.physics.n_vars,), dtype=datatype)
-            var_names[:] = self.physics.vars
+            dynamic_group.create_dataset('variable_names', data=np.array(self.physics.vars, dtype=datatype))
+            #var_names = dynamic_group.create_dataset('variable_names', (self.physics.n_vars,), dtype=datatype)
+            #var_names[:] = self.physics.vars
 
             # write brief description
             f.attrs['description'] = description
@@ -279,13 +297,14 @@ class Output:
 
         return time, cell_id, X, var_names
 
-    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None) -> tuple:
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple:
         """
         Function to read *.h5 data and evaluate properties per grid block, per timestep
-        :param output_properties: List of properties to evaluate for output
-        :return property_array : dictionary containing the states and evaluated properties
-        :return timesteps: np.ndarray containing the timesteps at which the properties were evaluated
-        :rtype: tuple
+        :param output_properties: list of properties to evaluate for output, default = None (no properties)
+        :param filepath: solution filepath, e.g. /solution.h5
+        :param timestep: timestep at which you want to evaluate properties, default = None (all the timesteps are evaluated)
+        :return property_array : dict of property arrays per timestep, per gridblock
+        :return timesteps: ndarray the time labels of the evaluated timesteps
         """
         # Read binary file
         if filepath is None:
@@ -293,15 +312,23 @@ class Output:
         else:
             path = filepath
 
-        if timestep is None:
-            timesteps, cell_id, X, var_names = self.read_specific_data(path)
-        else:
+        if not os.path.exists(path) and not engine:
+            raise FileNotFoundError(f"The specified file does not exist: {path}")
+
+        if engine is False:
+            # get data from file
             timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep)
+        else:
+            # get data from engine
+            timesteps = np.array(self.physics.engine.t).reshape(1,)
+            cell_id = np.arange(self.reservoir.mesh.n_blocks)
+            X = np.array(self.physics.engine.X, copy = True)
+            var_names = self.physics.vars
 
         # Initialize property_array
         n_vars = len(var_names)
         n_ops = self.physics.n_ops
-        nb = self.reservoir.mesh.n_res_blocks
+        nb = len(cell_id)
         props = list(var_names) + output_properties if output_properties is not None else list(var_names)
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
         if output_properties is not None:
@@ -311,7 +338,10 @@ class Output:
         for ts, timestep in enumerate(timesteps):
             # Extract vector of states
             for j, variable in enumerate(var_names):
-                property_array[variable][ts, :] = X[ts, :nb, j]
+                if engine is False:
+                    property_array[variable][ts, :] = X[ts,:nb,j]
+                else:
+                    property_array[variable][ts, :] = X[j::n_vars]
 
             if output_properties is not None:
                 states_numpy = np.stack([property_array[var][ts] for var in var_names]).T.flatten()
@@ -345,7 +375,6 @@ class Output:
         props = list(data.keys())
 
         # Initialize coords and data_vars for Xarray Dataset
-        # array_shape = (len(timesteps), self.reservoir.nx, self.reservoir.ny, self.reservoir.nz)
         array_shape = (len(timesteps), self.reservoir.nz, self.reservoir.ny, self.reservoir.nx)
         for prop, array in data.items():
             data[prop] = array.reshape(array_shape)
@@ -373,6 +402,7 @@ class Output:
         :param y: index in y-dimension
         :param z: index in z-dimension
         """
+
         assert timestep < len(xarray_data['time']), 'time step should be less than %d' % len(xarray_data['time'])
 
         var_names = list(xarray_data.data_vars)
