@@ -29,7 +29,8 @@ class OperatorsSuper(OperatorsBase):
         self.GRAV_OP = self.RE_INTER_OP + 3  # gravity operator - nph
         self.PC_OP = self.RE_INTER_OP + 3 + self.nph  # capillary operator - nph
         self.PORO_OP = self.RE_INTER_OP + 3 + 2 * self.nph  # porosity operator - 1
-        self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
+        self.LAMBDA_OP = self.PORO_OP + 1
+        self.ENTH_OP = self.LAMBDA_OP + self.nph  # enthalpy operator - nph
         self.n_ops = self.ENTH_OP + self.nph
 
     def print_operators(self, state: value_vector, values: value_vector):
@@ -87,9 +88,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:
-            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
+            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+                self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         # fluid diffusive flux sat: c_r phi_f s_j (-)
@@ -108,7 +109,6 @@ class ReservoirOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         vec_values_as_np[self.KIN_OP:self.KIN_OP + self.nc] = self.property.mass_source
 
-
         """ Gravity and Capillarity operators """
         # E3-> gravity
         vec_values_as_np[self.GRAV_OP + self.property.ph] = self.property.dens[self.property.ph]
@@ -118,6 +118,11 @@ class ReservoirOperators(OperatorsSuper):
 
         # E5_> porosity
         vec_values_as_np[self.PORO_OP] = self.phi_f
+
+        """ Lambda operator for velocity calculations """
+        for j in self.property.ph:
+            # fluid mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -284,7 +289,7 @@ class WellOperators(OperatorsSuper):
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+                self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
 
@@ -300,6 +305,11 @@ class WellOperators(OperatorsSuper):
 
         # E5_> porosity
         vec_values_as_np[self.PORO_OP] = 1.
+
+        """ Lambda operator for velocity calculations """
+        for j in self.property.ph:
+            # fluid mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
 
 
         if self.thermal:
