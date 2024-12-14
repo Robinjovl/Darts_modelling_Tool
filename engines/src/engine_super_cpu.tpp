@@ -240,8 +240,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 value_t grav_pc_der_j[N_VARS];
                 for (uint8_t v = 0; v < N_VARS; v++)
                 {
-                    grav_pc_der_i[v] = -(op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
-                    grav_pc_der_j[v] = -(op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
+                    grav_pc_der_i[v] = (op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 + op_ders_arr[(i * N_OPS + PC_OP + p) * N_VARS + v];
+                    grav_pc_der_j[v] = (op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * grav_coef[conn_idx] / 2 - op_ders_arr[(j * N_OPS + PC_OP + p) * N_VARS + v];
                 }
 
                 phase_fluxes[p] = 0.0;
@@ -277,8 +277,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
                                 phase_volumetric_rate * trans_mult_der_i[v] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt);
-                            Jac[diag_idx + c * N_VARS + v] += phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
-                            Jac[jac_idx + c * N_VARS + v] += phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
                             if (v == 0)
                             {
@@ -321,8 +321,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         {
                             Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
                                 phase_volumetric_rate * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
-                            Jac[diag_idx + c * N_VARS + v] += phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
-                            Jac[jac_idx + c * N_VARS + v] += phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+                            Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             if (v == 0)
                             {
                                 Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
