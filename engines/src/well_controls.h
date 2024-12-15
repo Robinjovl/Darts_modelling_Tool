@@ -104,16 +104,25 @@ public:
 class rate_inj_well_control : public well_control_iface
 {
 public:
-  rate_inj_well_control(std::vector <std::string> phase_names_, index_t target_phase_idx_, index_t n_equations_, index_t n_variables_,
-                        value_t target_rate_, std::vector <value_t> &injection_stream_, 
+  rate_inj_well_control(std::vector <std::string> phase_names_, std::string ctrl_rate_type_, index_t ctrl_phase_index_, index_t n_equations_, index_t n_variables_,
+                        value_t target_rate_, std::vector <value_t> &target_composition_,
                         operator_set_gradient_evaluator_iface* rate_etor_) :
-    phase_names(phase_names_), target_phase_idx(target_phase_idx_), n_equations(n_equations_), n_variables(n_variables_),
-    target_rate(target_rate_), injection_stream(injection_stream_), rate_etor(rate_etor_)
+    phase_names(phase_names_), ctrl_rate_type(ctrl_rate_type_), ctrl_phase_idx(ctrl_phase_index_), n_equations(n_equations_), n_variables(n_variables_),
+    target_rate(target_rate_), target_composition(target_composition_), rate_etor(rate_etor_)
   {
-    name = phase_names[target_phase_idx] + " rate injector";
+    name = "Injector with constant " + phase_names[ctrl_phase_idx] + " rate ";
     state.resize(n_variables);
-    rates.resize(phase_names_.size());
-    rates_derivs.resize(phase_names_.size() * n_variables);
+    rates.resize(phase_names_.size() * 4);
+    rates_derivs.resize(phase_names_.size() * 4 * n_variables);
+
+	if (ctrl_rate_type == "phase_molar_rate")
+		FLUX_OP = ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_mass_rate")
+		FLUX_OP = phase_names.size() + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_volumetric_rate")
+		FLUX_OP = phase_names.size() * 2 + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_advective_heat_rate")
+		FLUX_OP = phase_names.size() * 3 + ctrl_phase_idx;
   };
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
@@ -127,15 +136,17 @@ public:
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 
 
-  index_t target_phase_idx, n_equations, n_variables;
+  index_t ctrl_phase_idx, n_equations, n_variables;
   std::vector <std::string> phase_names;
+  std::string ctrl_rate_type;
   value_t target_rate;
-  std::vector <value_t> injection_stream;
+  std::vector <value_t> target_composition;
   operator_set_gradient_evaluator_iface *rate_etor;
 
   std::vector<value_t> state;
   std::vector<value_t> rates;
   std::vector<value_t> rates_derivs;
+  index_t FLUX_OP;
 };
 
 /// Volumetric rate control for production compositional well 

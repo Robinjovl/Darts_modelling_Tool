@@ -331,25 +331,18 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         return 0
 
 
-class RateOperators(operator_set_evaluator_iface):
+class CtrlRateOperators(operator_set_evaluator_iface):
     """
     If the well is rate-controlled, this class is used to evaluate the flux operator.
     """
-    def __init__(self, property_container, ctrl_rate_props: dict):
-        """
-        :param property_container: Property container
-        :param ctrl_rate_props: This dict consists of two keys:
-        The key "ctrl_rate_type" is the type of the rate. The available types are: "phase_molar_rate", "phase_mass_rate",
-        "phase_volumetric_rate", and "phase_advective_heat_rate".
-        The key "ctrl_phase_name" is the index of the phase the rate of which is controlled.
-        """
+    def __init__(self, property_container):
         super().__init__()
 
-        self.n_ops = property_container.nph
         self.property = property_container
+        self.np_fl = property_container.np_fl
+        self.thermal = property_container.thermal
 
-        self.ctrl_rate_type = ctrl_rate_props["ctrl_rate_type"]
-        self.ctrl_phase_index = property_container.phases_name.index(ctrl_rate_props["ctrl_phase_name"])
+        self.n_ops = property_container.nph * 4
 
     def evaluate(self, state: value_vector, values: value_vector):
         vec_state_as_np = state.to_numpy()
@@ -358,17 +351,15 @@ class RateOperators(operator_set_evaluator_iface):
 
         self.property.evaluate(vec_state_as_np)
 
-        ph_idx = self.ctrl_phase_index
-
-        if ph_idx in self.property.ph:
-            if self.ctrl_rate_type == "phase_molar_rate":
-                vec_values_as_np[0] = self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            elif self.ctrl_rate_type == "phase_mass_rate":
-                vec_values_as_np[0] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            elif self.ctrl_rate_type == "phase_volumetric_rate":
-                vec_values_as_np[0] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            elif self.ctrl_rate_type == "phase_advective_heat_rate":
-                vec_values_as_np[0] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx]
-                                       * self.property.kr[ph_idx] / self.property.mu[ph_idx])
+        for ph_idx in self.property.ph:
+            # Flux operator for "phase_molar_rate":
+            vec_values_as_np[ph_idx] = self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            # Flux operator for "phase_mass_rate":
+            vec_values_as_np[self.np_fl + ph_idx] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            # Flux operator for "phase_volumetric_rate":
+            vec_values_as_np[self.np_fl * 2 + ph_idx] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            if self.thermal:
+                # Flux operator for "phase_advective_heat_rate":
+                vec_values_as_np[self.np_fl * 3 + ph_idx] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx])
 
         return 0

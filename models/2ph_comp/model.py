@@ -65,13 +65,9 @@ class Model(CICDModel):
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('oil', PhaseRelPerm("oil"))])
 
-        ctrl_rate_props = {"ctrl_rate_type": "phase_molar_rate",
-                           "ctrl_phase_name": "gas"}
-
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10,
-                                     ctrl_rate_props=ctrl_rate_props)
+                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
         return
@@ -81,9 +77,13 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                # If the well is rate-controlled, ctrl_rate_props must be specified in the instance of
-                # the Compositional class.
-                w.control = self.physics.new_rate_inj(200, inj_stream)
+                """
+                If the injector is rate-controlled, the 2nd input argument is the type of the rate, which could be 
+                "phase_molar_rate", "phase_mass_rate", "phase_volumetric_rate", or "phase_advective_heat_rate".
+                The third input argument is the name of the phase the rate of which is controlled.
+                """
+                w.control = self.physics.new_rate_inj(200, "phase_molar_rate", "gas", inj_stream)
+                # w.control = self.physics.new_rate_inj(200, inj_stream)
                 # w.control = self.physics.new_bhp_inj(140, inj_stream)
             else:
                 w.control = self.physics.new_bhp_prod(50)
