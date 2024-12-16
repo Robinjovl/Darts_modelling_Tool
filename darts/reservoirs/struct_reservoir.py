@@ -278,16 +278,18 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def plot(self, data: dict, output_props: list = None, fig=None, lims: dict = None):
+    def plot(self, data: dict, output_props: list = None, fig=None, figsize: tuple = None, axs_shape: tuple = None, lims: dict = None):
         assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
         import matplotlib.pyplot as plt
         output_props = output_props if output_props is not None else list(data.keys())
         n_plots = len(output_props)
         lims = lims if lims is not None else {}
+        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
+        figsize = (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
 
         if self.ndims == 1:
             if fig is None:
-                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+                fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
                 for j, prop in enumerate(output_props):
                     axs[j].set_title(prop)
@@ -314,7 +316,7 @@ class StructReservoir(ReservoirBase):
             shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
 
             from mpl_toolkits.axes_grid1 import make_axes_locatable
-            fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+            fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
             for j, prop in enumerate(output_props):
                 axs[j].set_title(prop)

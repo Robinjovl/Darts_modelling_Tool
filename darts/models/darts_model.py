@@ -736,7 +736,7 @@ class DartsModel:
         return timesteps, property_array
 
     def output_to_plt(self, output_properties: list = None, ith_step: int = None, lims: dict = None,
-                      output_directory: str = None, file_format: str = "pdf"):
+                      figsize: tuple = None, axs_shape: tuple = None, output_directory: str = None, file_format: str = "pdf"):
         """
         Function to plot results with matplotlib.
 
@@ -746,6 +746,8 @@ class DartsModel:
         :type ith_step: int
         :param lims: Ranges of colorbars, default is empty
         :type lims: dict
+        :param figsize: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
         :param output_directory: Name to save file
         :type output_directory: str
         :param file_format: File format, pdf is default
@@ -764,7 +766,7 @@ class DartsModel:
         timesteps, property_array = self.output_properties(output_properties=props_name, timestep=ith_step)
 
         # Pass to Reservoir.plot() method
-        fig = self.reservoir.plot(data=property_array, output_props=output_properties, lims=lims)
+        fig = self.reservoir.plot(data=property_array, output_props=output_properties, lims=lims, figsize=figsize, axs_shape=axs_shape)
 
         import matplotlib.pyplot as plt
         plt.savefig(output_directory + '/step' + str(ith_step) + '.' + file_format)

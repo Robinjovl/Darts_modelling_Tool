@@ -172,7 +172,7 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def plot(self, data: dict, output_props: list = None, fig=None, lims: dict = None):
+    def plot(self, data: dict, output_props: list = None, fig=None, figsize: tuple = None, axs_shape: tuple = None, lims: dict = None):
         """
         Method for plotting output using matplotlib library.
         Implementation is specific to inherited Reservoir classes
@@ -182,6 +182,8 @@ class ReservoirBase:
         :param output_props: List of properties to plot
         :type output_props: list
         :param fig: Figure object, default is None
+        :param figsize: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
         :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
         :type lims: dict
         """
