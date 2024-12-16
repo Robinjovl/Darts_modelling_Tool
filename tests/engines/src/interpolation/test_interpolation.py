@@ -104,7 +104,6 @@ def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric: b
     orders = np.diff(np.log(diff), axis=1)[:, -1] / np.diff(np.log(dx))
     success = (orders[0] > 1.6) and (orders[1] > 0.6)
 
-    assert(success)
     if success:
         test_status = 'OK'
     else:
@@ -117,6 +116,9 @@ def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric: b
     else:
         print(f'{itor_type} {itor_mode} interpolation (n_dim={n_dim}): {test_status}')
     # print('Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1]))
+
+    assert success, 'Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1])
+
 
 def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric: bool = None):
     zero = 1.e-9

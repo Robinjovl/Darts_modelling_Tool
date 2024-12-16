@@ -3,6 +3,7 @@ set -e
 
 # get linear solvers binary compiled with GPU and include files
 cd engines/lib
+rm -rf darts_linear_solvers
 mkdir darts_linear_solvers && cd darts_linear_solvers && mkdir lib && mkdir include && cd ..
 cp -r $GSELINSOLVERSPATH/lib darts_linear_solvers
 cp -r $GSELINSOLVERSPATH/include darts_linear_solvers
