@@ -14,6 +14,8 @@ class Initialize:
         property_container = physics.property_containers[0]
         self.props = {}
         self.props.update({'sat' + ph: lambda j=j: property_container.sat[j] for j, ph in enumerate(physics.phases)})
+        self.props.update({'x' + str(i) + ph: lambda i=i, j=j: property_container.x[j, i]
+                           for i in range(self.nv - self.thermal) for j, ph in enumerate(physics.phases)})
         self.props.update({'rhoT': lambda: np.sum(property_container.sat * property_container.dens)})
         self.props.update({'dX' + str(k): lambda k=k: property_container.dX[k]
                            for k, kr in enumerate(property_container.kinetic_rate_ev)})
