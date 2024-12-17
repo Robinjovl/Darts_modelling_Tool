@@ -47,7 +47,6 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
-    #redirect_darts_output('run.log')
     duplicate_output_to_file("run.log")
 
     print('Hi from python!')
