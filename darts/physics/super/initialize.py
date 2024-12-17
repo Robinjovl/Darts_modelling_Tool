@@ -86,18 +86,17 @@ class Initialize:
         self.depths[bc_idx] = depth_known
 
         # Set primary and secondary specifications
-        if primary_specs is not None:
+        if primary_specs:
             for spec, values in primary_specs.items():
                 self.primary_specs[spec] = values if isinstance(values, (list, np.ndarray)) else np.ones(nb) * values
                 assert len(self.primary_specs[spec]) == nb, "Length of " + spec + " not compatible"
-        if secondary_specs is not None:
+        if secondary_specs:
             for spec, values in secondary_specs.items():
                 self.secondary_specs[spec] = values if isinstance(values, (list, np.ndarray)) else np.ones(nb) * values
                 assert len(self.secondary_specs[spec]) == nb, "Length of " + spec + " not compatible"
         for i in range(nb):
-            assert int(np.sum([not np.isnan(spec[i]) for spec in self.primary_specs.values()]) +
-                       np.sum([not np.isnan(spec[i]) for spec in
-                               self.secondary_specs.values()])) == self.nv - 1 - self.thermal, \
+            assert int(np.sum([not np.isnan(np.float64(spec[i])) for spec in self.primary_specs.values()]) +
+                       np.sum([not np.isnan(np.float64(spec[i])) for spec in self.secondary_specs.values()])) == self.nv - 1 - self.thermal, \
                 "Not enough variables specified for well-defined system of equations in block {}".format(i)
 
         # Define thermal gradient
@@ -217,7 +216,7 @@ class Initialize:
             # Specification equation
             j1 = 0
             for var, spec in self.primary_specs.items():
-                if not np.isnan(spec[cell_idx]):
+                if not np.isnan(np.float64(spec[cell_idx])):
                     var_idx = self.var_idxs[var]
                     X[cell_idx, var_idx] = spec[cell_idx]
 
@@ -230,7 +229,7 @@ class Initialize:
             # Specification of secondary variables
             j2 = 0
             for var, spec in self.secondary_specs.items():
-                if not np.isnan(spec[cell_idx]):
+                if not np.isnan(np.float64(spec[cell_idx])):
                     prop_idx = self.props_idxs[var]
                     res_idx = j1 + j2 + 1
                     res[res_idx] = values1[prop_idx] - spec[cell_idx]
