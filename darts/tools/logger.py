@@ -17,7 +17,7 @@ def abort_redirection(log_stream):
 ####################################################################
   
 import logging
-import darts_cpp_logger
+import darts.engines as darts_cpp_logger
 
 class CppLoggingHandler(logging.Handler):
     def __init__(self, level = 0) -> None:
@@ -32,9 +32,10 @@ cpp_handler = CppLoggingHandler()
 
 logger.addHandler(cpp_handler)
 logger.setLevel(logging.DEBUG)
-darts_cpp_logger.duplicate_output_to_file("log.log")
 
 
 if __name__ == "__main__": 
+    darts_cpp_logger.duplicate_output_to_file("log.log")
     logger.info("yes")
+    print("pizza")
     logger.error("no")
