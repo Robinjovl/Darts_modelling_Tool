@@ -26,6 +26,9 @@ models/__pycache__/
 darts/build_info.txt
 
 *.exp
+*.png
+*.xlsx
+*.pkl
 *.iobj
 *.ipdb
 *.lib
