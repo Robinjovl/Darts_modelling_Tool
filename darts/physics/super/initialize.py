@@ -4,21 +4,34 @@ from darts.physics.base.operators_base import PropertyOperators
 
 
 class Initialize:
-    def __init__(self, physics, algorithm: str = 'multilinear', mode: str = 'adaptive', is_barycentric: bool = False):
+    def __init__(self, physics, algorithm: str = 'multilinear', mode: str = 'adaptive', is_barycentric: bool = False,
+                 aq_idx: int = None, h2o_idx: int = None):
+        """
+        Constructor for Initialize class
+
+        :param physics: Physics object
+        :param algorithm: Type of interpolation (multilinear/linear), default is multilinear
+        :param mode: Interpolation mode (static/adaptive), default is adaptive
+        :param is_barycentric: Bool for barycentric interpolation, default is False
+        :param aq_idx: Index of Aq phase
+        :param h2o_idx: Index of H2O-component
+        """
         self.physics = physics
         self.nv = physics.n_vars
         self.var_idxs = {var: i for i, var in enumerate(physics.vars)}
         self.thermal = ('temperature' in physics.vars)
+        ns = self.nv - self.thermal
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
-        property_container = physics.property_containers[0]
+        pc = physics.property_containers[0]
         self.props = {}
-        self.props.update({'sat' + ph: lambda j=j: property_container.sat[j] for j, ph in enumerate(physics.phases)})
-        self.props.update({'x' + str(i) + ph: lambda i=i, j=j: property_container.x[j, i]
-                           for i in range(self.nv - self.thermal) for j, ph in enumerate(physics.phases)})
-        self.props.update({'rhoT': lambda: np.sum(property_container.sat * property_container.dens)})
-        self.props.update({'dX' + str(k): lambda k=k: property_container.dX[k]
-                           for k, kr in enumerate(property_container.kinetic_rate_ev)})
+        self.props.update({'rhoT': lambda: np.sum(pc.sat * pc.dens)})
+        self.props.update({'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)})
+        self.props.update({'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
+                           for i in range(ns) for j, ph in enumerate(physics.phases)})
+        if aq_idx is not None:
+            self.props.update({'m' + str(i): lambda i=i: 55.509 * pc.x[aq_idx, i] / pc.x[aq_idx, h2o_idx] for i in range(ns)})
+        self.props.update({'dX' + str(k): lambda k=k: pc.dX[k] for k, kr in enumerate(pc.kinetic_rate_ev)})
 
         self.props_idxs = {prop: i for i, prop in enumerate(self.props.keys())}
         self.primary_specs = {}
@@ -34,6 +47,8 @@ class Initialize:
         Function to return array of properties.
         Primary variables (vars) are obtained from engine, secondary variables (props) are interpolated by property_itor.
 
+        :param Xi: State
+        :type Xi: list
         :returns: property_array
         :rtype: np.ndarray
         """
@@ -48,6 +63,21 @@ class Initialize:
 
     def solve(self, depth_bottom: float, depth_top: float, depth_known: float, boundary_state: dict,
               primary_specs: dict = None, secondary_specs: dict = None, nb: int = 100, dTdh: float = 0.03):
+        """
+        Solve for all depths
+
+        :param depth_bottom: Bottom depth
+        :param depth_top: Top depth
+        :param depth_known: Depth of known conditions
+        :param boundary_state: Known conditions, set of primary and secondary specifications
+        :type boundary_state: dict
+        :param primary_specs: Primary specifications
+        :type primary_specs: dict
+        :param secondary_specs: Secondary specifications
+        :type secondary_specs: dict
+        :param nb: Number of depth values
+        :param dTdh: Temperature gradient
+        """
         # Check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
         assert depth_top <= depth_known <= depth_bottom, "Known depth is not in range [bottom, top]"
@@ -89,9 +119,20 @@ class Initialize:
         return X.flatten()
 
     def solve_state(self, Xi: list, primary_specs: dict = None, secondary_specs: dict = None, max_iter: int = 100):
+        """
+        Solve for all depths
+
+        :param Xi: State
+        :type Xi: list
+        :param primary_specs: Primary specifications
+        :type primary_specs: dict
+        :param secondary_specs: Secondary specifications
+        :type secondary_specs: dict
+        :param max_iter: Maximum number of iterations
+        """
         assert int(np.sum([not np.isnan(np.float64(spec)) for spec in primary_specs.values()]) +
                    np.sum([not np.isnan(np.float64(spec)) for spec in secondary_specs.values()])) == self.nv, \
-            "Not enough variables specified for well-defined system of equations".format(i)
+            "Not enough variables specified for well-defined system of equations"
 
         for it in range(max_iter):
             res = np.zeros(self.nv)
@@ -133,8 +174,18 @@ class Initialize:
         return Xi
 
     def solve_cell(self, X: np.ndarray, cell_idx: int, downward: bool = True, max_iter: int = 100):
+        """
+        Solve for specific depth
+
+        :param X: State vector of all depths
+        :type X: np.ndarray
+        :param cell_idx: Index of cell to solve
+        :param downward: Bool to indicate if known cell is above or below
+        :param max_iter: Maximum number of iterations
+        """
         # Find neighbouring cell for which state is known
         known_idx = cell_idx - 1 if downward else cell_idx + 1
+        rhoT_idx = self.props_idxs['rhoT']
 
         n_vars = self.nv - self.thermal
         values0, _ = self.evaluate(X[known_idx])
@@ -143,12 +194,11 @@ class Initialize:
 
         # Solve nonlinear unknowns
         # Initialize using same composition, recalculate pressure and evaluate temperature gradient
-        X[cell_idx, 0] = X[known_idx, 0] + values0[self.props_idxs['rhoT']] * (gh1 - gh0)
+        X[cell_idx, 0] = X[known_idx, 0] + values0[rhoT_idx] * (gh1 - gh0)
         X[cell_idx, 1:] = X[known_idx, 1:]
         if self.thermal:
             X[cell_idx, -1] = self.T(cell_idx)
 
-        rhoT_idx = self.props_idxs['rhoT']
         for it in range(max_iter):
             # nc variables for pressure and nc-1 compositions, temperature is calculated from gradient
             res = np.zeros(n_vars)
