@@ -104,6 +104,10 @@ PYBIND11_MODULE(engines, m)
       .def("to_numpy", [](std::vector<value_t>& vec) {
           return to_numpy(vec);  // Call the conversion function
       }, "Converts the vector to a NumPy array");
+	  
+  m.def("log", &print, "Print");
+  m.def("duplicate_output_to_file", &duplicate_output_to_file, "");
+	  
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");
   py::bind_map<std::map<std::string, timer_node>>(m, "timer_map");
