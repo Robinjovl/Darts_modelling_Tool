@@ -372,7 +372,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   value_t phase_presence_mult;
 
   index_t j;
-  value_t p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg;
+  value_t p_diff, t_diff, gamma_t_i, gamma_t_j, phi_i, phi_j, phi_avg;
 
   // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
   if (v == 0)
