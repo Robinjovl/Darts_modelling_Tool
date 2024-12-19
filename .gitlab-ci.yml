@@ -641,13 +641,27 @@ upload_wheels:
         - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
         - export wheel=`ls ./dist/*linux*`
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter 
-        #- cp $wheel $GSEWHEELSPATH
         - export wheel=`ls ./dist/*win*`
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
     dependencies:
         # get the wheels from the build stage
         - build-linux-3.9
         - build-windows-3.9
+
+upload_wheels_gse:
+    stage: deploy
+    image: python:3.9
+    rules: 
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux_gpu
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - cp $wheel $GSEWHEELSPATH
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.9-gpu
 
 upload_wheels_odls:
     stage: deploy
