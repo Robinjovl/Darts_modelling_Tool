@@ -278,14 +278,16 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def plot(self, data: dict, output_props: list = None, fig=None, figsize: tuple = None, axs_shape: tuple = None, lims: dict = None):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
         assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
         import matplotlib.pyplot as plt
         output_props = output_props if output_props is not None else list(data.keys())
         n_plots = len(output_props)
         lims = lims if lims is not None else {}
         axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
-        figsize = (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
+        figsize = figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
 
         if self.ndims == 1:
             if fig is None:
@@ -302,6 +304,9 @@ class StructReservoir(ReservoirBase):
                     ax.plot(x, data[prop][:])
                     if prop in lims.keys():
                         ax.set(ylim=lims[prop])
+                    if logx:
+                        ax.set_xscale('log')
+                        ax.set_xlim([np.min(x), np.max(x)])
                 elif self.nz > 1:
                     z = self.discretizer.centroids_all_cells[:, 2]
                     ax.plot(data[prop][:], z)
@@ -323,17 +328,26 @@ class StructReservoir(ReservoirBase):
                 if prop not in lims.keys():
                     lims[prop] = [None, None]
 
-                im = axs[j].pcolormesh(X, Y, data[prop][:].reshape(shape), cmap='jet', vmin=lims[prop][0],
-                                       vmax=lims[prop][1])
-                axs[j].axis('scaled')
+                im = axs[j].pcolormesh(X, Y, data[prop][:].reshape(shape), cmap=cmap, vmin=lims[prop][0], vmax=lims[prop][1])
                 if self.nz > 1:
                     axs[j].invert_yaxis()
+                if logx:
+                    axs[j].set_xscale('log')
+                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
+                    axs[j].set_aspect('auto')
+                else:
+                    axs[j].set_aspect(aspect_ratio)
 
                 divider = make_axes_locatable(axs[j])
-                cax = divider.append_axes('right', size='5%', pad=0.05)
-                cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                if colorbar_loc == 'right':
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                else:
+                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                    cbar = fig.colorbar(im, cax=cax, orientation='horizontal')
                 # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
                 # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+            plt.tight_layout()
 
         return fig
 

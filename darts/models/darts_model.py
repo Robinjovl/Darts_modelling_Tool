@@ -735,8 +735,9 @@ class DartsModel:
 
         return timesteps, property_array
 
-    def output_to_plt(self, output_properties: list = None, ith_step: int = None, lims: dict = None,
-                      figsize: tuple = None, axs_shape: tuple = None, output_directory: str = None, file_format: str = "pdf"):
+    def output_to_plt(self, output_properties: list = None, ith_step: int = None, lims: dict = None, fig=None,
+                      figsize: tuple = None, axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False,
+                      cmap: str = 'jet', colorbar_loc: str = 'right', output_directory: str = None, file_format: str = "pdf"):
         """
         Function to plot results with matplotlib.
 
@@ -746,12 +747,15 @@ class DartsModel:
         :type ith_step: int
         :param lims: Ranges of colorbars, default is empty
         :type lims: dict
+        :param fig: Optional figure object to append plots, default is None
         :param figsize: Tuple of (width, height) for figure
         :param axs_shape: Tuple of (rows, columns) for figure
-        :param output_directory: Name to save file
-        :type output_directory: str
-        :param file_format: File format, pdf is default
-        :type file_format: str
+        :param aspect_ratio: Aspect ratio of plots ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
+        :param output_directory: Directory to save file
+        :param file_format: File format, 'pdf' is default
         """
         # Set default output directory
         if output_directory is None:
@@ -766,7 +770,9 @@ class DartsModel:
         timesteps, property_array = self.output_properties(output_properties=props_name, timestep=ith_step)
 
         # Pass to Reservoir.plot() method
-        fig = self.reservoir.plot(data=property_array, output_props=output_properties, lims=lims, figsize=figsize, axs_shape=axs_shape)
+        fig = self.reservoir.output_to_plt(data=property_array, output_props=output_properties, lims=lims, fig=fig,
+                                           figsize=figsize, axs_shape=axs_shape, aspect_ratio=aspect_ratio, logx=logx,
+                                           cmap=cmap, colorbar_loc=colorbar_loc)
 
         import matplotlib.pyplot as plt
         plt.savefig(output_directory + '/step' + str(ith_step) + '.' + file_format)
