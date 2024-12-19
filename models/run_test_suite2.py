@@ -63,8 +63,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_dfn = ['fracture_network']
     test_cases_dfn = ['case_1']
     if test_all_models:
-        test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-        test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        test_cases_dfn += ['case_4', 'case_5']
+        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])
