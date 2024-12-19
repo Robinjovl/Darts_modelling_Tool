@@ -12,11 +12,11 @@ cd ../..
 # compile discretizer using the Makefile (no GPU)
 cd discretizer
 make clean
-#set +e # temporarily turn off set -e
+set +e # temporarily turn off set -e
 make release -j 20 USE_OPENDARTS_LINEAR_SOLVERS=false 1>../make_discretizer_out.log 2>../make_discretizer_err.log
 # sometimes the command above fails for file discretizer_build_info.cpp.in, so run it twice
-#make release USE_OPENDARTS_LINEAR_SOLVERS=false 1>>../make_discretizer_out.log 2>>../make_discretizer_err.log
-#set -e
+make release USE_OPENDARTS_LINEAR_SOLVERS=false 1>>../make_discretizer_out.log 2>>../make_discretizer_err.log
+set -e
 cd ..
 
 # need to link engines
