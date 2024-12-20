@@ -27,6 +27,7 @@ void pybind_operator_set_from_files(py::module &);
 
 void pybind_operator_set_interpolator_rates(py::module &);
 void pybind_operator_set_interpolator_super(py::module &);
+void pybind_operator_set_interpolator_pze_gra(py::module &);
 void pybind_operator_set_interpolator_pz_cap_gra(py::module &);
 void pybind_operator_set_interpolator_super_elastic(py::module &);
 
@@ -128,6 +129,7 @@ PYBIND11_MODULE(engines, m)
 
   pybind_operator_set_interpolator_rates(m);
   pybind_operator_set_interpolator_super(m);
+  pybind_operator_set_interpolator_pze_gra(m);
   pybind_operator_set_interpolator_pz_cap_gra(m);
 
 #ifdef WITH_GPU

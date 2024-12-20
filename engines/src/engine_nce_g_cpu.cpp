@@ -108,12 +108,12 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
             // fluid energy
             RHS[i * N_VARS + NC] = PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
             // + rock energy (no rock compressibility included in these computations)
-            RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_ACC_OP] - op_vals_arr_n[i * N_OPS + RE_ACC_OP]) * hcap[i];
+            RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
             for (uint8_t v = 0; v < N_VARS; v++)
             {
                 Jac[diag_idx + NC * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
-                Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i];
+                Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
             }
 
             // index of first entry for block i in CSR cols array
@@ -134,13 +134,13 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                     continue;
 
                 p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
-                t_diff = op_vals_arr[j * N_OPS + FE_TEMP_OP] - op_vals_arr[i * N_OPS + FE_TEMP_OP];
+                t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
                 gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
                 for (uint8_t p = 0; p < NP; p++)
                 {
                     // calculate gravity term for phase p
-                    value_t avg_density = (op_vals_arr[i * N_OPS + DENS_OP + p] + op_vals_arr[j * N_OPS + DENS_OP + p]) / 2;
+                    value_t avg_density = (op_vals_arr[i * N_OPS + DENS_OP + p] + op_vals_arr[j * N_OPS + DENS_OP + p]) * 0.5;
 
                     value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] * H2O_MW;
                     double phase_gamma_p_diff = tran[conn_idx] * dt * phase_p_diff;
@@ -157,8 +157,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
                                 Jac[diag_idx + c * N_VARS + v] -= phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FLUX_OP + p * NC + c) * N_VARS + v];
-                                Jac[diag_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
+                                Jac[diag_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
                                 if (v == P_VAR)
                                 {
                                     Jac[jac_idx + c * N_VARS] -= c_flux;
@@ -178,8 +178,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[diag_idx + NC * N_VARS + v] -= phase_gamma_p_diff * op_ders_arr[(i * N_OPS + FE_FLUX_OP + p) * N_VARS + v];
-                            Jac[diag_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
-                            Jac[jac_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
+                            Jac[diag_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
+                            Jac[jac_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
                             if (v == P_VAR)
                             {
                                 Jac[jac_idx + NC * N_VARS] -= phase_e_flux;
@@ -204,8 +204,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
                                 Jac[jac_idx + c * N_VARS + v] -= phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FLUX_OP + p * NC + c) * N_VARS + v];
-                                Jac[jac_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
-                                Jac[diag_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
+                                Jac[jac_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
+                                Jac[diag_idx + c * N_VARS + v] -= c_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
                                 if (v == P_VAR)
                                 {
                                     Jac[diag_idx + c * N_VARS] += c_flux;
@@ -220,8 +220,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[jac_idx + NC * N_VARS + v] -= phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FE_FLUX_OP + p) * N_VARS + v];
-                            Jac[jac_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
-                            Jac[diag_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] / 2 * H2O_MW;
+                            Jac[jac_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(j * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
+                            Jac[diag_idx + NC * N_VARS + v] -= phase_e_flux * grav_coef[conn_idx] * op_ders_arr[(i * N_OPS + DENS_OP + p) * N_VARS + v] * 0.5 * H2O_MW;
                             if (v == P_VAR)
                             {
                                 Jac[diag_idx + NC * N_VARS] += phase_e_flux;
@@ -236,34 +236,32 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                     // energy outflow
 
                     // conduction
-                    value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[i * N_OPS + FE_COND_OP] * mesh->poro[i] + op_vals_arr[i * N_OPS + RE_COND_OP] * (1 - mesh->poro[i]) * mesh->rock_cond[i]);
+                    value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[i * N_OPS + FE_COND_OP] * mesh->poro[i] + (1 - mesh->poro[i]) * mesh->rock_cond[i]);
 
                     RHS[i * N_VARS + NC] -= local_cond_dt * t_diff;
                     for (uint8_t v = 0; v < N_VARS; v++)
                     {
                         // conduction part derivative
                         Jac[diag_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + FE_COND_OP) * N_VARS + v] * mesh->poro[i];
-                        Jac[diag_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(i * N_OPS + RE_COND_OP) * N_VARS + v] * (1 - mesh->poro[i]) * mesh->rock_cond[i];
                         // t_diff derivatives
-                        Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
-                        Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
+                        Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
+                        Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
                     }
                 }
                 else
                 {
                     //energy inflow
                     // conduction
-                    value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[j * N_OPS + FE_COND_OP] * mesh->poro[j] + op_vals_arr[j * N_OPS + RE_COND_OP] * (1 - mesh->poro[j]) * mesh->rock_cond[j]);
+                    value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[j * N_OPS + FE_COND_OP] * mesh->poro[j] + (1 - mesh->poro[j]) * mesh->rock_cond[j]);
 
                     RHS[i * N_VARS + NC] -= local_cond_dt * t_diff;
                     for (uint8_t v = 0; v < N_VARS; v++)
                     {
                         // conduction part derivative
                         Jac[jac_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + FE_COND_OP) * N_VARS + v] * mesh->poro[j];
-                        Jac[jac_idx + NC * N_VARS + v] -= gamma_t_diff * op_ders_arr[(j * N_OPS + RE_COND_OP) * N_VARS + v] * (1 - mesh->poro[j]) * mesh->rock_cond[j];
                         // t_diff derivatives
-                        Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
-                        Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + FE_TEMP_OP) * N_VARS + v] * local_cond_dt;
+                        Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
+                        Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * local_cond_dt;
                     }
                 }
                 conn_idx++;
@@ -299,7 +297,7 @@ engine_nce_g_cpu<NC, NP>::calc_newton_residual_L2()
             res_m += res * res;
         }
 
-        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
         res_e += res * res;
     }
     residual = sqrt(res_m + res_e);
@@ -322,7 +320,7 @@ engine_nce_g_cpu<NC, NP>::calc_newton_residual_Linf()
                 residual = res;
         }
 
-        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + RE_ACC_OP] * hcap[i]));
+        res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
         if (res > residual)
             residual = res;
     }
@@ -513,7 +511,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 		for (uint8_t v = 0; v < N_VARS; v++)
 		{
 			Jac_n[diag_idx + NC * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v]);
-			Jac_n[diag_idx + NC * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + RE_ACC_OP) * N_VARS + v] * hcap[i]);
+			Jac_n[diag_idx + NC * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i]);
 		}
 
 		// index of first entry for block i in CSR cols array
@@ -556,7 +554,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 				continue;
 
 			p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
-			t_diff = op_vals_arr[j * N_OPS + FE_TEMP_OP] - op_vals_arr[i * N_OPS + FE_TEMP_OP];
+			t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
 			gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
 			for (index_t wh : well_head_idx_collection)
@@ -570,7 +568,7 @@ int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<
 			for (uint8_t p = 0; p < NP; p++)
 			{
 				// calculate gravity term for phase p
-				value_t avg_density = (op_vals_arr[i * N_OPS + DENS_OP + p] + op_vals_arr[j * N_OPS + DENS_OP + p]) / 2;
+				value_t avg_density = (op_vals_arr[i * N_OPS + DENS_OP + p] + op_vals_arr[j * N_OPS + DENS_OP + p]) * 0.5;
 
 				value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] * H2O_MW;
 				double phase_gamma_p_diff = tran[conn_idx] * dt * phase_p_diff;
