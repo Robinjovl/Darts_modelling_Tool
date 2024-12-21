@@ -515,7 +515,7 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
 
     for i in range(n_months):
         if reservoir_type.split('_')[0] == 'spe10':
-            ts_mult == 4.0 if  reservoir_type == 'spe10_20_40_40' else 1.0
+            ts_mult = 4.0 if reservoir_type == 'spe10_20_40_40' else 1.0
             t = n.physics.engine.t
             if t < 70:
                 n.params.max_ts = ts_mult * 0.25
