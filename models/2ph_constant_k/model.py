@@ -16,7 +16,7 @@ from darts.physics.super.initialize import Initialize
 
 class Model(DartsModel):
     def __init__(self, obl_points, reservoir_type, nx: int = None, components: list = [], itor_type: str = 'multilinear',
-                 itor_mode: str = 'adaptive', is_barycentric: bool = False):
+                 itor_mode: str = 'adaptive', is_barycentric: bool = False, layer_id = None):
         # Call base class constructor
         super().__init__()
 
@@ -28,6 +28,7 @@ class Model(DartsModel):
         self.itor_type = itor_type
         self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
+        self.layer_id = layer_id
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -69,7 +70,7 @@ class Model(DartsModel):
             self.well_cell_id = [[1, 1], [self.nx, self.ny]]
         else: # SPE10
             # read properties
-            self.nx, self.ny, self.nz = [int(n) for n in self.reservoir_type.split('_')[1:]]
+            self.nx, self.ny, self.nz = [int(n) for n in self.reservoir_type.split('_')[1:4]]
             input_folder = os.path.join('input', self.reservoir_type.split('_')[0], '_'.join(self.reservoir_type.split('_')[1:]))
             porosity = np.flip(np.swapaxes(load_single_keyword(os.path.join(input_folder, 'poro.txt'), 'PORO', cache=0).
                                      reshape(self.nz, self.ny, self.nx), 0, 2), axis=2)
@@ -82,17 +83,22 @@ class Model(DartsModel):
             dx, dy, dz = Lx / self.nx, Ly / self.ny, Lz / self.nz
             depth = 12000 * foot2meter# + Lz
 
-            self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
-                                                         dx=dx, dy=dy, dz=dz,
-                                                         permx=permeability[:,:,:,0],
-                                                         permy=permeability[:,:,:,1],
-                                                         permz=permeability[:,:,:,2],
-                                                         poro=porosity, start_z=depth)
-
-
-            # find well cells
+            layer_ids = np.arange(self.nz)
             eps = 0.1 * dx
             self.pt_wells = [[Lx / 2 + eps, Ly / 2 + 200], [Lx / 2 + eps, Ly / 2 - 200]]
+
+            if self.layer_id != None:
+                self.nz = 1
+                layer_ids = self.layer_id
+                # self.pt_wells = [[dx / 2, dy / 2], [Lx - dx / 2, Ly - dy / 2]]
+                self.p_init = self.p_init.min()
+
+            self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=self.ny, nz=self.nz,
+                                                         dx=dx, dy=dy, dz=dz,
+                                                         permx=permeability[:,:,layer_ids,0],
+                                                         permy=permeability[:,:,layer_ids,1],
+                                                         permz=permeability[:,:,layer_ids,2],
+                                                         poro=porosity[:,:,layer_ids], start_z=depth)
 
             # extend initial pressure array for well bodies/heads
             # n_wells = len(self.well_cell_id)
@@ -130,7 +136,6 @@ class Model(DartsModel):
             mask_m = np.isin(cell_m, id_closest_cells)
             mask_p = np.isin(cell_p, id_closest_cells)
             id_conn = np.where(mask_m & mask_p)[0]
-
             # tran[id_conn] += k_poiselle * np.pi * rw ** 2 / dz
 
     def set_physics(self):
@@ -261,7 +266,7 @@ class Model(DartsModel):
         return
 
     def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
-        if self.reservoir_type == '1D' or self.reservoir_type == '2D':
+        if self.reservoir_type == '1D' or self.reservoir_type == '2D' or self.layer_id != None:
             self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh, uniform_pressure=self.p_init,
                                                         uniform_composition=self.ini_comp)
         else:

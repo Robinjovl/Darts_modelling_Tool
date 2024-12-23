@@ -487,7 +487,8 @@ def get_components(n_comps: int):
         components = []
     return components
 
-def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False, vtk_output: bool = False):
+def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False,
+        vtk_output: bool = False, layer_id=None):
     output_folder = get_output_folder(itor_mode=itor_mode, itor_type=itor_type, obl_points=obl_points, n_comps=n_comps,
                                       reservoir_type=reservoir_type, nx=nx, is_barycentric=is_barycentric)
 
@@ -502,7 +503,7 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
     redirect_darts_output(os.path.join(output_folder, 'log.out'))
 
     n = Model(obl_points=obl_points, components=get_components(n_comps), reservoir_type=reservoir_type, nx=nx,
-              itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
+              itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric, layer_id=layer_id)
     n.init(itor_mode=itor_mode, itor_type=itor_type, output_folder=output_folder, is_barycentric=is_barycentric)
 
     n_months = 2 * 12
@@ -527,7 +528,6 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
                 n.params.max_ts = ts_mult * 1.0
             else:
                 n.params.max_ts = ts_mult * 1.5
-
 
         n.run(30.5, log_3d_body_path=log_3d_body_path)
         if reservoir_type != '1D' and vtk_output:
@@ -717,15 +717,15 @@ def test_linear_multilinear_nx():
 # test_linear_multilinear_components()
 # test_linear_multilinear_nx()
 
-n_comps = 3
-obl_points = 1024 # 1024 # 128
+n_comps = 20
+obl_points = 96 # 1024 # 128
 nx = 300
 # 1D
-# run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=nx, is_barycentric=False, vtk_output=True)
+# run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=nx, is_barycentric=False, vtk_output=True)
 # 2D
 # run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='2D', nx=nx, is_barycentric=True, vtk_output=False)
 # SPE10
-run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='SPE10_60_220_85', is_barycentric=False, vtk_output=True)
+run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True, layer_id=[0])
 
 # params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
 #            'itor_mode': 4 * ['adaptive'],
