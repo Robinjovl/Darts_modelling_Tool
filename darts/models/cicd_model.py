@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
 from darts.tools.flux_tools import get_molar_well_rates, get_phase_volumetric_well_rates, get_mass_well_rates
 
@@ -39,7 +40,8 @@ class CICDModel(DartsModel):
             # Check every variable separately
             for v in range(nv):
                 sol_et = data_et['solution'][v:nb * nv:nv]
-                diff = data['solution'][v:nb * nv:nv] - sol_et
+                sol = data['solution'][v:nb * nv:nv]
+                diff = sol - sol_et
                 sol_range = np.max(sol_et) - np.min(sol_et)
                 diff_abs = np.abs(diff)
                 diff_norm = np.linalg.norm(diff)
@@ -51,6 +53,20 @@ class CICDModel(DartsModel):
                         '#%d solution check failed for variable %s (range %f): L2(diff)/len(diff)/range = %.2E (tol %.2E), max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E' \
                         % (fail, self.physics.vars[v], sol_range, diff_norm_normalized, diff_norm_normalized_tol,
                            diff_abs_max_normalized, diff_abs_max_normalized_tol, np.max(diff_abs)))
+
+                    # plot the difference
+                    plt.figure()
+                    plt.plot(diff)
+                    plt.savefig('diff_' + self.physics.vars[v] + '.png')
+                    plt.close()
+
+                    # plot the reference and the current solution
+                    plt.figure()
+                    plt.plot(sol_et, label='ref')
+                    plt.plot(sol, label='cur')
+                    plt.savefig('sol_' + self.physics.vars[v] + '.png')
+                    plt.close()
+
             for key, value in sorted(data.items()):
                 if key == 'solution' or type(value) != int:
                     continue
