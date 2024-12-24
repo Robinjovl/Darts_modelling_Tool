@@ -98,29 +98,35 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
 ##########################################################################################################
-def plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir):
+def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
     plt.rc('font', size=12)
 
     for well_name in wells:
         if well_is_inj(well_name):
             continue
         if physics_type == 'geothermal':
-            ax1 = plot_temp_darts(well_name, time_data_report)
-            ax1.set(xlabel="Days", ylabel="temperature [degrees]")
+            ax = None
+            for time_data_report, label in zip(time_data_report_list, label_list):
+                ax = plot_temp_darts(well_name, time_data_report, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="temperature [degrees]")
             plt.tight_layout()
             plt.savefig(os.path.join(out_dir, 'well_temperature_' + well_name + '_' + case + '.png'))
             plt.close()
 
             # use time_data here as we are going to compute a cumulative plot
-            ax1 = plot_extracted_energy_darts(time_data)
-            ax1.set(xlabel="Days", ylabel="energy [PJ]")
+            ax = None
+            for time_data, label in zip(time_data_list, label_list):
+                ax = plot_extracted_energy_darts(time_data, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="energy [PJ]")
             plt.tight_layout()
             plt.savefig(os.path.join(out_dir, 'energy_extracted_' + well_name + '_' + case + '.png'))
             plt.close()
         else:
             # rate plotting
-            ax1 = plot_total_prod_oil_rate_darts(time_data_report)
-            ax1.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
+            ax = None
+            for time_data_report, label in zip(time_data_report_list, label_list):
+                ax = plot_total_prod_oil_rate_darts(time_data_report, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
             plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + well_name + '_' + case + '.png'), )
             plt.close()
 
@@ -138,20 +144,26 @@ def plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, 
     rate_units = 'm3/day' if physics_type == 'geothermal' else 'kmol/day'
 
     # common plots for both physics
-    ax = plot_total_inj_water_rate_darts(time_data_report)
+    ax = None
+    for time_data_report, label in zip(time_data_report_list, label_list):
+        ax = plot_total_inj_water_rate_darts(time_data_report, ax=ax)#, label=label)
     ax.set(xlabel="Days", ylabel="Total injected water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'injection_water_rate_' + case + '.png'))
     plt.close()
 
-    ax = plot_total_prod_water_rate_darts(time_data_report)
+    ax = None
+    for time_data_report, label in zip(time_data_report_list, label_list):
+        ax = plot_total_prod_water_rate_darts(time_data_report, ax=ax)#, label=label)
     ax.set(xlabel="Days", ylabel="Total produced water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
     plt.close()
 
     for well_name in wells:
-        ax = plot_bhp_darts(well_name, time_data_report)
+        ax = None
+        for time_data_report, label in zip(time_data_report_list, label_list):
+            ax = plot_bhp_darts(well_name, time_data_report, ax=ax)#, label=label)
         ax.set(xlabel="Days", ylabel="BHP [bar]")
         plt.savefig(os.path.join(out_dir, 'well_' + well_name + '_bhp_' + case + '.png'))
         plt.tight_layout()
@@ -237,7 +249,16 @@ if __name__ == '__main__':
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
-            #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
+            #time_data_1 = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
-            plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir)
+            #plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir)
+            #time_data_list = [time_data_1, time_data]
+            #label_list = ['1', '2']
 
+            time_data_list = [time_data]
+            time_data_report_list = [time_data_report]
+            label_list = [None]
+
+            plot_results(wells=wells, well_is_inj=well_is_inj,
+                         time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
+                         physics_type=physics_type, out_dir=out_dir)
