@@ -289,6 +289,7 @@ class PhysicsBase:
                 else:
                     itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max)
             except (ValueError, NameError):
+                raise ValueError("Number of operators is incorrect, no templatized interpolator exists")
                 # if 64-bit index also failed, probably the combination of required n_ops and n_dims
                 # was not instantiated/exposed. In this case substitute general implementation of interpolator
                 itor = eval("multilinear_adaptive_cpu_interpolator_general")(evaluator, self.n_axes_points,

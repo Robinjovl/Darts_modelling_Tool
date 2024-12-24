@@ -380,42 +380,39 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
-            // [4] add rock conduction
-            if (THERMAL)
-            {
-                t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
-                gamma_t_i = tranD[conn_idx] * dt * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-                gamma_t_j = tranD[conn_idx] * dt * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-
-                // rock heat transfers flows from cell i to j
-                RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                {
-                    Jac[diag_idx + NC * N_VARS + v] -= t_diff * gamma_t_i * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] / 2;
-                    Jac[jac_idx + NC * N_VARS + v] -= t_diff * gamma_t_j * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] / 2;
-                    if (v == T_VAR)
-                    {
-                        Jac[jac_idx + NC * N_VARS + v] -= (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
-                        Jac[diag_idx + NC * N_VARS + v] += (gamma_t_i * op_vals_arr[i * N_OPS + ROCK_COND] + gamma_t_j * op_vals_arr[j * N_OPS + ROCK_COND]) / 2;
-                    }
-                }
-            }
-            conn_idx++;
-            if (j < n_res_blocks)
-                cell_conn_idx++;
-        }
-
-        // [5] finally add rock energy
-        // + rock energy (no rock compressibility included in these computations)
+        // [4] add rock conduction
         if (THERMAL)
         {
-            RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+            t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
+            gamma_t_i = tranD[conn_idx] * dt * (1 - mesh->poro[i]) * mesh->rock_cond[i];
+            gamma_t_j = tranD[conn_idx] * dt * (1 - mesh->poro[j]) * mesh->rock_cond[j];
 
+            // rock heat transfers flows from cell i to j
+            RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i + gamma_t_j) / 2;
             for (uint8_t v = 0; v < N_VARS; v++)
             {
-                Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
-            } // end of fill offdiagonal part + contribute to diagonal
+              Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+              Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+            }
         }
+        conn_idx++;
+        if (j < n_res_blocks)
+        {
+            cell_conn_idx++;
+        }
+        }
+
+      // [5] finally add rock energy
+      // + rock energy (no rock compressibility included in these computations)
+      if (THERMAL)
+      {
+        RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+          Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+        } // end of fill offdiagonal part + contribute to diagonal
+      }
 
         // calc CFL for reservoir cells, not connected with wells
         if (i < n_res_blocks && !connected_with_well)
@@ -571,22 +568,22 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
   CFL_max = 0;
 
-//#ifdef _OPENMP
-//  //#pragma omp parallel reduction (max: CFL_max)
-//#pragma omp parallel
-//  {
-//    int id = omp_get_thread_num();
-//
-//    //index_t start = row_thread_starts[id];
-//    //index_t end = row_thread_starts[id + 1];
-//
-//    //index_t start = row_T_thread_starts[id];
-//    //index_t end = row_T_thread_starts[id + 1];
-//#else
-//  index_t start = 0;
-//  index_t end = n_blocks;
-//
-//#endif //_OPENMP
+  //#ifdef _OPENMP
+  //  //#pragma omp parallel reduction (max: CFL_max)
+  //#pragma omp parallel
+  //  {
+  //    int id = omp_get_thread_num();
+  //
+  //    //index_t start = row_thread_starts[id];
+  //    //index_t end = row_thread_starts[id + 1];
+  //
+  //    //index_t start = row_T_thread_starts[id];
+  //    //index_t end = row_T_thread_starts[id + 1];
+  //#else
+  //  index_t start = 0;
+  //  index_t end = n_blocks;
+  //
+  //#endif //_OPENMP
 
   index_t start = 0;
   index_t end = n_blocks;
@@ -792,15 +789,15 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
       // [4] add rock conduction
       if (THERMAL)
       {
-        t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
+        t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
         gamma_t_diff = tranD[conn_idx] * dt * t_diff;
 
-        // rock heat transfers flows from cell i to j
-        //RHS[i * N_VARS + NC] -= gamma_t_diff * (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i] + 
-        //                                        op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i]) / 2;
+          // rock heat transfers flows from cell i to j
+          //RHS[i * N_VARS + NC] -= gamma_t_diff * ((1 - mesh->poro[i]) * mesh->rock_cond[i] +
+          //                                        (1 - mesh->poro[j]) * mesh->rock_cond[j]) / 2;
 
-        value_g_u = dt * t_diff * (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) * mesh->rock_cond[i] + 
-                                    op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j]) * mesh->rock_cond[j]) / 2;
+        value_g_u = dt * t_diff * ((1 - mesh->poro[i]) * mesh->rock_cond[i] +
+                                   (1 - mesh->poro[j]) * mesh->rock_cond[j]) / 2;
         idx = count + NC * N_element + temp_num[k_count];
         value_dg_dT[idx] -= value_g_u;
       }
@@ -825,11 +822,11 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
     //// + rock energy (no rock compressibility included in these computations)
     //if (THERMAL)
     //{
-    //  RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+    //  RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
     //  for (uint8_t v = 0; v < N_VARS; v++)
     //  {
-    //    Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
+    //    Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
     //  } // end of fill offdiagonal part + contribute to diagonal
     //}
 
@@ -951,7 +948,7 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 //
 //    if (THERMAL)
 //    {
-//      res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//      res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //      if (res > residual)
 //        residual = res;
 //    }

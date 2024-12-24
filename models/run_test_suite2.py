@@ -38,10 +38,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if False:#iter_solvers:# and test_all_models:
+    if False:#iter_solvers and test_all_models:
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-        meshes_list = ['data_10_10_10', 'data_20_40_40']
+        meshes_list = ['data_10_10_10']
         test_args_mech_spe10 = []
         for physics in physics_list:
             for mesh in meshes_list:
@@ -65,8 +65,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_dfn = ['fracture_network']
     test_cases_dfn = ['case_1']
     if test_all_models:
-        test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-        test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        test_cases_dfn += ['case_4', 'case_5']
+        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])

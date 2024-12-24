@@ -73,9 +73,11 @@ if %skip_req%==false (
   git submodule update --recursive --init || goto :error
   echo - Update submodules: DONE!
 
-  echo - Install requirements: START
-  echo -- Install Eigen 3
   cd thirdparty
+
+  echo - Install requirements: START
+  
+  echo -- Install Eigen 3
   mkdir build
   cd build
   mkdir eigen

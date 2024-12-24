@@ -7,7 +7,7 @@ stages:
 build-linux-3.12:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1" 
+        - if: $TEST_ALL_PYTHONS == "1" 
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.12'        # for python image selection in .build-linux
@@ -17,7 +17,7 @@ build-linux-3.12:
 build-linux-3.11:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1" 
+        - if: $TEST_ALL_PYTHONS == "1" 
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.11'        # for python image selection in .build-linux
@@ -27,7 +27,7 @@ build-linux-3.11:
 build-linux-3.10:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.10'        # for python image selection in .build-linux
@@ -39,8 +39,8 @@ build-linux-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"   
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"   
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -49,18 +49,23 @@ build-linux-3.9:
 
 build-linux-3.9-gpu: 
     rules:
-        - if: $TEST_GPU == "1"   
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_GPU_LINUX == "1"   
     extends: .build-linux-gpu
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.9'       # for python image selection in .build-linux
         ODLS: '-a'
+        TEST_GPU: '1' 
 
 ###################################################################################
 build-linux-3.12-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.12'        # for python image selection in .build-linux
@@ -70,7 +75,7 @@ build-linux-3.12-ODLS:
 build-linux-3.11-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.11'        # for python image selection in .build-linux
@@ -80,7 +85,7 @@ build-linux-3.11-ODLS:
 build-linux-3.10-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.10'        # for python image selection in .build-linux
@@ -92,8 +97,8 @@ build-linux-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux-dockcross
     variables:
         PY_VER: '3.9'        # for python image selection in .build-linux
@@ -104,7 +109,7 @@ build-linux-3.9-ODLS:
 build-windows-3.12:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.12'
@@ -114,7 +119,7 @@ build-windows-3.12:
 build-windows-3.11:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.11'
@@ -124,7 +129,7 @@ build-windows-3.11:
 build-windows-3.10:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.10'
@@ -136,8 +141,8 @@ build-windows-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.9'
@@ -148,7 +153,7 @@ build-windows-3.9:
 build-windows-3.12-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.12'
@@ -158,7 +163,7 @@ build-windows-3.12-ODLS:
 build-windows-3.11-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.11'
@@ -168,7 +173,7 @@ build-windows-3.11-ODLS:
 build-windows-3.10-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.10'
@@ -181,8 +186,8 @@ build-windows-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-windows
     variables:
         PY_VER: '3.9'
@@ -279,7 +284,7 @@ build-windows-3.9-ODLS:
 test-linux-3.12-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.12'        # for python image selection in .test-linux
@@ -291,7 +296,7 @@ test-linux-3.12-ODLS:
 test-linux-3.11-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.11'        # for python image selection in .test-linux
@@ -303,7 +308,7 @@ test-linux-3.11-ODLS:
 test-linux-3.10-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.10'        # for python image selection in .test-linux
@@ -317,8 +322,8 @@ test-linux-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.9'       # for python image selection in .test-linux
@@ -331,7 +336,7 @@ test-linux-3.9-ODLS:
 test-linux-3.12:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.12'        # for python image selection in .test-linux
@@ -343,7 +348,7 @@ test-linux-3.12:
 test-linux-3.11:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.11'        # for python image selection in .test-linux
@@ -355,7 +360,7 @@ test-linux-3.11:
 test-linux-3.10:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.10'        # for python image selection in .test-linux
@@ -369,8 +374,8 @@ test-linux-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-linux
     variables:
         PY_VER: '3.9'       # for python image selection in .test-linux
@@ -383,11 +388,16 @@ test-linux-3.9:
 
 test-linux-3.9-gpu:
     rules: 
-        - if: $TEST_GPU == "1"
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_GPU_LINUX == "1"
     extends: .test-linux-gpu
     variables:
         PY_VER: '3.9'
         ODLS: '-a'
+        TEST_GPU: '1'
     dependencies:
         - build-linux-3.9-gpu
       
@@ -395,7 +405,7 @@ test-linux-3.9-gpu:
 test-windows-3.12:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.12'
@@ -407,7 +417,7 @@ test-windows-3.12:
 test-windows-3.11:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.11'
@@ -419,7 +429,7 @@ test-windows-3.11:
 test-windows-3.10:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.10'
@@ -433,8 +443,8 @@ test-windows-3.9:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.9'
@@ -447,7 +457,7 @@ test-windows-3.9:
 test-windows-3.12-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.12'
@@ -459,7 +469,7 @@ test-windows-3.12-ODLS:
 test-windows-3.11-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.11'
@@ -471,7 +481,7 @@ test-windows-3.11-ODLS:
 test-windows-3.10-ODLS:
     rules: 
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.10'
@@ -485,8 +495,8 @@ test-windows-3.9-ODLS:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $UPLOAD_PKL == "1"
-        - if: $TEST_ALL == "1"
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
     extends: .test-windows
     variables:
         PY_VER: '3.9'
@@ -639,13 +649,27 @@ upload_wheels:
         - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
         - export wheel=`ls ./dist/*linux*`
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter 
-        - cp wheel $GSEWHEELSPATH
         - export wheel=`ls ./dist/*win*`
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
     dependencies:
         # get the wheels from the build stage
         - build-linux-3.9
         - build-windows-3.9
+
+upload_wheels_gse:
+    stage: deploy
+    image: python:3.9
+    rules: 
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux_gpu
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - cp $wheel $GSEWHEELSPATH
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.9-gpu
 
 upload_wheels_odls:
     stage: deploy
@@ -659,9 +683,9 @@ upload_wheels_odls:
     script:
         - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
         - export wheel=`ls ./dist/*linux*`
-        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter 
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls 
         - export wheel=`ls ./dist/*win*`
-        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls
     dependencies:
         # get the wheels from the build stage
         - build-linux-3.9-ODLS

@@ -1,3 +1,20 @@
+# 1.2.2 [**-**-2024]
+- Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
+- Temperature and pressure operators are added
+- GPU tests added to MR CI/CD
+- Keep only rates, super, pze_gra and pz_cap_gra interpolators
+- Add enthalpy operators to elastic super engine
+- Fix in operator indexing in mechanical models
+
+# 1.2.1 [25-11-2024]
+- Remove "IAPWS" suffix from Geothermal PropertyContainer and predefined GeothermalIAPWS physics for backward compatibility.
+- Few small changes:
+	- CI/CD job updates
+ 	- empty list of output properties if none have been specified
+	- remove SolidFlash class
+	- fix to FluidFlower mesh generation
+	- Mesh tags and boundary conditions are added to the input_data
+
 # 1.2.0 [15-11-2024]
 - Python 3.7-3.8 support dropped.
 - Changes to physics/engines:

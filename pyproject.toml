@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # this is the name of the package: name that will appear if one `pip list` or `pip install open-darts`
 name = "open-darts"
 # This version has to be incremented manually for every new release.
-version = "1.2.0"
+version = "1.2.1"
 authors = [
     {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"},
 ]

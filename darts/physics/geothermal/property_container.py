@@ -195,12 +195,8 @@ class PropertyContainerPH(PropertyBase):
         if len(ph) == 1:
             self.saturation[ph] = 1.
         else:
-            Vtot = 0
-            for j in ph:
-                Vtot += self.nu[j] / self.dens_m[j]
-
-            for j in ph:
-                self.saturation[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+            vol = [self.nu[j] / self.dens_m[j] for j in ph]
+            self.saturation[ph] = vol / np.sum(vol)
 
         return
 
