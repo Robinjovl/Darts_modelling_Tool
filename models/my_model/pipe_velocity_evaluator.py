@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-from darts.physics.super.physics import Compositional
+from darts.engines import value_vector
 
 from define_pipe_geometry import PipeGeometry
 
@@ -10,13 +10,12 @@ class PipeVelocityEvaluator:
     Cku = 142
     Cw = 0.008
 
-    def __init__(self, pipe_geometry: PipeGeometry, pipe_physics: Compositional, Cmax: float = 1.2, Fv: float = 1,
+    def __init__(self, pipe_geometry: PipeGeometry, physics, Cmax: float = 1.2, Fv: float = 1,
                  eps_p: float = 10, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
         """
         :param pipe_geometry: Pipe geometry object
         :type pipe_geometry: PipeGeometry
-        :param pipe_physics: Pipe physics object
-        :type pipe_physics: Compositional
+        :param physics: Physics object for the pipe
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
         could have a value between 1.0 and 1.5. It is set to:
         --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -36,15 +35,15 @@ class PipeVelocityEvaluator:
         """
         self.pipe_geometry = pipe_geometry
 
-        self.property = pipe_physics.property_containers[0]
-        self.isothermal = not pipe_physics.thermal
+        self.physics = physics
+        self.isothermal = not physics.thermal
         if self.isothermal:
-            assert self.property.temperature is not None, \
+            assert self.physics.property_containers[0].temperature is not None, \
                 "If model is isothermal, system_temperature must be specified!"
         elif not self.isothermal:
-            assert self.property.temperature is None, \
+            assert self.physics.property_containers[0].temperature is None, \
                 "If model is non-isothermal, system_temperature must not be specified!"
-        self.system_temperature = self.property.temperature
+        self.system_temperature = self.physics.property_containers[0].temperature
 
         self.Cmax = Cmax
         self.B = 2 / Cmax - 1.0667
@@ -96,37 +95,80 @@ class PipeVelocityEvaluator:
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.pipe_geometry.pipe_name)
 
-    def evaluate_phase_velocities(self, vars0, vars, dt, source_sink, simulation_timer, iter_counter, total_iter_counter, flag):   # vars0 is Xn and vars is X
-        # self.velocities0 will be used in the method self.calc_phase_velocities and also for energy conservation eq
+    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, source_sink, simulation_timer, iter_counter, total_iter_counter, flag):   # vars0 is Xn and vars is X
+        num_segments = self.pipe_geometry.num_segments
+        nc = self.physics.nc
+        n_vars = self.physics.n_vars
+
+        pc = self.physics.property_containers[0]
+
+        """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
-            # Initial velocities in the wellbore are zero
-            [rhoM0_vM0, vM0, vG0, vL0] = [np.array([0]), np.array([0]), np.array([0]), np.array([0])]
-            self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
+            vec_Xn_ms_well_as_np = Xn_ms_well.to_numpy()
+
+            """ From here on, instead of G, use A, and instead of L, use B. A and B represent the first and second 
+            phases specified by the user, respectively. """
+            sG0 = np.zeros(num_segments)
+            rhoG0 = np.zeros(num_segments)
+            rhoL0 = np.zeros(num_segments)
+            miuG0 = np.zeros(num_segments)
+            miuL0 = np.zeros(num_segments)
+            xG_mass0 = np.zeros((num_segments, nc))
+            xL_mass0 = np.zeros((num_segments, nc))
+
+            for i in range(num_segments):
+                state0 = vec_Xn_ms_well_as_np[i * n_vars:(i + 1) * n_vars]
+                pc.evaluate(state0)
+                if self.physics.thermal:
+                    pc.evaluate_thermal(state0)
+
+                sG0[i] = pc.sat[0]
+                rhoG0[i], rhoL0[i] = pc.dens[0], pc.dens[1]
+                miuG0[i], miuL0[i] = pc.mu[0], pc.mu[1]
+                # Calculate mass fractions of components in each phase
+                x_mass0 = np.zeros((pc.nph, nc))
+                for j in pc.ph:
+                    x_mass0[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
+                xG_mass0[i, :], xL_mass0[i, :] = x_mass0[0, :], x_mass0[1, :]
+
+            self.iter_phases_props0 = [xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0]
+
         elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
-            [rhoM0_vM0, vM0, vG0, vL0] = [self.rhoM_vM, self.vM, self.vG, self.vL]
-            self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
+            self.iter_phases_props0 = self.iter_phases_props
 
+        return value_vector([2000., 2000., 2000., 1379., 1379., 1379.])
 
-        p0 = vars0[::]
-        zc0 = vars0[::]
-        if self.isothermal:
-            self.iter_phases_props0 = []
-            xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
-        elif not self.isothermal:
-            T0 = vars0[::]
-            self.iter_phases_props0 = []
-            xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _, _, _ = self.iter_phases_props0
+        xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
-        p = vars[::]
-        zc = vars[::]
-        if self.isothermal:
-            self.iter_phases_props = []
-            _, _, sG, rhoG, rhoL, _, _ = self.iter_phases_props
-        elif not self.isothermal:
-            T = vars[::]
-            self.iter_phases_props = []
-            _, _, sG, rhoG, rhoL, _, _, _, _, _, _ = self.iter_phases_props
+        """ Calculate phase props of current time step at centroids """
+        vec_X_ms_well_as_np = X_ms_well.to_numpy()
 
+        sG = np.zeros(num_segments)
+        rhoG = np.zeros(num_segments)
+        rhoL = np.zeros(num_segments)
+        miuG = np.zeros(num_segments)
+        miuL = np.zeros(num_segments)
+        xG_mass = np.zeros((num_segments, nc))
+        xL_mass = np.zeros((num_segments, nc))
+
+        for i in range(num_segments):
+            state = vec_X_ms_well_as_np[i * n_vars:(i + 1) * n_vars]
+            pc.evaluate(state)
+            if self.physics.thermal:
+                pc.evaluate_thermal(state)
+
+            sG[i] = pc.sat[0]
+            rhoG[i], rhoL[i] = pc.dens[0], pc.dens[1]
+            miuG[i], miuL[i] = pc.mu[0], pc.mu[1]
+            # Calculate mass fractions of components in each phase
+            x_mass = np.zeros((pc.nph, nc))
+            for j in pc.ph:
+                x_mass[j, :] = (pc.x[j, :] * pc.Mw) / sum(pc.x[j, :] * pc.Mw)
+            xG_mass[i, :], xL_mass[i, :] = x_mass[0, :], x_mass[1, :]
+
+        self.iter_phases_props = [xG_mass, xL_mass, sG, rhoG, rhoL, miuG, miuL]
+
+        """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
             # Method 1
             # # xG_mass0_face and xL_mass0_face for IFT calculation
@@ -143,13 +185,13 @@ class PipeVelocityEvaluator:
             sG0_face = (sG0[0:-1] + sG0[1:]) / 2
 
             # Initialize arrays to store interface properties
-            rhoG0_face = np.zeros(self.pipe_geometry.num_segments - 1)
-            rhoL0_face = np.zeros(self.pipe_geometry.num_segments - 1)
-            xG_mass0_face = np.zeros((self.pipe_geometry.num_segments - 1, self.fluid_model.num_components))
-            xL_mass0_face = np.zeros((self.pipe_geometry.num_segments - 1, self.fluid_model.num_components))
+            rhoG0_face = np.zeros(num_segments - 1)
+            rhoL0_face = np.zeros(num_segments - 1)
+            xG_mass0_face = np.zeros((num_segments - 1, nc))
+            xL_mass0_face = np.zeros((num_segments - 1, nc))
 
             # Compute interface values using conditional averaging
-            for i in range(self.pipe_geometry.num_segments - 1):
+            for i in range(num_segments - 1):
                 if sG0[i] == 0:
                     # If no gas in segment i, use properties from segment i+1
                     rhoG0_face[i] = rhoG0[i + 1]
@@ -178,11 +220,7 @@ class PipeVelocityEvaluator:
 
             self.iter_phases_props0_face = [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face]
 
-        [_, vM0, vG0, vL0] = self.velocities0
-
-        p_m = p[0:-1:1]
-        p_p = p[1::1]
-
+        """ Calculate phase props of current time step at interfaces """
         # Method 1
         # sG_face = (sG[0:-1] + sG[1:])/2
         # rhoG_face = (rhoG[0:-1] + rhoG[1:]) / 2
@@ -192,11 +230,11 @@ class PipeVelocityEvaluator:
         sG_face = (sG[0:-1] + sG[1:]) / 2
 
         # Initialize arrays to store interface properties
-        rhoG_face = np.zeros(self.pipe_geometry.num_segments - 1)
-        rhoL_face = np.zeros(self.pipe_geometry.num_segments - 1)
+        rhoG_face = np.zeros(num_segments - 1)
+        rhoL_face = np.zeros(num_segments - 1)
 
         # Compute interface values using conditional averaging
-        for i in range(self.pipe_geometry.num_segments - 1):
+        for i in range(num_segments - 1):
             if sG[i] == 0:
                 # If no gas in segment i, use properties from segment i+1
                 rhoG_face[i] = rhoG[i + 1]
@@ -217,8 +255,22 @@ class PipeVelocityEvaluator:
                 # If both segments have liquid, use arithmetic averaging
                 rhoL_face[i] = (rhoL[i] + rhoL[i + 1]) / 2
 
-
         self.iter_phases_props_face = [sG_face, rhoG_face, rhoL_face]
+
+        if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
+            # Initial velocities in the wellbore are zero
+            rhoM0_vM0, vM0, vG0, vL0 = np.array([0]), np.array([0]), np.array([0]), np.array([0])
+            self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
+        elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
+            rhoM0_vM0, vM0, vG0, vL0 = self.rhoM_vM, self.vM, self.vG, self.vL
+            self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
+
+        [_, vM0, vG0, vL0] = self.velocities0
+
+        p = vec_X_ms_well_as_np[0::n_vars]
+        p_m = p[0:-1:1]
+        p_p = p[1::1]
+
         self.calc_mixture_densities(iter_counter, total_iter_counter, flag)
 
         pg = self.pipe_geometry
@@ -243,7 +295,7 @@ class PipeVelocityEvaluator:
 
                         if source_sink_object.segment_index == 0:
                             momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
-                        elif source_sink_object.segment_index == self.pipe_geometry.num_segments - 1:
+                        elif source_sink_object.segment_index == num_segments - 1:
                             momentum_at_first_last_exterfaces[1] = delta_at_bc_interface0
                         # delta_at_bc_interface0 = 0
                         # delta_interface0 = np.insert(delta_interface0, source_sink_object.segment_index, delta_at_bc_interface0)
@@ -270,7 +322,7 @@ class PipeVelocityEvaluator:
                 #     delta_interface0 = np.insert(delta_interface0, source_sink_object.segment_index, delta_at_perf0)
 
             delta_interface0 = np.insert(delta_interface0, 0, momentum_at_first_last_exterfaces[0])
-            delta_interface0 = np.insert(delta_interface0, self.pipe_geometry.num_segments, momentum_at_first_last_exterfaces[1])
+            delta_interface0 = np.insert(delta_interface0, num_segments, momentum_at_first_last_exterfaces[1])
 
             delta_segment0 = (delta_interface0[0:-1:1] + delta_interface0[1::1]) / 2
             self.delta_m0 = delta_segment0[0:-1:1]
@@ -308,10 +360,7 @@ class PipeVelocityEvaluator:
 
     def calc_mixture_densities(self, iter_counter, total_iter_counter, flag):
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
-            if self.isothermal:
-                _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
-            elif not self.isothermal:
-                _, _, sG0, rhoG0, rhoL0, _, _, _, _ = self.iter_phases_props0
+            _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
             rhoM0 = sG0 * rhoG0 + (1 - sG0) * rhoL0
             self.rhoM0_face = (rhoM0[0:-1] + rhoM0[1:]) / 2
@@ -322,10 +371,7 @@ class PipeVelocityEvaluator:
             self.rhoM0_face = self.rhoM_face
 
         # Calculate mixture density
-        if self.isothermal is True:
-            _, _, sG, rhoG, rhoL, _, _ = self.iter_phases_props
-        elif self.isothermal is False:
-            _, _, sG, rhoG, rhoL, _, _, _, _, _, _ = self.iter_phases_props
+        _, _, sG, rhoG, rhoL, _, _ = self.iter_phases_props
 
         [sG_face, rhoG_face, rhoL_face] = self.iter_phases_props_face
         rhoM = sG * rhoG + (1 - sG) * rhoL
@@ -382,10 +428,7 @@ class PipeVelocityEvaluator:
         return self.ff0
 
     def calc_Reynolds_number(self):
-        if self.isothermal:
-            _, _, _, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
-        elif not self.isothermal:
-            _, _, _, rhoG0, rhoL0, miuG0, miuL0, _, _ = self.iter_phases_props0
+        _, _, _, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
 
         _, _, sG0_face, _, _ = self.iter_phases_props0_face
         [_, vM0, _, _] = self.velocities0
@@ -534,7 +577,7 @@ class PipeVelocityEvaluator:
                                                                total_iter_counter, flag=0) - phase_velocities) / self.eps_p
             vars[i] -= self.eps_p
 
-            for j in range(self.fluid_model.num_components - 1):
+            for j in range(self.physics.nc - 1):
                 # Derivatives of all the phase velocities with respect to the mole fraction of component j in segment i
                 vars[(j + 1) * num_segments + i] += self.eps_z
                 jac[:, (j + 1) * num_segments + i] = (self.evaluate_phase_velocities(vars0, vars, dt, source_sink,
@@ -544,9 +587,9 @@ class PipeVelocityEvaluator:
 
             if not self.isothermal:
                 # Derivatives of all the phase velocities with respect to the temperature of segment i
-                vars[num_segments * self.fluid_model.num_components + i] += self.eps_temp
-                jac[:, num_segments * self.fluid_model.num_components + i] = (self.evaluate_phase_velocities(
+                vars[num_segments * self.physics.nc + i] += self.eps_temp
+                jac[:, num_segments * self.physics.nc + i] = (self.evaluate_phase_velocities(
                     vars0, vars, dt, source_sink, simulation_timer, iter_counter,
                     total_iter_counter, flag=0) - phase_velocities) / self.eps_temp
-                vars[num_segments * self.fluid_model.num_components + i] -= self.eps_temp
+                vars[num_segments * self.physics.nc + i] -= self.eps_temp
 

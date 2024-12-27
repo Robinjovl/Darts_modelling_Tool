@@ -1,4 +1,4 @@
-from darts.reservoirs.struct_reservoir import StructReservoir
+from struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
@@ -12,7 +12,6 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
 from define_pipe_geometry import PipeGeometry
-from pipe_velocity_evaluator import PipeVelocityEvaluator
 from set_initial_conditions import SingleAmbientTemperature
 from check_initial_conditions import check_initial_conditions
 from units import *
@@ -33,7 +32,7 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
         zero = 1e-8
-        self.initial_values = {self.physics.vars[0]: 5.3236329184472533,
+        self.initial_values = {self.physics.vars[0]: 5.294212,
                                self.physics.vars[1]: zero,
                                self.physics.vars[2]: zero
                                }
@@ -81,9 +80,8 @@ class Model(CICDModel):
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
-        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry)
+        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics)
         self.reservoir.add_perforation(well_1_name, cell_index=(1, 1, 1), well_geometry=well_1_geometry)
-        self.wells_velocity_evaluator = {well_1_name: PipeVelocityEvaluator(well_1_geometry, self.physics)}
 
         """================================================= Well 2 ================================================="""
         well_2_name = "P1"
@@ -130,4 +128,4 @@ class Model(CICDModel):
                 # inj_rate = 5 * 24 * 60 * 60
                 w.control = self.physics.new_rate_inj(2, inj_stream, 1)
             else:
-                w.control = self.physics.new_bhp_prod(5.3236329184472533)
+                w.control = self.physics.new_bhp_prod(5.294212)

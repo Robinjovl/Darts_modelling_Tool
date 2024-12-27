@@ -131,6 +131,20 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     int connected_with_well;
 
+    for (ms_well* w : wells)
+    {
+        if (w->model_type == "ms_well")
+        {
+            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
+            std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
+            py::gil_scoped_acquire gil;  // Acquire the GIL
+            // Method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
+            py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, 111, t, 111, 111, 111);
+            // convert phase_velocities_result
+            std::vector<value_t> phase_velocities = phase_velocities_result.cast<std::vector<value_t>>();
+        }
+    }
+
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
 

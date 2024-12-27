@@ -9,6 +9,9 @@
 #include "well_controls.h"
 #include "evaluator_iface.h"
 
+#include <pybind11/pybind11.h>
+namespace py = pybind11;
+
 // Does not seem to be needed
 // class csr_matrix_base;
 
@@ -115,6 +118,7 @@ public:
   std::string model_type;
   std::vector<value_t> segments_depths;
   std::vector<value_t> segments_volumes;
+  py::object velocity_evaluator;
   index_t num_segments;
   value_t segment_volume;
   value_t well_transmissibility;
