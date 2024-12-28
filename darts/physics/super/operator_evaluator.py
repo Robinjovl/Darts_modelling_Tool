@@ -30,7 +30,8 @@ class OperatorsSuper(OperatorsBase):
         self.PC_OP = self.RE_INTER_OP + 3 + self.nph  # capillary operator - nph
         self.PORO_OP = self.RE_INTER_OP + 3 + 2 * self.nph  # porosity operator - 1
         self.LAMBDA_OP = self.PORO_OP + 1
-        self.ENTH_OP = self.LAMBDA_OP + self.nph  # enthalpy operator - nph
+        self.SAT_OP = self.LAMBDA_OP + self.nph
+        self.ENTH_OP = self.SAT_OP + self.nph  # enthalpy operator - nph
         self.n_ops = self.ENTH_OP + self.nph
 
     def print_operators(self, state: value_vector, values: value_vector):
@@ -49,6 +50,8 @@ class OperatorsSuper(OperatorsBase):
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
         print("POROSITY", values[self.PORO_OP])
+        print("LAMBDA", values[self.LAMBDA_OP:self.SAT_OP])
+        print("SAT", values[self.SAT_OP:self.ENTH_OP])
         if self.thermal:
             print("ROCK ENERGY, TEMP, COND", values[self.RE_INTER_OP:self.GRAV_OP])
         return
@@ -121,8 +124,11 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:
-            # fluid mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
             vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
+
+        """ Saturation operator for phase volumetric calculations in the wellbore """
+        # Not used for reservoir
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -160,7 +166,6 @@ class ReservoirOperators(OperatorsSuper):
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kJ/m3.bar.day)
         values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * \
             self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
-
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
@@ -308,9 +313,13 @@ class WellOperators(OperatorsSuper):
 
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:
-            # fluid mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
             vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
 
+        """ Saturation operator for phase volumetric calculations in the wellbore """
+        for j in self.property.ph:
+            # phase saturation: s_j [-]
+            vec_values_as_np[self.SAT_OP + j] = self.property.sat[j]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
