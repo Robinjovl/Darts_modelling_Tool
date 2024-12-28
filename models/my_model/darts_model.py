@@ -445,7 +445,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True, 
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True, save_solution_data: bool = True,
             log_3d_body_path: bool = False, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -478,7 +478,9 @@ class DartsModel:
             dt = min(self.prev_dt * self.params.mult_ts, self.params.max_ts)
         self.prev_dt = dt
 
-        ts = 0
+        ts_counter = 0
+        self.iter_counter = 0
+        self.total_iter_counter = 0
 
         if log_3d_body_path:
             self.physics.body_path_start(output_folder=self.output_folder)
@@ -487,12 +489,15 @@ class DartsModel:
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
+                self.total_iter_counter += self.iter_counter + 1
+                self.iter_counter = 0
+
                 t += dt
                 self.physics.engine.t = t
-                ts += 1
+                ts_counter += 1
                 if verbose:
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
+                          % (ts_counter, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
 
                 dt = min(dt * self.params.mult_ts, self.params.max_ts)
 
@@ -514,6 +519,8 @@ class DartsModel:
                     self.save_data_to_h5(kind='well')
 
             else:
+                self.iter_counter += 1
+
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
