@@ -1,11 +1,11 @@
 from struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
 
 from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -14,6 +14,7 @@ from darts.physics.properties.density import DensityBasic
 from define_pipe_geometry import PipeGeometry
 from set_initial_conditions import SingleAmbientTemperature
 from check_initial_conditions import check_initial_conditions
+from interfacial_tension import IFT_multicomponent_MCM
 from units import *
 
 class Model(CICDModel):
@@ -27,12 +28,12 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=2/(24*60*60), mult_ts=2, max_ts=1, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=1, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
         zero = 1e-8
-        self.initial_values = {self.physics.vars[0]: 5.294212,
+        self.initial_values = {self.physics.vars[0]: 5.271563,
                                self.physics.vars[1]: zero,
                                self.physics.vars[2]: zero
                                }
@@ -63,16 +64,21 @@ class Model(CICDModel):
         pipe_head_pressure = 5   # bar
         pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
 
-        initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5]],
-                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
+        # Wellhead conditions because of the constant rate control
+        zero = self.physics.axes_min[1]
+        well_head_segment_phase = 'gas'
+        well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
+        well_head_segment_interval = [well_1_geometry.pipe_length -1, well_1_geometry.pipe_length]
+        initial_fluid_conditions = {'phases_names': ['liquid', well_head_segment_phase], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5], well_head_segment_composition],
+                                    'pipe_intervals': [[0, well_1_geometry.pipe_length - 1], well_head_segment_interval]}  # 0 is the beginning of the pipe
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], ambient_temperature,
                                                              pipe_head_pressure, pipe_head_segment_index,
                                                              initial_fluid_conditions, verbose)
 
         # %% Put initial conditions in wells_initial_conditions
-        initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
-        initial_C1_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][1]] * well_1_geometry.num_segments
+        initial_CO2_mole_fraction = np.concatenate(([initial_fluid_conditions['phases_compositions'][0][0]] * (well_1_geometry.num_segments - 1), [well_head_segment_composition[0]]))
+        initial_C1_mole_fraction = np.concatenate(([initial_fluid_conditions['phases_compositions'][0][1]] * (well_1_geometry.num_segments - 1), [well_head_segment_composition[1]]))
 
         self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
                                          'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
@@ -80,7 +86,7 @@ class Model(CICDModel):
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
-        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics)
+        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
         self.reservoir.add_perforation(well_1_name, cell_index=(1, 1, 1), well_geometry=well_1_geometry)
 
         """================================================= Well 2 ================================================="""
@@ -97,7 +103,7 @@ class Model(CICDModel):
         components_names = ['CO2', 'C1', 'H2O']
         phases_names = ['gas', 'liquid']
         thermal = 0
-        Mw = [44.01, 16.04, 18.015]
+        Mw = [44.0098, 16.04288, 18.0152]
 
         property_container = PropertyContainer(phases_name=phases_names, components_name=components_names,
                                                Mw=Mw, min_z=zero / 10, temperature=35 + 273.15)
@@ -110,6 +116,7 @@ class Model(CICDModel):
                                                 ('liquid', ConstFunc(0.5))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('liquid', PhaseRelPerm("oil"))])
+        property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
         """ Activate physics """
         self.physics = Compositional(components_names, phases_names, self.timer,
@@ -126,6 +133,6 @@ class Model(CICDModel):
                 # w.control = self.physics.new_rate_gas_inj(20, self.inj_stream)
                 # inj_rate = 5   # kg/s
                 # inj_rate = 5 * 24 * 60 * 60
-                w.control = self.physics.new_rate_inj(2, inj_stream, 1)
+                w.control = self.physics.new_rate_inj(58895.98, inj_stream, 0)   # inj rate in kmol/day
             else:
-                w.control = self.physics.new_bhp_prod(5.294212)
+                w.control = self.physics.new_bhp_prod(5.271563)

@@ -198,6 +198,8 @@ public:
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort(); 
+  /// @brief reverse connections and sort them by both row and col for velocities at connections of wells
+  std::vector<value_t> reverse_and_sort_wells_velocities(std::vector<value_t> phase_velocities);
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col

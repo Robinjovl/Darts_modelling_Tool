@@ -3,10 +3,12 @@ from math import pi
 from typing import Union
 
 import numpy as np
-from darts.reservoirs.reservoir_base import ReservoirBase
+from reservoir_base import ReservoirBase
 from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_vector, index_vector
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from scipy.interpolate import griddata
+
+from define_pipe_geometry import PipeGeometry
 
 
 class StructReservoir(ReservoirBase):
@@ -135,18 +137,21 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.0762,
+    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_ID: float = None, well_geometry: PipeGeometry = None,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
         """
         well = self.get_well(well_name)
-
         # calculate well index and get local index of reservoir block
         i, j, k = cell_index
-        res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_radius=well_radius,
-                                                                    segment_direction=segment_direction, skin=skin)
+        if well.model_type == "basic_well":
+            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
+                                                                        segment_direction=segment_direction, skin=skin)
+        elif well.model_type == "ms_well":
+            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_geometry.pipe_ID,
+                                                                        segment_direction=segment_direction, skin=skin)
 
         if well_index is None:
             well_index = wi
@@ -165,26 +170,28 @@ class StructReservoir(ReservoirBase):
 
         # add completion only if target block is active
         if res_block_local > -1:
-            if len(well.perforations) == 0:  # if adding the first perforation
-                well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_block_local]
-                well.well_body_depth = well.well_head_depth
-                if self.discretizer.is_cpg:
-                    dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
-                    # TODO: need segment_depth_increment and segment_length logic
-                    if segment_direction == 'z_axis':
-                        well.segment_depth_increment = dz
-                    elif segment_direction == 'x_axis':
-                        well.segment_depth_increment = dx
+            if well.model_type == "basic_well":
+                if len(well.perforations) == 0:  # if adding the first perforation
+                    well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_block_local]
+                    well.well_body_depth = well.well_head_depth
+                    if self.discretizer.is_cpg:   # No modification is made for cpg
+                        dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
+                        # TODO: need segment_depth_increment and segment_length logic
+                        if segment_direction == 'z_axis':
+                            well.segment_depth_increment = dz
+                        elif segment_direction == 'x_axis':
+                            well.segment_depth_increment = dx
+                        else:
+                            well.segment_depth_increment = dy
                     else:
-                        well.segment_depth_increment = dy
-                else:
-                    well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
+                        well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
 
-                well.segment_volume *= well.segment_depth_increment
-            else:  # update well depth
-                well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
-                well.well_body_depth = well.well_head_depth
-                
+                    well.segment_volume *= well.segment_depth_increment
+                else:  # update well depth
+                    if well.model_type == "basic_well":
+                        well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
+                        well.well_body_depth = well.well_head_depth
+
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))

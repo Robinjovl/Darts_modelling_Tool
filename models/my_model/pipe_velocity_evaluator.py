@@ -2,6 +2,7 @@ import math
 import numpy as np
 
 from darts.engines import value_vector
+from darts_model import DartsModel
 
 from define_pipe_geometry import PipeGeometry
 
@@ -10,7 +11,7 @@ class PipeVelocityEvaluator:
     Cku = 142
     Cw = 0.008
 
-    def __init__(self, pipe_geometry: PipeGeometry, physics, Cmax: float = 1.2, Fv: float = 1,
+    def __init__(self, pipe_geometry: PipeGeometry, physics, darts_model: DartsModel, Cmax: float = 1.2, Fv: float = 1,
                  eps_p: float = 10, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
         """
         :param pipe_geometry: Pipe geometry object
@@ -92,10 +93,17 @@ class PipeVelocityEvaluator:
         self.eps_temp = eps_temp
         self.eps_z = eps_z
 
+        self.darts_model = darts_model
+
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.pipe_geometry.pipe_name)
 
-    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, source_sink, simulation_timer, iter_counter, total_iter_counter, flag):   # vars0 is Xn and vars is X
+    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, simulation_timer, flag):
+        iter_counter = self.darts_model.iter_counter
+        total_iter_counter = self.darts_model.total_iter_counter
+
+        dt = dt * 24 * 60 * 60   # convert day to second
+
         num_segments = self.pipe_geometry.num_segments
         nc = self.physics.nc
         n_vars = self.physics.n_vars
@@ -105,6 +113,12 @@ class PipeVelocityEvaluator:
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
             vec_Xn_ms_well_as_np = Xn_ms_well.to_numpy()
+            # Reshape into blocks
+            vec_Xn_ms_well_as_np_reshaped = vec_Xn_ms_well_as_np.reshape(-1, nc)
+            # Reverse the order of the blocks
+            vec_Xn_ms_well_as_np_reversed_blocks = vec_Xn_ms_well_as_np_reshaped[::-1]
+            # Flatten back to a 1D array
+            vec_Xn_ms_well_as_np = vec_Xn_ms_well_as_np_reversed_blocks.flatten()
 
             """ From here on, instead of G, use A, and instead of L, use B. A and B represent the first and second 
             phases specified by the user, respectively. """
@@ -124,7 +138,7 @@ class PipeVelocityEvaluator:
 
                 sG0[i] = pc.sat[0]
                 rhoG0[i], rhoL0[i] = pc.dens[0], pc.dens[1]
-                miuG0[i], miuL0[i] = pc.mu[0], pc.mu[1]
+                miuG0[i], miuL0[i] = pc.mu[0] * 1e-3, pc.mu[1] * 1e-3   # convert cP to Pa.s
                 # Calculate mass fractions of components in each phase
                 x_mass0 = np.zeros((pc.nph, nc))
                 for j in pc.ph:
@@ -136,12 +150,16 @@ class PipeVelocityEvaluator:
         elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
             self.iter_phases_props0 = self.iter_phases_props
 
-        return value_vector([2000., 2000., 2000., 1379., 1379., 1379.])
-
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
         """ Calculate phase props of current time step at centroids """
         vec_X_ms_well_as_np = X_ms_well.to_numpy()
+        # Reshape into blocks
+        vec_X_ms_well_as_np_reshaped = vec_X_ms_well_as_np.reshape(-1, nc)
+        # Reverse the order of the blocks
+        vec_X_ms_well_as_np_reversed_blocks = vec_X_ms_well_as_np_reshaped[::-1]
+        # Flatten back to a 1D array
+        vec_X_ms_well_as_np = vec_X_ms_well_as_np_reversed_blocks.flatten()
 
         sG = np.zeros(num_segments)
         rhoG = np.zeros(num_segments)
@@ -159,7 +177,7 @@ class PipeVelocityEvaluator:
 
             sG[i] = pc.sat[0]
             rhoG[i], rhoL[i] = pc.dens[0], pc.dens[1]
-            miuG[i], miuL[i] = pc.mu[0], pc.mu[1]
+            miuG[i], miuL[i] = pc.mu[0] * 1e-3, pc.mu[1] * 1e-3   # convert cP to Pa.s
             # Calculate mass fractions of components in each phase
             x_mass = np.zeros((pc.nph, nc))
             for j in pc.ph:
@@ -267,7 +285,7 @@ class PipeVelocityEvaluator:
 
         [_, vM0, vG0, vL0] = self.velocities0
 
-        p = vec_X_ms_well_as_np[0::n_vars]
+        p = vec_X_ms_well_as_np[0::n_vars] * 1e5   # convert bar to Pa
         p_m = p[0:-1:1]
         p_p = p[1::1]
 
@@ -284,42 +302,46 @@ class PipeVelocityEvaluator:
 
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
-            for source_sink_name, source_sink_object in source_sink.items():
-                if source_sink_name.startswith("ConstantMassRateSource"):
-                    if source_sink_object.flow_direction[1] == "along the pipe":
-                        # The props of the fluid of the segment on which ConstantMassRateSource is defined are used.
-                        delta_at_bc_interface0 = source_sink_object.evaluate_momentum0(simulation_timer,
-                                                                                       sG0[source_sink_object.segment_index],
-                                                                                       rhoG0[source_sink_object.segment_index],
-                                                                                       rhoL0[source_sink_object.segment_index])
+            if self.darts_model.reservoir.wells[0].control.target_rate:
+                # TODO: This segment_index_source and mass_rate should be directly received from the well control class, but now done manually
+                segment_index_source = num_segments - 1
+                # mass_rate = self.darts_model.reservoir.wells[0].control.target_rate   # must be in kg/s
+                mass_rate = sum(self.darts_model.reservoir.wells[0].control.target_rate * np.array([1.0 - 2 * 1e-8, 1e-8, 1e-8]) * [44.0098, 16.04288, 18.0152]) / (24 * 60 * 60)
 
-                        if source_sink_object.segment_index == 0:
-                            momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
-                        elif source_sink_object.segment_index == num_segments - 1:
-                            momentum_at_first_last_exterfaces[1] = delta_at_bc_interface0
-                        # delta_at_bc_interface0 = 0
-                        # delta_interface0 = np.insert(delta_interface0, source_sink_object.segment_index, delta_at_bc_interface0)
+                pipe_internal_A = self.pipe_geometry.pipe_internal_A
 
-                # if source_sink_name == "Perforation":
-                #     # if total_iter_counter == 0:
-                #     #     # There won't be any fluid movement at the perforation once the well is opened for injection
-                #     #     # or production due the wellbore storage effect.
-                #     #     delta_at_perf0 = 0
-                #     #
-                #     # else:
-                #     #     # For injection scenario
-                #     #     sG0_up = sG0[source_sink_object.segment_index]
-                #     #     rhoG0_up = rhoG0[source_sink_object.segment_index]
-                #     #     rhoL0_up = rhoL0[source_sink_object.segment_index]
-                #     #
-                #     #     delta_at_perf0 = source_sink_object.evaluate_momentum0(sG0_up, rhoG0_up, rhoL0_up)
-                #     #     # delta_at_perf0 = 0
-                #
-                #     # For the perforation, because the fluid enters or exits the well perpendicular to the direction
-                #     # of flow, there is no net transfer of momentum along the wellbore due to the perforation.
-                #     delta_at_perf0 = 0
-                #
-                #     delta_interface0 = np.insert(delta_interface0, source_sink_object.segment_index, delta_at_perf0)
+                # The props of the fluid of the segment on which the constant mass rate source is defined are used.
+                sG0_source = sG0[segment_index_source]
+                rhoG0_source = rhoG0[segment_index_source]
+                rhoL0_source = rhoL0[segment_index_source]
+
+                if sG0_source == 0:
+                    vG0 = 0
+                    liquid_mass_fraction0 = 1
+                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                    vL0 = liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                elif sG0_source == 1:
+                    vL0 = 0
+                    gas_mass_fraction0 = 1
+                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
+                elif 0 < sG0_source < 1:
+                    gas_mass_fraction0 = sG0_source * rhoG0_source / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
+                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                    vG0 = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
+
+                    liquid_mass_fraction0 = 1 - gas_mass_fraction0
+                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                    vL0 = liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * (1 - sG0_source))
+                else:
+                    raise Exception("sG0_source is out of correct range (from 0 to 1)!")
+
+                delta_at_bc_interface0 = pipe_internal_A * (rhoG0_source * sG0_source * vG0 ** 2 + rhoL0_source * (1 - sG0_source) * vL0 ** 2)
+
+                if segment_index_source == 0:
+                    momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
+                elif segment_index_source == num_segments - 1:
+                    momentum_at_first_last_exterfaces[1] = delta_at_bc_interface0
 
             delta_interface0 = np.insert(delta_interface0, 0, momentum_at_first_last_exterfaces[0])
             delta_interface0 = np.insert(delta_interface0, num_segments, momentum_at_first_last_exterfaces[1])
@@ -356,7 +378,10 @@ class PipeVelocityEvaluator:
                 self.vL[i] = ((1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
                          - sG_face[i] * rhoG_face[i] * self.vD0[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i]))
 
-        return np.concatenate((self.vG, self.vL))
+        # concatenate phase velocities, reverse the order, convert m/s to m/day, and get the absolute values
+        phase_velocities = np.abs(np.concatenate((self.vG[::-1] * 24 * 60 * 60, self.vL[::-1] * 24 * 60 * 60)))
+
+        return value_vector(phase_velocities)
 
     def calc_mixture_densities(self, iter_counter, total_iter_counter, flag):
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
@@ -468,8 +493,8 @@ class PipeVelocityEvaluator:
             # Constant or variable IFT using FluidModel depending on the class used by the user
             IFT0_face = np.zeros(len(indices))
             for i in range(len(indices)):
-                IFT0_face[i] = self.fluid_model.IFT_eval.evaluate(rhoG0_face_filtered[i], rhoL0_face_filtered[i],
-                                                                  xG_mass0_face_filtered[i], xL_mass0_face_filtered[i])
+                IFT0_face[i] = self.physics.property_containers[0].IFT_ev.evaluate(rhoG0_face_filtered[i], rhoL0_face_filtered[i],
+                                                                                   xG_mass0_face_filtered[i], xL_mass0_face_filtered[i])
 
             # self.Ku0_filtered = np.zeros(len(indices))
             # self.vC0_filtered = np.zeros(len(indices))

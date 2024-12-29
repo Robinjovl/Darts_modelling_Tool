@@ -131,19 +131,44 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     int connected_with_well;
 
+    std::vector<value_t> phase_A_veloc;
+    std::vector<value_t> phase_B_veloc;
+    phase_A_veloc.insert(phase_A_veloc.end(), n_res_blocks - 1, 0);
+    phase_B_veloc.insert(phase_B_veloc.end(), n_res_blocks - 1, 0);
     for (ms_well* w : wells)
     {
+        // add zero velocity for perforaiton of each well (I'm sure, this does not work properly if the well has multiple perforations)
+        // This zero velocity won't be used in calculations of basic wells. It's just to keep the consistency of the size of the vectors.
+        phase_A_veloc.push_back(0);
+        phase_B_veloc.push_back(0);
         if (w->model_type == "ms_well")
         {
             std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
             py::gil_scoped_acquire gil;  // Acquire the GIL
-            // Method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
-            py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, 111, t, 111, 111, 111);
+            // method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
+            py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, t, 1);
             // convert phase_velocities_result
             std::vector<value_t> phase_velocities = phase_velocities_result.cast<std::vector<value_t>>();
+
+            // separate the velocities of the two phases
+            size_t half_size = phase_velocities.size() / 2;
+            std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size);
+            std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size, phase_velocities.end());
+
+            phase_A_veloc.insert(phase_A_veloc.end(), phase_A_vel.begin(), phase_A_vel.end());
+            phase_B_veloc.insert(phase_B_veloc.end(), phase_B_vel.begin(), phase_B_vel.end());
+        }
+        else if (w->model_type == "basic_well")
+        {
+            // basic wells have only one connection. This zero velocity won't be used in calculations of basic wells. It's just to keep the consistency of the size of the vectors.
+            phase_A_veloc.push_back(0);
+            phase_B_veloc.push_back(0);
         }
     }
+    std::vector<value_t> phase_A_velocities = mesh->reverse_and_sort_wells_velocities(phase_A_veloc);
+    std::vector<value_t> phase_B_velocities = mesh->reverse_and_sort_wells_velocities(phase_B_veloc);
+
 
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
@@ -202,6 +227,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             if (i == j)
                 continue;
 
+            bool ms_well_conn = false;
+            for (ms_well* w : wells)
+            {
+                if (w->model_type == "ms_well")
+                {
+                    if (i >= w->well_head_idx && j <= w->well_body_idx)
+                    {
+                        ms_well_conn = true;
+                        break;
+                    }
+                }
+            }
+
             value_t trans_mult = 1;
             value_t trans_mult_der_i[N_VARS];
             value_t trans_mult_der_j[N_VARS];
@@ -242,9 +280,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             { // loop over number of phases for convective operator
 
               // calculate gravity term for phase p
-                value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] +
-                    op_vals_arr[j * N_OPS + GRAV_OP + p]) /
-                    2;
+                value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
 
                 // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
                 value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
@@ -264,6 +300,26 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                 if (phase_p_diff < 0)
                 {
+                    value_t phase_volumetric_rate;
+                    if (!ms_well_conn)
+                    {
+                        // calculate phase volumetric rate using Darcy's law for reservoir connections
+
+                    }
+                    else
+                    {
+                        // calculate phase volumetric rate for multi-segment well connections using the drift-flux model (DFM)
+                        // The multi-segment well only works for a maximum of two phases.
+                        value_t phase_velocity;
+                        if (p == 0)
+                            phase_velocity = phase_A_velocities[conn_idx];
+                        else if (p == 1)
+                            phase_velocity = phase_B_velocities[conn_idx];
+
+                        phase_volumetric_rate = phase_velocity * wells[0]->well_transmissibility;
+                            //* op_vals_arr[i * N_OPS + SAT_OP + p];
+                    }
+
                     // mass and energy outflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
@@ -296,6 +352,26 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
                 else
                 {
+                    value_t phase_volumetric_rate;
+                    if (!ms_well_conn)
+                    {
+                        // calculate phase volumetric rate for reservoir connections using Darcy's law
+
+                    }
+                    else
+                    {
+                        // calculate phase volumetric rate for multi-segment well connections using the drift-flux model (DFM)
+                        // The multi-segment well only works for a maximum of two phases.
+                        value_t phase_velocity;
+                        if (p == 0)
+                            phase_velocity = phase_A_velocities[conn_idx];
+                        else if (p == 1)
+                            phase_velocity = phase_B_velocities[conn_idx];
+
+                        phase_volumetric_rate = phase_velocity * wells[0]->well_transmissibility;
+                            //* op_vals_arr[j * N_OPS + SAT_OP + p];
+                    }
+
                     // mass and energy inflow with effect of gravity and capillarity
                     for (uint8_t c = 0; c < NE; c++)
                     {
