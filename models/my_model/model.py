@@ -1,21 +1,20 @@
-from struct_reservoir import StructReservoir
-from cicd_model import CICDModel
+from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
-
 from darts.physics.super.physics import Compositional
-from property_container import PropertyContainer
+from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
-from define_pipe_geometry import PipeGeometry
-from set_initial_conditions import SingleAmbientTemperature
-from check_initial_conditions import check_initial_conditions
-from interfacial_tension import IFT_multicomponent_MCM
-from units import *
+from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.wells.set_initial_conditions import SingleAmbientTemperature
+from darts.wells.check_initial_conditions import check_initial_conditions
+from darts.wells.interfacial_tension import IFT_multicomponent_MCM
+from darts.wells.units import *
 
 class Model(CICDModel):
     def __init__(self):
@@ -48,9 +47,8 @@ class Model(CICDModel):
         """================================================= Well 1 ================================================="""
         well_1_name = "I1"
         well_1_type = "ms_well"
-        # Lengths of the well segments above the uppermost perforated wellbore segment are specified here.
-        # The lengths of the perforated well segments in front of the reservoir are equal to the height of the
-        # reservoir cells.
+        # Lengths of the well segments are specified here.
+        # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
         well_1_segments_lengths = np.concatenate(([1], 2 * np.ones(2), [1]))  # From bottom to top of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction

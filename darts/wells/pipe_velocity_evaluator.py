@@ -2,16 +2,16 @@ import math
 import numpy as np
 
 from darts.engines import value_vector
-from darts_model import DartsModel
+# from darts.models.darts_model import DartsModel
 
-from define_pipe_geometry import PipeGeometry
+from darts.wells.define_pipe_geometry import PipeGeometry
 
 class PipeVelocityEvaluator:
     g = 9.80665 # * meter() / second()**2  # Gravitational acceleration
     Cku = 142
     Cw = 0.008
 
-    def __init__(self, pipe_geometry: PipeGeometry, physics, darts_model: DartsModel, Cmax: float = 1.2, Fv: float = 1,
+    def __init__(self, pipe_geometry: PipeGeometry, physics, darts_model, Cmax: float = 1.2, Fv: float = 1,
                  eps_p: float = 10, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
         """
         :param pipe_geometry: Pipe geometry object

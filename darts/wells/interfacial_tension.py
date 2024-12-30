@@ -1,5 +1,5 @@
-from units import *
-import library
+from darts.wells.units import *
+import darts.wells.library as library
 
 class IFT_multicomponent_MCM:
     """

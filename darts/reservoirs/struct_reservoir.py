@@ -8,7 +8,7 @@ from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from scipy.interpolate import griddata
 
-from define_pipe_geometry import PipeGeometry
+from darts.wells.define_pipe_geometry import PipeGeometry
 
 
 class StructReservoir(ReservoirBase):

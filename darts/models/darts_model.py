@@ -182,7 +182,7 @@ class DartsModel:
             if os.path.exists(sol_output_path): #and not restart:
                 os.remove(sol_output_path)
             self.configure_h5_output(filename=sol_output_path, cell_ids=np.arange(self.reservoir.mesh.n_blocks),
-                                add_static_data=False, description='Reservoir data')
+                                     add_static_data=False, description='Reservoir data')
 
         # Find relevant connections for well data
         if kind == 'well':
@@ -196,7 +196,7 @@ class DartsModel:
             if os.path.exists(well_output_path):
                 os.remove(well_output_path)
             self.configure_h5_output(filename=well_output_path, cell_ids=self.id_well_data,
-                                add_static_data=True, description='Well data')
+                                     add_static_data=True, description='Well data')
 
         if hasattr(self, 'output_configured'):
             self.output_configured.append(kind)
@@ -339,7 +339,7 @@ class DartsModel:
                 np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
             elif variable == 'enthalpy':
                 np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
-            else:           # compositions
+            else:   # compositions
                 np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
                 z_counter += 1
 
@@ -512,7 +512,9 @@ class DartsModel:
             dt = min(self.prev_dt * self.params.mult_ts, self.params.max_ts)
         self.prev_dt = dt
 
-        ts = 0
+        ts_counter = 0
+        self.iter_counter = 0
+        self.total_iter_counter = 0
 
         if log_3d_body_path:
             self.physics.body_path_start(output_folder=self.output_folder)
@@ -521,12 +523,15 @@ class DartsModel:
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
+                self.total_iter_counter += self.iter_counter + 1
+                self.iter_counter = 0
+
                 t += dt
                 self.physics.engine.t = t
-                ts += 1
+                ts_counter += 1
                 if verbose:
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
+                          % (ts_counter, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
 
                 dt = min(dt * self.params.mult_ts, self.params.max_ts)
 
@@ -548,6 +553,8 @@ class DartsModel:
                     self.save_data_to_h5(kind='well')
 
             else:
+                self.iter_counter += 1
+
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
@@ -717,7 +724,6 @@ class DartsModel:
                 time = file['dynamic/time'][timestep].reshape(1)
                 X = file['dynamic/X'][timestep].reshape(1, len(cell_id), len(var_names))
 
-
         for i, name in enumerate(var_names):
             var_names[i] = name.decode()
 
@@ -860,9 +866,9 @@ class DartsModel:
             assert (self.well_perf_conn_ids[well.name].size == len(well.perforations) and \
                     (block_m[self.well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
             # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
-            # assert(len(well_head_conn_id) == 1)
-            # self.well_head_conn_id[well.name] = well_head_conn_id[0]
+            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_head_idx + 1))[0]
+            assert (len(well_head_conn_id) == 1)
+            self.well_head_conn_id[well.name] = well_head_conn_id[0]
 
     def reconstruct_velocities(self):
         # velocity discretization

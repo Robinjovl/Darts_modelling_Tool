@@ -7,7 +7,8 @@ from typing import Union
 
 from darts.engines import conn_mesh, timer_node, ms_well_vector, ms_well, value_vector
 
-from define_pipe_geometry import PipeGeometry
+from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.wells.pipe_velocity_evaluator import PipeVelocityEvaluator
 
 
 class ReservoirBase:
@@ -39,7 +40,7 @@ class ReservoirBase:
 
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
-        if not hasattr(self,'mesh'):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
+        if not hasattr(self, 'mesh'):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
             self.mesh = self.discretize(verbose)
         return
 
@@ -82,7 +83,8 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, well_name: str, well_type: str, well_ID: float = None, well_geometry: PipeGeometry = None) -> None:
+    def add_well(self, well_name: str, well_type: str, well_ID: float = None, well_geometry: PipeGeometry = None,
+                 physics=None, darts_model=None) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
 
@@ -94,6 +96,9 @@ class ReservoirBase:
         :type well_ID: float
         :param well_geometry: Geometry of the well. If well_type is "ms_well", this input argument must be specified.
         :type well_geometry: PipeGeometry
+        :param physics
+        :param darts_model: Instance of the class DartsModel
+        :type darts_model: DartsModel
         """
         well = ms_well()  # Change the name of the class ms_well to well, which is general.
         well.name = well_name
@@ -102,6 +107,7 @@ class ReservoirBase:
         if well.model_type == "basic_well":
             assert well_ID is not None, "For basic_well, well_ID must be specified!"
             assert well_geometry is None, "For basic_well, well_geometry must not be specified!"
+            assert physics is None, "For basic_well, physics must not be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir.
             well.segment_volume = math.pi / 4 * well_ID ** 2
@@ -113,6 +119,7 @@ class ReservoirBase:
         elif well.model_type == "ms_well":
             assert well_ID is None, "For ms_well, well_ID must not be specified!"
             assert well_geometry is not None, "For ms_well, well_geometry must be specified!"
+            assert physics is not None, "For ms_well, physics must be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the perforated segment in front of the reservoir.
             # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated
@@ -121,13 +128,13 @@ class ReservoirBase:
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector((well_geometry.pipe_length - well_geometry.z)[::-1])
             well.num_segments = well_geometry.num_segments
+            well.velocity_evaluator = PipeVelocityEvaluator(well_geometry, physics, darts_model)
 
             # will be updated in add_perforation
             # well.well_head_depth = well_geometry.pipe_length - well_geometry.z[-1]
             # well.well_body_depth = well_geometry.pipe_length - well_geometry.z[0]
 
         self.wells.append(well)
-
 
         return
 
@@ -186,17 +193,17 @@ class ReservoirBase:
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
         self.mesh.add_wells(ms_well_vector(self.wells))
-        
+
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
         # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
-        if hasattr (self, 'connected_well_segments'):
+        if hasattr(self, 'connected_well_segments'):
             for well_pair in self.connected_well_segments.keys():
                 well_1 = self.get_well(well_pair[0])
                 well_2 = self.get_well(well_pair[1])
                 for perf_pair in self.connected_well_segments[well_pair]:
                     self.mesh.connect_segments(well_1, well_2, perf_pair[0], perf_pair[1], 1)
-        
+
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
