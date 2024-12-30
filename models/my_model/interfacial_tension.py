@@ -41,8 +41,8 @@ class IFT_multicomponent_MCM:
         """
         :param rhoG: Gas density in kg/m3
         :param rhoL: Liquid density in kg/m3
-        :param xL_mass: Mass fractions of components in the liquid phase
         :param xG_mass: Mass fractions of components in the gaseous phase
+        :param xL_mass: Mass fractions of components in the liquid phase
 
         :returns IFT: Interfacial tension in N/m
         """

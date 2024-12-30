@@ -28,7 +28,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=1, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -60,7 +60,7 @@ class Model(CICDModel):
                                        well_1_wall_roughness, verbose)
 
         # %% Set initial conditions in the pipe using SingleAmbientTemperature
-        ambient_temperature = self.physics.property_containers[0].temperature
+        system_temperature = self.physics.property_containers[0].temperature
         pipe_head_pressure = 5   # bar
         pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
 
@@ -72,7 +72,7 @@ class Model(CICDModel):
         initial_fluid_conditions = {'phases_names': ['liquid', well_head_segment_phase], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5], well_head_segment_composition],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length - 1], well_head_segment_interval]}  # 0 is the beginning of the pipe
 
-        well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], ambient_temperature,
+        well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], system_temperature,
                                                              pipe_head_pressure, pipe_head_segment_index,
                                                              initial_fluid_conditions, verbose)
 
@@ -103,10 +103,11 @@ class Model(CICDModel):
         components_names = ['CO2', 'C1', 'H2O']
         phases_names = ['gas', 'liquid']
         thermal = 0
+        system_temperature = 35 + 273.15
         Mw = [44.0098, 16.04288, 18.0152]
 
         property_container = PropertyContainer(phases_name=phases_names, components_name=components_names,
-                                               Mw=Mw, min_z=zero / 10, temperature=35 + 273.15)
+                                               Mw=Mw, min_z=zero / 10, temperature=system_temperature)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(components_names), [4, 2, 1e-1], zero)
@@ -130,9 +131,8 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                # w.control = self.physics.new_rate_gas_inj(20, self.inj_stream)
-                # inj_rate = 5   # kg/s
-                # inj_rate = 5 * 24 * 60 * 60
-                w.control = self.physics.new_rate_inj(58895.98, inj_stream, 0)   # inj rate in kmol/day
+                # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
+                # 58895.98 kmol/day = 30 kg/s
+                w.control = self.physics.new_rate_inj(58895.98/3, inj_stream, 0)   # inj rate in kmol/day
             else:
                 w.control = self.physics.new_bhp_prod(5.271563)

@@ -98,7 +98,7 @@ class PipeVelocityEvaluator:
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.pipe_geometry.pipe_name)
 
-    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, simulation_timer, flag):
+    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, flag):
         iter_counter = self.darts_model.iter_counter
         total_iter_counter = self.darts_model.total_iter_counter
 

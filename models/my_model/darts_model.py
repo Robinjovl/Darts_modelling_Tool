@@ -866,9 +866,9 @@ class DartsModel:
             assert (self.well_perf_conn_ids[well.name].size == len(well.perforations) and \
                     (block_m[self.well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
             # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
-            # assert(len(well_head_conn_id) == 1)
-            # self.well_head_conn_id[well.name] = well_head_conn_id[0]
+            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_head_idx + 1))[0]
+            assert(len(well_head_conn_id) == 1)
+            self.well_head_conn_id[well.name] = well_head_conn_id[0]
 
     def reconstruct_velocities(self):
         # velocity discretization

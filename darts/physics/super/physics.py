@@ -61,7 +61,7 @@ class Compositional(PhysicsBase):
             variables += ['temperature']
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1 + nph
+        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1 + nph + nph + nph
 
         # axes_min
         if axes_min is None:
