@@ -325,7 +325,16 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else if (p == 1)
                             phase_velocity = phase_B_velocities[conn_idx];
 
-                        phase_volumetric_rate = - phase_velocity * wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p];
+                        phase_volumetric_rate = - wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
+
+                        // calculate derivatives
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            value_t phase_velocity_der_i = 22;
+                            value_t phase_velocity_der_j = 22;
+                            phase_vol_rate_der_i[v] = - wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
+                            phase_vol_rate_der_j[v] = - wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
+                        }
                     }
 
                     for (uint8_t c = 0; c < NE; c++)
@@ -389,7 +398,16 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else if (p == 1)
                             phase_velocity = phase_B_velocities[conn_idx];
 
-                        phase_volumetric_rate = phase_velocity * wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p];
+                        phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
+
+                        // calculate derivatives
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            value_t phase_velocity_der_i = 22;
+                            value_t phase_velocity_der_j = 22;
+                            phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_i;
+                            phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_j);
+                        }
                     }
 
                     for (uint8_t c = 0; c < NE; c++)
