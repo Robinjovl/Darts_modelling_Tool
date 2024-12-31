@@ -133,6 +133,10 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     std::vector<value_t> phase_A_veloc;
     std::vector<value_t> phase_B_veloc;
+
+    std::vector<value_t> phase_A_veloc_ders;
+    std::vector<value_t> phase_B_veloc_ders;
+
     phase_A_veloc.insert(phase_A_veloc.end(), n_res_blocks - 1, 0);
     phase_B_veloc.insert(phase_B_veloc.end(), n_res_blocks - 1, 0);
     for (ms_well* w : wells)
@@ -146,18 +150,32 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
             py::gil_scoped_acquire gil;  // Acquire the GIL
-            // method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
-            py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, 1);
-            // convert phase_velocities_result
-            std::vector<value_t> phase_velocities = phase_velocities_result.cast<std::vector<value_t>>();
+            //// method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
+            //py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, 1);
+            //// convert the py::object into a C++ vector
+            //std::vector<value_t> phase_velocities = phase_velocities_result.cast<std::vector<value_t>>();
+
+            // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
+            py::object result = w->velocity_evaluator.attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
+            //// convert the py::object into a C++ tuple
+            auto result_tuple = result.cast<std::tuple<std::vector<value_t>, std::vector<value_t>>>();
+
+            // use std::get<index>(tuple) to retrieve individual elements of the tuple
+            std::vector<value_t> phase_velocities = std::get<0>(result_tuple);
+            std::vector<value_t> phase_velocities_derivatives = std::get<1>(result_tuple);
 
             // separate the velocities of the two phases
-            size_t half_size = phase_velocities.size() / 2;
-            std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size);
-            std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size, phase_velocities.end());
+            size_t half_size_vel = phase_velocities.size() / 2;
+            std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size_vel);
+            std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size_vel, phase_velocities.end());
 
             phase_A_veloc.insert(phase_A_veloc.end(), phase_A_vel.begin(), phase_A_vel.end());
             phase_B_veloc.insert(phase_B_veloc.end(), phase_B_vel.begin(), phase_B_vel.end());
+
+            // separate the derivatives of velocities of the two phases
+            size_t half_size_vel_der = phase_velocities_derivatives.size() / 2;
+            std::vector<value_t> phase_A_vel_ders(phase_velocities_derivatives.begin(), phase_velocities_derivatives.begin() + half_size_vel_der);
+            std::vector<value_t> phase_B_vel_ders(phase_velocities_derivatives.begin() + half_size_vel_der, phase_velocities_derivatives.end());
         }
         else if (w->model_type == "basic_well")
         {

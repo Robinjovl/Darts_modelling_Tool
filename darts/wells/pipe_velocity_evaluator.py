@@ -6,13 +6,14 @@ from darts.engines import value_vector
 
 from darts.wells.define_pipe_geometry import PipeGeometry
 
+
 class PipeVelocityEvaluator:
-    g = 9.80665 # * meter() / second()**2  # Gravitational acceleration
+    g = 9.80665   # * meter() / second()**2  # Gravitational acceleration
     Cku = 142
     Cw = 0.008
 
     def __init__(self, pipe_geometry: PipeGeometry, physics, darts_model, Cmax: float = 1.2, Fv: float = 1,
-                 eps_p: float = 10, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
+                 eps_p: float = 1e-4, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
         """
         :param pipe_geometry: Pipe geometry object
         :type pipe_geometry: PipeGeometry
@@ -112,13 +113,12 @@ class PipeVelocityEvaluator:
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
-            vec_Xn_ms_well_as_np = Xn_ms_well.to_numpy()
             # Reshape into blocks
-            vec_Xn_ms_well_as_np_reshaped = vec_Xn_ms_well_as_np.reshape(-1, nc)
+            Xn_ms_well_reshaped = Xn_ms_well.reshape(-1, nc)
             # Reverse the order of the blocks
-            vec_Xn_ms_well_as_np_reversed_blocks = vec_Xn_ms_well_as_np_reshaped[::-1]
+            Xn_ms_well_reversed_blocks = Xn_ms_well_reshaped[::-1]
             # Flatten back to a 1D array
-            vec_Xn_ms_well_as_np = vec_Xn_ms_well_as_np_reversed_blocks.flatten()
+            Xn_ms_well = Xn_ms_well_reversed_blocks.flatten()
 
             """ From here on, instead of G, use A, and instead of L, use B. A and B represent the first and second 
             phases specified by the user, respectively. """
@@ -131,7 +131,7 @@ class PipeVelocityEvaluator:
             xL_mass0 = np.zeros((num_segments, nc))
 
             for i in range(num_segments):
-                state0 = vec_Xn_ms_well_as_np[i * n_vars:(i + 1) * n_vars]
+                state0 = Xn_ms_well[i * n_vars:(i + 1) * n_vars]
                 pc.evaluate(state0)
                 if self.physics.thermal:
                     pc.evaluate_thermal(state0)
@@ -153,13 +153,12 @@ class PipeVelocityEvaluator:
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
         """ Calculate phase props of current time step at centroids """
-        vec_X_ms_well_as_np = X_ms_well.to_numpy()
         # Reshape into blocks
-        vec_X_ms_well_as_np_reshaped = vec_X_ms_well_as_np.reshape(-1, nc)
+        X_ms_well_reshaped = X_ms_well.reshape(-1, nc)
         # Reverse the order of the blocks
-        vec_X_ms_well_as_np_reversed_blocks = vec_X_ms_well_as_np_reshaped[::-1]
+        X_ms_well_reversed_blocks = X_ms_well_reshaped[::-1]
         # Flatten back to a 1D array
-        vec_X_ms_well_as_np = vec_X_ms_well_as_np_reversed_blocks.flatten()
+        X_ms_well = X_ms_well_reversed_blocks.flatten()
 
         sG = np.zeros(num_segments)
         rhoG = np.zeros(num_segments)
@@ -170,7 +169,7 @@ class PipeVelocityEvaluator:
         xL_mass = np.zeros((num_segments, nc))
 
         for i in range(num_segments):
-            state = vec_X_ms_well_as_np[i * n_vars:(i + 1) * n_vars]
+            state = X_ms_well[i * n_vars:(i + 1) * n_vars]
             pc.evaluate(state)
             if self.physics.thermal:
                 pc.evaluate_thermal(state)
@@ -285,7 +284,7 @@ class PipeVelocityEvaluator:
 
         [_, vM0, vG0, vL0] = self.velocities0
 
-        p = vec_X_ms_well_as_np[0::n_vars] * 1e5   # convert bar to Pa
+        p = X_ms_well[0::n_vars] * 1e5   # convert bar to Pa
         p_m = p[0:-1:1]
         p_p = p[1::1]
 
@@ -378,10 +377,10 @@ class PipeVelocityEvaluator:
                 self.vL[i] = ((1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
                          - sG_face[i] * rhoG_face[i] * self.vD0[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i]))
 
-        # concatenate phase velocities, reverse the order, convert m/s to m/day, and get the absolute values
-        phase_velocities = np.abs(np.concatenate((self.vG[::-1] * 24 * 60 * 60, self.vL[::-1] * 24 * 60 * 60)))
+        # concatenate phase velocities, reverse the order, and convert m/s to m/day
+        phase_velocities = np.concatenate((self.vG[::-1] * 24 * 60 * 60, self.vL[::-1] * 24 * 60 * 60))
 
-        return value_vector(phase_velocities)
+        return phase_velocities
 
     def calc_mixture_densities(self, iter_counter, total_iter_counter, flag):
         if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
@@ -585,36 +584,44 @@ class PipeVelocityEvaluator:
             vD0 = np.zeros(self.pipe_geometry.num_interfaces)
         self.vD0 = vD0
 
-    def evaluate_phase_velocities_derivatives(self, vars0, vars, dt, source_sink, simulation_timer, iter_counter, total_iter_counter):
+    def evaluate_phase_velocities_and_derivatives(self, Xn_ms_well, X_ms_well, dt):
+        Xn_ms_well = Xn_ms_well.to_numpy()
+        X_ms_well = X_ms_well.to_numpy()
+
         num_segments = self.pipe_geometry.num_segments
         num_phase_velocities = self.pipe_geometry.num_interfaces * 2
-        num_primary_vars = len(vars0)
+        num_primary_vars = len(Xn_ms_well)
+        n_vars = self.physics.n_vars
 
         jac = np.zeros((num_phase_velocities, num_primary_vars))
-        phase_velocities = self.evaluate_phase_velocities(vars0, vars, dt, source_sink, simulation_timer, iter_counter,
-                                                          total_iter_counter, flag=1)
+
+        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=1)
 
         # Construct the Jacobian matrix
         for i in range(num_segments):
             # Derivatives of all the phase velocities with respect to the pressure of segment i
-            vars[i] += self.eps_p
-            jac[:, i] = (self.evaluate_phase_velocities(vars0, vars, dt, source_sink, simulation_timer, iter_counter,
-                                                               total_iter_counter, flag=0) - phase_velocities) / self.eps_p
-            vars[i] -= self.eps_p
+            X_ms_well[i * n_vars] += self.eps_p
+            jac[:, i * n_vars] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_p
+            X_ms_well[i * n_vars] -= self.eps_p
 
             for j in range(self.physics.nc - 1):
                 # Derivatives of all the phase velocities with respect to the mole fraction of component j in segment i
-                vars[(j + 1) * num_segments + i] += self.eps_z
-                jac[:, (j + 1) * num_segments + i] = (self.evaluate_phase_velocities(vars0, vars, dt, source_sink,
-                                                                                     simulation_timer, iter_counter,
-                                                                                     total_iter_counter, flag=0) - phase_velocities) / self.eps_z
-                vars[(j + 1) * num_segments + i] -= self.eps_z
+                X_ms_well[i * n_vars + j + 1] += self.eps_z
+                jac[:, i * n_vars + j + 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0)
+                                              - phase_velocities) / self.eps_z
+                X_ms_well[i * n_vars + j + 1] -= self.eps_z
 
             if not self.isothermal:
                 # Derivatives of all the phase velocities with respect to the temperature of segment i
-                vars[num_segments * self.physics.nc + i] += self.eps_temp
-                jac[:, num_segments * self.physics.nc + i] = (self.evaluate_phase_velocities(
-                    vars0, vars, dt, source_sink, simulation_timer, iter_counter,
-                    total_iter_counter, flag=0) - phase_velocities) / self.eps_temp
-                vars[num_segments * self.physics.nc + i] -= self.eps_temp
+                X_ms_well[i * n_vars + n_vars - 1] += self.eps_temp
+                jac[:, i * n_vars + n_vars - 1] = (self.evaluate_phase_velocities(
+                    Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_temp
+                X_ms_well[i * n_vars + n_vars - 1] -= self.eps_temp
 
+        # Update properties at the current time step with the original primary variables (original X_ms_well)
+        # unaffected by eps_p, eps_temp, and eps_z
+        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=-1)
+
+        phase_velocities_derivatives = jac.flatten()
+
+        return value_vector(np.abs(phase_velocities)), value_vector(phase_velocities_derivatives)
