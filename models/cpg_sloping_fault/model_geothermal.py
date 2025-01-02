@@ -164,7 +164,7 @@ class ModelGeothermal(Model_CPG):
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
+                    wdata.add_inj_bhp_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
                 else: # prod
                     wdata.add_prd_bhp_control(name=w, bhp=100) # m3/day | bars
         elif 'wrate' in case:
