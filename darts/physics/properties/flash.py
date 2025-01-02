@@ -70,3 +70,37 @@ def RR2(k, zc, eps):
     y = k * x
 
     return [V, 1-V], [y, x]
+
+
+class IonFlash(Flash):
+    def __init__(self, flash_ev: Flash, nph: int, nc: int, ni: int, combined_ions: list = None):
+        super().__init__(nph, nc, ni)
+        self.flash_ev = flash_ev
+        self.combined_ions = combined_ions
+
+    def evaluate(self, pressure, temperature, zc):
+        # Uncombine ions into Na+ and Cl- mole fractions
+        if self.combined_ions is not None:
+            ion_weights = self.combined_ions / np.sum(self.combined_ions)
+            zc = np.append(zc[:-1], [ion_weights[0] * zc[-1], ion_weights[1] * zc[-1]])
+        nc_tot = len(zc)
+
+        # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
+        error_output = self.flash_ev.evaluate(pressure, temperature, zc)
+        flash_results = self.flash_ev.get_flash_results()
+        self.nu = np.array(flash_results.nu)
+        self.X = np.empty((self.nph, self.nc + 1 if self.combined_ions is not None else self.nc + self.ni))
+
+        for j in range(self.nph):
+            Xj = flash_results.X[j * nc_tot:(j + 1) * nc_tot]
+
+            if self.combined_ions is not None:
+                # Normal components +
+                self.X[j, :self.nc] = Xj[:self.nc]
+
+                # Sum ions
+                self.X[j, self.nc] = np.sum(ion_weights * Xj[self.nc:])
+            else:
+                self.X[j, :] = Xj
+
+        return 0

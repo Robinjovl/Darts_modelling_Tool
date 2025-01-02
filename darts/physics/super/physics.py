@@ -4,6 +4,7 @@ from darts.physics.base.physics_base import PhysicsBase
 
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
+from darts.physics.super.initialize import Initialize
 
 
 class Compositional(PhysicsBase):
@@ -174,7 +175,7 @@ class Compositional(PhysicsBase):
             temperature = np.array(mesh.temperature, copy=False)
             temperature.fill(uniform_temp)
 
-         # set initial composition
+        # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))
         composition = np.array(mesh.composition, copy=False)
         # composition[:] = np.array(uniform_composition)

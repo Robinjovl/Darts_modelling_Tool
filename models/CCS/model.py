@@ -61,6 +61,7 @@ class Model(DartsModel):
         # EoS-related parameters
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["AQ", "PR"]
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3

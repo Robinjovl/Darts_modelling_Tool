@@ -104,5 +104,5 @@ uint64_t interpolator_base::get_n_points_total() const
 
 uint64_t interpolator_base::get_n_points_used() const
 {
-    return static_cast<uint8_t>(n_points_used);
+    return static_cast<uint64_t>(n_points_used);
 }
