@@ -18,6 +18,6 @@ def input_data_case_5x3x4(idata: InputData, case: str):
     geom.dz = np.array([100, 150, 180, 120])
     geom.burden_layers = 4
     well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(1, 1, -1))
-    well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(3, 3, -1))
+    well_data.add_well(name='INJ', loc_type='ijk', loc_ijk=(5, 3, -1))
     # one might use wells.add_well(name='PRD', loc_type='xyz', loc_xyz=(250.0, 500.0, 890.0))
 
