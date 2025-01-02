@@ -9,12 +9,13 @@ class InputDataGeom():  # to group geometry input data
         pass
 
 def get_case_files(case: str):
-    prefix = os.path.join('meshes', case)
+    prefix = os.path.join('meshes', case[:case.rfind('_')])
     grid_file = os.path.join(prefix, 'grid.grdecl')
     prop_file = os.path.join(prefix, 'reservoir.in')
     sch_file = os.path.join(prefix, 'sch.inc')
-    assert os.path.exists(grid_file)
-    assert os.path.exists(prop_file)
+    assert os.path.exists(grid_file), 'cannot open' + grid_file
+    assert os.path.exists(prop_file), 'cannot open' + prop_file
+    assert os.path.exists(sch_file), 'cannot open' + sch_file
     return grid_file, prop_file, sch_file
 
 def input_data_base(idata: InputData, case: str):
@@ -53,6 +54,8 @@ def input_data_base(idata: InputData, case: str):
         idata.gridfile = gridfile
         idata.propfile = propfile if os.path.exists(propfile) else gridfile
         idata.schfile = schfile
+        # read from a file to idata.well_data.wells[well_name].perforations
+        idata.well_data.read_and_add_perforations(idata.schfile)
 
     # rock compressibility
     idata.rock.compressibility = 1e-5  # [1/bars]
@@ -61,7 +64,8 @@ def input_data_base(idata: InputData, case: str):
 
     #########################################################################
     # only for the thermal case (Geothermal physics):
-    geom.burden_init_thickness = 10  # first layer thickness, [m.]
+    geom.burden_layers = 0  # the number of additional (generated on-the-fly) overburden/underburden layers
+    geom.burden_init_thickness = 10  # first over/under burden layer thickness, [m.]
     idata.rock.burden_prop = 1e-5  # perm and poro value for burden layers
 
     idata.rock.conduction_shale = 2.2 * 86.4 # Shale conductivity kJ/m/day/K

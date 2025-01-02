@@ -231,9 +231,9 @@ if __name__ == '__main__':
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
-    cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
-    #cases_list += ['case_40x40x10']
+    cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
     well_controls = []
@@ -246,14 +246,23 @@ if __name__ == '__main__':
             for wctrl in well_controls:
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type, case=case, out_dir=out_dir, platform=platform)
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
+                                                                                        case=case, out_dir=out_dir,
+                                                                                        redirect_log=True,
+                                                                                        platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model
-            #time_data_1 = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
+            pkl1_dir = '.'
+            #pkl1_dir = r'..\open-darts_dev_2\models\cpg_sloping_fault\results_' + physics_type + '_' + case_geom
+            pkl_fname = 'time_data.pkl'
+            pkl_report_fname = 'time_data_report.pkl'
+            #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
+            #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
 
-            #plot_results(wells, well_is_inj, time_data, time_data_report, physics_type, out_dir)
+            # compare the current results with other
             #time_data_list = [time_data_1, time_data]
-            #label_list = ['1', '2']
+            #time_data_report_list = [time_data_report_1, time_data_report]
+            #label_list = ['1', 'current']
 
             time_data_list = [time_data]
             time_data_report_list = [time_data_report]

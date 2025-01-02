@@ -53,8 +53,6 @@ class Model_CPG(CICDModel):
                                initial_thickness=self.idata.geom.burden_init_thickness,
                                property_dictionary=arrays,
                                burden_layer_prop_value=self.idata.rock.burden_prop)
-        else:
-            self.idata.geom.burden_layers = 0
 
         self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv)
         self.reservoir.discretize()
@@ -96,9 +94,19 @@ class Model_CPG(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_wells(self):
-        # read well locations from a file
+        # read perforation data from a file
         if hasattr(self.idata, 'schfile'):
-            self.reservoir.read_and_add_perforations(self.idata.schfile)
+            # read from a file to idata.well_data.wells[well_name].perforations
+            #self.idata.well_data.read_and_add_perforations(self.idata.schfile)
+            # apply to the reservoir; add wells and perforations, 1-based indices
+            for wname, wdata in self.idata.well_data.wells.items():
+                self.reservoir.add_well(wname)
+                for perf_tuple in wdata.perforations:
+                    perf = perf_tuple[1]
+                    self.reservoir.add_perforation(wname,
+                                                   cell_index=perf.loc_ijk,
+                                                   well_index=perf.well_index, well_indexD=perf.well_indexD,
+                                                   multi_segment=perf.multi_segment, verbose=True)
         else:
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():

@@ -159,6 +159,7 @@ class Well():
     '''
     def __init__(self, loc_type : str):
         self.controls = [] # List[WellControl]
+        self.perforations = []
         if loc_type == 'ijk':
             self.location = WellLocIJK()
         elif loc_type == 'xyz':
@@ -166,6 +167,16 @@ class Well():
         else:
             print('Unknown loc_type', loc_type)
             exit(1)
+
+class WellPerforation():
+    def __init__(self, loc_ijk: Union[int, tuple], status : str, well_radius : float, well_index : float,
+                 well_indexD : float, multi_segment: bool):
+        self.loc_ijk = loc_ijk
+        self.status = status
+        self.well_radius = well_radius
+        self.well_index = well_index
+        self.well_indexD = well_indexD
+        self.multi_segment = multi_segment
 
 class WellData():
     '''
@@ -175,6 +186,7 @@ class WellData():
         self.wells = dict()
 
     def add_well(self, name : str, loc_type : str, loc_ijk: Union[int, tuple] = None, loc_xyz: Union[float, tuple] = None):
+        assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
         if loc_ijk is not None and loc_type == 'ijk':
             w.location.I, w.location.J, w.location.K = loc_ijk
@@ -184,6 +196,79 @@ class WellData():
             print('Unknown loc_type', loc_type)
             exit(1)
         self.wells[name] = w
+
+    def add_perforation(self, name : str, time : float, loc_ijk: Union[int, tuple], status: str, well_radius : float,
+                        well_index : float, well_indexD : float, multi_segment : bool):
+        '''
+        :param name: well name
+        :param time: simulation timestep, [days]
+        '''
+        if name not in self.wells:
+            self.add_well(name=name, loc_type='ijk', loc_ijk=loc_ijk)
+        eps = 1e-5
+        if status == 'close':
+            # well connections in DARTS cannot be changed during the simulation, so they can be only closed
+            # and re-opened throughout timesteps. well_index and well_indexD can be changed as well.
+            # multi_segment option can't be changed and should be the same for all perforations
+            well_index_ = well_indexD_ = eps
+        else:
+            well_index_  = well_index
+            well_indexD_ = well_indexD
+        perf = WellPerforation(loc_ijk=loc_ijk, status=status, well_radius=well_radius, well_index=well_index_,
+                               well_indexD=well_indexD_, multi_segment=multi_segment)
+        self.wells[name].perforations.append((time, perf))
+
+    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
+        '''
+        read COMPDAT from SCH file in Eclipse format, add wells and perforations
+        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
+        :param: sch_fname - path to file
+        '''
+        if sch_fname is None:
+            return
+        print('reading wells (COMPDAT) from', sch_fname)
+        well_diam = 0.152  # m.  #TODO read from the keyword parameters
+        well_radius = well_diam / 2.
+
+        keep_reading = True
+        prev_well_name = ''
+        with open(sch_fname) as f:
+            while keep_reading:
+                buff = f.readline()
+                if 'COMPDAT' in buff:
+                    while True:  # be careful here
+                        buff = f.readline()
+                        if len(buff) != 0:
+                            CompDat = buff.split()
+                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
+                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                                # define well
+                                #if wname == prev_well_name:
+                                #    pass
+                                #else:
+                                #    self.add_well(wname)
+                                #    prev_well_name = wname
+                                # define perforation
+                                i1 = int(CompDat[1])
+                                j1 = int(CompDat[2])
+                                k1 = int(CompDat[3])
+                                k2 = int(CompDat[4])
+
+                                well_index = None
+                                if len(CompDat) > 7:
+                                    if CompDat[7] != '*':
+                                        well_index = float(CompDat[7])
+
+                                for k in range(k1, k2 + 1):
+                                    #TODO support time>0
+                                    self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k), 
+                                                         status='open', well_radius=well_radius,
+                                                         well_index=well_index, well_indexD=None, 
+                                                         multi_segment=False)
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
+                                keep_reading = False
+                                break
+        print('WELLS read from SCH file:', len(self.wells))
 
     def add_control(self, name : str, time : float, type : str, mode : str, rate : float, bhp : float,
                     bhp_constraint : float, inj_temp : float, comp_index : float):
