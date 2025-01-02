@@ -53,6 +53,8 @@ class Model_CPG(CICDModel):
                                initial_thickness=self.idata.geom.burden_init_thickness,
                                property_dictionary=arrays,
                                burden_layer_prop_value=self.idata.rock.burden_prop)
+        else:
+            self.idata.geom.burden_layers = 0
 
         self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv)
         self.reservoir.discretize()
