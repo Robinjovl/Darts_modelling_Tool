@@ -581,6 +581,20 @@ class DartsModel:
         self.timer.node['simulation'].stop()
         return converged
 
+    def do_after_step(self):
+        '''
+        can be overrided by an user to be executed in the 'run_simulation()'
+        '''
+        pass
+
+    def run_simulation(self):
+        time = 0.0
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            self.set_well_controls(time=time)
+            self.run(dt)
+            self.do_after_step()
+            time += dt
+
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
         Function to specify modifications to RHS vector. User can implement his own boundary conditions here.

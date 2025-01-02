@@ -123,14 +123,12 @@ class Model_CPG(CICDModel):
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 
-    def run_simulation(self):
-        time = 0.0
-        for ith_step, dt in enumerate(self.idata.sim.time_steps):
-            self.set_well_controls(time=time)
-            self.run(dt)
-            time += dt
-            # save to grdecl file after each time step
-            #self.reservoir.save_grdecl(self.get_arrays(), os.path.join(out_dir, 'res_' + str(ti+1)))
-            self.physics.engine.report()
-            self.print_well_rate()
+    def do_after_step(self):
+        # save to grdecl file after each time step
+        # self.reservoir.save_grdecl(self.get_arrays(), os.path.join(out_dir, 'res_' + str(ti+1)))
+        self.physics.engine.report()
+        self.print_well_rate()
+
+
+
 
