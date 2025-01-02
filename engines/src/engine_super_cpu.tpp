@@ -134,27 +134,31 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     std::vector<value_t> phase_A_veloc;
     std::vector<value_t> phase_B_veloc;
 
-    std::vector<value_t> phase_A_veloc_ders;
-    std::vector<value_t> phase_B_veloc_ders;
+    using MixedType = std::variant<int, std::vector<value_t>>;
+    std::vector<MixedType> phase_A_veloc_ders;
+    std::vector<MixedType> phase_B_veloc_ders;
 
+    // zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
     phase_A_veloc.insert(phase_A_veloc.end(), n_res_blocks - 1, 0);
     phase_B_veloc.insert(phase_B_veloc.end(), n_res_blocks - 1, 0);
+
+    // derivatives of phase velocities at reservoir connections, which will remain unused
+    phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_res_blocks - 1, 0);
+    phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_res_blocks - 1, 0);
     for (ms_well* w : wells)
     {
-        // add zero velocity for perforaiton of each well (I'm sure, this does not work properly if the well has multiple perforations)
-        // This zero velocity won't be used in calculations of basic wells. It's just to keep the consistency of the size of the vectors.
+        // zero velocity for perforaiton of each well (I'm sure, this does not work properly if the well has multiple perforations), which will remain unused
         phase_A_veloc.push_back(0);
         phase_B_veloc.push_back(0);
+
+        // derivatives of phase velocities at perforation, which will remain unused
+        phase_A_veloc_ders.push_back(0);
+        phase_B_veloc_ders.push_back(0);
         if (w->model_type == "ms_well")
         {
             std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
             py::gil_scoped_acquire gil;  // Acquire the GIL
-            //// method evaluate_phase_velocities of the Python object returns the velocities of the two phases (if one phase, the other phase's velocity is zero) in the wellbore as a vector.
-            //py::object phase_velocities_result = w->velocity_evaluator.attr("evaluate_phase_velocities")(Xn_ms_well, X_ms_well, dt, 1);
-            //// convert the py::object into a C++ vector
-            //std::vector<value_t> phase_velocities = phase_velocities_result.cast<std::vector<value_t>>();
-
             // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
             py::object result = w->velocity_evaluator.attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
             //// convert the py::object into a C++ tuple
@@ -176,17 +180,37 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             size_t half_size_vel_der = phase_velocities_derivatives.size() / 2;
             std::vector<value_t> phase_A_vel_ders(phase_velocities_derivatives.begin(), phase_velocities_derivatives.begin() + half_size_vel_der);
             std::vector<value_t> phase_B_vel_ders(phase_velocities_derivatives.begin() + half_size_vel_der, phase_velocities_derivatives.end());
+
+            size_t chunk_size = 2 * N_VARS;
+            for (size_t i = 0; i < phase_A_vel_ders.size(); i += chunk_size)
+            {
+                // Extract a chunk of size 2 * N_VARS
+                std::vector<value_t> chunk_A(phase_A_vel_ders.begin() + i, phase_A_vel_ders.begin() + i + chunk_size);
+                // Insert the chunk into phase_A_veloc_ders
+                phase_A_veloc_ders.push_back(chunk_A);
+
+                // Extract a chunk of size 2 * N_VARS
+                std::vector<value_t> chunk_B(phase_B_vel_ders.begin() + i, phase_B_vel_ders.begin() + i + chunk_size);
+                // Insert the chunk into phase_A_veloc_ders
+                phase_B_veloc_ders.push_back(chunk_B);
+            }
         }
         else if (w->model_type == "basic_well")
         {
             // basic wells have only one connection. This zero velocity won't be used in calculations of basic wells. It's just to keep the consistency of the size of the vectors.
             phase_A_veloc.push_back(0);
             phase_B_veloc.push_back(0);
+
+            // derivatives of phase velocities at the connection of basic wells, which will remain unused
+            phase_A_veloc_ders.push_back(0);
+            phase_B_veloc_ders.push_back(0);
         }
     }
     std::vector<value_t> phase_A_velocities = mesh->reverse_and_sort_wells_velocities(phase_A_veloc);
     std::vector<value_t> phase_B_velocities = mesh->reverse_and_sort_wells_velocities(phase_B_veloc);
 
+    std::vector<MixedType> phase_A_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_A_veloc_ders);
+    std::vector<MixedType> phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
 
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
@@ -250,7 +274,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             {
                 if (w->model_type == "ms_well")
                 {
-                    if (i >= w->well_head_idx && j <= w->well_body_idx)
+                    if (i >= w->well_head_idx && i <= w->well_body_idx && j >= w->well_head_idx && j <= w->well_body_idx)
                     {
                         ms_well_conn = true;   // if it is a connection in the multi-segment well, ms_well_conn is true
                         break;
@@ -348,8 +372,35 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         // calculate derivatives
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            value_t phase_velocity_der_i = 22;
-                            value_t phase_velocity_der_j = 22;
+                            value_t phase_velocity_der_i;
+                            value_t phase_velocity_der_j;
+                            if (p == 0)
+                            {
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_veloc_derivatives[conn_idx]))
+                                {
+                                    index_t a = (i < j) ? 0 : N_VARS;
+                                    index_t b = (i < j) ? N_VARS : 0;
+                                    phase_velocity_der_i = (*vec_ptr)[a + v];
+                                    phase_velocity_der_j = (*vec_ptr)[b + v];
+                                }
+                                else {
+                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
+                                }
+                            }
+                            else if (p == 1)
+                            {
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_veloc_derivatives[conn_idx]))
+                                {
+                                    index_t a = (i < j) ? 0 : N_VARS;
+                                    index_t b = (i < j) ? N_VARS : 0;
+                                    phase_velocity_der_i = (*vec_ptr)[a + v];
+                                    phase_velocity_der_j = (*vec_ptr)[b + v];
+                                }
+                                else {
+                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
+                                }
+                            }
+
                             phase_vol_rate_der_i[v] = - wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
                             phase_vol_rate_der_j[v] = - wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
                         }
@@ -421,8 +472,35 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         // calculate derivatives
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
-                            value_t phase_velocity_der_i = 22;
-                            value_t phase_velocity_der_j = 22;
+                            value_t phase_velocity_der_i;
+                            value_t phase_velocity_der_j;
+                            if (p == 0)
+                            {
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_veloc_derivatives[conn_idx]))
+                                {
+                                    index_t a = (i < j) ? 0 : N_VARS;
+                                    index_t b = (i < j) ? N_VARS : 0;
+                                    phase_velocity_der_i = (*vec_ptr)[a + v];
+                                    phase_velocity_der_j = (*vec_ptr)[b + v];
+                                }
+                                else {
+                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
+                                }
+                            }
+                            else if (p == 1)
+                            {
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_veloc_derivatives[conn_idx]))
+                                {
+                                    index_t a = (i < j) ? 0 : N_VARS;
+                                    index_t b = (i < j) ? N_VARS : 0;
+                                    phase_velocity_der_i = (*vec_ptr)[a + v];
+                                    phase_velocity_der_j = (*vec_ptr)[b + v];
+                                }
+                                else {
+                                    std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
+                                }
+                            }
+
                             phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_i;
                             phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * (op_ders_arr[(j * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity_der_j);
                         }

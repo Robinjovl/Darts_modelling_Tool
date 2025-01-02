@@ -7,6 +7,8 @@
 #include "ms_well.h"
 #include "block_well.h"
 
+#include <variant>
+
 
 /// This class defines mesh and corresponding arrays
 class conn_mesh
@@ -200,6 +202,9 @@ public:
   int reverse_and_sort(); 
   /// @brief reverse connections and sort them by both row and col for velocities at connections of wells
   std::vector<value_t> reverse_and_sort_wells_velocities(std::vector<value_t> phase_velocities);
+  /// @brief reverse connections and sort them by both row and col for derivatives of velocities at connections of wells
+  using MixedType = std::variant<int, std::vector<value_t>>;
+  std::vector<MixedType> reverse_and_sort_wells_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col

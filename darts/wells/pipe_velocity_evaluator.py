@@ -589,7 +589,8 @@ class PipeVelocityEvaluator:
         X_ms_well = X_ms_well.to_numpy()
 
         num_segments = self.pipe_geometry.num_segments
-        num_phase_velocities = self.pipe_geometry.num_interfaces * 2
+        num_conn = self.pipe_geometry.num_interfaces
+        num_phase_velocities = num_conn * 2
         num_primary_vars = len(Xn_ms_well)
         n_vars = self.physics.n_vars
 
@@ -622,6 +623,15 @@ class PipeVelocityEvaluator:
         # unaffected by eps_p, eps_temp, and eps_z
         phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=-1)
 
-        phase_velocities_derivatives = jac.flatten()
+        jac_phase_A = jac[:num_phase_velocities // 2, :]
+        jac_phase_B = jac[num_phase_velocities // 2:, :]
+        jac_phase_A_clean_flat = np.zeros((num_conn, 2 * n_vars))
+        jac_phase_B_clean_flat = np.zeros((num_conn, 2 * n_vars))
+        for a in range(num_conn):
+            jac_phase_A_clean_flat[a] = jac_phase_A[a, a*n_vars : a*n_vars+2*n_vars]
+            jac_phase_B_clean_flat[a] = jac_phase_B[a, a*n_vars : a*n_vars+2*n_vars]
+
+        # Flatten and concatenate both arrays
+        phase_velocities_derivatives = np.concatenate((jac_phase_A_clean_flat.flatten(), jac_phase_B_clean_flat.flatten()))
 
         return value_vector(np.abs(phase_velocities)), value_vector(phase_velocities_derivatives)
