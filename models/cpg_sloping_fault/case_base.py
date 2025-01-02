@@ -2,6 +2,7 @@ import numpy as np
 import os
 
 from darts.input.input_data import InputData
+from darts.models.darts_model import sim_params
 
 class InputDataGeom():  # to group geometry input data
     def __init__(self):
@@ -17,8 +18,8 @@ def get_case_files(case: str):
     return grid_file, prop_file, sch_file
 
 def input_data_base(idata: InputData, case: str):
-    dt = 1  # one report timestep length, [days]
-    n_time_steps = 30
+    dt = 365.25  # one report timestep length, [days]
+    n_time_steps = 20
     idata.sim.time_steps = np.zeros(n_time_steps) + dt
 
     # time stepping and convergence parameters
@@ -28,7 +29,7 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.runtime = 300
     idata.sim.tol_newton = 1e-2
     idata.sim.tol_linear = 1e-4
-    #idata.sim.linear_type = self.params.linear_solver_t.cpu_superlu
+    #idata.sim.linear_type = sim_params.linear_solver_t.cpu_superlu
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()
