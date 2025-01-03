@@ -41,7 +41,9 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
-    m.run_simulation()
+    ret = m.run_simulation()
+    if ret != 0:
+        exit(1)
 
     m.reservoir.centers_to_vtk(out_dir)
 
@@ -226,14 +228,14 @@ if __name__ == '__main__':
         exit(1)
 
     physics_list = []
-    physics_list += ['geothermal']
-    #physics_list += ['deadoil']
+    #physics_list += ['geothermal']
+    physics_list += ['deadoil']
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
-    cases_list += ['case_40x40x10']
+    #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
     well_controls = []
@@ -248,7 +250,7 @@ if __name__ == '__main__':
                 out_dir = 'results_' + physics_type + '_' + case
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
                                                                                         case=case, out_dir=out_dir,
-                                                                                        redirect_log=True,
+                                                                                        redirect_log=False,
                                                                                         platform=platform)
 
             # one can read well results from pkl file to add/change well plots without re-running the model

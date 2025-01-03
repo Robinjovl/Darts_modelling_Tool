@@ -175,7 +175,7 @@ class ModelDeadOil(Model_CPG):
             for w in wells:
                 if self.well_is_inj(w): # inject water
                     wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, comp_index=1, bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, comp_index=1,bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, comp_index=1, bhp_constraint=300)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, comp_index=0, bhp_constraint=70)  # kmol/day | bars
                     wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, comp_index=0, bhp_constraint=70)  # kmol/day | bars

@@ -517,7 +517,8 @@ class DartsModel:
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
                 if dt < self.params.min_ts:
-                    break
+                    print('Stop simulation. Reason: reached min. timestep', self.params.min_ts, 'dt=', dt)
+                    return -1
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -591,9 +592,12 @@ class DartsModel:
         time = 0.0
         for ith_step, dt in enumerate(self.idata.sim.time_steps):
             self.set_well_controls(time=time)
-            self.run(dt)
+            ret = self.run(dt)
+            if ret != 0:
+                return 1
             self.do_after_step()
             time += dt
+        return 0
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
