@@ -532,6 +532,7 @@ class DartsModel:
                   % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+        return 0
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
@@ -594,6 +595,7 @@ class DartsModel:
             self.set_well_controls(time=time)
             ret = self.run(dt)
             if ret != 0:
+                print('run() failed for the step=', ith_step, 'dt=', dt)
                 return 1
             self.do_after_step()
             time += dt
