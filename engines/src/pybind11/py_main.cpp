@@ -111,9 +111,13 @@ PYBIND11_MODULE(engines, m)
     "logging", 
     "A submodule for logging related functionalities."
   );
-  m_logging.def("log", &logging::log, "Add a message to logs.");
-  m_logging.def("duplicate_output_to_file", &logging::duplicate_output_to_file, "");
-  m_logging.def("flush", &logging::flush, "Flush output streams.");
+  m_logging.def("log", &logging::log, "Adds a message to logs.", py::arg("message"));
+  m_logging.def(
+    "duplicate_output_to_file", 
+    &logging::duplicate_output_to_file, 
+    "Duplicates outputs to a file.",
+    py::arg("file_path"));
+  m_logging.def("flush", &logging::flush, "Flushes output streams.");
 
 	  
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
