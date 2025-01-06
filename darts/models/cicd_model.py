@@ -182,5 +182,6 @@ class CICDModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
-        print('PKL FILE', file_name, 'does not exist. Skipping.')
+        else:
+            print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
