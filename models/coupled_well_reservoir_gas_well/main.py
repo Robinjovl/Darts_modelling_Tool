@@ -21,12 +21,49 @@ writer = pd.ExcelWriter('time_data.xlsx')
 time_data.to_excel(writer, sheet_name='Sheet1')
 writer.close()
 
-Xn = np.array(coupled_model.physics.engine.X, copy=False)
-nc = coupled_model.physics.nc + coupled_model.physics.thermal
-nb = coupled_model.reservoir.mesh.n_res_blocks
+centroids = coupled_model.reservoir.discretizer.centroids_all_cells[:,0]
 
-plt.figure(num=1, figsize=(12, 8), dpi=100)
-for i in range(nc if nc < 3 else 3):
-    plt.subplot(330 + (i + 1))
-    plt.plot(Xn[i:nb*nc:nc])
-plt.savefig('out.png')
+Xn = np.array(coupled_model.physics.engine.X, copy=False)
+num_primary_vars = coupled_model.physics.nc + coupled_model.physics.thermal
+num_reservoir_cells = coupled_model.reservoir.mesh.n_res_blocks
+
+p = Xn[0 : num_reservoir_cells*num_primary_vars : num_primary_vars]
+z_CO2 = Xn[1 : num_reservoir_cells*num_primary_vars : num_primary_vars]
+z_CH4 = Xn[2 : num_reservoir_cells*num_primary_vars : num_primary_vars]
+
+font_size = 18
+
+# Create subplots
+fig, axs = plt.subplots(2, 2, figsize=(20,12))
+# Plot 1
+axs[0,0].plot(centroids, p, color='blue', linestyle='-', marker='o')
+axs[0,0].set_xlabel('Reservoir cell centroid position [m]', fontsize=font_size)
+axs[0,0].set_ylabel('Reservoir pressure [bar]', fontsize=font_size)
+axs[0,0].set_xlim(0, centroids[-1])
+axs[0,0].set_xticks(np.arange(0, 101, 10))
+# axs[0,0].set_ylim(0, None)
+axs[0,0].tick_params(axis='both', labelsize=font_size)
+axs[0,0].grid()
+# Plot 2
+axs[0,1].plot(centroids, z_CO2, color='blue', linestyle='-', marker='o')
+axs[0,1].set_xlabel('Reservoir cell centroid position [m]', fontsize=font_size)
+axs[0,1].set_ylabel('$CO_2$ overall mole fraction [-]', fontsize=font_size)
+axs[0,1].set_xlim(0, centroids[-1])
+axs[0,1].set_xticks(np.arange(0, 101, 10))
+# axs[0,1].set_ylim(0, None)
+axs[0,1].tick_params(axis='both', labelsize=font_size)
+axs[0,1].grid()
+# Plot 3
+axs[1,0].plot(centroids, z_CH4, color='blue', linestyle='-', marker='o')
+axs[1,0].set_xlabel('Reservoir cell centroid position [m]', fontsize=font_size)
+axs[1,0].set_ylabel('$CH_4$ overall mole fraction [-]', fontsize=font_size)
+axs[1,0].set_xlim(0, centroids[-1])
+axs[1,0].set_xticks(np.arange(0, 101, 10))
+# axs[1,0].set_ylim(0, None)
+axs[1,0].tick_params(axis='both', labelsize=font_size)
+axs[1,0].grid()
+
+# Add props for the figure
+fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+plt.savefig('output.png')
