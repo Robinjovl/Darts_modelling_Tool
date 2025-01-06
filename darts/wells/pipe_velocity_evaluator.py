@@ -96,12 +96,13 @@ class PipeVelocityEvaluator:
 
         self.darts_model = darts_model
 
+        self.is_first_first_iter = True   # first_iter_in_first_ts_identifier
+
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.pipe_geometry.pipe_name)
 
     def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, flag):
         iter_counter = self.darts_model.iter_counter
-        total_iter_counter = self.darts_model.total_iter_counter
 
         dt = dt * 24 * 60 * 60   # convert day to second
 
@@ -112,7 +113,7 @@ class PipeVelocityEvaluator:
         pc = self.physics.property_containers[0]
 
         """ Calculate phase props of previous time step at centroids """
-        if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
+        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
             # Reshape into blocks
             Xn_ms_well_reshaped = Xn_ms_well.reshape(-1, nc)
             # Reverse the order of the blocks
@@ -147,7 +148,7 @@ class PipeVelocityEvaluator:
 
             self.iter_phases_props0 = [xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0]
 
-        elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
+        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
             self.iter_phases_props0 = self.iter_phases_props
 
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
@@ -274,11 +275,11 @@ class PipeVelocityEvaluator:
 
         self.iter_phases_props_face = [sG_face, rhoG_face, rhoL_face]
 
-        if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
+        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
             # Initial velocities in the wellbore are zero
             rhoM0_vM0, vM0, vG0, vL0 = np.array([0]), np.array([0]), np.array([0]), np.array([0])
             self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
-        elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
+        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
             rhoM0_vM0, vM0, vG0, vL0 = self.rhoM_vM, self.vM, self.vG, self.vL
             self.velocities0 = np.array([rhoM0_vM0, vM0, vG0, vL0])
 
@@ -288,7 +289,7 @@ class PipeVelocityEvaluator:
         p_m = p[0:-1:1]
         p_p = p[1::1]
 
-        self.calc_mixture_densities(iter_counter, total_iter_counter, flag)
+        self.calc_mixture_densities(iter_counter, flag)
 
         pg = self.pipe_geometry
 
@@ -301,11 +302,12 @@ class PipeVelocityEvaluator:
 
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
-            if self.darts_model.reservoir.wells[0].control.target_rate:
+            # if self.darts_model.reservoir.wells[0].control.target_rate:
+            if hasattr(self.darts_model.reservoir.wells[0].control, 'target_rate'):
                 # TODO: This segment_index_source and mass_rate should be directly received from the well control class, but now done manually
                 segment_index_source = num_segments - 1
                 # mass_rate = self.darts_model.reservoir.wells[0].control.target_rate   # must be in kg/s
-                mass_rate = sum(self.darts_model.reservoir.wells[0].control.target_rate * np.array([1.0 - 2 * 1e-8, 1e-8, 1e-8]) * [44.0098, 16.04288, 18.0152]) / (24 * 60 * 60)
+                mass_rate = sum(58895.98 * np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5]) * [44.0098, 16.04288, 18.0152]) / (24 * 60 * 60)
 
                 pipe_internal_A = self.pipe_geometry.pipe_internal_A
 
@@ -358,10 +360,10 @@ class PipeVelocityEvaluator:
 
         self.vM = self.rhoM_vM / self.rhoM_face
 
-        if iter_counter == 0 and flag == 1 and total_iter_counter != 0:
-            self.calc_drift_velocity()
-        elif iter_counter == 0 and flag == 1 and total_iter_counter == 0:
+        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             self.vD0 = np.zeros(self.pipe_geometry.num_interfaces)
+        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
+            self.calc_drift_velocity()
 
         # Gas velocity at wellbore interfaces
         # self.vG = self.C00 * self.rhoM_vM / self.rhoM_adjusted_face + rhoL_face * self.vD0 / self.rhoM_adjusted_face
@@ -380,10 +382,12 @@ class PipeVelocityEvaluator:
         # concatenate phase velocities, reverse the order, and convert m/s to m/day
         phase_velocities = np.concatenate((self.vG[::-1] * 24 * 60 * 60, self.vL[::-1] * 24 * 60 * 60))
 
+        self.is_first_first_iter = False   # For the next iterations will be False
+
         return phase_velocities
 
-    def calc_mixture_densities(self, iter_counter, total_iter_counter, flag):
-        if iter_counter == 0 and total_iter_counter == 0 and flag == 1:
+    def calc_mixture_densities(self, iter_counter, flag):
+        if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
             _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
             rhoM0 = sG0 * rhoG0 + (1 - sG0) * rhoL0
@@ -391,7 +395,7 @@ class PipeVelocityEvaluator:
             # _, _, sG0_face, rhoG0_face, rhoL0_face = self.iter_phases_props0_face
             # self.rhoM0_face = sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face
 
-        elif iter_counter == 0 and total_iter_counter != 0 and flag == 1:
+        elif iter_counter == 0 and self.is_first_first_iter is False and flag == 1:
             self.rhoM0_face = self.rhoM_face
 
         # Calculate mixture density
@@ -403,9 +407,9 @@ class PipeVelocityEvaluator:
         # self.rhoM_face = sG_face * rhoG_face + (1 - sG_face) * rhoL_face
 
         # Calculate adjusted-mixture density
-        if iter_counter == 0 and flag == 1 and total_iter_counter != 0:
+        if iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
             self.calc_profile_parameter()
-        elif iter_counter == 0 and flag == 1 and total_iter_counter == 0:
+        elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             # At the beginning, there is no flow, so C00 is considered 1 everywhere.
             self.C00 = np.ones(self.pipe_geometry.num_interfaces)
         self.rhoM_adjusted_face = self.C00 * sG_face * rhoG_face + (1 - self.C00 * sG_face) * rhoL_face
@@ -634,4 +638,4 @@ class PipeVelocityEvaluator:
         # Flatten and concatenate both arrays
         phase_velocities_derivatives = np.concatenate((jac_phase_A_clean_flat.flatten(), jac_phase_B_clean_flat.flatten()))
 
-        return value_vector(np.abs(phase_velocities)), value_vector(phase_velocities_derivatives)
+        return value_vector(phase_velocities), value_vector(phase_velocities_derivatives)

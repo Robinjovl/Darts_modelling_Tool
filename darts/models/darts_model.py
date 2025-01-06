@@ -513,8 +513,6 @@ class DartsModel:
         self.prev_dt = dt
 
         ts_counter = 0
-        self.iter_counter = 0
-        self.total_iter_counter = 0
 
         if log_3d_body_path:
             self.physics.body_path_start(output_folder=self.output_folder)
@@ -523,9 +521,6 @@ class DartsModel:
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
-                self.total_iter_counter += self.iter_counter + 1
-                self.iter_counter = 0
-
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
@@ -553,8 +548,6 @@ class DartsModel:
                     self.save_data_to_h5(kind='well')
 
             else:
-                self.iter_counter += 1
-
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
@@ -589,6 +582,9 @@ class DartsModel:
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
+
+        self.iter_counter = 0
+
         for i in range(max_newt+1):
             # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
@@ -612,7 +608,9 @@ class DartsModel:
                  self.physics.engine.well_residual_last_dt < self.params.well_tolerance_coefficient * self.params.tolerance_newton) or
                     self.physics.engine.n_newton_last_dt == self.params.max_i_newton):
                 if i > 0:  # min_i_newton
+                    self.iter_counter = 0
                     break
+            self.iter_counter += 1
             r_code = self.physics.engine.solve_linear_equation()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
@@ -651,8 +649,8 @@ class DartsModel:
             # If the function has not been overloaded, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+        # n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        rhs += self.set_rhs_flux(t) * dt
         return
 
     def save_data_to_h5(self, kind):

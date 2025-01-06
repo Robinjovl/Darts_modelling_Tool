@@ -275,8 +275,6 @@ class WellOperators(OperatorsSuper):
 
         self.property.evaluate(state)
 
-        self.compr = self.property.rock_compr_ev.evaluate(pressure)
-
         density_tot = np.sum(self.property.sat[:self.np_fl] * self.property.dens_m[:self.np_fl])
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
         self.phi_f = 1.
@@ -285,12 +283,12 @@ class WellOperators(OperatorsSuper):
 
         """ Alpha operator represents accumulation term """
         # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
-        vec_values_as_np[self.ACC_OP:self.ACC_OP + self.nc_fl] = self.compr * density_tot * zc[:self.nc_fl]
+        vec_values_as_np[self.ACC_OP:self.ACC_OP + self.nc_fl] = density_tot * zc[:self.nc_fl]
 
         """ and alpha for mineral components """
         # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
-        vec_values_as_np[self.ACC_OP + self.nc_fl:self.ACC_OP + self.nc_fl + self.ns] = self.compr * \
-                self.property.dens_m[self.np_fl:self.np_fl + self.ns] * zc[self.nc_fl:self.nc_fl + self.ns]
+        vec_values_as_np[self.ACC_OP + self.nc_fl:self.ACC_OP + self.nc_fl + self.ns] = (
+                self.property.dens_m[self.np_fl:self.np_fl + self.ns] * zc[self.nc_fl:self.nc_fl + self.ns])
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:

@@ -131,6 +131,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     int connected_with_well;
 
+    // --- Start evaluating phase velocities and derivatives in multi-segment wells
     std::vector<value_t> phase_A_veloc;
     std::vector<value_t> phase_B_veloc;
 
@@ -211,6 +212,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     std::vector<MixedType> phase_A_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_A_veloc_ders);
     std::vector<MixedType> phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
+    // --- End evaluating phase velocities and derivatives in multi-segment wells
 
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
@@ -287,11 +289,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             value_t trans_mult_der_j[N_VARS];
             if (params->trans_mult_exp > 0 && i < n_res_blocks && j < n_res_blocks)
             {
-                // Calculate transmissibility multiplier:
+                // calculate transmissibility multiplier:
                 phi_i = op_vals_arr[i * N_OPS + PORO_OP];
                 phi_j = op_vals_arr[j * N_OPS + PORO_OP];
 
-                // Take average interface porosity:
+                // take average interface porosity:
                 phi_avg = (phi_i + phi_j) * 0.5;
                 phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
 
@@ -338,6 +340,114 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                 phase_fluxes[p] = 0.0;
 
+                if (ms_well_conn)
+                {
+                    if (j > i)
+                    {
+                        if (p == 0)
+                        {
+                            if (phase_A_velocities[conn_idx] >= 0)
+                                phase_p_diff = 1;   // positive (its value is not important)
+                            else if (phase_A_velocities[conn_idx] < 0)
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                        }
+                        else if (p == 1)
+                        {
+                            if (phase_B_velocities[conn_idx] >= 0)
+                                phase_p_diff = 1;   // positive (its value is not important)
+                            else if (phase_B_velocities[conn_idx] < 0)
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                        }
+                    }
+
+                    if (j < i)
+                    {
+                        if (p == 0)
+                        {
+                            if (phase_A_velocities[conn_idx] >= 0)
+                            {
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                                phase_A_velocities[conn_idx] = -phase_A_velocities[conn_idx];
+
+                                std::visit([&](auto& element) {
+                                    using T = std::decay_t<decltype(element)>;
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
+                                        for (auto& val : element) {
+                                            val = -val;
+                                        }
+                                    }
+                                    else {
+                                        throw std::runtime_error("Unexpected type in phase_A_veloc_derivatives");
+                                    }
+                                    }, phase_A_veloc_derivatives[conn_idx]);
+
+
+                                //phase_A_veloc_derivatives[conn_idx] = - phase_A_veloc_derivatives[conn_idx];
+                            }
+                            else if (phase_A_velocities[conn_idx] < 0)
+                            {
+                                phase_p_diff = 1;   // positive (its value is not important)
+                                phase_A_velocities[conn_idx] = -phase_A_velocities[conn_idx];
+
+                                std::visit([&](auto& element) {
+                                    using T = std::decay_t<decltype(element)>;
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
+                                        for (auto& val : element) {
+                                            val = -val;
+                                        }
+                                    }
+                                    else {
+                                        throw std::runtime_error("Unexpected type in phase_A_veloc_derivatives");
+                                    }
+                                    }, phase_A_veloc_derivatives[conn_idx]);
+
+                                //phase_A_veloc_derivatives[conn_idx] = - phase_A_veloc_derivatives[conn_idx];
+                            }
+                        }
+                        else if (p == 1)
+                        {
+                            if (phase_B_velocities[conn_idx] >= 0)
+                            {
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                                phase_B_velocities[conn_idx] = -phase_B_velocities[conn_idx];
+
+                                std::visit([&](auto& element) {
+                                    using T = std::decay_t<decltype(element)>;
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
+                                        for (auto& val : element) {
+                                            val = -val;
+                                        }
+                                    }
+                                    else {
+                                        throw std::runtime_error("Unexpected type in phase_B_veloc_derivatives");
+                                    }
+                                    }, phase_B_veloc_derivatives[conn_idx]);
+
+                                //phase_B_veloc_derivatives[conn_idx] = - phase_B_veloc_derivatives[conn_idx];
+                            }
+                            else if (phase_B_velocities[conn_idx] < 0)
+                            {
+                                phase_p_diff = 1;   // positive (its value is not important)
+                                phase_B_velocities[conn_idx] = -phase_B_velocities[conn_idx];
+
+                                std::visit([&](auto& element) {
+                                    using T = std::decay_t<decltype(element)>;
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
+                                        for (auto& val : element) {
+                                            val = -val;
+                                        }
+                                    }
+                                    else {
+                                        throw std::runtime_error("Unexpected type in phase_B_veloc_derivatives");
+                                    }
+                                    }, phase_B_veloc_derivatives[conn_idx]);
+
+                                //phase_B_veloc_derivatives[conn_idx] = - phase_B_veloc_derivatives[conn_idx];
+                            }
+                        }
+                    }
+                }
+
                 if (phase_p_diff < 0)
                 {
                     // mass and energy outflow
@@ -367,7 +477,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         else if (p == 1)
                             phase_velocity = phase_B_velocities[conn_idx];
 
-                        phase_volumetric_rate = - wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
+                        phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 
                         // calculate derivatives
                         for (uint8_t v = 0; v < N_VARS; v++)
@@ -401,8 +511,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 }
                             }
 
-                            phase_vol_rate_der_i[v] = - wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
-                            phase_vol_rate_der_j[v] = - wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
+                            phase_vol_rate_der_i[v] = wells[0]->well_transmissibility * (op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * phase_velocity + op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_i);
+                            phase_vol_rate_der_j[v] = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity_der_j;
                         }
                     }
 
