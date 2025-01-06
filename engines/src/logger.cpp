@@ -6,7 +6,7 @@
 using namespace std;
 
 /** Basic wrapper around c++ std::cout object to expose it to python. */
-void print(const string &msg) { cout << msg << endl; }
+void print(const string &msg) { cout << msg; }
 
 /**
  * This class allows to combine several output streams into one.
@@ -21,7 +21,7 @@ public:
     addStream(streams...);
   }
 
-protected:
+public:
   /** All the output streams that are combined. */
   vector<ostream *> streams;
 
@@ -84,6 +84,14 @@ public:
   }
 
   /**
+   * Flushes stream buffers.
+   */
+  static void flush() {
+    LoggingManagement::instance().combined.sync();
+  }
+
+
+  /**
    * Getter for the singleton instance.
    */
   static LoggingManagement &instance() {
@@ -114,4 +122,3 @@ private:
 void duplicate_output_to_file(const string &file) {
   LoggingManagement::instance().duplicate_output_to_file(file);
 }
-
