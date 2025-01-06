@@ -36,7 +36,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=30/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=3000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
