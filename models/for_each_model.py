@@ -1,5 +1,5 @@
 from darts.engines import *
-from darts.tools.logging import redirect_all_output, abort_redirection
+from darts.tools.logger import redirect_all_output, abort_redirection
 import os, sys, shutil
 from pathlib import Path
 
