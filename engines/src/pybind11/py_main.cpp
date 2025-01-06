@@ -105,10 +105,16 @@ PYBIND11_MODULE(engines, m)
           return to_numpy(vec);  // Call the conversion function
       }, "Converts the vector to a NumPy array");
 	  
+  
   // Logging related bindings
-  m.def("log", &print, "Print");
-  m.def("duplicate_output_to_file", &duplicate_output_to_file, "");
-  m.def("flush", &LoggingManagement::flush, "");
+  py::module_ m_logging = m.def_submodule(
+    "logging", 
+    "A submodule for logging related functionalities."
+  );
+  m_logging.def("log", &logging::log, "Add a message to logs.");
+  m_logging.def("duplicate_output_to_file", &logging::duplicate_output_to_file, "");
+  m_logging.def("flush", &logging::flush, "Flush output streams.");
+
 	  
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(m, "op_vector");

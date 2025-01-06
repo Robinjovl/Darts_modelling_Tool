@@ -1,14 +1,14 @@
+#pragma once
+
 #include <string>
 
-using namespace std;
-
+namespace logging {
 /** Basic wrapper around c++ std::cout object to expose it to python. */
-void print(const string &msg);
+void log(const std::string &msg);
 
-void duplicate_output_to_file(const string &file);
+void duplicate_output_to_file(const std::string &file);
 
+void flush();
 
-class LoggingManagement {
-public:
-  static void flush();
-};
+} // namespace logging
+

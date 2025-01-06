@@ -3,10 +3,9 @@
 #include <ostream>
 #include <vector>
 
-using namespace std;
+#include "logger.h"
 
-/** Basic wrapper around c++ std::cout object to expose it to python. */
-void print(const string &msg) { cout << msg; }
+using namespace std;
 
 /**
  * This class allows to combine several output streams into one.
@@ -17,8 +16,8 @@ public:
    * Constructor of CombinedOutputs which takes any number of output streams as
    * arguments.
    */
-  template <typename... Streams> CombinedOutputs(Streams &...streams) {
-    addStream(streams...);
+  template <typename... Streams> CombinedOutputs(Streams &...outputStreams) {
+    addStream(outputStreams...);
   }
 
 public:
@@ -86,10 +85,7 @@ public:
   /**
    * Flushes stream buffers.
    */
-  static void flush() {
-    LoggingManagement::instance().combined.sync();
-  }
-
+  void flush() { LoggingManagement::instance().combined.sync(); }
 
   /**
    * Getter for the singleton instance.
@@ -113,12 +109,16 @@ private:
   LoggingManagement() : stdioStream(cout.rdbuf()) {}
 
   /// Private singleton desctructor which closes the output file
-  ~LoggingManagement() {
-    logFile.close();
-  }
+  ~LoggingManagement() { logFile.close(); }
 };
 
+namespace logging {
+/** Basic wrapper around c++ std::cout object to expose it to python. */
+void log(const string &msg) { cout << msg << "\n"; }
+
+void flush() { LoggingManagement::instance().flush(); }
 
 void duplicate_output_to_file(const string &file) {
   LoggingManagement::instance().duplicate_output_to_file(file);
 }
+} // namespace logging
