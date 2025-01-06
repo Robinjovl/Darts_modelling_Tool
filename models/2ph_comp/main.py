@@ -3,8 +3,7 @@ import pandas as pd
 import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
-from darts.engines import print_darts, duplicate_output_to_file
-from darts.tools.logging import logger
+from darts.engines.logging import duplicate_output_to_file
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 
