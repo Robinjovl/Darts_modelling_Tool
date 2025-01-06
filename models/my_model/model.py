@@ -10,6 +10,15 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
+from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
+from darts.physics.properties.density import Garcia2001
+from darts.physics.properties.viscosity import Fenghour1998, Islam2012
+from darts.physics.properties.eos_properties import EoSDensity
+
+from dartsflash.libflash import NegativeFlash
+from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
+from dartsflash.components import CompData
+
 from darts.wells.define_pipe_geometry import PipeGeometry
 from darts.wells.set_initial_conditions import SingleAmbientTemperature
 from darts.wells.check_initial_conditions import check_initial_conditions
@@ -27,20 +36,26 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=30/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
+                            it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
-        zero = 1e-8
-        self.initial_values = {self.physics.vars[0]: 5.271563,
+        zero = 1e-5
+        self.initial_values = {self.physics.vars[0]: 98.358052,
                                self.physics.vars[1]: zero,
                                self.physics.vars[2]: zero
                                }
+        # self.initial_values = {self.physics.vars[0]: 60.915767,
+        #                        self.physics.vars[1]: zero,
+        #                        }
 
     def set_reservoir(self):
-        nx = 3
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
-                                         permx=100, permy=100, permz=100, poro=0.2, depth=1000)
+        nx = 1000
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=0.1, dy=50, dz=50,
+                                         permx=100, permy=100, permz=100, poro=0.2, depth=975)
+        self.reservoir.boundary_volumes = {'xy_minus': None, 'xy_plus': None,
+                                           'yz_minus': 1e9, 'yz_plus': 1e9,
+                                           'xz_minus': None, 'xz_plus': None}
         return
 
     def set_wells(self):
@@ -49,7 +64,9 @@ class Model(CICDModel):
         well_1_type = "ms_well"
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = np.concatenate(([1], 2 * np.ones(2), [1]))  # From bottom to top of the wellbore
+        # well_1_segments_lengths = np.concatenate(([50], 50 * np.ones(20), [50]))  # From bottom to top of the wellbore
+        # well_1_segments_lengths = 10 * np.ones(2)
+        well_1_segments_lengths = 50 * np.ones(20)
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -63,56 +80,102 @@ class Model(CICDModel):
         pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
 
         # Wellhead conditions because of the constant rate control
-        zero = self.physics.axes_min[1]
-        well_head_segment_phase = 'gas'
-        well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
-        well_head_segment_interval = [well_1_geometry.pipe_length -1, well_1_geometry.pipe_length]
-        initial_fluid_conditions = {'phases_names': ['liquid', well_head_segment_phase], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5], well_head_segment_composition],
-                                    'pipe_intervals': [[0, well_1_geometry.pipe_length - 1], well_head_segment_interval]}  # 0 is the beginning of the pipe
+        # zero = self.physics.axes_min[1]
+        # well_head_segment_phase = 'gas'
+        # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
+        # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
+        initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5]],
+                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
+        # initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1 - 1e-5]],
+        #                             'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], system_temperature,
                                                              pipe_head_pressure, pipe_head_segment_index,
                                                              initial_fluid_conditions, verbose)
 
         # %% Put initial conditions in wells_initial_conditions
-        initial_CO2_mole_fraction = np.concatenate(([initial_fluid_conditions['phases_compositions'][0][0]] * (well_1_geometry.num_segments - 1), [well_head_segment_composition[0]]))
-        initial_C1_mole_fraction = np.concatenate(([initial_fluid_conditions['phases_compositions'][0][1]] * (well_1_geometry.num_segments - 1), [well_head_segment_composition[1]]))
+        initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
+        initial_C1_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][1]] * well_1_geometry.num_segments
 
         self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
                                          'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
                                          'initial_C1_mole_fraction': initial_C1_mole_fraction}
+        # self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
+        #                                  'initial_CO2_mole_fraction': initial_CO2_mole_fraction}
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
         self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
-        self.reservoir.add_perforation(well_1_name, cell_index=(1, 1, 1), well_geometry=well_1_geometry)
+        reservoir_middle_cell_index = int(self.reservoir.nx / 2)
+        self.reservoir.add_perforation(well_1_name, cell_index=(reservoir_middle_cell_index, 1, 1), well_geometry=well_1_geometry)
 
         """================================================= Well 2 ================================================="""
-        well_2_name = "P1"
-        well_2_type = "basic_well"
-        well_2_ID = 0.1
-        self.reservoir.add_well(well_2_name, well_2_type, well_ID=well_2_ID)
-        self.reservoir.add_perforation(well_2_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_2_ID)
+        # well_2_name = "P1"
+        # well_2_type = "basic_well"
+        # well_2_ID = 0.1
+        # self.reservoir.add_well(well_2_name, well_2_type, well_ID=well_2_ID)
+        # self.reservoir.add_perforation(well_2_name, cell_index=(1, 1, 1), well_ID=well_2_ID)
+
+        """================================================= Well 3 ================================================="""
+        # well_3_name = "P2"
+        # well_3_type = "basic_well"
+        # well_3_ID = 0.1
+        # self.reservoir.add_well(well_3_name, well_3_type, well_ID=well_3_ID)
+        # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
     def set_physics(self):
-        """Physical properties"""
-        zero = 1e-8
-        # Create property containers:
+        # """Physical properties"""
+        zero = 1e-5
         components_names = ['CO2', 'C1', 'H2O']
         phases_names = ['gas', 'liquid']
-        thermal = 0
-        system_temperature = 35 + 273.15
-        Mw = [44.0098, 16.04288, 18.0152]
+        comp_data = CompData(components_names, setprops=True)
 
-        property_container = PropertyContainer(phases_name=phases_names, components_name=components_names,
-                                               Mw=Mw, min_z=zero / 10, temperature=system_temperature)
+        ceos = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
+
+        flash_params = FlashParams(comp_data)
+
+        # EoS-related parameters
+        flash_params.add_eos("CEOS", ceos)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["CEOS", "AQ"]
+
+        # Flash-related parameters
+        flash_params.split_tol = 1e-14
+
+        system_temperature = 10 + 273.15
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(len(components_names), [4, 2, 1e-1], zero)
-        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-                                              ('liquid', DensityBasic(compr=1e-5, dens0=600))])
-        property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                ('liquid', ConstFunc(0.5))])
+        property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
+                                               temperature=system_temperature, rock_comp=0, min_z=zero / 10)
+
+        property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
+        property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
+                                              ('liquid', Garcia2001(components_names))])
+        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
+                                                ('liquid', Islam2012(components_names))])
+
+        # """Physical properties"""
+        # zero = 1e-5
+        # # Create property containers:
+        # components_names = ['CO2', 'C1', 'H2O']
+        # # components_names = ['CO2', 'H2O']
+        # phases_names = ['gas', 'liquid']
+        # thermal = 0
+        # system_temperature = 35 + 273.15
+        # Mw = [44.0098, 16.04288, 18.0152]
+        # # Mw = [44.0098, 18.0152]
+        #
+        # property_container = PropertyContainer(phases_name=phases_names, components_name=components_names,
+        #                                        Mw=Mw, min_z=zero / 10, temperature=system_temperature)
+        #
+        # """ properties correlations """
+        # property_container.flash_ev = ConstantK(len(components_names), [4, 2, 1e-1], zero)
+        # # property_container.flash_ev = ConstantK(len(components_names), [4, 1e-1], zero)
+        # property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
+        #                                       ('liquid', DensityBasic(compr=1e-5, dens0=600))])
+        # property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
+        #                                         ('liquid', ConstFunc(0.5))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
                                                ('liquid', PhaseRelPerm("oil"))])
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
@@ -125,12 +188,22 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
-        zero = self.physics.axes_min[1]
-        inj_stream = [1.0 - 2 * zero*10, zero*10]
+        inj_stream = [1e-5, 1e-5]
+        # inj_stream = [1e-5]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
                 # 58895.98 kmol/day = 30 kg/s
-                w.control = self.physics.new_rate_inj(58895.98/3, inj_stream, 0)   # inj rate in kmol/day
-            else:
-                w.control = self.physics.new_bhp_prod(5.271563)
+                w.control = self.physics.new_rate_inj(0, inj_stream, 0)   # inj rate in kmol/day
+            # else:
+            #     w.control = self.physics.new_bhp_prod(self.initial_values['pressure'])
+
+    def set_rhs_flux(self, t: float = None) -> np.ndarray:
+        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+        inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
+        # inj_comp = np.array([1.0 - 1e-5, 1e-5])
+        inj_rate = 58895.98   # kmol/day
+        inj_flux = inj_rate * inj_comp
+        well_head_start_idx = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
+        return rhs_flux

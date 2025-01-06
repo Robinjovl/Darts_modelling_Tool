@@ -8,7 +8,7 @@ redirect_darts_output('run_log.log')
 coupled_model = Model()
 coupled_model.init()
 
-coupled_model.run(10)
+coupled_model.run(1)
 # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
 # n.run_python(300, restart_dt=1e-3)
 coupled_model.print_timers()
