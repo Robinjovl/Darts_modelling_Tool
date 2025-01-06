@@ -16,26 +16,12 @@ def abort_redirection(log_stream):
   
 ####################################################################
   
-import logging
-import darts.engines as darts_cpp_logger
-
-class CppLoggingHandler(logging.Handler):
-    def __init__(self, level = 0) -> None:
-        super().__init__(level)
-
-    def emit(self, record):
-        darts_cpp_logger.log(f"{record.levelname}: {record.getMessage()}")
+from darts.engines import logging as darts_logging
 
 
-logger = logging.getLogger("Darts")
-cpp_handler = CppLoggingHandler()
-
-logger.addHandler(cpp_handler)
-logger.setLevel(logging.DEBUG)
-
-
+# Logging usage example
 if __name__ == "__main__": 
-    darts_cpp_logger.duplicate_output_to_file("log.log")
-    logger.info("yes")
-    print("pizza")
-    logger.error("no")
+    darts_logging.log("screen only")
+    darts_logging.duplicate_output_to_file("log.log")
+    darts_logging.log("screen and log file")
+    print("screen only")
