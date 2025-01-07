@@ -74,7 +74,7 @@ class ModelDeadOil(Model_CPG):
                     w.control = self.physics.new_bhp_inj(wctrl.inj_bhp, wctrl.inj)
             else:  # PROD well
                 if wctrl.type == 'rate': # rate control
-                    w.control = self.physics.new_rate_prod(wctrl.prod_rate)
+                    w.control = self.physics.new_rate_prod(wctrl.prod_rate, wctrl.inj_comp_index)
                     w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
                 elif wctrl.type == 'bhp': # BHP control
                     w.control = self.physics.new_bhp_prod(wctrl.prod_bhp)
@@ -139,6 +139,8 @@ class ModelDeadOil(Model_CPG):
             self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
             self.idata.wells.controls.prod_rate = 200 # kmol/day
             self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
+            # for the deadoil physics case
+            self.idata.wells.controls.inj_comp_index = 1
         self.idata.wells.controls.inj_bht = 300  # K
 
         self.idata.obl.n_points = 400

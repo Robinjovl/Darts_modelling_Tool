@@ -172,18 +172,26 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: dict = None):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
         """
         Method for plotting output using matplotlib library.
         Implementation is specific to inherited Reservoir classes
 
-        :param output_idxs: Dictionary of properties with data array indices for output
-        :type output_idxs: dict
         :param data: Data for output
-        :type data: np.ndarray
-        :param fig: Figure object, default is None
+        :type data: dict
+        :param output_props: List of properties to plot
+        :type output_props: list
         :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
         :type lims: dict
+        :param fig: Figure object, default is None
+        :param figsize: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
+        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
         """
         pass
 

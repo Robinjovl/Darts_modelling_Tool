@@ -2,7 +2,7 @@ import numpy as np
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
-from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
+from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 
 
 class PropertyContainer(PropertyBase):
@@ -51,7 +51,6 @@ class PropertyContainer(PropertyBase):
 
         self.rel_perm_ev = []
         self.rel_well_perm_ev = []
-        self.rock_energy_ev = RockEnergyEvaluator()
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
         self.rock_density_ev = ConstFunc(2650.0)
         self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
@@ -134,12 +133,8 @@ class PropertyContainer(PropertyBase):
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
-        Vtot = 0
-        for j in ph:
-            Vtot += self.nu[j] / self.dens_m[j]
-
-        for j in ph:
-            self.sat[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+        vol = [self.nu[j] / self.dens_m[j] for j in ph]
+        self.sat[ph] = vol / np.sum(vol)
 
         return
         

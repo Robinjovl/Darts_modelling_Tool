@@ -1,3 +1,11 @@
+# 1.2.2 [**-**-2024]
+- Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
+- Temperature and pressure operators are added
+- GPU tests added to MR CI/CD
+- Keep only rates, super, pze_gra and pz_cap_gra interpolators
+- Add enthalpy operators to elastic super engine
+- Fix in operator indexing in mechanical models
+
 # 1.2.1 [25-11-2024]
 - Remove "IAPWS" suffix from Geothermal PropertyContainer and predefined GeothermalIAPWS physics for backward compatibility.
 - Few small changes:

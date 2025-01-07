@@ -23,14 +23,16 @@ class OperatorsSuper(OperatorsBase):
         self.KIN_OP = self.GRAD_OP + self.ne * self.nph  # kinetic operator - ne
 
         # extra operators
-        self.RE_INTER_OP = self.KIN_OP + self.ne  # rock internal energy operator - 1
-        self.RE_TEMP_OP = self.RE_INTER_OP + 1  # rock temperature operator - 1
-        self.ROCK_COND = self.RE_INTER_OP + 2  # rock conduction operator - 1
-        self.GRAV_OP = self.RE_INTER_OP + 3  # gravity operator - nph
-        self.PC_OP = self.RE_INTER_OP + 3 + self.nph  # capillary operator - nph
-        self.PORO_OP = self.RE_INTER_OP + 3 + 2 * self.nph  # porosity operator - 1
+        self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
+        self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
+        self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
         self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
-        self.n_ops = self.ENTH_OP + self.nph
+        self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
+        self.PRES_OP = self.TEMP_OP + 1
+        # any additional operators should be added after PRES_OP and before ROCK_DENS_OP
+        # non-mechanics engine does not use ROCK_DENS_OP
+        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
+        self.n_ops = self.ROCK_DENS_OP
 
     def print_operators(self, state: value_vector, values: value_vector):
         """Method for printing operators, grouped"""
@@ -44,12 +46,11 @@ class OperatorsSuper(OperatorsBase):
         for j in range(self.nph):
             idx0, idx1 = self.GRAD_OP + j * self.ne, self.GRAD_OP + (j + 1) * self.ne
             print("CHI (diffusion) {}".format(j), values[idx0:idx1])
-        print("DELTA (reaction)", values[self.KIN_OP:self.RE_INTER_OP])
+        print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
         print("POROSITY", values[self.PORO_OP])
-        if self.thermal:
-            print("ROCK ENERGY, TEMP, COND", values[self.RE_INTER_OP:self.GRAV_OP])
+        print("TEMPERATURE, PRESSURE", values[self.TEMP_OP:self.ROCK_DENS_OP])
         return
 
 
@@ -119,6 +120,9 @@ class ReservoirOperators(OperatorsSuper):
         # E5_> porosity
         vec_values_as_np[self.PORO_OP] = self.phi_f
 
+        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
+        values[self.PRES_OP] = state[0]
+
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
@@ -139,7 +143,6 @@ class ReservoirOperators(OperatorsSuper):
 
         # Evaluate thermal properties at current state
         self.property.evaluate_thermal(state)
-        rock_energy = self.property.rock_energy_ev.evaluate(temperature=temperature)
 
         """ Alpha operator represents accumulation term: """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
@@ -166,37 +169,11 @@ class ReservoirOperators(OperatorsSuper):
         values[self.KIN_OP + self.nc] = self.property.energy_source
 
         """ Additional energy operators """
-        # E1-> rock internal energy
-        values[self.RE_INTER_OP] = rock_energy / self.compr  # (T-T_0), multiplied by rock hcap inside engine
-        # E2-> rock temperature
-        values[self.RE_TEMP_OP] = temperature
-        # E3-> rock conduction
-        values[self.ROCK_COND] = 1 / self.compr  # multiplied by rock cond inside engine
-        # Phase enthalpy
-        for j in range(self.nph):
-            values[self.ENTH_OP + j] = self.property.enthalpy[j]
+        # Temperature operator
+        values[self.TEMP_OP] = temperature
 
         return 0
 
-class MassFluxOperators(OperatorsBase):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
-
-        nm = self.property.nm
-        self.nc_fl = self.nc - nm
-
-        self.n_ops = self.nph * self.nc_fl
-
-    def evaluate(self, state: value_vector, values: value_vector):
-        for i in range(self.n_ops):
-            values[i] = 0
-
-        _, _, x, rho, _, mu, kr, _, _ = self.property.evaluate(state)
-
-        """ Beta operator here represents mass flux term: """
-        for j in range(self.nph):
-            for i in range(self.nc_fl):
-                values[self.nc_fl * j + i] = x[j][i] * rho[j] * kr[j] / mu[j]
 
 class MassFluxOperators(OperatorsSuper):
     def __init__(self, property_container: PropertyContainer, thermal: bool):
@@ -234,15 +211,16 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         super().evaluate(state, values)
 
         # Rock density operator
+        self.n_ops = self.ROCK_DENS_OP + 1
         # TODO: function of matrix pressure = I1 / 3 = (s_xx + s_yy + s_zz) / 3
-        values.to_numpy()[self.PORO_OP + 1] = self.property.rock_density_ev.evaluate()
+        values.to_numpy()[self.ROCK_DENS_OP] = self.property.rock_density_ev.evaluate()
 
         return 0
 
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         super().print_operators(state, values)
-        print("ROCK DENSITY", values[self.PORO_OP + 1])
+        print("ROCK DENSITY", values[self.ROCK_DENS_OP])
         return
 
 
@@ -302,6 +280,9 @@ class WellOperators(OperatorsSuper):
         vec_values_as_np[self.PORO_OP] = 1.
 
 
+        # Pressure operator
+        values[self.PRES_OP] = vec_state_as_np[0]
+
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
@@ -309,7 +290,9 @@ class WellOperators(OperatorsSuper):
 
         return 0
 
-    def evaluate_thermal(self, state, values):
+    def evaluate_thermal(self, state: value_vector, values: value_vector):
+        vec_state_as_np = np.asarray(state)
+        values[self.TEMP_OP] = vec_state_as_np[-1]
         return
 
 
@@ -372,8 +355,8 @@ class RateOperators(operator_set_evaluator_iface):
         total_density = np.sum(sat_sc * dens_m_sc)
         # step-4
         for j in self.property.ph:
-            vec_values_as_np[j] = self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
-            # sat_sc[j] * flux_sum / total_density
+            vec_values_as_np[j] = self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]  # reservoir condition control
+            # vec_values_as_np[j] = sat_sc[j] * flux_sum / total_density  # surface condition control
 
         # print(state, values)
         return 0
