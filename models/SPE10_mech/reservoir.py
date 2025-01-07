@@ -16,11 +16,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
                          thermoporoelasticity=thermoporoelasticity, fluid_vars=fluid_vars)
-        # self.n_vars = n_vars
-        self.domain_tags, self.bnd_tags = set_domain_tags(matrix_tags=[99991],
-                    bnd_xm_tag=991, bnd_xp_tag=992,
-                    bnd_ym_tag=993, bnd_yp_tag=994,
-                    bnd_zm_tag=995, bnd_zp_tag=996)
+
+        self.bnd_tags = idata.mesh.bnd_tags
+        self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
 
         self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
         self.init_reservoir_main(idata=idata)
@@ -43,7 +41,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.mesh_data = meshio.read(self.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
-        self.set_boundary_conditions()
+        self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.grav = -9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
@@ -72,15 +70,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-    def set_boundary_conditions(self):
+    def set_boundary_conditions(self, idata: InputData):
         self.F = -900.0
         self.boundary_conditions = {}
-        self.boundary_conditions[self.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[self.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
 
         if self.thermoporoelasticity:
             for key, bc in self.boundary_conditions.items():

@@ -167,6 +167,7 @@ void pybind_globals(py::module &m)
 #endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
+  m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);
   // if the amount of threads is not defined explicitly, use a half of available threads
   if (!std::getenv("OMP_NUM_THREADS"))

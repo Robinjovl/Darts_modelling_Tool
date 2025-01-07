@@ -213,7 +213,7 @@ if __name__ == '__main__':
         pass
 
     test_all = False
-    #test_all = True
+    test_all = True
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
     meshes_list = ['data_10_10_10', 'data_20_40_40']
     if test_all:
