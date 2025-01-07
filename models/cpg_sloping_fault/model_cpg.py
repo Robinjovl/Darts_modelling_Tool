@@ -46,6 +46,7 @@ class Model_CPG(CICDModel):
             elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
                 for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
                     arrays[arr][arrays['PORO'] < 1e-5] = 1e-5
+            self.idata.geom.burden_layers = 4
 
         if self.physics_type == 'geothermal':
             # add over- and underburden layers
