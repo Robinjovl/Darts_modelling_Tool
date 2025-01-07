@@ -1,6 +1,6 @@
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
-from darts.tools.logging import redirect_all_output, abort_redirection
+from darts.tools.logger import redirect_all_output, abort_redirection
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
