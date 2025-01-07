@@ -138,7 +138,7 @@ def animate_solution_1d_single_plot(paths, n_cells, labels, lower_lim, upper_lim
     anim.save(paths[0] + video_fname, writer=writervideo)
     plt.close(fig)
 
-def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add_inset_figs=True):
+def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add_inset_figs=True, nt=-1):
     lw = 1.
     fs_legend = 12
     colors = ['b', 'r', 'g', 'm', 'c', 'k']
@@ -168,21 +168,21 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
         nc = params['n_comps'][i]
         for j in range(nc - 1):
             label = components[j] if i == 0 else None
-            ax.plot(c, data['X'][-1, ids, j + 1], linewidth=lw, color=colors[j], linestyle=params['linestyles'][i], label=label)
+            ax.plot(c, data['X'][nt, ids, j + 1], linewidth=lw, color=colors[j], linestyle=params['linestyles'][i], label=label)
 
         # last component
-        last_component = 1.0 - np.sum(data['X'][-1, ids, 1:], axis=1)
+        last_component = 1.0 - np.sum(data['X'][nt, ids, 1:], axis=1)
         j = nc - 1
         label = components[j] if i == 0 else None
         ax.plot(c, last_component, linewidth=lw, color=colors[j], linestyle=params['linestyles'][i], label=label)
 
         # saturation
-        n = Model(obl_points=params['obl_points'][i], components=get_components(n_comps),
+        n = Model(obl_points=params['obl_points'][i], components=get_components(nc),
                   reservoir_type=params['reservoir_type'][i], nx=params['nx'][i], itor_mode=params['itor_mode'][i],
                   itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
         sat = np.zeros(ids.size)
         for k, id in enumerate(ids):
-            n.physics.property_containers[0].evaluate(data['X'][-1, id, :])
+            n.physics.property_containers[0].evaluate(data['X'][nt, id, :])
             sat[k] = n.physics.property_containers[0].output_props['sat0']()
 
         label = 'SatV' if i == 0 else None
@@ -223,12 +223,12 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
         if params['reservoir_type'][0] == '1D':
             # ----- Adding Inset Plot 1 -----
             # Define the region to zoom in (adjust these limits based on your data)
-            x1, x2 = 880, 980   # x-axis limits for the inset
-            y1, y2 = 0.34, 0.45   # y-axis limits for the inset
+            x1, x2 = 450, 550   # x-axis limits for the inset
+            y1, y2 = 0.34, 0.47   # y-axis limits for the inset
 
             # Create inset axes
             axins = inset_axes(ax, width="60%", height="60%", loc='lower left',
-                               bbox_to_anchor=(0.55, 0.47, 0.4, 0.4),
+                               bbox_to_anchor=(0.55, 0.5, 0.4, 0.4),
                                bbox_transform=ax.transAxes)
 
             # Plot the same data on the inset axes
@@ -254,13 +254,13 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                 for j in range(nc - 1):
                     axins.plot(
                         c,
-                        data['X'][-1, :n_cells, j + 1],
+                        data['X'][nt, :n_cells, j + 1],
                         linewidth=lw,
                         color=colors[j],
                         linestyle=params['linestyles'][i],
                         label=None  # No labels in inset
                     )
-                last_component = 1.0 - np.sum(data['X'][-1, :n_cells, 1:], axis=1)
+                last_component = 1.0 - np.sum(data['X'][nt, :n_cells, 1:], axis=1)
                 j = nc - 1
                 axins.plot(
                     c,
@@ -283,13 +283,13 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
             ax.indicate_inset_zoom(axins, edgecolor="black")
 
             # Alternatively, use lines to connect the inset to the main plot
-            mark_inset(ax, axins, loc1=1, loc2=3, fc="none", ec="0.8")
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.8")
 
             # ----- End of Inset Plot 1 -----
 
             # ----- Adding Inset Plot 2 -----
             # Define the region to zoom in (adjust these limits based on your data)
-            x1, x2 = 5, 30   # x-axis limits for the inset
+            x1, x2 = 1, 20   # x-axis limits for the inset
             y1, y2 = 0.90, 1.01   # y-axis limits for the inset
 
             # Create inset axes
@@ -320,14 +320,14 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                 for j in range(nc - 1):
                     axins.plot(
                         c,
-                        data['X'][-1, :n_cells, j + 1],
+                        data['X'][nt, :n_cells, j + 1],
                         linewidth=lw,
                         color=colors[j],
                         linestyle=params['linestyles'][i],
                         label=None  # No labels in inset
                     )
                 # last component
-                last_component = 1.0 - np.sum(data['X'][-1, :n_cells, 1:], axis=1)
+                last_component = 1.0 - np.sum(data['X'][nt, :n_cells, 1:], axis=1)
                 j = nc - 1
                 axins.plot(
                     c,
@@ -339,12 +339,12 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                 )
 
                 # saturation
-                n = Model(obl_points=params['obl_points'][i], components=get_components(n_comps),
+                n = Model(obl_points=params['obl_points'][i], components=get_components(nc),
                           reservoir_type=params['reservoir_type'][i], nx=params['nx'][i], itor_mode=params['itor_mode'][i],
                           itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
                 sat = np.zeros(n_cells)
                 for k in range(n_cells):
-                    n.physics.property_containers[0].evaluate(data['X'][-1, k, :])
+                    n.physics.property_containers[0].evaluate(data['X'][nt, k, :])
                     sat[k] = n.physics.property_containers[0].output_props['sat0']()
                 axins.plot(c, sat, linewidth=lw, color='orange', linestyle=params['linestyles'][i], label=None)
 
@@ -403,14 +403,14 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                 for j in range(nc - 1):
                     axins.plot(
                         c,
-                        data['X'][-1, ids, j + 1],
+                        data['X'][nt, ids, j + 1],
                         linewidth=lw,
                         color=colors[j],
                         linestyle=params['linestyles'][i],
                         label=None  # No labels in inset
                     )
                 # last component
-                last_component = 1.0 - np.sum(data['X'][-1, ids, 1:], axis=1)
+                last_component = 1.0 - np.sum(data['X'][nt, ids, 1:], axis=1)
                 j = nc - 1
                 axins.plot(
                     c,
@@ -428,7 +428,7 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                           is_barycentric=params['barycentric'][i])
                 sat = np.zeros(n_cells)
                 for k, id in enumerate(ids):
-                    n.physics.property_containers[0].evaluate(data['X'][-1, id, :])
+                    n.physics.property_containers[0].evaluate(data['X'][nt, id, :])
                     sat[k] = n.physics.property_containers[0].output_props['sat0']()
                 axins.plot(c, sat, linewidth=lw, color='orange', linestyle=params['linestyles'][i], label=None)
 
@@ -725,17 +725,17 @@ nx = 300
 # 2D
 # run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='2D', nx=nx, is_barycentric=True, vtk_output=False)
 # SPE10
-run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True, layer_id=[0])
+# run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True, layer_id=[0])
 
-# params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
-#            'itor_mode': 4 * ['adaptive'],
-#            'obl_points': [1024] + 3 * [64],
-#            'n_comps': 4 * [6],
-#            'barycentric': 3 * [False] + [True],
-#            'reservoir_type': 4 * ['1D'],
-#            'nx': 4 * [300],
-#            'linestyles': ['-', '--', '-.', ':']}
-# plot_comparison(params=params, path_prefix='for_paper', pic_fname='obl_points_1d.png')
+params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
+           'itor_mode': 4 * ['adaptive'],
+           'obl_points': [1024] + 3 * [64],
+           'n_comps': 4 * [6],
+           'barycentric': 3 * [False] + [True],
+           'reservoir_type': 4 * ['1D'],
+           'nx': 4 * [300],
+           'linestyles': ['-', '--', '-.', ':']}
+plot_comparison(params=params, path_prefix='for_paper', pic_fname='obl_points_1d.png', nt=-12)
 #
 # params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
 #            'itor_mode': 4 * ['adaptive'],
