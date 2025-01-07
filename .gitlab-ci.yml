@@ -573,11 +573,8 @@ test-windows-3.9-ODLS:
     script:
         # run simulation fot test models set
         - cd models
-        - dir
-        - git log -1
         # passing additional argument LOG to trigger verbose check performance
-        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py 
-        #LOG
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
