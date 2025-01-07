@@ -157,8 +157,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_B_veloc_ders.push_back(0);
         if (w->model_type == "ms_well")
         {
-            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
+            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
             py::gil_scoped_acquire gil;  // Acquire the GIL
             // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
             py::object result = w->velocity_evaluator.attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
