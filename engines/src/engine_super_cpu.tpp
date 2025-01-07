@@ -140,12 +140,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     std::vector<MixedType> phase_B_veloc_ders;
 
     // zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-    phase_A_veloc.insert(phase_A_veloc.end(), n_res_blocks - 1, 0);
-    phase_B_veloc.insert(phase_B_veloc.end(), n_res_blocks - 1, 0);
+    phase_A_veloc.insert(phase_A_veloc.end(), mesh->n_res_conns / 2, 0);
+    phase_B_veloc.insert(phase_B_veloc.end(), mesh->n_res_conns / 2, 0);
 
     // derivatives of phase velocities at reservoir connections, which will remain unused
-    phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_res_blocks - 1, 0);
-    phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_res_blocks - 1, 0);
+    phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), mesh->n_res_conns / 2, 0);
+    phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), mesh->n_res_conns / 2, 0);
     for (ms_well* w : wells)
     {
         // zero velocity for perforaiton of each well (I'm sure, this does not work properly if the well has multiple perforations), which will remain unused

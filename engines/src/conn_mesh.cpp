@@ -977,6 +977,7 @@ conn_mesh::reverse_and_sort()
 
   // with reversed connections
   n_conns *= 2;
+  n_res_conns *= 2;
 
   std::vector<value_t> test_t;
   std::vector<value_t> test_tD;
@@ -2417,6 +2418,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
   index_t well_head_idx = n_blocks;
   n_perfs = 0;
+  n_res_conns = n_conns;
 
   // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
   // which are connected to the reservoir. In addition, there is one more grid block (H-block)
