@@ -185,6 +185,14 @@ class Model(CICDModel):
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
+        property_container.output_props = {"sat_CO2_rich_phase": lambda: self.physics.property_containers[0].sat[0],
+                                           "mole_fraction_CO2__in_CO2_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
+                                           "mole_fraction_CO2__in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
+                                           "rho_CO2_rich_phase": lambda: self.physics.property_containers[0].dens[0],
+                                           "rho_aqueous_phase": lambda: self.physics.property_containers[0].dens[1],
+                                           "miu_CO2_rich_phase": lambda: self.physics.property_containers[0].mu[0],
+                                           "miu_aqueous_phase": lambda: self.physics.property_containers[0].mu[1]}
+
         return
 
     def set_well_controls(self):

@@ -21,6 +21,18 @@ writer = pd.ExcelWriter('time_data.xlsx')
 time_data.to_excel(writer, sheet_name='Sheet1')
 writer.close()
 
+#%% Store output as .vtk files
+step = 0
+while True:
+    try:
+        # Export the VTK file
+        # if step % 50 == 0:
+        coupled_model.output_to_vtk(ith_step=step, output_directory='output')
+        step += 1
+    except:  # Bare except, since this is not an error
+        break  # Gracefully exit the loop without printing anything
+
+#%% Plot primary variables instantly and store the figure
 centroids = coupled_model.reservoir.discretizer.centroids_all_cells[:,0]
 
 Xn = np.array(coupled_model.physics.engine.X, copy=False)
