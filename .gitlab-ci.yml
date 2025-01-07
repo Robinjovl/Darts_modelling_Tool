@@ -222,7 +222,7 @@ build-windows-3.9-ODLS:
         - pip install wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+        - ./helper_scripts/build_darts_cmake.sh -w -t -j 8 $ODLS
     artifacts:
       paths:
         - './dist/*.whl'

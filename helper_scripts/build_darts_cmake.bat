@@ -8,7 +8,7 @@ set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
 set iter_solvers=false
-set MT=true
+set seq_build=false
 set skip_req=false
 set config=Release
 set NT=8
@@ -22,7 +22,7 @@ if "%option%"=="-h" goto :help_info
 if "%option%"=="-c" set clean_mode=true & goto parse_args
 if "%option%"=="-t" set testing=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
-if "%option%"=="-m" set MT=true & goto parse_args
+if "%option%"=="-m" set seq_build=true & goto parse_args
 if "%option%"=="-r" set skip_req=true & goto parse_args
 if "%option%"=="-d" set config=%1 & shift & goto parse_args
 if "%option%"=="-j" set NT=%1 & shift & goto parse_args
@@ -40,11 +40,12 @@ if %bos_solvers_artifact%==true (
     set testing=false
   )
 )
+
 REM ODLS version does not support OpenMP yet
 if %iter_solvers%==false (
-  if %MT%==true (
-    echo Waring: ODLS version does not support OpenMP yet. Switched to the sequentional build.
-    set MT=false
+  if %seq_build%==false (
+    echo Warning: ODLS version does not support OpenMP yet. Switched to the sequential build.
+    set seq_build=true
   )
 )
 
@@ -54,7 +55,7 @@ echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
 echo    testing = %testing%
 echo    generate python wheel = %wheel%
-echo    Multi thread = %MT%
+echo    seq_build = %seq_build%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
@@ -112,7 +113,7 @@ set cmake_options=-D CMAKE_INSTALL_PREFIX=..\darts -D CMAKE_BUILD_TYPE=%config%
 if %testing%==true (
   set cmake_options=%cmake_options% -D ENABLE_TESTING=ON
 )
-if %MT%==true (
+if %seq_build%==false (
   set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=MT
 )
 if not %bos_solvers_dir%=="" (
@@ -169,7 +170,7 @@ echo    -h : displays this help menu.
 echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
 echo    -t : Enable testing: ctest of solvers. Default: don't test
 echo    -w : Enable generation of python wheel. Default: false
-echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
+echo    -m : Sequential version build (without OpenMP) build. Default: false
 echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
