@@ -20,7 +20,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     :param export_vtk:
     :return:
     '''
-    print('Test started', 'physics_type:', physics_type, 'case:', case)
+    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
@@ -222,11 +222,8 @@ def run_test(args: list = [], platform='cpu'):
 
 if __name__ == '__main__':
     platform = 'cpu'
-    if len(sys.argv) > 1:
-        platform = sys.argv[1]
-    if platform not in ['cpu', 'gpu']:
-        print('unknown platform specified', platform)
-        exit(1)
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+            platform = 'gpu'
 
     physics_list = []
     physics_list += ['geothermal']
@@ -234,9 +231,9 @@ if __name__ == '__main__':
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
-    cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
-    #cases_list += ['case_40x40x10']
+    cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
     well_controls = []
@@ -247,6 +244,8 @@ if __name__ == '__main__':
     for physics_type in physics_list:
         for case_geom in cases_list:
             for wctrl in well_controls:
+                if physics_type == 'deadoil' and wctrl == 'wrate':
+                    continue
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
