@@ -5,7 +5,6 @@ import subprocess
 import os
 
 def print_build_info():
-    return
     here = os.path.abspath(os.path.dirname(__file__))
     version_info_file = os.path.join(here, 'build_info.txt')
     if os.path.exists(version_info_file):
