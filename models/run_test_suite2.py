@@ -213,7 +213,6 @@ if __name__ == '__main__':
 
     # print build info
     engines_pbi()
-    package_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
     if os.getenv('OMP_NUM_THREADS') == None:  

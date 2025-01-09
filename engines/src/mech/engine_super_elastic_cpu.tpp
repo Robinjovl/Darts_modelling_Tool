@@ -555,7 +555,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   const value_t *poro = mesh->poro.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
   const value_t *hcap = mesh->heat_capacity.data();
-  const value_t *th_poro = mesh->th_poro.data();
+  const std::vector<value_t>& th_poro = mesh->th_poro;
   // Jacobian as a BCSR matrix
   value_t *Jac = jacobian->get_values();
   index_t *diag_ind = jacobian->get_diag_ind();
@@ -1621,7 +1621,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		converged *= 1;
 	}
 
-	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
+	dev_u = dev_p = dev_e = std::numeric_limits<value_t>::infinity();
 	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
 
 	if (!converged)
