@@ -42,10 +42,10 @@ class Model_CPG(CICDModel):
             arrays = read_arrays(self.idata.gridfile, self.idata.propfile)
             check_arrays(arrays)
             if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
-                arrays['ACTNUM'][arrays['PORO'] < 1e-5] = 0
+                arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
             elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
                 for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-                    arrays[arr][arrays['PORO'] < 1e-5] = 1e-5
+                    arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
             self.idata.geom.burden_layers = 4
 
         if self.physics_type == 'geothermal':

@@ -38,7 +38,14 @@ def input_data_base(idata: InputData, case: str):
     well_data = idata.well_data  # a short name
 
     # grid processing parameters
-    geom.minpv = 1e-5  # minimal pore volume threshold to set cells incative, m^3
+    geom.minpv = 1e-5  # minimal pore volume threshold to set cells inactive, m^3
+
+    # properties processing parameters
+    # for the isothermal physics - porosity cutoff value
+    # for thermal physics - poro and perm with lower values will be replaced by geom.min_poro:
+    #     poro - to keep those cells active even though they have poro=0
+    #     perm - to avoid convergence issues
+    geom.min_poro = 1e-5
 
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
