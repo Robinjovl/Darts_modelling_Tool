@@ -242,12 +242,6 @@ class WellData():
                             CompDat = buff.split()
                             wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
                             if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
-                                # define well
-                                #if wname == prev_well_name:
-                                #    pass
-                                #else:
-                                #    self.add_well(wname)
-                                #    prev_well_name = wname
                                 # define perforation
                                 i1 = int(CompDat[1])
                                 j1 = int(CompDat[2])

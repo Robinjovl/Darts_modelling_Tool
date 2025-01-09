@@ -99,15 +99,15 @@ class Model_CPG(CICDModel):
     def set_wells(self):
         # read perforation data from a file
         if hasattr(self.idata, 'schfile'):
-            # read from a file to idata.well_data.wells[well_name].perforations
-            #self.idata.well_data.read_and_add_perforations(self.idata.schfile)
             # apply to the reservoir; add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
                 for perf_tuple in wdata.perforations:
                     perf = perf_tuple[1]
+                    # adjust to account for added overburden layers
+                    perf_ijk_new = (perf.loc_ijk[0], perf.loc_ijk[1], perf.loc_ijk[2] + self.idata.geom.burden_layers)
                     self.reservoir.add_perforation(wname,
-                                                   cell_index=perf.loc_ijk,
+                                                   cell_index=perf_ijk_new,
                                                    well_index=perf.well_index, well_indexD=perf.well_indexD,
                                                    multi_segment=perf.multi_segment, verbose=True)
         else:
