@@ -36,6 +36,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         exit(1)
 
     m.init(output_folder=out_dir, platform=platform)
+    #m.reservoir.mesh.init_grav_coef(0)
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
@@ -50,7 +51,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     
     m.print_timers()
-    m.print_stat()
+    #m.print_stat()
 
     if export_vtk:
         # read h5 file and write vtk
@@ -228,8 +229,8 @@ if __name__ == '__main__':
         exit(1)
 
     physics_list = []
-    #physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    physics_list += ['geothermal']
+    #physics_list += ['deadoil']
 
     cases_list = []
     #cases_list += ['generate_5x3x4']
@@ -255,20 +256,19 @@ if __name__ == '__main__':
 
             # one can read well results from pkl file to add/change well plots without re-running the model
             pkl1_dir = '.'
-            #pkl1_dir = r'..\open-darts_dev_2\models\cpg_sloping_fault\results_' + physics_type + '_' + case_geom
             pkl_fname = 'time_data.pkl'
             pkl_report_fname = 'time_data_report.pkl'
-            #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
-            #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
-
-            # compare the current results with other
-            #time_data_list = [time_data_1, time_data]
-            #time_data_report_list = [time_data_report_1, time_data_report]
-            #label_list = ['1', 'current']
-
             time_data_list = [time_data]
             time_data_report_list = [time_data_report]
             label_list = [None]
+
+            # compare the current results with other
+            pkl1_dir = r'..\..\..\open-darts_seq_build\models\cpg_sloping_fault\results_' + physics_type + '_' + case_geom
+            time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
+            time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
+            time_data_list = [time_data_1, time_data]
+            time_data_report_list = [time_data_report_1, time_data_report]
+            label_list = ['1', 'current']
 
             plot_results(wells=wells, well_is_inj=well_is_inj,
                          time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,

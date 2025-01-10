@@ -30,6 +30,7 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.runtime = 300
     idata.sim.tol_newton = 1e-2
     idata.sim.tol_linear = 1e-4
+    # use direct linear solver:
     #idata.sim.linear_type = sim_params.linear_solver_t.cpu_superlu
 
     idata.generate_grid = 'generate' in case
