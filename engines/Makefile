@@ -64,7 +64,8 @@ OBJ =  conn_mesh.o \
     pybind11/py_operator_set_interpolator_super.o \
     pybind11/py_operator_set_interpolator_rates.o \
     pybind11/py_well_controls.o \
-    engines_build_info.o
+    engines_build_info.o \
+    logging.o
 
 OBJ_GPU =  	engine_base_gpu.o \
 	    interpolation/evaluator_iface.o \

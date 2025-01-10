@@ -5,6 +5,11 @@ set -e
 cd engines/lib
 rm -rf darts_linear_solvers
 mkdir darts_linear_solvers && cd darts_linear_solvers && mkdir lib && mkdir include && cd ..
+
+if [[ "$GSELINSOLVERSPATH" == "" ]]; then
+  echo "Error: the environment variable GSELINSOLVERSPATH is not defined!"
+  exit 1
+fi
 cp -r $GSELINSOLVERSPATH/lib darts_linear_solvers
 cp -r $GSELINSOLVERSPATH/include darts_linear_solvers
 cd ../..
