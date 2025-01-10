@@ -690,6 +690,11 @@ class CPG_Reservoir(ReservoirBase):
         self.volume[:] = self.volume_all_cells
 
     def create_vtk_wells(self, output_directory: str):
+        '''
+        creates a file wells.vtk with a tube per well based on its first perforation
+        :param output_directory: 
+        :return: 
+        '''
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
@@ -698,8 +703,8 @@ class CPG_Reservoir(ReservoirBase):
         def create_tube(center, prolongation=1000):
             # Create points for the polyline
             points = vtk.vtkPoints()
-            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
-            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+            points.InsertNextPoint(center[0], center[1], -center[2] + prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], -center[2])  # Point 2
 
             # Create a polyline that connects the points
             lines = vtk.vtkCellArray()
@@ -724,11 +729,13 @@ class CPG_Reservoir(ReservoirBase):
             return tubeFilter.GetOutput()
 
         for w in self.wells:
+            prolongation = 1000
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
                 c = self.centroids_all_cells[res_block_local].values
-                cyl = create_tube(c)
+                cyl = create_tube(c, prolongation=prolongation)
                 appendFilter.AddInputData(cyl)
+                prolongation = 0
                 break  # use only the first perf
 
         # Update the append filter to combine the polydata
