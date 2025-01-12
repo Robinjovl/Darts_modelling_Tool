@@ -70,14 +70,16 @@ class ModelDeadOil(Model_CPG):
         :return:
         '''
         inj_stream_base = [self.physics.zero * 100]
-
+        eps_time = 1e-15
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
-            wctrl = self.idata.well_data.wells[w.name].controls[0][1]  # pick the first control (for the case if it is just one)
+            wctrl = None
             for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if wctrl_t[0] >= time:  # check time
+                if np.fabs(wctrl_t[0] - time) < eps_time:  # check time
                     wctrl = wctrl_t[1]
                     break
+            if wctrl is None:
+                continue
             if wctrl.type == 'inj':  # INJ well
                 inj_stream = inj_stream_base
                 if self.physics.thermal:

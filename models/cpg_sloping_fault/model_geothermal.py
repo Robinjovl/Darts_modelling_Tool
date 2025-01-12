@@ -39,13 +39,16 @@ class ModelGeothermal(Model_CPG):
         :param time: simulation time, [days]
         :return:
         '''
+        eps_time = 1e-15  # threshold between the current time and the time for the well control
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
-            wctrl = self.idata.well_data.wells[w.name].controls[0][1]  # pick the first control (for the case if it is just one)
+            wctrl = None
             for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if wctrl_t[0] >= time:  # check time
+                if np.fabs(wctrl_t[0] - time) < eps_time:  # check time
                     wctrl = wctrl_t[1]
                     break
+            if wctrl is None:  # no control is defined for the current timestep
+                continue
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
