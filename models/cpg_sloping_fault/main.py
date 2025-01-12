@@ -253,22 +253,22 @@ if __name__ == '__main__':
                                                                                         redirect_log=False,
                                                                                         platform=platform)
 
-            # one can read well results from pkl file to add/change well plots without re-running the model
-            pkl1_dir = '.'
-            pkl_fname = 'time_data.pkl'
-            pkl_report_fname = 'time_data_report.pkl'
-            time_data_list = [time_data]
-            time_data_report_list = [time_data_report]
-            label_list = [None]
+                # one can read well results from pkl file to add/change well plots without re-running the model
+                pkl1_dir = '.'
+                pkl_fname = 'time_data.pkl'
+                pkl_report_fname = 'time_data_report.pkl'
+                time_data_list = [time_data]
+                time_data_report_list = [time_data_report]
+                label_list = [None]
 
-            # compare the current results with other
-            pkl1_dir = r'..\..\..\open-darts_seq_build\models\cpg_sloping_fault\results_' + physics_type + '_' + case_geom
-            time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
-            time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
-            time_data_list = [time_data_1, time_data]
-            time_data_report_list = [time_data_report_1, time_data_report]
-            label_list = ['1', 'current']
+                # compare the current results with another run
+                #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom
+                #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
+                #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
+                #time_data_list = [time_data_1, time_data]
+                #time_data_report_list = [time_data_report_1, time_data_report]
+                #label_list = ['1', 'current']
 
-            plot_results(wells=wells, well_is_inj=well_is_inj,
-                         time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
-                         physics_type=physics_type, out_dir=out_dir)
+                plot_results(wells=wells, well_is_inj=well_is_inj,
+                             time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
+                             physics_type=physics_type, out_dir=out_dir)
