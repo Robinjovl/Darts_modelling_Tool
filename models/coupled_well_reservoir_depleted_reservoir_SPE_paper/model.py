@@ -34,19 +34,19 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
+        self.zero = 1e-10
         self.set_physics()
 
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=6000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
-        zero = 1e-5
 
         # find saturation corresponding with composition
-        p_init_res = 22.658649
-        z_range = np.linspace(zero, 1 - zero, 10000)
+        p_init_res = 24.162394
+        z_range = np.linspace(self.zero, 1 - self.zero, 10000)
         for z in z_range:
-            state = [p_init_res, zero, z]
+            state = [p_init_res, self.zero, z]
             sat =self.physics.property_containers[0].compute_saturation_full(state)
             if self.physics.property_containers[0].sat[self.physics.phases.index("liquid")] < 0.25:
                 break
@@ -99,7 +99,7 @@ class Model(CICDModel):
         if 1:
             from nearwellbore import RadialStruct
             self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=permr, permz=permz, poro=poro,
-                                          R1=1000, logspace=True, boundary_volume=4.3e10, depth=1775)
+                                          R1=1000, logspace=True, boundary_volume=1e10, depth=2850)    # depth is the depth of the top exterface of the reservoir
 
         else:
             from nearwellbore import RadialUnstruct
@@ -112,7 +112,6 @@ class Model(CICDModel):
 
     def set_physics(self):
         # """Physical properties"""
-        zero = 1e-5
         components_names = ['CO2', 'C1', 'H2O']
         phases_names = ['gas', 'liquid']
         comp_data = CompData(components_names, setprops=True)
@@ -134,7 +133,7 @@ class Model(CICDModel):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
-                                               temperature=system_temperature, rock_comp=0, min_z=zero / 10)
+                                               temperature=system_temperature, rock_comp=0, min_z=self.zero / 10)
 
         property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
         property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
@@ -170,7 +169,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         self.physics = Compositional(components_names, phases_names, self.timer,
-                                     n_points=200, min_p=1, max_p=400, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=200, min_p=1, max_p=400, min_z=self.zero/10, max_z=1-self.zero/10)
         self.physics.add_property_region(property_container)
 
         property_container.output_props = {"sat_CO2_rich_phase": lambda: self.physics.property_containers[0].sat[0],
@@ -196,7 +195,7 @@ class Model(CICDModel):
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
         # well_1_segments_lengths = np.concatenate(([50], 50 * np.ones(20), [50]))  # From bottom to top of the wellbore
         # well_1_segments_lengths = 10 * np.ones(2)
-        well_1_segments_lengths = 50 * np.ones(40)
+        well_1_segments_lengths = 50 * np.ones(60)
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -214,7 +213,7 @@ class Model(CICDModel):
         # well_head_segment_phase = 'gas'
         # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
         # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
-        initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1e-5, 1 - 2 * 1e-5, 1e-5]],
+        initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
         # initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1 - 1e-5]],
         #                             'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
@@ -264,7 +263,7 @@ class Model(CICDModel):
         # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
     def set_well_controls(self):
-        inj_stream = [1e-5, 1e-5]
+        inj_stream = [self.zero, 1 - 2 * self.zero]
         # inj_stream = [1e-5]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
@@ -276,7 +275,7 @@ class Model(CICDModel):
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
+        inj_comp = np.array([1.0 - 2 * self.zero, self.zero, self.zero])
         # inj_comp = np.array([1.0 - 1e-5, 1e-5])
         inj_rate = 58895.98   # kmol/day
         inj_flux = inj_rate * inj_comp

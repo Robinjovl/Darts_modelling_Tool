@@ -14,12 +14,13 @@ with h5py.File(file_path, 'r') as h5_file:
     segment_id = h5_file['dynamic/cell_id'][:]  # Cell IDs
     time = h5_file['dynamic/time'][:]  # Time steps
 
-# Select the last 40 cells (wellbore segments)
-well_segments = segment_id[-40:]
+# Select the last num_segments cells (wellbore segments)
+num_segments = 60
+well_segments = segment_id[-num_segments:]
 segment_length = 50
-segments_depths = np.arange(40) * segment_length + segment_length/2
-# Last 40 cell IDs
-well_indices = np.arange(len(segment_id))[-40:]  # Indices of the last 40 cells
+segments_depths = np.arange(num_segments) * segment_length + segment_length/2
+# Last num_segments cell IDs
+well_indices = np.arange(len(segment_id))[-num_segments:]  # Indices of the last num_segments cells
 
 time_step_labels = ["Initial conditions", "1 minute", "2 minutes", "3 minutes", "5 minutes", "10 minutes",
                     "20 minutes", "30 minutes", "50 minutes", "1 hour", "2 hours", "3 hours", "5 hours", "10 hours",
@@ -62,15 +63,16 @@ for idx, time_step_label in enumerate(time_step_labels):
 plt.xlabel("Pressure [bar]", fontsize=font_size_labels, labelpad=10)
 # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
 plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
-plt.xticks(fontsize=font_size_ticks)
 plt.yticks(fontsize=font_size_ticks)
 plt.gca().invert_yaxis()  # Invert y-axis for proper orientation
-plt.grid(True)
+# plt.grid(True)
+plt.grid(linestyle='--')   # Add dashed grid lines
 plt.gca().xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
 # Move the x-axis to the top
 plt.gca().xaxis.set_label_position('top')  # Move x-axis label to the top
 plt.gca().xaxis.tick_top()  # Move x-axis ticks to the top
+plt.xticks(fontsize=font_size_ticks)
 
 # Position the legend outside the plot, with multiple columns
 plt.legend(
@@ -118,15 +120,16 @@ for idx, time_step_label in enumerate(time_step_labels):
 plt.xlabel("Overall mole fraction of CO$_2$ [-]", fontsize=font_size_labels, labelpad=10)
 # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
 plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
-plt.xticks(fontsize=font_size_ticks)
 plt.yticks(fontsize=font_size_ticks)
 plt.gca().invert_yaxis()  # Invert y-axis for proper orientation
-plt.grid(True)
+# plt.grid(True)
+plt.grid(linestyle='--')   # Add dashed grid lines
 plt.gca().xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
 # Move the x-axis to the top
 plt.gca().xaxis.set_label_position('top')  # Move x-axis label to the top
 plt.gca().xaxis.tick_top()  # Move x-axis ticks to the top
+plt.xticks(fontsize=font_size_ticks)
 
 # Position the legend outside the plot, with multiple columns
 plt.legend(
@@ -174,15 +177,16 @@ for idx, time_step_label in enumerate(time_step_labels):
 plt.xlabel("Overall mole fraction of CH$_4$ [-]", fontsize=font_size_labels, labelpad=10)
 # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
 plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
-plt.xticks(fontsize=font_size_ticks)
 plt.yticks(fontsize=font_size_ticks)
 plt.gca().invert_yaxis()  # Invert y-axis for proper orientation
-plt.grid(True)
+# plt.grid(True)
+plt.grid(linestyle='--')   # Add dashed grid lines
 plt.gca().xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
 # Move the x-axis to the top
 plt.gca().xaxis.set_label_position('top')  # Move x-axis label to the top
 plt.gca().xaxis.tick_top()  # Move x-axis ticks to the top
+plt.xticks(fontsize=font_size_ticks)
 
 # Position the legend outside the plot, with multiple columns
 plt.legend(
