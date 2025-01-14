@@ -24,6 +24,7 @@ models/__pycache__/
 
 # building info
 darts/build_info.txt
+*.gch
 
 # simulation results
 results_*/**
