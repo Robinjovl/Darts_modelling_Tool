@@ -128,20 +128,6 @@ class RadialStruct(StructReservoir):
         z_vertices[1:] = depth_upper + np.cumsum(dz[0, 0, :])
         self.generate_quarter_radial_grid(r_vert=r_vertices, z_vert=z_vertices, filename='quater_radial_grid')
 
-
-    def set_wells(self, verbose: bool = False):
-        for well_name, cell_idxs in self.well_dict.items():
-            # Add production well:
-            self.add_well(well_name)
-
-            # Perforate all boundary cells:
-            for idxs in cell_idxs:
-                self.add_perforation(well_name, cell_index=idxs)
-                # self.add_perforation(well_name, cell_index=idxs, well_index=100, well_indexD=100)
-
-        return
-
-
     def generate_quarter_radial_grid(self, r_vert, z_vert, filename):
         nr, nz = r_vert.size, z_vert.size
         nphi = 10 + 1
@@ -267,17 +253,6 @@ class RadialUnstruct(UnstructReservoir):
         self.r = np.zeros(self.mesh.n_res_blocks)
         for ith_cell, xyz in enumerate(coord):
             self.r[ith_cell] = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2)
-
-        return
-
-    def set_wells(self, verbose: bool = False):
-        # Add production well:
-        self.add_well(well_name="P1")
-
-        # Perforate all boundary cells:
-        boundary_cells = self.discretizer.find_cells(self.physical_groups['boundary']['inner'], 'face')
-        for nth_perf, cell_index in enumerate(boundary_cells):
-            self.add_perforation(well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100)
 
         return
 
