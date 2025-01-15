@@ -1,5 +1,6 @@
 #include "py_globals.h"
 #include <pybind11/numpy.h>
+#include "py_logging.hpp"
 namespace py = pybind11;
 
 void pybind_pm_discretizer(py::module &);
@@ -114,56 +115,7 @@ PYBIND11_MODULE(engines, m) {
             return to_numpy(vec); // Call the conversion function
           },
           "Converts the vector to a NumPy array");
-
-  // Logging related bindings
-  {
-    using namespace logging;
-    py::module_ m_logging = m.def_submodule(
-        "logging", "A submodule for logging related functionalities.");
-    py::enum_<logging::LoggingLevel>(m_logging, "LoggingLevel")
-        .value("DEBUG", logging::LoggingLevel::DEBUG)
-        .value("INFO", logging::LoggingLevel::INFO)
-        .value("WARNING", logging::LoggingLevel::WARNING)
-        .value("ERROR", logging::LoggingLevel::ERROR)
-        .value("CRITICAL", logging::LoggingLevel::CRITICAL)
-        .export_values();
-    m_logging.def("log",
-                  py::overload_cast<const std::string &, logging::LoggingLevel>(
-                      &logging::log),
-                  "Adds a message to logs.", py::arg("message"),
-                  py::arg("level") = logging::LoggingLevel::INFO);
-    m_logging.def("set_verbosity", &logging::set_verbosity,
-                  "Sets logging verbosity level.", py::arg("level"));
-    m_logging.def("flush", &logging::flush, "Flushes output streams.");
-    m_logging.def(
-        "debug", &logging::debug,
-        "Detailed information, typically only of interest to a developer "
-        "trying to diagnose a problem.",
-        py::arg("message"));
-    m_logging.def("info", &logging::info,
-                  "Confirmation that things are working as expected.",
-                  py::arg("message"));
-    m_logging.def("warning", &logging::warning,
-                  "An indication that something unexpected happened, or that a "
-                  "problem might "
-                  "occur in the near future (e.g. ‘disk space low’). The "
-                  "software is still "
-                  "working as expected.",
-                  py::arg("message"));
-    m_logging.def("error", &logging::error,
-                  "Due to a more serious problem, the software has not been "
-                  "able to perform "
-                  "some function.",
-                  py::arg("message"));
-    m_logging.def(
-        "critical", &logging::critical,
-        "A serious error, indicating that the program itself may be unable to "
-        "continue running.",
-        py::arg("message"));
-
-    /*py::class_<logging::Logger>(m_logging, "Logger");*/
-  } // end pybind logging
-
+  pybind_logging(m);
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(
       m, "op_vector");

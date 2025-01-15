@@ -36,6 +36,10 @@ template <LoggingLevel level> void log(const string &message) {
   Logger::s_root_logger.log<level>(message);
 }
 
+#define INSTANTIATE_GLOBAL_LOG(level, name, description) template void log<level>(const string&); 
+
+LEVELS(INSTANTIATE_GLOBAL_LOG)
+
 void log(const string &msg, LoggingLevel level) {
   Logger::s_root_logger.log(msg, level);
 }
@@ -109,6 +113,11 @@ template <LoggingLevel level> void Logger::log(const string &message) {
   log(message);
 }
 
+#define INSTANTIATE_LOG(level, name, description) template void Logger::log<level>(const string&); 
+
+LEVELS(INSTANTIATE_LOG)
+
+
 void Logger::log(const string &message, const LoggingLevel &level) {
   if (level < m_level) {
     return;
@@ -181,24 +190,23 @@ void Logger::set_file(const optional<string> &file) {
   }
 }
 
-void Logger::enable_screen_output(bool display_on_screen) {
-  m_stdout = display_on_screen;
+void Logger::enable_screen_output(bool enabled) {
+  m_stdout = enabled;
   for (auto &child : m_child_loggers) {
     if (child.expired()) {
       continue;
     }
-    child.lock()->enable_screen_output(display_on_screen);
+    child.lock()->enable_screen_output(enabled);
   }
+}
+
+void enable_screen_output(bool enabled) {
+  Logger::s_root_logger.enable_screen_output(enabled);
 }
 
 std::unordered_map<string, std::weak_ptr<FStreamWithMutex>>
     Logger::s_file_streams;
 std::mutex Logger::s_file_streams_mutex;
-/*Logger::get_root_logger() {*/
-/*  static Logger Logger::s_root_logger;*/
-/*  s_root_logger*/
-/**/
-/*}*/
 
 } // namespace logging
 

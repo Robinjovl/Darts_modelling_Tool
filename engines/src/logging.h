@@ -106,14 +106,23 @@ void log(const std::string &msg, LoggingLevel level);
 template <LoggingLevel level> void log(const std::string &msg);
 
 #define LEVELS(X)                                                              \
-  X(DEBUG, debug);                                                             \
-  X(INFO, info);                                                               \
-  X(WARNING, warning);                                                         \
-  X(ERROR, error);                                                             \
-  X(CRITICAL, critical);
+  X(DEBUG, debug,                                                              \
+    "Detailed information, typically only of interest to a "                   \
+    "developer trying to diagnose a problem.");                                \
+  X(INFO, info, "Confirmation that things are working as expected.");          \
+  X(WARNING, warning,                                                          \
+    "An indication that something unexpected happened, or that a"              \
+    "problem might occur in the near future (e.g. ‘disk space low’). "         \
+    "The software is still working as expected.");                             \
+  X(ERROR, error,                                                              \
+    "Due to a more serious problem, the software has not been "                \
+    "able to perform some function.");                                         \
+  X(CRITICAL, critical,                                                        \
+    "A serious error, indicating that the program itself may be "              \
+    "unable to continue running.");
 
 // Macro to generate log functions for each level
-#define ROOT_LOG(level, name)                                                  \
+#define ROOT_LOG(level, name, description)                                     \
   /* Logs a message with level verbosity. */                                   \
   inline void name(const std::string &msg) { log<LoggingLevel::level>(msg); }
 
@@ -167,7 +176,7 @@ public:
   void log(const std::string &message, const LoggingLevel &level);
 
   // Macro to generate log functions for each level
-#define LOG(level, name)                                                       \
+#define LOG(level, name, description)                                          \
   /** Logs a message with level verbosity. */                                  \
   inline void name(const std::string &message) {                               \
     log<LoggingLevel::level>(message);                                         \
@@ -180,7 +189,7 @@ public:
   void set_verbosity(LoggingLevel level);
 
   void set_file(const std::optional<std::string> &file);
-  void enable_screen_output(bool display_on_screen);
+  void enable_screen_output(bool enabled);
   static Logger s_root_logger;
 
 private:
@@ -204,4 +213,7 @@ std::shared_ptr<Logger> get_logger(const std::string &name);
 //
 // You can use this logger to control logging related logs.
 extern std::shared_ptr<Logger> logger;
+
+/*void enable_stdout(bool enabled);*/
+void enable_screen_output(bool enabled);
 } // namespace logging

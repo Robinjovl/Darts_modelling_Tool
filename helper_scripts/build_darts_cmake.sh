@@ -1,3 +1,4 @@
+#!/bin/bash
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
 set -e
@@ -168,7 +169,7 @@ else
     cd build
 
     # Setup build with cmake
-    cmake_options=" -D SET_CXX11_ABI_0=TRUE -D CMAKE_BUILD_TYPE=${config} -D CMAKE_INSTALL_PREFIX=../darts/"
+    cmake_options=" -D SET_CXX11_ABI_0=TRUE -D CMAKE_BUILD_TYPE=${config} -D CMAKE_INSTALL_PREFIX=../darts/ -D CMAKE_EXPORT_COMPILE_COMMANDS=1"
 
     if [[ "$testing" == true ]]; then
         cmake_options+=" -D ENABLE_TESTING=ON"

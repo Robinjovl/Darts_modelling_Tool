@@ -3,6 +3,7 @@
 
 # First the source files (private headers should also go here)
 set(OD_ENGINES_PYBIND11_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_logging.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_base.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_nl_cpu.cpp # non-linear  
@@ -29,6 +30,7 @@ set(OD_ENGINES_PYBIND11_SRC_FILES
 
 # Then the public headers
 set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/py_logging.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals_interpolation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.h
