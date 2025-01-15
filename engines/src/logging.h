@@ -158,24 +158,11 @@ struct FStreamWithMutex {
 class Logger {
 public:
   std::string m_name;
-  explicit Logger(const std::string &name)
-      : Logger(name, std::nullopt, true) {};
-  Logger(const std::string &name, const std::string &filename)
-      : Logger(name, std::make_optional(filename), true) {}
-  Logger(const std::string &name, const std::optional<std::string> &filename,
-         bool stdout)
-      : m_name(name), m_stdout(stdout) {
-    set_file(filename);
-    m_level = s_root_logger.m_level;
-    s_root_logger.m_child_loggers.push_back(*this);
-    m_parent_logger = &s_root_logger;
-  }
+  Logger(const Logger& logger);
 
-  /*Logger(const Logger& logger);*/
-
-  Logger get_logger(const std::string &name);
-  Logger get_logger(const std::string &name, const std::string &filename);
-  Logger get_logger(const std::string &name, const std::string &filename,
+  std::shared_ptr<Logger> get_logger(const std::string &name);
+  std::shared_ptr<Logger> get_logger(const std::string &name, const std::string &filename);
+  std::shared_ptr<Logger> get_logger(const std::string &name, const std::string &filename,
                     bool stdout);
 
   void log(const std::string &message);
@@ -201,25 +188,23 @@ public:
 
 private:
   Logger();
-  /*explicit Logger(const std::string &file);*/
-  /*Logger(const std::optional<std::string> &file, bool screen);*/
-  /*Logger(const std::optional<std::string> &file, bool screen,*/
+
   Logger *parent_logger;
   LoggingLevel m_level = DEFAULT_LOGGING_LEVEL;
-  std::vector<Logger> m_child_loggers;
+  std::vector<std::weak_ptr<Logger>> m_child_loggers;
   std::optional<std::string> m_file = std::nullopt; // Log file name, optional
   std::shared_ptr<FStreamWithMutex> m_fstream; // Output file stream, with mutex
   bool m_stdout = true;                        // Output to screen
-  Logger *m_parent_logger = nullptr;
+  Logger *m_parent_logger;
 
   static std::unordered_map<std::string, std::weak_ptr<FStreamWithMutex>>
       s_file_streams;
   static std::mutex s_file_streams_mutex;
 };
-Logger get_logger(const std::string &name);
+std::shared_ptr<Logger> get_logger(const std::string &name);
 
 // Logging logger.
 //
 // You can use this logger to control logging related logs.
-extern Logger logger;
+extern std::shared_ptr<Logger> logger;
 } // namespace logging
