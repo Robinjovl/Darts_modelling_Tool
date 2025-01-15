@@ -112,30 +112,23 @@ template <LoggingLevel level> void log(const std::string &msg);
   X(ERROR, error);                                                             \
   X(CRITICAL, critical);
 
-/*// Macro to generate log functions for each level*/
-/*#define LOG_FUNCTION(level, name) \*/
-/*  // Logs a message with level verbosity.                                  \*/
-/*  inline void name(const std::string &msg) { log<LoggingLevel::level>(msg);
- * }*/
-/**/
-/*LEVELS(LOG_FUNCTION);*/
+// Macro to generate log functions for each level
+#define ROOT_LOG(level, name)                                                  \
+  /* Logs a message with level verbosity. */                                   \
+  inline void name(const std::string &msg) { log<LoggingLevel::level>(msg); }
+
+LEVELS(ROOT_LOG);
 
 /** Sets the logging level, which determines the verbosity of log messages.
  *
  * Higher levels produce more detailed logs, while lower levels may only show
- * critical messages. Use this to control the amount of log information based on
- * your needs.
+ * critical messages. Use this to control the amount of log information based
+ * on your needs.
  *
  * @param level The desired logging level (e.g., DEBUG, INFO, WARNING, ERROR,
  * CRITICAL).
  */
 void set_verbosity(LoggingLevel level);
-
-/**
- * Configures standard output with std::cout to be duplicated to a specified
- * file.
- */
-void duplicate_output_to_file(const std::string &file);
 
 /**
  * Flushes output buffers, ensuring all data is written to the underlying
@@ -144,7 +137,8 @@ void duplicate_output_to_file(const std::string &file);
  * This is particularly useful in case of program crashes or unexpected
  * interruptions, where buffered data might otherwise be lost.
  *
- * Note: Avoid flushing frequently, as it can significantly reduce performance.
+ * Note: Avoid flushing frequently, as it can significantly reduce
+ * performance.
  */
 void flush();
 
@@ -155,15 +149,18 @@ struct FStreamWithMutex {
   std::mutex mutex;
 };
 
+/** Logger class.
+ */
 class Logger {
 public:
   std::string m_name;
-  Logger(const Logger& logger);
+  Logger(const Logger &logger);
 
   std::shared_ptr<Logger> get_logger(const std::string &name);
-  std::shared_ptr<Logger> get_logger(const std::string &name, const std::string &filename);
-  std::shared_ptr<Logger> get_logger(const std::string &name, const std::string &filename,
-                    bool stdout);
+  std::shared_ptr<Logger> get_logger(const std::string &name,
+                                     const std::string &filename);
+  std::shared_ptr<Logger> get_logger(const std::string &name,
+                                     const std::string &filename, bool stdout);
 
   void log(const std::string &message);
   template <LoggingLevel level> void log(const std::string &message);

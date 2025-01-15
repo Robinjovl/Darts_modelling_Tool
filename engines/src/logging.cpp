@@ -14,19 +14,20 @@ using namespace std;
 namespace logging {
 Logger Logger::s_root_logger;
 
-shared_ptr<Logger> get_logger(const std::string &name) {
+shared_ptr<Logger> get_logger(const string &name) {
   return Logger::s_root_logger.get_logger(name);
 }
-shared_ptr<Logger> get_logger(const std::string &name,
-                              const std::string &filename) {
+
+shared_ptr<Logger> get_logger(const string &name, const string &filename) {
   return Logger::s_root_logger.get_logger(name, filename);
 }
-shared_ptr<Logger> get_logger(const std::string &name,
-                              const std::string &filename, bool stdout) {
+
+shared_ptr<Logger> get_logger(const string &name, const string &filename,
+                              bool stdout) {
   return Logger::s_root_logger.get_logger(name, filename, stdout);
 }
 
-auto logger = logging::get_logger("logging");
+shared_ptr<Logger> logger = logging::get_logger("logging");
 
 /** Basic wrapper around c++ std::cout object to expose it to python. */
 void log(const string &msg) { Logger::s_root_logger.log(msg); }
@@ -35,7 +36,7 @@ template <LoggingLevel level> void log(const string &message) {
   Logger::s_root_logger.log<level>(message);
 }
 
-void log(const std::string &msg, LoggingLevel level) {
+void log(const string &msg, LoggingLevel level) {
   Logger::s_root_logger.log(msg, level);
 }
 
@@ -43,34 +44,18 @@ void set_verbosity(LoggingLevel level) {
   Logger::s_root_logger.set_verbosity(level);
 }
 
-void set_file(const std::string &filename) {
+void set_file(const string &filename) {
   Logger::s_root_logger.set_file(filename);
 }
 void flush() { Logger::s_root_logger.flush(); }
 
-/*Logger::Logger(const std::string &name) : Logger(name, std::nullopt, true)
- * {};*/
-/**/
-/*Logger::Logger(const std::string &name, const std::string &filename)*/
-/*    : Logger(name, std::make_optional(filename), true) {}*/
-/**/
-/*Logger::Logger(const std::string &name,*/
-/*               const std::optional<std::string> &filename, bool stdout)*/
-/*    : m_name(name), m_stdout(stdout) {*/
-/*  logger.debug("Create logger: " + name);*/
-/*  set_file(filename);*/
-/*  m_level = s_root_logger.m_level;*/
-/*  s_root_logger.m_child_loggers.push_back(*this);*/
-/*  m_parent_logger = &s_root_logger;*/
-/*}*/
-/**/
 Logger::Logger() { m_name = "root"; }
 Logger::Logger(const Logger &other)
     : m_level(other.m_level), m_stdout(other.m_stdout) {
   set_file(other.m_file);
 }
 
-std::shared_ptr<Logger> Logger::get_logger(const string &name) {
+shared_ptr<Logger> Logger::get_logger(const string &name) {
   auto child_logger = make_shared<Logger>(*this);
   child_logger->m_name = name;
   child_logger->m_parent_logger = this;
@@ -80,20 +65,19 @@ std::shared_ptr<Logger> Logger::get_logger(const string &name) {
   return child_logger;
 }
 
-shared_ptr<Logger> Logger::get_logger(const std::string &name,
-                                      const std::string &filename) {
+shared_ptr<Logger> Logger::get_logger(const string &name,
+                                      const string &filename) {
   auto child_logger = get_logger(name);
   child_logger->set_file(filename);
 
   return child_logger;
 }
 
-shared_ptr<Logger> Logger::get_logger(const std::string &name,
-                                      const std::string &filename,
-                                      bool stdout) {
-  auto logger = get_logger(name);
-  logger->m_stdout = stdout;
-  return logger;
+shared_ptr<Logger> Logger::get_logger(const string &name,
+                                      const string &filename, bool stdout) {
+  auto child_logger = get_logger(name, filename);
+  child_logger->m_stdout = stdout;
+  return child_logger;
 }
 
 void Logger::set_verbosity(LoggingLevel level) {
@@ -106,7 +90,7 @@ void Logger::set_verbosity(LoggingLevel level) {
   }
 }
 
-void Logger::log(const std::string &message) {
+void Logger::log(const string &message) {
   if (m_fstream) {
     std::lock_guard<std::mutex> lock(m_fstream->mutex);
     m_fstream->stream << message << "\n";
@@ -117,7 +101,7 @@ void Logger::log(const std::string &message) {
   }
 }
 
-template <LoggingLevel level> void Logger::log(const std::string &message) {
+template <LoggingLevel level> void Logger::log(const string &message) {
   if (level < m_level) {
     return;
   }
@@ -125,7 +109,7 @@ template <LoggingLevel level> void Logger::log(const std::string &message) {
   log(message);
 }
 
-void Logger::log(const std::string &message, const LoggingLevel &level) {
+void Logger::log(const string &message, const LoggingLevel &level) {
   if (level < m_level) {
     return;
   }
@@ -152,7 +136,7 @@ void Logger::flush() {
   }
 }
 
-void Logger::set_file(const std::optional<std::string> &file) {
+void Logger::set_file(const optional<string> &file) {
   for (auto &child : m_child_loggers) {
     if (child.expired()) {
       continue;
@@ -207,7 +191,7 @@ void Logger::enable_screen_output(bool display_on_screen) {
   }
 }
 
-std::unordered_map<std::string, std::weak_ptr<FStreamWithMutex>>
+std::unordered_map<string, std::weak_ptr<FStreamWithMutex>>
     Logger::s_file_streams;
 std::mutex Logger::s_file_streams_mutex;
 /*Logger::get_root_logger() {*/
@@ -224,7 +208,7 @@ string read_file(const string &filename) {
 }
 
 template <typename T>
-bool assert_equal(T actual, T expected, const std::string &test_name) {
+bool assert_equal(T actual, T expected, const string &test_name) {
   if (expected != actual) {
     std::cerr << "Test failed: " << test_name << "\n\nExpected:\n"
               << expected << "\nActual:\n"
@@ -297,7 +281,7 @@ bool test_logging(bool debug = false) {
 }
 
 int main(int argc, char *argv[]) {
-  bool debug = argc >= 2 && std::string(argv[1]) == "-v";
+  bool debug = argc >= 2 && string(argv[1]) == "-v";
 
   // Save original buffer of std::cout
   return !test_logging(debug);

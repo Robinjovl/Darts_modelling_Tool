@@ -22,6 +22,7 @@ if __name__ == "__main__":
     from darts.engines import logging
 
     logging.log("screen only")
+    logging.set_file()
     logging.duplicate_output_to_file("log.log")
     logging.log("screen and log file")
     print("screen only")
