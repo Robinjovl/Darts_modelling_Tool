@@ -1,3 +1,4 @@
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -14,20 +15,7 @@ using namespace std;
 namespace logging {
 Logger Logger::s_root_logger;
 
-shared_ptr<Logger> get_logger(const string &name) {
-  return Logger::s_root_logger.get_logger(name);
-}
-
-shared_ptr<Logger> get_logger(const string &name, const string &filename) {
-  return Logger::s_root_logger.get_logger(name, filename);
-}
-
-shared_ptr<Logger> get_logger(const string &name, const string &filename,
-                              bool stdout) {
-  return Logger::s_root_logger.get_logger(name, filename, stdout);
-}
-
-shared_ptr<Logger> logger = logging::get_logger("logging");
+Logger &logger = logging::get_logger("logging");
 
 /** Basic wrapper around c++ std::cout object to expose it to python. */
 void log(const string &msg) { Logger::s_root_logger.log(msg); }
@@ -36,7 +24,8 @@ template <LoggingLevel level> void log(const string &message) {
   Logger::s_root_logger.log<level>(message);
 }
 
-#define INSTANTIATE_GLOBAL_LOG(level, name, description) template void log<level>(const string&); 
+#define INSTANTIATE_GLOBAL_LOG(level, name, description)                       \
+  template void log<level>(const string &);
 
 LEVELS(INSTANTIATE_GLOBAL_LOG)
 
@@ -53,44 +42,62 @@ void set_file(const string &filename) {
 }
 void flush() { Logger::s_root_logger.flush(); }
 
-Logger::Logger() { m_name = "root"; }
-Logger::Logger(const Logger &other)
-    : m_level(other.m_level), m_stdout(other.m_stdout) {
-  set_file(other.m_file);
+int root_logger_creations = 0;
+Logger::Logger() {
+  assert(root_logger_creations++ == 0);
+  m_name = "root";
 }
 
-shared_ptr<Logger> Logger::get_logger(const string &name) {
-  auto child_logger = make_shared<Logger>(*this);
-  child_logger->m_name = name;
-  child_logger->m_parent_logger = this;
-  logging::logger->debug("Creating child logger '" + name + "' from '" +
-                         m_name + "'.");
-  m_child_loggers.push_back(child_logger);
+Logger::Logger(const string &name) : m_name(name) {}
+
+Logger &Logger::get_logger(const string &name) {
+  lock_guard<mutex> lock(s_loggers_mutex);
+
+  auto it = m_child_loggers.find(name);
+  // Return logger if it already exists
+  if (it != m_child_loggers.end()) {
+    return it->second;
+  }
+
+  // Create a new logger
+  auto &child_logger =
+      m_child_loggers.emplace(name, Logger(name)).first->second;
+  child_logger.m_level = m_level;
+  child_logger.m_stdout = m_stdout;
+  child_logger.set_file(m_file);
+  child_logger.m_parent_logger = this;
+
+  // Trick for using the logging logger even when it is being created
+  (name == "logging" && m_name == "root" ? child_logger : logger)
+      .debug("Creating child logger '" + name + "' from '" + m_name + "'.");
   return child_logger;
 }
 
-shared_ptr<Logger> Logger::get_logger(const string &name,
-                                      const string &filename) {
-  auto child_logger = get_logger(name);
-  child_logger->set_file(filename);
+Logger &Logger::get_logger(const string &name,
+                           const optional<string> &filename) {
+  auto &child_logger = get_logger(name);
+  child_logger.set_file(filename);
 
   return child_logger;
 }
 
-shared_ptr<Logger> Logger::get_logger(const string &name,
-                                      const string &filename, bool stdout) {
-  auto child_logger = get_logger(name, filename);
-  child_logger->m_stdout = stdout;
+Logger &Logger::get_logger(const string &name, const optional<string> &filename,
+                           const bool stdout) {
+  auto &child_logger = get_logger(name, filename);
+  child_logger.m_stdout = stdout;
   return child_logger;
+}
+
+// Root get_logger
+Logger &get_logger(const string &name, const optional<string> &filename,
+                   const bool stdout) {
+  return Logger::s_root_logger.get_logger(name, filename, stdout);
 }
 
 void Logger::set_verbosity(LoggingLevel level) {
   m_level = level;
-  for (auto &child : m_child_loggers) {
-    if (child.expired()) {
-      continue;
-    }
-    child.lock()->set_verbosity(level);
+  for (auto &[_, child] : m_child_loggers) {
+    child.set_verbosity(level);
   }
 }
 
@@ -113,10 +120,10 @@ template <LoggingLevel level> void Logger::log(const string &message) {
   log(message);
 }
 
-#define INSTANTIATE_LOG(level, name, description) template void Logger::log<level>(const string&); 
+#define INSTANTIATE_LOG(level, name, description)                              \
+  template void Logger::log<level>(const string &);
 
 LEVELS(INSTANTIATE_LOG)
-
 
 void Logger::log(const string &message, const LoggingLevel &level) {
   if (level < m_level) {
@@ -126,7 +133,7 @@ void Logger::log(const string &message, const LoggingLevel &level) {
 }
 
 void Logger::flush() {
-  logger->debug("Flushing " + m_name);
+  logger.debug("Flushing " + m_name + ".");
   if (m_fstream) {
     std::lock_guard<std::mutex> lock(m_fstream->mutex);
     m_fstream->stream.flush();
@@ -136,21 +143,16 @@ void Logger::flush() {
     cout.flush();
   }
 
-  for (auto &child : m_child_loggers) {
-    if (child.expired()) {
-      continue;
-    }
+  /*cout << "children: " << to_string(m_child_loggers.size()) << "\n";*/
 
-    child.lock()->flush();
+  for (auto &[_, child] : m_child_loggers) {
+    child.flush();
   }
 }
 
 void Logger::set_file(const optional<string> &file) {
-  for (auto &child : m_child_loggers) {
-    if (child.expired()) {
-      continue;
-    }
-    child.lock()->set_file(file);
+  for (auto &[_, child] : m_child_loggers) {
+    child.set_file(file);
   }
   // Lock file streams
   std::lock_guard<std::mutex> lock(s_file_streams_mutex);
@@ -178,11 +180,11 @@ void Logger::set_file(const optional<string> &file) {
 
     // Handle file errors
     if (!m_fstream->stream.is_open()) {
-      logger->error("Failed to open file: " + m_file.value());
+      logger.error("Failed to open file: " + m_file.value());
       m_fstream.reset();
       m_file = std::nullopt;
     } else {
-      logger->debug("New file stream created for file: " + m_file.value());
+      logger.debug("New file stream created for file: " + m_file.value());
     }
 
   } else {
@@ -192,11 +194,8 @@ void Logger::set_file(const optional<string> &file) {
 
 void Logger::enable_screen_output(bool enabled) {
   m_stdout = enabled;
-  for (auto &child : m_child_loggers) {
-    if (child.expired()) {
-      continue;
-    }
-    child.lock()->enable_screen_output(enabled);
+  for (auto &[_, child] : m_child_loggers) {
+    child.enable_screen_output(enabled);
   }
 }
 
@@ -207,6 +206,31 @@ void enable_screen_output(bool enabled) {
 std::unordered_map<string, std::weak_ptr<FStreamWithMutex>>
     Logger::s_file_streams;
 std::mutex Logger::s_file_streams_mutex;
+mutex Logger::s_loggers_mutex;
+
+string Logger::get_visual_repr(const std::string &prefix) const {
+  string res;
+  res += m_name + "\n";
+
+  auto end = m_child_loggers.end();
+  for (auto it = m_child_loggers.begin(); it != end; ++it) {
+    bool is_last = (std::next(it) == end);
+    res += prefix + (!is_last ? "├" : "└") + " ";
+    res += it->second.get_visual_repr(prefix + "│ ");
+  }
+  return res;
+}
+string get_visual_repr(const string &prefix) {
+  return Logger::s_root_logger.get_visual_repr(prefix);
+}
+
+void Logger::print_loggers(const string &prefix) const {
+  cout << this->get_visual_repr(prefix);
+}
+
+void print_loggers(const string &prefix) {
+  Logger::s_root_logger.print_loggers(prefix);
+}
 
 } // namespace logging
 
@@ -234,32 +258,33 @@ bool test_logging(bool debug = false) {
   auto orig_count_buffer = std::cout.rdbuf();
   bool res = true;
 
-  if (debug)
-    logging::logger->set_verbosity(logging::DEBUG);
+  logging::logger.set_file("logging.log");
+  logging::logger.set_verbosity(logging::DEBUG);
+  logging::logger.enable_screen_output(debug);
 
   // Create loggers
   // Both logger A and logger B write to the same file :
   // logA.log, and to screen
   // Logger B only logs to logB.log
-  auto loggerA = logging::get_logger("A", "logA.log");
-  auto loggerB = logging::get_logger("B", "logB.log");
-  auto loggerABis = loggerA->get_logger("A-bis");
-  loggerABis->enable_screen_output(false);
-  auto stdoutLogger = logging::get_logger("stdout");
+  auto &loggerA = logging::get_logger("A", "logA.log");
+  auto &loggerB = logging::get_logger("B", "logB.log");
+  auto &loggerABis = loggerA.get_logger("A-bis");
+  loggerABis.enable_screen_output(false);
+  auto &stdoutLogger = logging::get_logger("stdout");
 
   // Create a string stream to capture the output
   std::ostringstream stdout_stream;
   std::cout.rdbuf(stdout_stream.rdbuf());
 
-  loggerA->error("Error A");
-  loggerB->error("Error B");
-  loggerABis->error("Error A bis");
-  stdoutLogger->log("stdout");
-  loggerA->debug("Unlogged debug because default verbosity "
-                 "level is : INFO.");
-  loggerA->set_verbosity(logging::DEBUG);
-  loggerA->enable_screen_output(false);
-  loggerA->debug("Screen only debug");
+  loggerA.error("Error A");
+  loggerB.error("Error B");
+  loggerABis.error("Error A bis");
+  stdoutLogger.log("stdout");
+  loggerA.debug("Unlogged debug because default verbosity "
+                "level is : INFO.");
+  loggerA.set_verbosity(logging::DEBUG);
+  loggerA.enable_screen_output(false);
+  loggerA.debug("Screen only debug");
 
   // Restore the original cout buffer
   cout.rdbuf(orig_count_buffer);
@@ -281,9 +306,39 @@ bool test_logging(bool debug = false) {
   res =
       assert_equal(read_file("logB.log"), string("Error B\n"), "log B") && res;
 
+  res = assert_equal(read_file("logging.log"),
+                     string(
+                         R"(Creating child logger 'A' from 'root'.
+New file stream created for file: logA.log
+Creating child logger 'B' from 'root'.
+New file stream created for file: logB.log
+Creating child logger 'A-bis' from 'A'.
+Creating child logger 'stdout' from 'root'.
+Flushing root.
+Flushing B.
+Flushing A.
+Flushing A-bis.
+Flushing stdout.
+Flushing logging.
+)"),
+                     "logging");
   // Remove test log files
   remove("logA.log");
   remove("logB.log");
+  remove("logging.log");
+
+  res = assert_equal(logging::get_visual_repr(), string(R"(root
+├ B
+├ A
+│ └ A-bis
+├ stdout
+└ logging
+)"),
+                     "visual representation") &&
+        res;
+
+  if (debug)
+    logging::print_loggers();
 
   return res;
 }
