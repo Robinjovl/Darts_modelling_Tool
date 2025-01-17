@@ -1,8 +1,6 @@
 #include <vector>
 #include <fstream>
 #include <chrono>
-#include <numeric>
-#include <iomanip>
 #include <functional>
 #include <unordered_set>
 #include "discretizer.h"
