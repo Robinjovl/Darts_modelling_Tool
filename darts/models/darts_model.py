@@ -756,6 +756,13 @@ class DartsModel:
                 for prop_name, prop_idx in secondary_prop_idxs.items():
                     property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
 
+        # add additional user's arrays: if self.out is defined
+        if hasattr(self, 'out'):
+            for k in self.out.keys():
+                if self.out[k] is not None:
+                    self.out[k] = self.out[k].reshape((1, self.out[k].size))
+            property_array.update(self.out)
+
         return timesteps, property_array
 
     def output_to_plt(self, output_properties: list = None, ith_step: int = None, lims: dict = None, fig=None,
