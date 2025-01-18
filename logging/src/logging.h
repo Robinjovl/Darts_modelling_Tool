@@ -73,8 +73,26 @@ enum class LoggingLevel {
   // continue running.
   CRITICAL = 50
 };
+#define LEVELS(X)                                                              \
+  X(DEBUG, debug,                                                              \
+    "Detailed information, typically only of interest to a "                   \
+    "developer trying to diagnose a problem.")                                 \
+  X(INFO, info, "Confirmation that things are working as expected.")           \
+  X(WARNING, warning,                                                          \
+    "An indication that something unexpected happened, or that a"              \
+    "problem might occur in the near future (e.g. ‘disk space low’). "         \
+    "The software is still working as expected.")                              \
+  X(ERROR, error,                                                              \
+    "Due to a more serious problem, the software has not been "                \
+    "able to perform some function.")                                          \
+  X(CRITICAL, critical,                                                        \
+    "A serious error, indicating that the program itself may be "              \
+    "unable to continue running.")
 
-using enum LoggingLevel;
+// Bring logging levels into scope
+#define LEVEL(level, name, desc)                                               \
+  constexpr LoggingLevel level = LoggingLevel::level;
+LEVELS(LEVEL)
 
 /**
  * The default log verbosity level.
@@ -103,22 +121,6 @@ void log(LoggingLevel level, const std::string &msg);
 void log(const std::string &msg, LoggingLevel level);
 
 template <LoggingLevel level> void log(const std::string &msg);
-
-#define LEVELS(X)                                                              \
-  X(DEBUG, debug,                                                              \
-    "Detailed information, typically only of interest to a "                   \
-    "developer trying to diagnose a problem.")                                 \
-  X(INFO, info, "Confirmation that things are working as expected.")           \
-  X(WARNING, warning,                                                          \
-    "An indication that something unexpected happened, or that a"              \
-    "problem might occur in the near future (e.g. ‘disk space low’). "         \
-    "The software is still working as expected.")                              \
-  X(ERROR, error,                                                              \
-    "Due to a more serious problem, the software has not been "                \
-    "able to perform some function.")                                          \
-  X(CRITICAL, critical,                                                        \
-    "A serious error, indicating that the program itself may be "              \
-    "unable to continue running.")
 
 // Macro to generate log functions for each level
 #define ROOT_LOG(level, name, description)                                     \
@@ -215,7 +217,6 @@ private:
   static std::mutex s_file_streams_mutex;
   static std::mutex s_loggers_mutex;
 };
-
 
 Logger &get_logger(const std::string &name,
                    const std::optional<std::string> &file = std::nullopt,
