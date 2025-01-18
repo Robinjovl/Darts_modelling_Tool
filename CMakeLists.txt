@@ -1,6 +1,14 @@
 cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_MACOSX_RPATH 1)
+set(CMAKE_INSTALL_RPATH $ORIGIN/lib)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
 
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
@@ -237,6 +245,11 @@ if(NOT ONLY_SOLVERS)
 endif()
 # ------------------------------------------------------------------------------
 
+# Logging ----------------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(logging)
+endif()
+# ------------------------------------------------------------------------------
 
 # Discretizer ------------------------------------------------------------------
 if(NOT ONLY_SOLVERS)
