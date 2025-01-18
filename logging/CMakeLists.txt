@@ -3,9 +3,13 @@ project(logging)
 
 # -- C++ logging
 # Define the logging library
-add_library(opendarts_logging OBJECT
+add_library(opendarts_logging SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logging.cpp)
 
+
+set_target_properties(opendarts_logging PROPERTIES
+    POSITION_INDEPENDENT_CODE ON  # Recommended for shared libraries
+)
 
 # Define the include directories to propagate when linking
 target_include_directories(opendarts_logging
@@ -18,12 +22,7 @@ target_link_libraries(opendarts_logging PRIVATE
 )
 
 install(TARGETS opendarts_logging 
-  CONFIGURATIONS RELEASE    
-  DESTINATION lib
-)
-
-install(TARGETS opendarts_logging
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS RELEASE DEBUG
   DESTINATION lib
 )
 
@@ -40,6 +39,7 @@ target_link_libraries(logging PRIVATE
   opendarts_compiler_flags
   opendarts_logging 
   pybind11::module)
+
 
 install(TARGETS logging 
   CONFIGURATIONS RELEASE RELWITHDEBINFO DEBUG ""
