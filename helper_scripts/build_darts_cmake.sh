@@ -159,9 +159,9 @@ else
         bos_solvers_dir=$PWD"/engines/lib/darts_linear_solvers"
     fi
 
-    echo "\n========================================================================"
+    echo "========================================================================"
     echo "| Building openDARTS: START "
-    echo "========================================================================\n"
+    echo "========================================================================"
 
     # Setup build folder
     rm -rf build # Just in case
@@ -169,7 +169,7 @@ else
     cd build
 
     # Setup build with cmake
-    cmake_options=" -D SET_CXX11_ABI_0=TRUE -D CMAKE_BUILD_TYPE=${config} -D CMAKE_INSTALL_PREFIX=../darts/ -D CMAKE_EXPORT_COMPILE_COMMANDS=1"
+    cmake_options=" -D SET_CXX11_ABI_0=TRUE -D CMAKE_BUILD_TYPE=${config} -D CMAKE_INSTALL_PREFIX=../darts/"
 
     if [[ "$testing" == true ]]; then
         cmake_options+=" -D ENABLE_TESTING=ON"
@@ -197,13 +197,13 @@ else
 
     cd ../
 
-    echo "\n========================================================================"
+    echo "========================================================================"
     echo "| Building openDARTS: DONE! "
-    echo "========================================================================\n"
+    echo "========================================================================"
 
     echo "************************************************************************"
     echo "| Building python package open-darts: START "
-    echo "************************************************************************\n"
+    echo "************************************************************************"
 
     # generating build info of darts-package
     python3 darts/print_build_info.py
@@ -218,8 +218,8 @@ else
     # installing python package
     python3 -m pip install . 2>&1 | tee -a make_wheel.log
 
-    echo "\n************************************************************************"
+    echo "************************************************************************"
     echo "| Building python package open-darts: DONE! "
-    echo "************************************************************************\n"
+    echo "************************************************************************"
 fi
 # ------------------------------------------------------------------------------
