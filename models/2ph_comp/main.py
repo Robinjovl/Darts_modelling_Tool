@@ -3,7 +3,7 @@ import pandas as pd
 import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
-from darts.engines.logging import duplicate_output_to_file
+from darts import logging
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 
@@ -46,7 +46,7 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
-    duplicate_output_to_file("run.log")
+    logging.set_file("run.log")
 
     print('START')
 
