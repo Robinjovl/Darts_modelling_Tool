@@ -1,6 +1,5 @@
 #include "py_globals.h"
 #include <pybind11/numpy.h>
-#include "py_logging.hpp"
 namespace py = pybind11;
 
 void pybind_pm_discretizer(py::module &);
@@ -115,7 +114,6 @@ PYBIND11_MODULE(engines, m) {
             return to_numpy(vec); // Call the conversion function
           },
           "Converts the vector to a NumPy array");
-  pybind_logging(m);
   py::bind_vector<std::vector<ms_well *>>(m, "ms_well_vector");
   py::bind_vector<std::vector<operator_set_gradient_evaluator_iface *>>(
       m, "op_vector");

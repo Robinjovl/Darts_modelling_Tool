@@ -88,10 +88,13 @@ Logger &Logger::get_logger(const string &name, const optional<string> &filename,
   return child_logger;
 }
 
+/*Logger &get_logger(const std::string &name,*/
+/*                   const std::optional<std::string> &file = std::nullopt,*/
+/*                   const bool enable_screen_output = true);*/
 // Root get_logger
-Logger &get_logger(const string &name, const optional<string> &filename,
-                   const bool stdout) {
-  return Logger::s_root_logger.get_logger(name, filename, stdout);
+Logger &get_logger(const string &name, const optional<string> &file,
+                   const bool enable_screen_output) {
+  return Logger::s_root_logger.get_logger(name, file, enable_screen_output);
 }
 
 void Logger::set_verbosity(LoggingLevel level) {

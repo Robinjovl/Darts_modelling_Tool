@@ -215,6 +215,8 @@ private:
   static std::mutex s_file_streams_mutex;
   static std::mutex s_loggers_mutex;
 };
+
+
 Logger &get_logger(const std::string &name,
                    const std::optional<std::string> &file = std::nullopt,
                    const bool enable_screen_output = true);
