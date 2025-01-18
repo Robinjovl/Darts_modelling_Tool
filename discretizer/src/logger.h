@@ -1,4 +1,4 @@
-#include "../../engines/src/logging.h"
+#include "logging.h"
 
 namespace dis {
 extern logging::Logger &logger;

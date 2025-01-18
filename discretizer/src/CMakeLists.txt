@@ -114,6 +114,7 @@ target_sources(opendarts_discretizer
 target_link_libraries(opendarts_discretizer
   PUBLIC
     opendarts_compiler_flags
+    opendarts_logging
     discretizer_build_info
     discretizer_mesh
     discretizer_linalg

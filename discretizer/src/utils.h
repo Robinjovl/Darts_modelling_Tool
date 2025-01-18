@@ -1,7 +1,7 @@
 #pragma once
 
+#include "elem.h"
 #include "linalg/matrix.h"
-#include "mesh/mesh.h"
 #include <cctype>
 #include <fstream>
 #include <iostream>
