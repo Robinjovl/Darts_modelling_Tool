@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts import logging
