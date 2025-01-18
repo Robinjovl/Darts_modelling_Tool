@@ -50,6 +50,7 @@ endif()
 target_link_libraries(discretizer
   PUBLIC
     opendarts_compiler_flags
+    opendarts_logging
     opendarts_discretizer
     discretizer_build_info
     discretizer_mesh
