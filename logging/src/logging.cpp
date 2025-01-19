@@ -82,9 +82,9 @@ Logger &Logger::get_logger(const string &name,
 }
 
 Logger &Logger::get_logger(const string &name, const optional<string> &filename,
-                           const bool stdout) {
+                           const bool screen_output) {
   auto &child_logger = get_logger(name, filename);
-  child_logger.m_stdout = stdout;
+  child_logger.m_stdout = screen_output;
   return child_logger;
 }
 

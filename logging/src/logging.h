@@ -171,7 +171,7 @@ public:
                      const std::optional<std::string> &filename);
   Logger &get_logger(const std::string &name,
                      const std::optional<std::string> &filename,
-                     const bool stdout);
+                     const bool screen_output);
 
   void log(const std::string &message);
   template <LoggingLevel level> void log(const std::string &message);

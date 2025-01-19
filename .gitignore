@@ -41,6 +41,7 @@ solution.pvd
 *.pdb
 *.npy
 .vscode
+.vs
 /.idea/*
 *x64*
 *.log

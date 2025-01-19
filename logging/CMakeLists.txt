@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 project(logging) 
 
+
+# Careful, maybe remove this later and add proper exporting
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
+
 # -- C++ logging
 # Define the logging library
 add_library(opendarts_logging SHARED
@@ -23,7 +28,7 @@ target_link_libraries(opendarts_logging PRIVATE
 
 install(TARGETS opendarts_logging 
   CONFIGURATIONS RELEASE DEBUG
-  DESTINATION lib
+  DESTINATION ./
 )
 
 # -- End C++ logging
