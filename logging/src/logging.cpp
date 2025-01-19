@@ -56,12 +56,12 @@ Logger &Logger::get_logger(const string &name) {
   auto it = m_child_loggers.find(name);
   // Return logger if it already exists
   if (it != m_child_loggers.end()) {
-    return it->second;
+    return *it->second;
   }
 
   // Create a new logger
   auto &child_logger =
-      m_child_loggers.emplace(name, Logger(name)).first->second;
+      *m_child_loggers.emplace(name, make_unique<Logger>(name)).first->second;
   child_logger.m_level = m_level;
   child_logger.m_stdout = m_stdout;
   child_logger.set_file(m_file);
@@ -100,7 +100,7 @@ Logger &get_logger(const string &name, const optional<string> &file,
 void Logger::set_verbosity(LoggingLevel level) {
   m_level = level;
   for (auto &[_, child] : m_child_loggers) {
-    child.set_verbosity(level);
+    child->set_verbosity(level);
   }
 }
 
@@ -149,13 +149,13 @@ void Logger::flush() {
   /*cout << "children: " << to_string(m_child_loggers.size()) << "\n";*/
 
   for (auto &[_, child] : m_child_loggers) {
-    child.flush();
+    child->flush();
   }
 }
 
 void Logger::set_file(const optional<string> &file) {
   for (auto &[_, child] : m_child_loggers) {
-    child.set_file(file);
+    child->set_file(file);
   }
   // Lock file streams
   std::lock_guard<std::mutex> lock(s_file_streams_mutex);
@@ -198,7 +198,7 @@ void Logger::set_file(const optional<string> &file) {
 void Logger::enable_screen_output(bool enabled) {
   m_stdout = enabled;
   for (auto &[_, child] : m_child_loggers) {
-    child.enable_screen_output(enabled);
+    child->enable_screen_output(enabled);
   }
 }
 
@@ -219,7 +219,7 @@ string Logger::get_visual_repr(const std::string &prefix) const {
   for (auto it = m_child_loggers.begin(); it != end; ++it) {
     bool is_last = (std::next(it) == end);
     res += prefix + (!is_last ? "├" : "└") + " ";
-    res += it->second.get_visual_repr(prefix + "│ ");
+    res += it->second->get_visual_repr(prefix + "│ ");
   }
   return res;
 }

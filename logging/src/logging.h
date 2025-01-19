@@ -197,7 +197,7 @@ public:
   std::string get_visual_repr(const std::string &prefix = "") const;
   void print_loggers(const std::string &prefix = "") const;
 
-  Logger(const Logger &other) = default; // Disable copy constructor, or not because old gcc doesn't support it
+  Logger(const Logger &other) = delete; // Disable copy constructor
   Logger(Logger &&) = default;          // Enable move constructor
 
 private:
@@ -206,7 +206,7 @@ private:
   Logger();
 
   LoggingLevel m_level = DEFAULT_LOGGING_LEVEL;
-  std::unordered_map<std::string, Logger> m_child_loggers;
+  std::unordered_map<std::string, std::unique_ptr<Logger>> m_child_loggers;
   std::optional<std::string> m_file = std::nullopt; // Log file name, optional
   std::shared_ptr<FStreamWithMutex> m_fstream; // Output file stream, with mutex
   bool m_stdout = true;                        // Output to screen
