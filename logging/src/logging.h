@@ -197,14 +197,14 @@ public:
   std::string get_visual_repr(const std::string &prefix = "") const;
   void print_loggers(const std::string &prefix = "") const;
 
-  Logger(const Logger &other) = delete; // Disable copy constructor
+  Logger(const Logger &other) = default; // Disable copy constructor, or not because old gcc doesn't support it
+  Logger(Logger &&) = default;          // Enable move constructor
 
 private:
   // Make default constructor private because
   // it is only used to create the root logger
   Logger();
 
-  Logger(Logger &&) = default;          // Enable move constructor
   LoggingLevel m_level = DEFAULT_LOGGING_LEVEL;
   std::unordered_map<std::string, Logger> m_child_loggers;
   std::optional<std::string> m_file = std::nullopt; // Log file name, optional
