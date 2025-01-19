@@ -198,14 +198,14 @@ build-windows-3.9-ODLS:
 
 .build-linux-dockcross:
     extends: .build-linux
-    # Dockcross is an image specifically made for building Python wheels, based on CentOS 7 with old glibc - it will run on even old systems
-    image: gcc:latest
-    # Install samba client to upload build results to shared folder TODO remove
-    # before_script:
-    #     - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-    #     - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-    #     - yum install samba-client -y -q
-    #     - export PATH="/opt/python/$PY_SUF/bin:$PATH"
+# Replace Dockcross with the official GCC image (gcc:10)
+    image: gcc:10
+    before_script:
+        # Install necessary dependencies (samba client and Python environment tools)
+        - apt-get update -qq
+        - apt-get install -y -qq samba-client python3 python3-pip python3-setuptools python-is-python3
+        - export PATH="/usr/local/bin:$PATH"
+        - gcc --version  # Verify GCC version
         
 ###################################################################################
      
