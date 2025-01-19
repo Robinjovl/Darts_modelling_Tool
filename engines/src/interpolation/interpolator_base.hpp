@@ -101,10 +101,6 @@ namespace std
     static constexpr float_round_style round_style = std::round_toward_zero;
   };
 };
-
-#elif defined(__GNUC__)
-#endif
-
 namespace std
 {
   template <>
@@ -126,6 +122,10 @@ namespace std
   // Custom to_string for __uint128_t
   std::string to_string(const __uint128_t& value);
 };
+
+#elif defined(__GNUC__)
+#endif
+
 
 /**
  * Interpolator base class
