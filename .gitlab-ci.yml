@@ -204,6 +204,13 @@ build-windows-3.9-ODLS:
     before_script:
         - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
         - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+        # Install GCC 10
+        - yum install -y -q centos-release-scl
+        - yum install -y -q devtoolset-10
+        - source /opt/rh/devtoolset-10/enable
+        - export CC=gcc
+        - export CXX=g++
+        - gcc --version  # Verify GCC 10 is used
         - yum install samba-client -y -q
         - export PATH="/opt/python/$PY_SUF/bin:$PATH"
         
@@ -218,6 +225,11 @@ build-windows-3.9-ODLS:
     before_script:
         - echo 'before build-linux'
         - apt-get update -qq && apt-get install -y -qq smbclient
+        # Install GCC 10
+        - apt-get install -y -qq gcc-10 g++-10
+        - update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 10
+        - update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 10
+        - gcc --version  # Verify GCC 10 is used
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - pip install wheel
     script:
