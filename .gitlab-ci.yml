@@ -198,13 +198,14 @@ build-windows-3.9-ODLS:
 
 .build-linux-dockcross:
     extends: .build-linux
-# Replace Dockcross with the official GCC image (gcc:10)
+# Replace Dockcross with an official GCC image that supports C++20
     image: gcc:13
     before_script:
         # Install necessary dependencies (samba client and Python environment tools)
         - apt-get update -qq
-        - apt-get install -y -qq samba-client python3 python3-pip python3-setuptools python-is-python3 cmake
+        - apt-get install -y -qq samba-client cmake
         - export PATH="/usr/local/bin:$PATH"
+        - python --version
         - gcc --version  # Verify GCC version
         
 ###################################################################################
