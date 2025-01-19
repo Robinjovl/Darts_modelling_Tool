@@ -90,9 +90,10 @@ enum class LoggingLevel {
     "unable to continue running.")
 
 // Bring logging levels into scope
-#define LEVEL(level, name, desc)                                               \
-  constexpr LoggingLevel level = LoggingLevel::level;
-LEVELS(LEVEL)
+/*#define LEVEL(level, name, desc) \*/
+/*  constexpr LoggingLevel level = LoggingLevel::level;*/
+/*LEVELS(LEVEL)*/
+using enum LoggingLevel;
 
 /**
  * The default log verbosity level.

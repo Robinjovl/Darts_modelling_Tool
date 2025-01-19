@@ -199,7 +199,7 @@ build-windows-3.9-ODLS:
 .build-linux-dockcross:
     extends: .build-linux
 # Replace Dockcross with the official GCC image (gcc:10)
-    image: gcc:10
+    image: gcc:13
     before_script:
         # Install necessary dependencies (samba client and Python environment tools)
         - apt-get update -qq
