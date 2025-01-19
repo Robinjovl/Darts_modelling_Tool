@@ -197,7 +197,6 @@ public:
   std::string get_visual_repr(const std::string &prefix = "") const;
   void print_loggers(const std::string &prefix = "") const;
 
-  Logger(Logger &&) = default;          // Enable move constructor
   Logger(const Logger &other) = delete; // Disable copy constructor
 
 private:
@@ -205,6 +204,7 @@ private:
   // it is only used to create the root logger
   Logger();
 
+  Logger(Logger &&) = default;          // Enable move constructor
   LoggingLevel m_level = DEFAULT_LOGGING_LEVEL;
   std::unordered_map<std::string, Logger> m_child_loggers;
   std::optional<std::string> m_file = std::nullopt; // Log file name, optional
