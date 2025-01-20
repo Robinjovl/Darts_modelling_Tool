@@ -28,10 +28,11 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
         T_init = 350.
-        state_init = value_vector([200., 0.])
+        state_init = value_vector([200., 0.]) if not self.compositional else value_vector([200., 1., 0.])
         enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
         self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
+                               self.physics.vars[1]: state_init[1],
+                               self.physics.vars[-1]: enth_init
                                }
 
     def set_reservoir(self):
