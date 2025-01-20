@@ -276,6 +276,7 @@ class ModelProperties(PropertyContainer):
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
     def run_flash(self, pressure, temperature, zc):
+        self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):
             self.x[i, i] = 1
