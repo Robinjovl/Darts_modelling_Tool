@@ -125,7 +125,7 @@ class Model(CICDModel):
         property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
 
         """ Activate physics """
-        thermal = True
+        thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=500, min_p=1, max_p=200, min_z=zero / 10, max_z=1 - zero / 10)
