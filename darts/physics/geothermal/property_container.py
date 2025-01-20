@@ -169,7 +169,7 @@ class PropertyContainerPH(PropertyBase):
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
-        self.temperature = flash_results.T
+        self.temperature = flash_results.temperature
 
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
