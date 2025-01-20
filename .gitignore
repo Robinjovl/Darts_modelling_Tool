@@ -18,6 +18,7 @@ thirdparty/install
 
 # cache
 docs/_build
+**/.cache
 **/__pycache__/
 darts/__pycache__/
 models/__pycache__/
