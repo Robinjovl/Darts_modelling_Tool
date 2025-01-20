@@ -93,18 +93,6 @@ class Geothermal(PhysicsBase):
         """
         return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
-    def determine_obl_bounds(self, state_min, state_max):
-        """
-        Function to compute minimum and maximum enthalpy (kJ/kmol)
-
-        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
-        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
-        """
-        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
-        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
-
-        return
-
     def define_well_controls(self):
         # create well controls
         # water stream

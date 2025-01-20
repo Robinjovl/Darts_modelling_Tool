@@ -128,8 +128,8 @@ class PhysicsBase:
         :type is_barycentric: bool
         """
         # Define operators, set engine, set interpolators and define well controls
-        self.set_operators()
         self.engine = self.set_engine(discr_type, platform)
+        self.set_operators()
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
         self.define_well_controls()
         return
@@ -188,6 +188,7 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
+        # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}
         self.mass_flux_itor = {}
@@ -220,9 +221,19 @@ class PhysicsBase:
                                                   precision=itor_precision)
         return
 
-    @abc.abstractmethod
-    def determine_obl_bounds(self):
-        pass
+    def determine_obl_bounds(self, state_min: list, state_max: list, state_spec: StateSpecification = StateSpecification.PH):
+        """
+        Function to compute minimum and maximum enthalpy (kJ/kmol)
+
+        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
+        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        """
+        if state_spec == PhysicsBase.StateSpecification.PH:
+            self.axes_min[-1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[-1])
+            self.axes_max[-1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[-1])
+        else:
+            raise RuntimeError(f"Unknown state specification: {state_spec}")
+        return
 
     @abc.abstractmethod
     def define_well_controls(self):
