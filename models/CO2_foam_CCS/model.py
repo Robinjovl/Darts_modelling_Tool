@@ -86,8 +86,11 @@ class Model(CICDModel):
         property_container.foam_STARS_FM_ev = FMEvaluator(foam_paras)
 
         """ Activate physics """
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
         self.physics = CustomPhysics(components, phases, self.timer,
-                                     n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10, cache=False)
+                                     n_points=200, min_p=1., max_p=1000., min_z=zero/10, max_z=1.-zero/10,
+                                     state_spec=state_spec, cache=False)
         self.physics.add_property_region(property_container)
         return
 
@@ -100,9 +103,9 @@ class Model(CICDModel):
 
 
 class CustomPhysics(Compositional):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=None, max_t=None, thermal=0,
-                 discr_type='tpfa', cache=False):
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, discr_type, cache)
+    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=None, max_t=None,
+                 state_spec = Compositional.StateSpecification.ISOTHERMAL, discr_type='tpfa', cache=False):
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, discr_type, cache)
 
     def set_operators(self, regions, output_properties=None):
         for region, prop_container in self.property_containers.items():

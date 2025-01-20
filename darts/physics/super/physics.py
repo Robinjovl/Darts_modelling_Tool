@@ -19,7 +19,8 @@ class Compositional(PhysicsBase):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
+                 state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.ISOTHERMAL,
+                 cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -40,8 +41,8 @@ class Compositional(PhysicsBase):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param thermal: Switch for (iso)thermal simulation
-        :type thermal: bool
+        :param state_spec: State specification - 0) ISOTHERMAL (default), 1) PT, 2) PH
+        :type state_spec: StateSpecification
         :param cache: Switch to cache operator values
         :type cache: bool
         :param axes_min: (optional) Minimum bounds of OBL axes
@@ -54,12 +55,12 @@ class Compositional(PhysicsBase):
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
-        self.thermal = thermal
+        self.thermal = (state_spec > PhysicsBase.StateSpecification.ISOTHERMAL)
 
-        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature
+        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
         variables = ['pressure'] + components[:-1]
         if self.thermal:
-            variables += ['temperature']
+            variables += ['temperature'] if state_spec == PhysicsBase.StateSpecification.PT else ['enthalpy']
 
         n_vars = len(variables)
         # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
@@ -92,7 +93,7 @@ class Compositional(PhysicsBase):
             n_axes_points = index_vector(n_axes_points)
 
         # Call PhysicsBase constructor
-        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+        super().__init__(state_spec=state_spec, variables=variables, nc=nc, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
@@ -170,10 +171,17 @@ class Compositional(PhysicsBase):
         pressure = np.array(mesh.pressure, copy=False)
         pressure.fill(uniform_pressure)
 
-        # if thermal, set initial temperature
+        # if thermal, set initial temperature or enthalpy
         if uniform_temp is not None:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature.fill(uniform_temp)
+            if self.state_spec == PhysicsBase.StateSpecification.PT:
+                temperature = np.array(mesh.temperature, copy=False)
+                temperature.fill(uniform_temp)
+            else:
+                state = value_vector([uniform_pressure, 0])
+                enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temp)
+
+                enthalpy = np.array(mesh.enthalpy, copy=False)
+                enthalpy.fill(enth)
 
         # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))
@@ -186,8 +194,9 @@ class Compositional(PhysicsBase):
             for c in range(self.nc - 1):  # Denis
                 composition[c::(self.nc - 1)] = uniform_composition[c]
 
-    def set_nonuniform_initial_conditions(self, mesh: conn_mesh,
-                                        input_pressure, input_composition, input_temperature = None):
+    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, input_pressure, input_composition, input_temperature = None,
+                                          pressure_grad: float = 0., ref_depth_p: float = 0, p_at_ref_depth: float = 1.,
+                                          temperature_grad: float = 0., ref_depth_T: float = 0, T_at_ref_depth: float = 293.15):
         """
         Function to set non-uniform initial conditions.
 
@@ -207,8 +216,19 @@ class Compositional(PhysicsBase):
 
         # if thermal, set initial temperature
         if input_temperature is not None:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature[:] = input_temperature
+            if self.state_spec == PhysicsBase.StateSpecification.PT:
+                temperature = np.array(mesh.temperature, copy=False)
+                temperature[:] = input_temperature
+            else:
+                depth = np.array(mesh.depth, copy=True)
+
+                # set initial enthalpy through given temperature and pressure
+                enthalpy = np.array(mesh.enthalpy, copy=False)
+                temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
+
+                for j in range(mesh.n_blocks):
+                    state = value_vector([pressure[j], 0])
+                    enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
 
         # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))

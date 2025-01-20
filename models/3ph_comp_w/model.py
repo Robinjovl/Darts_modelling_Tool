@@ -74,7 +74,9 @@ class Model(CICDModel):
                                                ('wat', PhaseRelPerm("wat"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 

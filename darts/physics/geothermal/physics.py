@@ -46,6 +46,7 @@ class Geothermal(PhysicsBase):
         else:
             phases = ['water', 'steam', 'temperature', 'energy']
         variables = ['pressure', 'enthalpy']
+        state_spec = PhysicsBase.StateSpecification.PH
 
         # Define OBL axes
         axes_min = value_vector([min_p, min_e])
@@ -58,7 +59,7 @@ class Geothermal(PhysicsBase):
         n_ops = 10
 
         # Call PhysicsBase constructor
-        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+        super().__init__(state_spec=state_spec, variables=variables, nc=nc, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_operators(self):

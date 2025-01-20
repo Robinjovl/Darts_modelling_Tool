@@ -228,7 +228,10 @@ class Model(DartsModel):
         if self.reservoir_type != '1D' and self.reservoir_type != '2D':
             max_p = 1.4 * np.max(self.p_init)
             axes_max[0] = max_p
-        self.physics = Compositional(self.components, phases, self.timer, n_points=self.obl_points,
+
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
                                      min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
                                      axes_max=axes_max)
         self.physics.add_property_region(property_container)

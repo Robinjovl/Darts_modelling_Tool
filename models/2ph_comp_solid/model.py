@@ -96,8 +96,10 @@ class Model(CICDModel):
         property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero / 10, max_z=1 - self.zero / 10)
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=101, min_p=1, max_p=1000, min_z=self.zero / 10, max_z=1 - self.zero / 10)
         self.physics.add_property_region(property_container)
 
         return

@@ -68,8 +68,10 @@ class Model(DartsModel):
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
+            state_spec = Compositional.StateSpecification.PT
         else:
             thermal = False
+            state_spec = Compositional.StateSpecification.ISOTHERMAL
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
@@ -95,7 +97,7 @@ class Model(DartsModel):
                                            }
 
         self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
-                                     max_z=1-zero/10, min_t=273.15, max_t=373.15, thermal=thermal, cache=False)
+                                     max_z=1-zero/10, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False)
         self.physics.add_property_region(property_container)
 
         return

@@ -4,6 +4,8 @@ import os
 import pickle
 import atexit
 import numpy as np
+from enum import Enum
+from functools import total_ordering
 
 from darts.engines import *
 
@@ -39,12 +41,24 @@ class PhysicsBase:
     rate_operators: operator_set_evaluator_iface
     mass_flux_operators: operator_set_evaluator_iface
 
-    def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
+    @total_ordering
+    class StateSpecification(Enum):
+        ISOTHERMAL = 0
+        PT = 1
+        PH = 2
+        def __lt__(self, other):
+            if self.__class__ is other.__class__:
+                return self.value < other.value
+            return NotImplemented
+
+    def __init__(self, state_spec: StateSpecification, variables: list, nc: int, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
                  timer: timer_node, cache: bool = False):
         """
         This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
 
+        :param state_spec: State specification - 0) ISOTHERMAL, 1) PT, 2) PH
+        :type state_spec: StateSpecification
         :param variables: List of independent variables
         :type variables: list
         :param nc: Number of components
@@ -63,6 +77,7 @@ class PhysicsBase:
         :type cache: bool
         """
         # Define variables and number of operators
+        self.state_spec = state_spec
         self.vars = variables
         self.n_vars = len(variables)
 
@@ -204,6 +219,10 @@ class PhysicsBase:
                                                   platform=platform, algorithm=itor_type, mode=itor_mode,
                                                   precision=itor_precision)
         return
+
+    @abc.abstractmethod
+    def determine_obl_bounds(self):
+        pass
 
     @abc.abstractmethod
     def define_well_controls(self):

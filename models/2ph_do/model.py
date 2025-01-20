@@ -60,7 +60,9 @@ class Model(CICDModel):
                                                ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
 
         # create physics
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1 - zero)
         self.physics.add_property_region(property_container)
 

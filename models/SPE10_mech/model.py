@@ -186,10 +186,11 @@ class Model(THMCModel):
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
-        self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
+        state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.ISOTHERMAL
+        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
                                       min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                       min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                      thermal=self.thermal, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
+                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
