@@ -1,7 +1,6 @@
-#ifndef CPU_SIMULATOR_SUPER_ELASTIC_HPP
-#define CPU_SIMULATOR_SUPER_ELASTIC_HPP
+#ifndef ENGINE_SUPER_ELASTIC_CPU_HPP
+#define ENGINE_SUPER_ELASTIC_CPU_HPP
 
-#ifndef WITH_GPU
 #include <vector>
 #include <array>
 #include <unordered_map>
@@ -41,8 +40,6 @@ protected:
   /// @brief Pointer to discretizer required for the evaluation of stresses and velocities.
   DiscretizerType* discr;
 public:
-  // space dimension
-  const static uint8_t ND = 3;
   // number of components
   const static uint8_t NC_ = NC;
   // number of phases
@@ -72,25 +69,26 @@ public:
   const static uint8_t N_STATE = NC_ + THERMAL;
 
   // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1 /*weight*/ + 1;
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/ + 1 /*weight*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t UPSAT_OP = NE + NE * NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP;
+  const static uint8_t UPSAT_OP = FLUX_OP + NE * NP;
+  const static uint8_t GRAD_OP = UPSAT_OP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NE * NP;
+  const static uint8_t KIN_OP = GRAD_OP + NE * NP;
 
   // extra operators
-  const static uint8_t RE_INTER_OP = NE + NE * NP + NP + NE * NP + NE;
-  const static uint8_t RE_TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 1;
-  const static uint8_t ROCK_COND = NE + NE * NP + NP + NE * NP + NE + 2;
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
-  const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
+  const static uint8_t GRAV_OP = KIN_OP + NE;
+  const static uint8_t PC_OP = GRAV_OP + NP;
+  const static uint8_t PORO_OP = PC_OP + NP;
+  const static uint8_t ENTH_OP = PORO_OP + 1;
+  const static uint8_t TEMP_OP = ENTH_OP + NP;
+  const static uint8_t PRES_OP = TEMP_OP + 1;
+  const static uint8_t ROCK_DENS = PRES_OP + 1;
+  
   const static uint8_t SAT_OP = UPSAT_OP;
-  const static uint8_t ROCK_DENS = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP + 1;
   // mapping 
   // from transmissibility order of unknowns 
   // to the order of unknowns in simulation
@@ -103,7 +101,7 @@ public:
   std::vector<index_t> stoich_coef;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const { return N_VARS; };
   uint8_t get_n_ops() const  { return N_OPS; };
@@ -207,6 +205,5 @@ public:
 };
 
 #include "engine_super_elastic_cpu.tpp"
-#endif//WITH_GPU
 
-#endif
+#endif /* ENGINE_SUPER_ELASTIC_CPU_HPP */

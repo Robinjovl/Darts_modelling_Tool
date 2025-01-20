@@ -1916,7 +1916,6 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 	index_t nb = mesh->n_blocks;
 	index_t n_corrected = 0, c_min;
 
-
 	for (index_t i = 0; i < nb; i++)
 	{
 		last_z = 1;
@@ -1941,20 +1940,26 @@ void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::ve
 				last_dz += dX[i * n_vars + z_var + c]; // find update for the last component
 			last_z -= last_dz; // find old_z = new_z - dX for last component
 
-			// compute fraction of update to be at min_zc
-			double frac = (min_zc - last_z) / (last_dz); 
-			for (char c = 0; c < nc - 1; c++)
-				dX[i * n_vars + z_var + c] *= frac; 
-			n_corrected++;
+			if (last_dz != 0)
+			{
+			  // compute fraction of update to be at min_zc
+			  double frac = (min_zc - last_z) / (last_dz);
+			  for (char c = 0; c < nc - 1; c++)
+				dX[i * n_vars + z_var + c] *= frac;
+			  n_corrected++;
+			}
 		}
 		else if (c_min >= 0)
 		{
 			// compute fraction of update to be at min_zc 
 			double frac = -(min_zc - X[i * n_vars + z_var + c_min]) / (dX[i * n_vars + z_var + c_min]);
-			// correct update to be at min_zc for the smallest component
-			for (char c = 0; c < nc - 1; c++)
+			if (dX[i * n_vars + z_var + c_min]  != 0)
+			{
+			  // correct update to be at min_zc for the smallest component
+			  for (char c = 0; c < nc - 1; c++)
 				dX[i * n_vars + z_var + c] *= frac;
-			n_corrected++;
+			  n_corrected++;
+			}
 		}
 	}
 

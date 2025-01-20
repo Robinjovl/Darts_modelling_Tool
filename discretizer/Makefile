@@ -20,9 +20,7 @@ MSHIODIR = ../thirdparty/MshIO/src
 DFLAGS      = -DPYBIND11_ENABLED -D_GLIBCXX_USE_CXX11_ABI=0
 CPPSOURCES = $(shell find $(SOURCEDIR) -name '*.cpp')
 CPPSOURCES += $(shell find $(MSHIODIR) -name '*.cpp')
-CSOURCES = $(shell find ./src/opm -name '*.c')
 CPPOBJECTS = $(CPPSOURCES:%.cpp=%.o)
-COBJECTS = $(CSOURCES:%.c=%.o)
 
 EXECUTABLE = ../darts/discretizer.so
 
@@ -48,7 +46,7 @@ $(EXECUTABLE) : $(CPPOBJECTS) $(COBJECTS)
 	$(CC) $(CFLAGS) $(INCLUDEFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(COBJECTS) $(CPPOBJECTS) $(EXECUTABLE)
+	rm -f $(CPPOBJECTS) $(EXECUTABLE)
 
 
 .PHONY: build_info

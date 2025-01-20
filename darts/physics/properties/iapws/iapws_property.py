@@ -36,32 +36,29 @@ class iapws_viscosity_evaluator(property_evaluator_iface):
     def __init__(self):
         super().__init__()
     def evaluate(self, state):
-        temperature = temperature_region1_evaluator()
-        temp = temperature.evaluate(state)
-        density = water_density_property_evaluator()
-        den = density.evaluate(state) * 18.015
-        return (_Viscosity(den, temp)*1000)
+        temperature = temperature_region1_evaluator().evaluate(state)
+        density = water_density_property_evaluator().evaluate(state)
+        return (_Viscosity(density, temperature)*1000)
 
 
 
 #====================================== Properties for Region 1 and 4 ============================================ 
 class iapws_total_enthalpy_evalutor(property_evaluator_iface):
-    def __init__(self, temp):
+    def __init__(self, ):
         super().__init__()
-        self.T = temp
-    def evaluate(self, state):
+    def evaluate(self, state, temperature):
         P = state[0]*0.1
-        region = _Bound_TP(self.T, P)
+        region = _Bound_TP(temperature, P)
         if (region == 1):
-            h = _Region1(self.T, P)["h"] * 18.015
+            h = _Region1(temperature, P)["h"] * 18.015
         elif (region == 4):
-            Steam_sat = iapws_steam_saturation_evaluator()
-            rho_steam = iapws_steam_density_evaluator()
-            rho_water = iapws_water_density_evaluator()
-            x = Steam_sat.evaluate(state) * rho_steam.evaluate(state) / (Steam_sat.evaluate(state) * rho_steam.evaluate(state) + Steam_sat.evaluate(water) * rho_water.evaluate(state))
+            Steam_sat = iapws_steam_saturation_evaluator().evaluate(state)
+            rho_steam = iapws_steam_density_evaluator().evaluate(state) / 18.015
+            rho_water = iapws_water_density_evaluator().evaluate(state) / 18.015
+            x = Steam_sat * rho_steam / (Steam_sat * rho_steam + (1-Steam_sat) * rho_water)
             h = _Region4(P, x)["h"] * 18.015
         elif (region == 2):
-            h = _Region2(self.T, P)["h"] * 18.015
+            h = _Region2(temperature, P)["h"] * 18.015
         else:
             raise NotImplementedError('Variables out of bound: p=' + str(P) + ' region=' + str(region))
         return h
@@ -222,7 +219,7 @@ class iapws_water_density_evaluator(property_evaluator_iface):
             water_density = 0
         else:
                raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
-        return water_density / 18.015
+        return water_density
 
 
 class iapws_steam_density_evaluator(property_evaluator_iface):
@@ -251,29 +248,25 @@ class iapws_steam_density_evaluator(property_evaluator_iface):
             steam_density = 1 / _Region2(T, P)["v"]
         else:
                raise NotImplementedError('Variables out of bound: p=' + str(state[0]) + ' bars, h=' + str(state[1]) + ' kJ/kmol, region=' + str(region))
-        return steam_density / 18.015
+        return steam_density
 
 
 class iapws_water_viscosity_evaluator(property_evaluator_iface):
     def __init__(self):
         super().__init__()
     def evaluate(self, state):
-        temperature = iapws_temperature_evaluator()
-        T = temperature.evaluate(state)
-        density = iapws_water_density_evaluator()
-        den = density.evaluate(state) * 18.015
-        return (_Viscosity(den, T)*1000)
+        temperature = iapws_temperature_evaluator().evaluate(state)
+        density = iapws_water_density_evaluator().evaluate(state)
+        return (_Viscosity(density, temperature)*1000)
 
 
 class iapws_steam_viscosity_evaluator(property_evaluator_iface):
     def __init__(self):
         super().__init__()
     def evaluate(self, state):
-        temperature = iapws_temperature_evaluator()
-        T = temperature.evaluate(state)
-        density = iapws_steam_density_evaluator()
-        den = density.evaluate(state) * 18.015
-        return (_Viscosity(den, T)*1000)
+        temperature = iapws_temperature_evaluator().evaluate(state)
+        density = iapws_steam_density_evaluator().evaluate(state)
+        return (_Viscosity(density, temperature)*1000)
 
 
 

@@ -62,6 +62,10 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
 
+if(DEFINED BOS_SOLVERS_DIR)
+  add_compile_definitions(WITH_HYPRE)
+endif()
+
 # Set compiler specific variables
 # Used for compiler flags and other cross compiler variables
 message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
@@ -74,12 +78,19 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Compiler flags 
   set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
   
+  # for VS Sanitizer usage: 
+  # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64
+  # to the darts folder, for example: C:\anaconda3\envs\darts_debug\Lib\site-packages\darts
+  # 2. uncomment lines below:
+  #if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  #  list(APPEND opendarts_cxx_compiler_flags "/fsanitize=address")
+  #endif()
+  
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "/openmp")
-    list(APPEND opendarts_cxx_linker_flags "/openmp")
   endif()
 
   message("COMPILER FLAGS:" opendarts_cxx_compiler_flags)
@@ -180,6 +191,8 @@ endif()
 if(NOT DEFINED BOS_SOLVERS_DIR)
   include(thirdparty/thirdparty_superlu.cmake)
 endif()
+
+include(thirdparty/thirdparty_hypre.cmake)
 
 #   thirdparty/bos_solvers ------------------------------------------------------
 if(BOS_SOLVERS_DIR)

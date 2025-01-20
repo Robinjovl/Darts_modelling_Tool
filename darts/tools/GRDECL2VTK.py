@@ -180,7 +180,7 @@ class GeologyModel:
     
     def AppendScalarData(self,name,numpy_array):
         #* Append scalar cell data (numpy array) into vtk object 
-        data = ns.numpy_to_vtk(numpy_array.ravel(order='F'),deep=True, array_type=vtk.VTK_FLOAT)
+        data = ns.numpy_to_vtk(numpy_array.ravel(order='F'),deep=True)
         data.SetName(str(name))
         data.SetNumberOfComponents(1)
         self.VTK_Grids.GetCellData().AddArray(data)

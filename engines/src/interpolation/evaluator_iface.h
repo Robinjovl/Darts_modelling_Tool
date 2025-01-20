@@ -109,40 +109,40 @@ public:
      *
      * @param axis index of axis in question
      */
-   virtual int get_axis_n_points(int axis) { return 0; };
+   virtual int get_axis_n_points(int axis) const { return 0; };
    /**
      * @brief Get the minimum value for given axis, default empty implementation
      *
      * @param axis index of axis in question
      */
-   virtual double get_axis_min(int axis) { return 0; };
+   virtual double get_axis_min(int axis) const { return 0; };
 
    /**
      * @brief Get the maximum value for given axis, default empty implementation
      *
      * @param axis index of axis in question
      */
-   virtual double get_axis_max(int /*axis*/) { return 0; };
+   virtual double get_axis_max(int /*axis*/) const { return 0; };
 
    /**
      * @brief Get the number of interpolations that took place, default empty implementation
      *
      */
-   virtual uint64_t get_n_interpolations() { return 0; };
+   virtual uint64_t get_n_interpolations() const { return 0; };
 
    /**
      * @brief Get the number of supporting points used, default empty implementation
      * 
      * @return the number of supporting points used
      */
-   virtual uint64_t get_n_points_used() { return 0; };
+   virtual uint64_t get_n_points_used() const { return 0; };
 
    /**
      * @brief Get the total number of supporting points in parameter space, default empty implementation
      *
      * @return the total number of supporting points
      */
-   virtual uint64_t get_n_points_total() { return 0; };
+   virtual uint64_t get_n_points_total() const { return 0; };
 
    /**
      * @brief Compute operators values and their gradients for every specified state

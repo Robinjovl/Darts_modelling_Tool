@@ -5,6 +5,7 @@ from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
 
 import numpy as np
+import os
 
 from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
@@ -18,7 +19,7 @@ from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
     def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False):
-        self.model_folder = model_folder
+        self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
@@ -33,7 +34,8 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr # cpu_gmres_fs_cpr # cpu_superlu
+        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+        #self.params.linear_type = sim_params.cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -69,7 +71,7 @@ class Model(THMCModel):
                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
         nu = 0.2
 
-        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
+        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
@@ -98,6 +100,16 @@ class Model(THMCModel):
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             self.idata.initial.initial_composition = [0.67]
+
+        self.idata.mesh.bnd_tags = {}
+        bnd_tags = self.idata.mesh.bnd_tags  # short name
+        bnd_tags['BND_X-'] = 991
+        bnd_tags['BND_X+'] = 992
+        bnd_tags['BND_Y-'] = 993
+        bnd_tags['BND_Y+'] = 994
+        bnd_tags['BND_Z-'] = 995
+        bnd_tags['BND_Z+'] = 996
+        self.idata.mesh.matrix_tags = [99991]
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
@@ -300,7 +312,7 @@ class ModelProperties(PropertyContainer):
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        self.ph = [0, 1]
+        self.ph = np.array([0, 1], dtype=np.intp)
 
         for j in self.ph:
             # molar weight of mixture

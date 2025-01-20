@@ -1,15 +1,15 @@
+import numpy as np
 from darts.engines import operator_set_evaluator_iface, value_vector
-from darts.physics.operators_base import OperatorsBase
-from darts.physics.geothermal.property_container import PropertyContainer
+from darts.physics.base.operators_base import OperatorsBase
 
 
 class OperatorsGeothermal(OperatorsBase):
-    def __init__(self, property_container: PropertyContainer, thermal: bool = True):
+    def __init__(self, property_container, thermal: bool = True):
         super().__init__(property_container, thermal)
 
 
 class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):
-    n_ops = 8
+    n_ops = 6
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -17,33 +17,27 @@ class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy    = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
-        values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
+        values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[1] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
-        values[2] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
-                                          pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[3] = rock_int_energy / pore_volume_factor
+        values[2] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
+                                          - 100 * pressure)
         # energy flux
-        values[4] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0] +\
-                    pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         # fluid conduction
-        values[5] = pc.conduction[0] * pc.saturation[0] + pc.conduction[1] * pc.saturation[1]
-        # rock conduction
-        values[6] = 1 / pore_volume_factor
+        values[4] = np.sum(pc.conduction[pc.ph] * pc.saturation[pc.ph])
         # temperature
-        values[7] = pc.temperature
+        values[5] = pc.temperature
 
         return 0
 
 
 class acc_flux_custom_iapws_evaluator_python_well(OperatorsGeothermal):
-    n_ops = 8
+    n_ops = 6
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -51,33 +45,27 @@ class acc_flux_custom_iapws_evaluator_python_well(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
-        values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
+        values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[1] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
-        values[2] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
-                                          pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[3] = rock_int_energy / pore_volume_factor
+        values[2] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
+                                          - 100 * pressure)
         # energy flux
-        values[4] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0] + \
-                    pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         # fluid conduction
-        values[5] = 0.0
-        # rock conduction
-        values[6] = 1 / pore_volume_factor
+        values[4] = 0.0
         # temperature
-        values[7] = pc.temperature
+        values[5] = pc.temperature
 
         return 0
 
 
 class acc_flux_gravity_evaluator_python(OperatorsGeothermal):
-    n_ops = 12
+    n_ops = 10
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -85,38 +73,33 @@ class acc_flux_gravity_evaluator_python(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
-        values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
+        values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[2] = pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[1] = pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
+        values[2] = pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
-        values[3] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
-                                          pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[4] = rock_int_energy / pore_volume_factor
+        values[3] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
+                                          - 100 * pressure)
         # energy flux
-        values[5] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[6] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
+        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
         # fluid conduction
-        values[7] = pc.conduction[0] * pc.saturation[0] + pc.conduction[1] * pc.saturation[1]
-        # rock conduction
-        values[8] = 1 / pore_volume_factor
+        values[6] = np.sum(pc.conduction[pc.ph] * pc.saturation[pc.ph])
+        # water density
+        values[7] = pc.dens_m[0] if 0 in pc.ph else 0.
+        # steam density
+        values[8] = pc.dens_m[1] if 1 in pc.ph else 0.
         # temperature
         values[9] = pc.temperature
-        # water density
-        values[10] = pc.density[0]
-        # steam density
-        values[11] = pc.density[1]
 
         return 0
 
 
 class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
-    n_ops = 12
+    n_ops = 10
 
     def evaluate(self, state, values):
         pressure = state[0]
@@ -124,32 +107,27 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
         pc.evaluate(state)
 
         pore_volume_factor = pc.rock_compaction_ev.evaluate(state)
-        rock_int_energy = pc.rock_energy_ev.evaluate(state)
 
         # mass accumulation
-        values[0] = pore_volume_factor * (pc.density[0] * pc.saturation[0] + pc.density[1] * pc.saturation[1])
+        values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[2] = pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[1] = pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
+        values[2] = pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
-        values[3] = pore_volume_factor * (pc.density[0] * pc.saturation[0] * pc.enthalpy[0] +
-                                          pc.density[1] * pc.saturation[1] * pc.enthalpy[1] - 100 * pressure)
-        # rock internal energy
-        values[4] = rock_int_energy / pore_volume_factor
+        values[3] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
+                                          - 100 * pressure)
         # energy flux
-        values[5] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-        values[6] = pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
+        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
         # fluid conduction
-        values[7] = 0.0
-        # rock conduction
-        values[8] = 1 / pore_volume_factor
+        values[6] = 0.0
+        # water density
+        values[7] = pc.dens_m[0] if 0 in pc.ph else 0.
+        # steam density
+        values[8] = pc.dens_m[1] if 1 in pc.ph else 0.
         # temperature
         values[9] = pc.temperature
-        # water density
-        values[10] = pc.density[0]
-        # steam density
-        values[11] = pc.density[1]
 
         return 0
 
@@ -161,18 +139,17 @@ class geothermal_rate_custom_evaluator_python(OperatorsGeothermal):
         pc = self.property
         pc.evaluate(state)
 
-        total_density = pc.saturation[0] * pc.density[0] + pc.saturation[1] * pc.density[1]
-        total_flux = (pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]) / total_density
+        total_density = np.sum(pc.saturation[pc.ph] * pc.dens_m[pc.ph])
+        total_flux = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph]) / total_density
 
         # water volumetric rate
-        values[0] = pc.saturation[0] * total_flux
+        values[0] = pc.saturation[0] * total_flux if 0 in pc.ph else 0.
         # steam volumetric rate
-        values[1] = pc.saturation[1] * total_flux
+        values[1] = pc.saturation[1] * total_flux if 1 in pc.ph else 0.
         # temperature
         values[2] = pc.temperature
         # energy rate
-        values[3] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0] +\
-                    pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
 
         return 0
 
@@ -184,18 +161,17 @@ class geothermal_mass_rate_custom_evaluator_python(OperatorsGeothermal):
         pc = self.property
         pc.evaluate(state)
 
-        total_density = pc.saturation[0] * pc.density[0] + pc.saturation[1] * pc.density[1]
+        total_density = np.sum(pc.saturation[pc.ph] * pc.dens_m[pc.ph])
 
         # water mass rate
-        values[0] = pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[0] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         # steam mass rate
-        values[1] = pc.saturation[1] * (pc.density[0] * pc.relperm[0] / pc.viscosity[0]
-                                        + pc.density[0] * pc.relperm[0] / pc.viscosity[0]) / total_density
+        values[1] = pc.saturation[1] * (pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0]
+                                        + pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0]) / total_density
         # temperature
         values[2] = pc.temperature
         # energy rate
-        values[3] = pc.enthalpy[0] * pc.density[0] * pc.relperm[0] / pc.viscosity[0] + \
-                    pc.enthalpy[1] * pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
         
         return 0
 
@@ -207,6 +183,6 @@ class MassFluxOperators(OperatorsGeothermal):
         pc.evaluate(state)
 
         """ Beta operator here represents mass flux term: """
-        values[0] = pc.density[0] * pc.relperm[0] / pc.viscosity[0] + pc.density[1] * pc.relperm[1] / pc.viscosity[1]
+        values[0] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
 
         return 0

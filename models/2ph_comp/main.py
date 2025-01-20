@@ -3,8 +3,9 @@ import pandas as pd
 import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
+from darts.engines.logging import duplicate_output_to_file
 import matplotlib.pyplot as plt
-from darts.physics.operators_base import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -43,8 +44,11 @@ def plot_sol(n):
 
     plt.show()
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
+    duplicate_output_to_file("run.log")
+
+    print('START')
 
     redirect_darts_output('run.log')
     n = Model()

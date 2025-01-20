@@ -327,6 +327,52 @@ namespace opendarts
              10 : invalid matrix export format
       */
       int export_matrix_to_file_csr(const std::string &filename);
+      
+      /** Reads the matrix from file in csr format.
+          The sparse matrix will be read from file in csr matrix format. For example
+          
+          // N_ROWS	N_COLS	N_NON_ZEROS	N_BLOCK_SIZE
+          3	3	3	2
+          // Rows indexes[1..n_rows] (with out 0)
+          2
+          2
+          4
+          // END of Rows indexes
+          // Values n_non_zeros elements
+          // COLUMN	VALUE
+          // ROW 0
+          0	 1.0  0.0  2.0  3.0
+          2	-1.0 -3.0 -2.0  0.0
+          // ROW 1
+          // ROW 2
+          2	 5.0  7.0  6.0  8.0
+          // END OF VALUES
+          // END OF FILE
+          
+          Will results in a 3x3 matrix of block size 2x2:
+
+          1.0   0.0     0     0  -1.0  -3.0
+          2.0   3.0     0     0  -2.0   0.0
+            0     0     0     0     0     0
+            0     0     0     0     0     0
+            0     0     0     0   5.0   7.0
+            0     0     0     0   6.0   8.0
+
+          NOTE 1: because we chose a block size 2, some of the zeros are real stored
+          values and we have displayed them as 0.0. These are zeros within a
+          block and are stored. This is in contrast to the off block
+          zeros, which are part of the sparsity pattern of the matrix, and therefore
+          are represented as 0.
+
+          NOTE 2: There are 3 non zero blocks in this matrix. Therefore n_non_zeros = 3.
+
+          @param filename - The name of the file where to save the matrix.
+          @return the error code:
+              0  : no error
+             10  : invalid matrix import format
+            100  : incompatible block size 
+      */
+      int import_matrix_from_file_csr(const std::string &filename);
 
     public:
       // TODO: Implemented for backwards compatibility, to be removed or restructured

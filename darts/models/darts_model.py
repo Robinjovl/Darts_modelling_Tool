@@ -4,10 +4,10 @@ import xarray as xr
 import h5py
 import os
 import numpy as np
+from scipy.interpolate import interp1d
 
 from darts.reservoirs.reservoir_base import ReservoirBase
-from darts.physics.physics_base import PhysicsBase
-from darts.models.output import Output
+from darts.physics.base.physics_base import PhysicsBase
 
 from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
 from darts.engines import print_build_info as engines_pbi
@@ -46,15 +46,20 @@ class DartsModel:
         self.timer.start()  # Start time record
         self.timer.node["simulation"] = timer_node()  # Create timer.node called "simulation" to record simulation time
         self.timer.node["newton update"] = timer_node()
+        self.timer.node["vtk_output"] = timer_node()
         self.timer.node["initialization"] = timer_node()  # Create timer.node called "initialization" to record initialization time
-        self.timer.node["output"] = timer_node()
         self.timer.node["initialization"].start()  # Start recording "initialization" time
+        self.output_folder = 'output'
+        self.sol_filename = "solution.h5"
+        self.well_filename = 'well_data.h5'
+
         self.params = sim_params()  # Create sim_params object to set simulation parameters
+
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
-    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', verbose: bool = False,
-             itor_mode: str = 'adaptive', itor_type: str = 'multilinear',
-             restart = False):
+    def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,
+             verbose: bool = False, output_folder: str = None, itor_mode: str = 'adaptive',
+             itor_type: str = 'multilinear', is_barycentric: bool = False):
         """
         Function to initialize the model, which includes:
         - initialize well (perforation) position
@@ -78,6 +83,8 @@ class DartsModel:
         :type itor_mode: str
         :param itor_type: specifies either 'linear' or 'multilinear' interpolator
         :type itor_type: str
+        :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
+        :type is_barycentric: bool
         """
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
@@ -87,8 +94,7 @@ class DartsModel:
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
         self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose,
-                                  itor_mode=itor_mode, itor_type=itor_type)
-
+                                  itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
         if platform == 'gpu':
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
 
@@ -97,19 +103,20 @@ class DartsModel:
         self.physics.init_wells(self.reservoir.wells)
         self.init_well_rates()
 
+        if output_folder is not None:
+            self.output_folder = output_folder
+
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_initial_conditions()
         self.set_well_controls()
         self.reset()
 
-        # self.output_folder = output_folder
-        # self.sol_filename = sol_filename
-        # self.well_filename = 'well_data.h5'
-        # self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
-        # self.well_filepath = os.path.join(self.output_folder, self.well_filename)
         # self.restart = restart
-        # self.set_output()
+
+        # save solution vector
+        if restart is False:
+            self.save_data_to_h5(kind = 'solution')
 
     def reset(self):
         """
@@ -152,12 +159,13 @@ class DartsModel:
         initial_values = initial_values if initial_values is not None else self.initial_values
         gradient = gradient if gradient is not None else (self.gradient if hasattr(self, 'gradient') else None)
 
+        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
+
         for i, variable in enumerate(self.physics.vars):
             # Check if variable exists in initial values dictionary
             if variable not in initial_values.keys():
                 raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
 
-            self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
             if variable == 'pressure':
                 values = np.array(self.reservoir.mesh.pressure, copy=False)
             elif variable == 'temperature':
@@ -178,12 +186,47 @@ class DartsModel:
                 values[:] = initial_value
             elif gradient is not None and variable in gradient.keys():
                 # If gradient has been defined, calculate distribution over depth and assign to array
-                values = initial_value + self.reservoir.mesh.depth * gradient[variable]
+                values[:self.reservoir.mesh.n_res_blocks] = initial_value + \
+                    np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_res_blocks] * gradient[variable]
             else:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
 
         return
+
+    def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
+        """
+        Function to set initial conditions from given distribution of properties over depth.
+
+        :param depth: depth
+        :param initial_distribution: initial distributions of unknowns over depth,
+                                    must have keys equal to self.physics.vars
+        :type initial_distribution: dict
+        """
+
+        # all depths
+        depths = np.asarray(self.reservoir.mesh.depth)
+
+        # adjust the size of composition array in c++
+        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
+
+        z_counter = 0
+        nz_vars = self.physics.nc - 1
+        for variable in self.physics.vars:
+            if variable not in initial_distribution.keys():
+                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
+
+            values_foo = interp1d(depth, initial_distribution[variable], kind='linear', fill_value='extrapolate')
+
+            if variable == 'pressure':
+                np.asarray(self.reservoir.mesh.pressure)[:] = values_foo(depths)
+            elif variable == 'temperature':
+                np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
+            elif variable == 'enthalpy':
+                np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
+            else:           # compositions
+                np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
+                z_counter += 1
 
     def set_boundary_conditions(self):
         """
@@ -297,7 +340,7 @@ class DartsModel:
                 # to not allow the next time step be smaller than min_ts
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
-                    dt = min(dt, self.params.max_ts)
+
 
                 if t + dt > stop_time:
                     dt = stop_time - t
@@ -320,7 +363,8 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_reservoir_data : bool = True, verbose: bool = True):
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True,
+            log_3d_body_path: bool = False, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -334,9 +378,10 @@ class DartsModel:
         :type save_well_data: bool
         :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
+        :param log_3d_body_path: hypercube output
+        :type verbose: bool
         """
         days = days if days is not None else self.runtime
-
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
@@ -347,10 +392,14 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt * self.params.mult_ts, self.params.max_ts)
+
+            dt = min(self.prev_dt*self.params.mult_ts, days, self.params.max_ts)
         self.prev_dt = dt
 
         ts = 0
+
+        if log_3d_body_path:
+            self.physics.body_path_start(output_folder=self.output_folder)
 
         while t < stop_time:
             converged = self.run_timestep(dt, t, verbose)
@@ -369,13 +418,15 @@ class DartsModel:
                 # to not allow the next time step be smaller than min_ts
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
-                    dt = min(dt, self.params.max_ts)
 
                 if t + dt > stop_time:
                     dt = stop_time - t
                 else:
                     self.prev_dt = dt
-                
+
+                if log_3d_body_path:
+                    self.physics.body_path_add_bodys(output_folder=self.output_folder, time=t)
+
                 if save_well_data:
                     self.output.save_data_to_h5(kind='well')
 
@@ -384,7 +435,8 @@ class DartsModel:
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
                 if dt < self.params.min_ts:
-                    break
+                    print('Stop simulation. Reason: reached min. timestep', self.params.min_ts, 'dt=', dt)
+                    return -1
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -398,6 +450,7 @@ class DartsModel:
                   % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+        return 0
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
@@ -447,6 +500,24 @@ class DartsModel:
 
         self.timer.node['simulation'].stop()
         return converged
+
+    def do_after_step(self):
+        '''
+        can be overrided by an user to be executed in the 'run_simulation()'
+        '''
+        pass
+
+    def run_simulation(self):
+        time = 0.0
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            self.set_well_controls(time=time)
+            ret = self.run(dt)
+            if ret != 0:
+                print('run() failed for the step=', ith_step, 'dt=', dt)
+                return 1
+            self.do_after_step()
+            time += dt
+        return 0
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
@@ -514,6 +585,53 @@ class DartsModel:
             well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
             assert(len(well_head_conn_id) == 1)
             self.well_head_conn_id[well.name] = well_head_conn_id[0]
+
+    def reconstruct_velocities(self):
+        # velocity discretization
+        values, offset = self.reservoir.discretizer.discretize_velocities(cell_m=np.asarray(self.reservoir.mesh.block_m),
+                                                                            cell_p=np.asarray(self.reservoir.mesh.block_p),
+                                                                            geom_coef=np.asarray(self.reservoir.mesh.tranD),
+                                                                            n_res_blocks=self.reservoir.mesh.n_res_blocks)
+        self.reservoir.mesh.velocity_appr.resize(len(values))
+        self.reservoir.mesh.velocity_offset.resize(len(offset))
+
+        velocity_appr = np.asarray(self.reservoir.mesh.velocity_appr)
+        velocity_appr[:] = values
+        velocity_offset = np.asarray(self.reservoir.mesh.velocity_offset)
+        velocity_offset[:] = offset
+
+        # specify molar weights to get rid of molar density multiplier in flux terms
+        nc = self.physics.nc
+        self.physics.engine.molar_weights.resize(nc * len(self.physics.regions))
+        molar_weights = np.asarray(self.physics.engine.molar_weights)
+        for i, region in enumerate(self.physics.regions):
+            molar_weights[i * nc:(i + 1) * nc] = self.physics.property_containers[region].Mw
+
+        # resize storage for velocities inside engine
+        self.physics.engine.darcy_velocities.resize(self.reservoir.mesh.n_res_blocks * self.physics.nph * 3)
+
+        # allocate & transfer data to device
+        if self.platform == 'gpu':
+            from darts.engines import copy_data_to_device, allocate_device_data
+            # velocity_appr
+            velocity_appr_d = self.physics.engine.get_velocity_appr_d()
+            allocate_device_data(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_appr, velocity_appr_d)
+            # velocity_offset_d
+            velocity_offset_d = self.physics.engine.get_velocity_offset_d()
+            allocate_device_data(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            copy_data_to_device(self.reservoir.mesh.velocity_offset, velocity_offset_d)
+            # darcy_velocities_d
+            darcy_velocities_d = self.physics.engine.get_darcy_velocities_d()
+            allocate_device_data(self.physics.engine.darcy_velocities, darcy_velocities_d)
+            # molar_weights_d
+            molar_weights_d = self.physics.engine.get_molar_weights_d()
+            allocate_device_data(self.physics.engine.molar_weights, molar_weights_d)
+            copy_data_to_device(self.physics.engine.molar_weights, molar_weights_d)
+            # op_num_d
+            op_num_d = self.physics.engine.get_op_num_d()
+            allocate_device_data(self.reservoir.mesh.op_num, op_num_d)
+            copy_data_to_device(self.reservoir.mesh.op_num, op_num_d)
 
     # destructor to force to destroy all created C objects and free memory
     def __del__(self):

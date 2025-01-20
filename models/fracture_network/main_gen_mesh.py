@@ -1,5 +1,7 @@
 import numpy as np
 from multiprocessing import freeze_support
+
+from darts.input.input_data import InputData
 from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
 import os
 from datetime import datetime
@@ -35,13 +37,14 @@ def rotate_input(input_data, frac_data_raw):
     input_data['prod_well_coords'] = prod_wells_out
     input_data['inj_well_coords'] = inj_wells_out
 
-def generate_mesh(input_data):
-    print('case', input_data['case_name'])
-    output_dir = 'meshes_' + input_data['case_name']
-    if not 'balmatt' in input_data['case_name']: # simple test case
-        frac_data_raw = np.genfromtxt(input_data['frac_file'])
+def generate_mesh(idata : InputData):
+    case_name = idata.geom['case_name']
+    print('case', case_name)
+    output_dir = 'meshes_' + case_name
+    if idata.geom['frac_format'] == 'simple':
+        frac_data_raw = np.genfromtxt(idata.geom['frac_file'])
     else:
-        f = open(input_data['frac_file'], 'r')
+        f = open(idata.geom['frac_file'], 'r')
         data = f.readlines()
         f.close()
 
@@ -68,10 +71,10 @@ def generate_mesh(input_data):
     for i in range(frac_data_raw.shape[0]):
         plt.plot(np.append(frac_data_raw[i, 0], frac_data_raw[i, 2]),
                  np.append(frac_data_raw[i, 1], frac_data_raw[i, 3]))
-    wells_inj = input_data['inj_well_coords']
+    wells_inj = idata.geom['inj_well_coords']
     for i in range(len(wells_inj)):
         plt.plot(wells_inj[i][0], wells_inj[i][1], 'o', color='b', label='inj well')
-    wells_prod = input_data['prod_well_coords']
+    wells_prod = idata.geom['prod_well_coords']
     for i in range(len(wells_prod)):
         plt.plot(wells_prod[i][0], wells_prod[i][1], 'o', color='r', label='prod well')
     plt.xlabel('X, m.')
@@ -88,14 +91,14 @@ def generate_mesh(input_data):
     num_partition_x = 4  # number of partitions for parallel implementation of intersection finding algorithm
     num_partition_y = 4  # " ... "
 
-    frac_preprocessing(frac_data_raw, char_len=input_data['char_len'], output_dir=output_dir, filename_base=input_data['case_name'], merge_threshold=merge_threshold, z_top=input_data['z_top'],
-                       height_res=input_data['height_res'], angle_tol_small_intersect=angle_tol_remove_segm, apertures_raw=None, box_data=input_data['box_data'], margin=input_data['margin'],
-                       mesh_clean=input_data['mesh_clean'], mesh_raw=mesh_raw, angle_tol_straighten=angle_tol_straighten, straighten_after_cln=True, decimals=decimals,
+    frac_preprocessing(frac_data_raw, char_len=idata.geom['char_len'], output_dir=output_dir, filename_base=idata.geom['case_name'], merge_threshold=merge_threshold, z_top=idata.geom['z_top'],
+                       height_res=idata.geom['height_res'], angle_tol_small_intersect=angle_tol_remove_segm, apertures_raw=None, box_data=idata.geom['box_data'], margin=idata.geom['margin'],
+                       mesh_clean=idata.geom['mesh_clean'], mesh_raw=mesh_raw, angle_tol_straighten=angle_tol_straighten, straighten_after_cln=True, decimals=decimals,
                        tolerance_zero=1e-10, tolerance_intersect=1e-10, calc_intersections_before=False, calc_intersections_after=False,
                        num_partition_x=num_partition_x, num_partition_y=num_partition_y, partition_fractures_in_segms=True, matrix_perm=1, correct_aperture=False,
-                       small_angle_iter=2, char_len_mult=1, char_len_boundary=input_data['char_len_boundary'], main_algo_iters=1,
-                       wells=None,#input_data['inj_well_coords']+input_data['prod_well_coords'],
-                       char_len_well=input_data['char_len_well'], input_data=input_data)
+                       small_angle_iter=2, char_len_mult=1, char_len_boundary=idata.geom['char_len_boundary'], main_algo_iters=1,
+                       wells=None,#idata.geom['inj_well_coords']+idata.geom['prod_well_coords'],
+                       char_len_well=idata.geom['char_len_well'], input_data=idata.geom)
 
 
 if __name__ == "__main__":
@@ -103,7 +106,7 @@ if __name__ == "__main__":
 
     t1 = datetime.now()
     print(t1)
-
+    from set_case import set_input_data
     input_data = set_input_data('case_1')
     generate_mesh(input_data)
 

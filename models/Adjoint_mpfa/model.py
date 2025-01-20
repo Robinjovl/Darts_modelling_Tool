@@ -278,8 +278,7 @@ class ModelProperties(PropertyContainer):
         self.nu = zc
         for i in range(self.nph):
             self.x[i, i] = 1
-
-        ph = [0, 1]
+        ph = np.array([0, 1], dtype=np.intp)
         return ph
 
     def evaluate_at_cond(self, pressure, zc):

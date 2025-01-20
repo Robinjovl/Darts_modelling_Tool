@@ -31,8 +31,8 @@ public:
   const static uint8_t Z_VAR = 1;
   const static uint8_t T_VAR = NC;
 
-  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2 rock internal energy and conduction, 2*NP gravity and capillarity, 1 porosity
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 /*rock*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + 1;
+  // number of operators: NE accumulation operators, NE*NP flux operators, NP up_constant, NE*NP gradient, NE kinetic rate operators, 2*NP gravity and capillarity, 1 porosity, NP enthalpy, 2 temperature and pressure
+  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NE;
@@ -43,17 +43,17 @@ public:
   const static uint8_t KIN_OP = NE + NE * NP + NP + NE * NP;
 
   // extra operators
-  const static uint8_t RE_INTER_OP = NE + NE * NP + NP + NE * NP + NE;
-  const static uint8_t RE_TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 1;
-  const static uint8_t ROCK_COND = NE + NE * NP + NP + NE * NP + NE + 2;
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE + 3;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + 3 + NP;
-  const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 3 + 2 * NP;
+  const static uint8_t GRAV_OP = NE + NE * NP + NP + NE * NP + NE;
+  const static uint8_t PC_OP = NE + NE * NP + NP + NE * NP + NE + NP;
+  const static uint8_t PORO_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP;
+  const static uint8_t ENTH_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint8_t TEMP_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint8_t PRES_OP = NE + NE * NP + NP + NE * NP + NE + 2 * NP + 1 + NP + 1;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_super_gpu()
@@ -86,11 +86,6 @@ public:
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
-
-  void copy_solution_to_host();
-  void copy_residual_to_host();
-  void copy_solution_to_device();
-  void copy_residual_to_device();
 
 public:
   value_t *RV_d;              // [n_blocks] rock volumes for each block

@@ -27,8 +27,8 @@ class PhaseRelPerm:
             self.n = n
         else:  # water
             self.kre = kre
-            self.sr = 0
-            self.sr1 = 0
+            self.sr = sgr
+            self.sr1 = swc
             self.n = n
 
     def evaluate(self, sat):
@@ -147,11 +147,3 @@ class RockCompactionEvaluator:
 
     def evaluate(self, pressure):
         return 1.0 + self.compres * (pressure - self.Pref)
-
-
-class RockEnergyEvaluator:
-    def __init__(self, T_ref=273.15):
-        self.T_ref = T_ref
-
-    def evaluate(self, temperature):
-        return temperature - self.T_ref  # T-T_0, multiplied by rock hcap inside engine

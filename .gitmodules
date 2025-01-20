@@ -1,7 +1,7 @@
 [submodule "thirdparty/eigen"]
 	path = thirdparty/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-        branch = master
+    branch = master
 
 [submodule "thirdparty/MshIO"]
 	path = thirdparty/MshIO
@@ -10,4 +10,9 @@
 [submodule "thirdparty/pybind11"]
 	path = thirdparty/pybind11
 	url = https://github.com/pybind/pybind11
-        branch = master
+    branch = master
+
+[submodule "thirdparty/hypre"]
+	path = thirdparty/hypre
+	url = https://github.com/hypre-space/hypre.git
+    branch = master

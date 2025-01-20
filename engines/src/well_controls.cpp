@@ -10,7 +10,7 @@ int bhp_inj_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, val
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
 
-  const uint8_t n_block_size_sq = n_block_size * n_block_size;
+  const uint16_t n_block_size_sq = n_block_size * n_block_size;
   memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
 
   // first equation - pressure constraint
@@ -53,7 +53,7 @@ int bhp_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, va
 	value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 
 	memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
 
@@ -122,7 +122,7 @@ int rate_inj_well_control::add_to_jacobian(value_t /*dt*/, index_t well_head_idx
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *X_well_body = X_well_head + n_block_size;
   value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
-  const uint8_t n_block_size_sq = n_block_size * n_block_size;
+  const uint16_t n_block_size_sq = n_block_size * n_block_size;
   value_t p_diff = X_well_head[0] - X_well_body[0];
   value_t current_rate;
 
@@ -233,7 +233,7 @@ int rate_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, v
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *X_well_body = X_well_head + n_block_size;
   value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
-  const uint8_t n_block_size_sq = n_block_size * n_block_size;
+  const uint16_t n_block_size_sq = n_block_size * n_block_size;
   value_t p_diff = X_well_body[0] - X_well_head[0];
   value_t current_rate;
 
@@ -311,7 +311,7 @@ int rate_prod_well_control_mass_balance::add_to_jacobian(value_t dt, index_t wel
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *X_well_body = X_well_head + n_block_size;
   value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
-  const uint8_t n_block_size_sq = n_block_size * n_block_size;
+  const uint16_t n_block_size_sq = n_block_size * n_block_size;
 
   for (int var = 0; var < n_variables; var++)
     state[var] = X_well_body[var];
@@ -365,7 +365,7 @@ int gt_bhp_temp_inj_well_control::add_to_jacobian(value_t dt, index_t well_head_
 	//value_t *X_body_head = X_well_head + n_state_size;
 	value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
 
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 
 	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
 	// first equation - pressure constraint
@@ -411,7 +411,7 @@ int gt_bhp_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx,
 	value_t* X_well_head = &X[well_head_idx * n_block_size + P_VAR];
 	value_t* X_body_head = X_well_head + n_block_size;
 	value_t* RHS_well_head = &RHS[well_head_idx * n_block_size + P_VAR];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 	memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
 
 	// RHS
@@ -455,7 +455,7 @@ int gt_rate_temp_inj_well_control::add_to_jacobian(value_t dt, index_t well_head
 	value_t *X_well_head = &X[well_head_idx * n_block_size + P_VAR];
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t *RHS_well_head = &RHS[well_head_idx * n_block_size + P_VAR];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 
 	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
 	value_t p_diff = X_well_head[0] - X_well_body[0];
@@ -517,7 +517,7 @@ int gt_rate_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx
 	value_t *X_well_head = &X[well_head_idx * n_block_size + P_VAR];
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t *RHS_well_head = &RHS[well_head_idx * n_block_size + P_VAR];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 	value_t p_diff = X_well_body[0] - X_well_head[0];
 
 	state.assign(X.begin() + (well_head_idx + 1) * n_block_size + P_VAR, X.begin() + (well_head_idx + 1) * n_block_size + P_VAR + n_state_size);
@@ -580,7 +580,7 @@ int gt_mass_rate_enthalpy_inj_well_control::add_to_jacobian(value_t dt, index_t 
 	value_t *X_well_head = &X[well_head_idx * n_block_size + P_VAR];
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t *RHS_well_head = &RHS[well_head_idx * n_block_size + P_VAR];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
  	value_t p_diff = X_well_head[0] - X_well_body[0];
 
 	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
@@ -627,7 +627,7 @@ int gt_mass_rate_prod_well_control::add_to_jacobian(value_t dt, index_t well_hea
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t *RHS_well_head = &RHS[well_head_idx * n_block_size + P_VAR];
  	value_t p_diff = X_well_body[0] - X_well_head[0];
-	const uint8_t n_block_size_sq = n_block_size * n_block_size;
+	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 
 	state.assign(X.begin() + (well_head_idx + 1) * n_block_size + P_VAR, X.begin() + (well_head_idx + 1) * n_block_size + P_VAR + n_state_size);
 	rate_etor->evaluate_with_derivatives(state, block_idx, rate_temp_ops, rate_temp_ops_derivs);

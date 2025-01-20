@@ -85,7 +85,7 @@ class StructReservoir(ReservoirBase):
         self.global_data['volume'] = volume
 
         if self.global_data['depth'] is None: # pick z coordinates from the centers, and change the order from KJI to IJK
-            self.global_data['depth'] = self.discretizer.centroids_all_cells[:, :, :, 2].flatten(order='F')
+            self.global_data['depth'] = self.discretizer.centroids_all_cells[:, 2].flatten(order='F')
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [self.global_data['poro'], self.global_data['rcond'], self.global_data['hcap'],
@@ -278,30 +278,41 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: dict = None):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False, plot_zeros: bool = True,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
         assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
         import matplotlib.pyplot as plt
-        n_plots = len(output_idxs)
+        output_props = output_props if output_props is not None else list(data.keys())
+        n_plots = len(output_props)
         lims = lims if lims is not None else {}
+        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
+        figsize = figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
 
         if self.ndims == 1:
             if fig is None:
-                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+                fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
-                for j, (prop, idx) in enumerate(output_idxs.items()):
+                for j, prop in enumerate(output_props):
                     axs[j].set_title(prop)
 
-            for j, (prop, idx) in enumerate(output_idxs.items()):
+            for j, prop in enumerate(output_props):
                 ax = fig.axes[j]
+
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
 
                 if self.nx > 1:
                     x = self.discretizer.centroids_all_cells[:, 0]
-                    ax.plot(x, data[idx, :])
+                    ax.plot(x, data[prop][:])
                     if prop in lims.keys():
                         ax.set(ylim=lims[prop])
+                    if logx:
+                        ax.set_xscale('log')
+                        ax.set_xlim([np.min(x), np.max(x)])
                 elif self.nz > 1:
                     z = self.discretizer.centroids_all_cells[:, 2]
-                    ax.plot(data[idx, :], z)
+                    ax.plot(data[prop][:], z)
                     if prop in lims.keys():
                         ax.set(xlim=lims[prop])
 
@@ -312,33 +323,37 @@ class StructReservoir(ReservoirBase):
             X, Y = np.meshgrid(xgrid, ygrid)
             shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
 
-            if fig is None:
-                from mpl_toolkits.axes_grid1 import make_axes_locatable
-                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
-                for j, (prop, idx) in enumerate(output_idxs.items()):
-                    axs[j].set_title(prop)
-                    if prop not in lims.keys():
-                        lims[prop] = [None, None]
-
-                    z = np.empty(shape)
-                    im = axs[j].pcolormesh(X, Y, z, cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
-
-                    divider = make_axes_locatable(axs[j])
-                    cax = divider.append_axes('right', size='5%', pad=0.05)
-                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
-                    # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
-                    # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
-
-            for j, (prop, idx) in enumerate(output_idxs.items()):
-                ax = fig.axes[j]
+            for j, prop in enumerate(output_props):
+                axs[j].set_title(prop)
                 if prop not in lims.keys():
                     lims[prop] = [None, None]
 
-                ax.pcolormesh(X, Y, data[idx, :].reshape(shape), cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
-                ax.axis('scaled')
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
+
+                im = axs[j].pcolormesh(X, Y, data[prop][:].reshape(shape), cmap=cmap, vmin=lims[prop][0], vmax=lims[prop][1])
                 if self.nz > 1:
-                    ax.invert_yaxis()
+                    axs[j].invert_yaxis()
+                if logx:
+                    axs[j].set_xscale('log')
+                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
+                    axs[j].set_aspect('auto')
+                else:
+                    axs[j].set_aspect(aspect_ratio)
+
+                divider = make_axes_locatable(axs[j])
+                if colorbar_loc == 'right':
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                else:
+                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                    cbar = fig.colorbar(im, cax=cax, orientation='horizontal')
+                # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+            plt.tight_layout()
 
         return fig
 
@@ -402,7 +417,7 @@ class StructReservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_idxs: dict, data: np.ndarray):
+    def output_to_vtk(self, ith_step: int, time_steps : float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results of structured reservoir at timestamp t into `.vtk` format.
 
@@ -412,10 +427,10 @@ class StructReservoir(ReservoirBase):
         :type t: float
         :param output_directory: Path to save .vtk file
         :type output_directory: str
-        :param prop_idxs: Dictionary of properties with data array indices for output
-        :type prop_idxs: dict
+        :param prop_names: List of keys for properties
+        :type prop_names: list
         :param data: Data for output
-        :type data: np.ndarray
+        :type data: dict
         """
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
@@ -425,37 +440,41 @@ class StructReservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        for ts, t in enumerate(time_steps):
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
 
-        cell_data = {}
-        for prop, idx in prop_idxs.items():
-            local_data = data[idx, :]
-            global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
-            global_array[self.discretizer.local_to_global] = local_data
-            cell_data[prop] = global_array
+            cell_data = {}
+            for prop_name in prop_names:
+                local_data = data[prop_name][ts]
+                global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
+                global_array[self.discretizer.local_to_global] = local_data
+                cell_data[prop_name] = global_array
 
-        if self.vtk_grid_type == 0:
-            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-        else:
-            for key, value in cell_data.items():
-                self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
+                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
+            # in order to have correct timesteps in Paraview, write down group file
+            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+            # and does not support reading, track all written files and times and re-write the complete
+            # group file every time
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup('solution')
-        for fname, t in self.vtk_filenames_and_times.items():
-            vtk_group.addFile(fname, t)
-        vtk_group.save()
+            self.vtk_filenames_and_times[vtk_file_name] = t
+            vtk_group = VtkGroup('solution')
+            for fname, t in self.vtk_filenames_and_times.items():
+                vtk_group.addFile(fname, t)
+            vtk_group.save()
 
     def generate_vtk_grid(self, strict_vertical_layers=True, compute_depth_by_dz_sum=True):
         # interpolate 2d array using grid (xx, yy) and specified method
