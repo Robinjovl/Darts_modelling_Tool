@@ -151,6 +151,20 @@ class PropertyContainer(PropertyBase):
 
         return self.sat[0]
 
+    def compute_total_enthalpy(self, state, temperature):
+        _ = self.flash_ev.evaluate_PT(state[0], temperature)
+        flash_results = self.flash_ev.get_flash_results()
+        nu = np.array(flash_results.nu)
+        x = np.array(flash_results.X).reshape(self.nph, self.nc)
+
+        ph = np.array([j for j in range(self.nph) if nu[j] > 0])
+
+        enthalpy = 0.
+        for j in ph:
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(state[0], temperature, x[j, :])
+
+        return enthalpy
+
     def run_flash(self, pressure, temperature, zc):
         # Normalize fluid compositions
         zc_norm = zc if not self.ns else zc[:self.nc_fl] / (1. - np.sum(zc[self.nc_fl:]))
