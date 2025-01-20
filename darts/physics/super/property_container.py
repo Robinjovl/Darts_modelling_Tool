@@ -201,14 +201,16 @@ class PropertyContainer(PropertyBase):
 
         self.clean_arrays()
 
+        # Run flash
         self.ph = self.run_flash(pressure, temperature, zc)
+        self.temperature = self.flash_ev.get_flash_results().temperature if not isinstance(self.flash_ev, int) else self.temperature
 
         for j in self.ph:
             M = np.sum(self.Mw[:self.nc_fl] * self.x[j][:self.nc_fl])
 
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :])  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :], self.dens[j])  # output in [cp]
         self.compute_saturation(self.ph)
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat)
@@ -219,10 +221,10 @@ class PropertyContainer(PropertyBase):
         for j in range(self.ns):
             idx = self.np_fl + j
             self.sat[idx] = zc[self.nc_fl + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(pressure, temperature)
+            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(pressure, self.temperature)
             self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
 
-        self.mass_source = self.evaluate_mass_source(pressure, temperature, zc)
+        self.mass_source = self.evaluate_mass_source(pressure, self.temperature, zc)
 
         return
 
@@ -237,12 +239,12 @@ class PropertyContainer(PropertyBase):
         pressure, temperature, zc = self.get_state(state)
 
         for j in self.ph:
-            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # kJ/kmol
-            self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])
+            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :])  # kJ/kmol
+            self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :], self.dens[j])
 
         for j in range(self.ns):
             idx = self.np_fl + j
-            self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(pressure, temperature, self.x[0, :])
+            self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(pressure, self.temperature, self.x[0, :])
             self.cond[idx] = self.conductivity_ev[self.phases_name[idx]].evaluate()
 
         # Heat source and Reaction enthalpy
@@ -251,7 +253,7 @@ class PropertyContainer(PropertyBase):
             self.energy_source += self.energy_source_ev.evaluate(state)
 
         for j, reaction in self.kinetic_rate_ev.items():
-            self.energy_source += reaction.evaluate_enthalpy(pressure, temperature, self.x, zc[self.nc_fl + j])
+            self.energy_source += reaction.evaluate_enthalpy(pressure, self.temperature, self.x, zc[self.nc_fl + j])
 
         return
 
@@ -260,10 +262,11 @@ class PropertyContainer(PropertyBase):
         pressure, temperature, zc = self.get_state(state)
 
         ph = self.run_flash(pressure, temperature, zc)
+        self.temperature = self.flash_ev.get_flash_results().temperature
 
         for j in ph:
             M = np.sum(self.Mw * self.x[j][:])  # molar weight of mixture
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j][:]) / M
+            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j][:]) / M
 
         self.compute_saturation(ph)
 

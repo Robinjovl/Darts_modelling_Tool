@@ -78,6 +78,7 @@ class BlackOilProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
+        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
 
