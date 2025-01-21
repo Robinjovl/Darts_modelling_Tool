@@ -27,12 +27,8 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        T_init = 350.
-        state_init = value_vector([200., 0.]) if not self.compositional else value_vector([200., 1., 0.])
-        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: state_init[1],
-                               self.physics.vars[-1]: enth_init
+        self.initial_values = {'pressure': 200.,
+                               'temperature': 350.,
                                }
 
     def set_reservoir(self):
@@ -128,6 +124,8 @@ class Model(CICDModel):
                                                       'steam': ConstFunc(0.)}
                 property_container.rel_perm_ev = {'water': PhaseRelPerm("water"),
                                                   'steam': PhaseRelPerm("gas")}
+                property_container.output_props = {'temperature': lambda: property_container.temperature,
+                                                   'satAq': lambda: property_container.sat[0]}
 
                 from darts.physics.super.physics import Compositional
                 self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
@@ -145,15 +143,17 @@ class Model(CICDModel):
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
+            self.inj_stream = [1.]
+            self.inj_stream = self.inj_stream[:-1] + [-45000.]  # TODO: fix well controls to specify temperature in PH specification
             if i == 0:
                 if self.compositional:
-                    w.control = self.physics.new_rate_inj(0.2, [1.], 0)
+                    w.control = self.physics.new_rate_inj(8000, self.inj_stream, 0)
                 else:
                     w.control = self.physics.new_rate_water_inj(8000, 300)
                 # w.control = self.physics.new_bhp_water_inj(230, 308.15)
             else:
                 if self.compositional:
-                    w.control = self.physics.new_rate_prod(200., 0)
+                    w.control = self.physics.new_rate_prod(8000, 0)
                 else:
                     w.control = self.physics.new_rate_water_prod(8000)
 
@@ -176,6 +176,7 @@ class Model(CICDModel):
         if self.iapws_physics:
             from darts.physics.geothermal.geothermal import GeothermalIAPWSFluidProps
             self.idata.fluid = GeothermalIAPWSFluidProps()
+            self.compositional = False
         else:
             self.compositional = True
             if self.compositional:
