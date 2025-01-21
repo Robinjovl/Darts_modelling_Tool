@@ -38,10 +38,37 @@ set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
 )
 
 # Define the engines library
-pybind11_add_module(engines
+# pybind11_add_module(engines
+#   ${OD_ENGINES_PYBIND11_SRC_FILES}
+#   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
+# )
+
+add_library(engines SHARED
   ${OD_ENGINES_PYBIND11_SRC_FILES}
   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
 )
+
+if (CUDA)
+  set(CUDA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_gpu_tools.cpp
+  )
+
+  set_source_files_properties(
+    ${CUDA_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+
+    PROPERTIES LANGUAGE CUDA)
+  
+  target_sources(engines PRIVATE
+    ${CUDA_SOURCES}
+  )
+
+endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
@@ -58,8 +85,11 @@ else()
     )
 endif()
 
+# Manual python binding to support cuda
 target_link_libraries(engines
   PUBLIC
+    Python3::Python
+    pybind11::module
     opendarts_compiler_flags
     engines_global
     engines_wells
@@ -69,6 +99,7 @@ target_link_libraries(engines
     engines_interpolator
     engines_conn_mesh
 )
+set_target_properties(engines PROPERTIES PREFIX "")
 
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)

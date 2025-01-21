@@ -10,6 +10,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(SET_CXX11_ABI_0 TRUE)
+set(CMAKE_INSTALL_PREFIX "../darts")
+set(CMAKE_INSTALL_RPATH $ORIGIN)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
+endif()
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -52,15 +63,17 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
-#   GPU: GPU support (not available yet)
+#   GPU: GPU support
+set(GPU_CONFIG ${OPENDARTS_CONFIG} STREQUAL "GPU")
 if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
   set(OPENDARTS_CONFIG "ST") 
-elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
+elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if(NOT DEFINED BOS_SOLVERS_DIR)
-    message(FATAL_ERROR "openDARTS MT requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
+    message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
   endif()
-elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  if (GPU_CONFIG)
+    set(CUDA 1)
+  endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
 endif()
@@ -162,6 +175,11 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
+# Define a build option for CUDA support
+# option(CUDA "Enable CUDA support" OFF)
+
+
+
 
 # Report options for this build
 feature_summary(WHAT ENABLED_FEATURES DISABLED_FEATURES PACKAGES_FOUND)
@@ -192,6 +210,8 @@ if(NOT ONLY_SOLVERS)
   include(thirdparty/thirdparty_eigen.cmake)
 
   #   thirdparty/pybind11 ------------------------------------------------------
+  set(Python3_FIND_VIRTUALENV "STANDARD")
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
 
@@ -210,6 +230,26 @@ endif()
 # Finalize reporting and check if all libraries have been added ----------------
 message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
+
+
+# If CUDA support is enabled, find CUDA and set up CUDA files
+if(CUDA)
+    find_package(CUDAToolkit REQUIRED) # Alternatively: find_package(CUDAToolkit REQUIRED)
+    
+    if(CUDAToolkit_FOUND)
+        message(STATUS "CUDA found. Enabling CUDA support.")
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        set(CMAKE_CUDA_ARCHITECTURES 	89)
+
+        add_compile_definitions(WITH_GPU=1)
+    else()
+        message(FATAL_ERROR "CUDA requested but not found!")
+    endif()
+else()
+    message(STATUS "CUDA support is disabled.")
+endif()
 
 
 # Build dummy library to contain compiler flags --------------------------------
@@ -263,3 +303,4 @@ if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
 # ------------------------------------------------------------------------------
+
