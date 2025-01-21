@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(SET_CXX11_ABI_0 TRUE)
 set(CMAKE_INSTALL_PREFIX "../darts")
+set(CMAKE_INSTALL_RPATH $ORIGIN)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -54,15 +55,17 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
-#   GPU: GPU support (not available yet)
+#   GPU: GPU support
+set(GPU_CONFIG ${OPENDARTS_CONFIG} STREQUAL "GPU")
 if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
   set(OPENDARTS_CONFIG "ST") 
-elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
+elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if(NOT DEFINED BOS_SOLVERS_DIR)
-    message(FATAL_ERROR "openDARTS MT requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
+    message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
   endif()
-elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  if (GPU_CONFIG)
+    set(CUDA 1)
+  endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
 endif()
@@ -165,7 +168,7 @@ add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
 # Define a build option for CUDA support
-option(CUDA "Enable CUDA support" OFF)
+# option(CUDA "Enable CUDA support" OFF)
 
 
 
