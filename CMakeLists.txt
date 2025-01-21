@@ -242,7 +242,7 @@ if(CUDA)
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        set(CMAKE_CUDA_ARCHITECTURES 	89)
+        set(CMAKE_CUDA_ARCHITECTURES native)
 
         add_compile_definitions(WITH_GPU=1)
     else()
