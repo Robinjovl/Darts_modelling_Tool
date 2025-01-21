@@ -56,7 +56,10 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 #   ST: single threaded (Default)
 #   MT: multi threaded
 #   GPU: GPU support
-set(GPU_CONFIG ${OPENDARTS_CONFIG} STREQUAL "GPU")
+if (${OPENDARTS_CONFIG} STREQUAL "GPU")
+  set(GPU_CONFIG 1)
+endif()
+
 if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
   set(OPENDARTS_CONFIG "ST") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
