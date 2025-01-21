@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import time
 import os, sys
 
 from darts.engines import redirect_darts_output

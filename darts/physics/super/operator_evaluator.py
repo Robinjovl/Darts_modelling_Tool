@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import operator_set_evaluator_iface, value_vector
+from darts.engines import operator_set_evaluator_iface
 from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
 
@@ -29,12 +29,9 @@ class OperatorsSuper(OperatorsBase):
         self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
         self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
         self.PRES_OP = self.TEMP_OP + 1
-        # any additional operators should be added after PRES_OP and before ROCK_DENS_OP
-        # non-mechanics engine does not use ROCK_DENS_OP
-        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
-        self.n_ops = self.ROCK_DENS_OP
+        self.n_ops = self.PRES_OP + 1
 
-    def print_operators(self, state: value_vector, values: value_vector):
+    def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         print("================================================")
         print("STATE", state)
@@ -50,7 +47,7 @@ class OperatorsSuper(OperatorsBase):
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
         print("POROSITY", values[self.PORO_OP])
-        print("TEMPERATURE, PRESSURE", values[self.TEMP_OP:self.ROCK_DENS_OP])
+        print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
 
@@ -168,6 +165,10 @@ class ReservoirOperators(OperatorsSuper):
         # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
         values[self.KIN_OP + self.nc] = self.property.energy_source
 
+        # Phase enthalpy
+        for j in range(self.nph):
+            values[self.ENTH_OP + j] = self.property.enthalpy[j]
+
         """ Additional energy operators """
         # Temperature operator
         values[self.TEMP_OP] = temperature
@@ -199,7 +200,14 @@ class MassFluxOperators(OperatorsSuper):
             vec_values_as_np[self.nc_fl * j:self.nc_fl * j + self.nc_fl] = \
                 self.property.x[j][:self.nc_fl] * self.property.dens[j] * self.property.kr[j] / self.property.mu[j]
 
+
 class GeomechanicsReservoirOperators(ReservoirOperators):
+    def __init__(self):
+        super().__init__()
+
+        self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
+        self.n_ops = self.ROCK_DENS_OP + 1
+
     def evaluate(self, state, values):
         """
         Class methods which evaluates the state operators for the element based physics
@@ -290,9 +298,8 @@ class WellOperators(OperatorsSuper):
 
         return 0
 
-    def evaluate_thermal(self, state: value_vector, values: value_vector):
-        vec_state_as_np = np.asarray(state)
-        values[self.TEMP_OP] = vec_state_as_np[-1]
+    def evaluate_thermal(self, state, values):
+        values[self.TEMP_OP] = state[-1]
         return
 
 

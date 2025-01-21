@@ -23,7 +23,7 @@ class CICDModel(DartsModel):
         diff_norm_normalized_tol = diff_norm_normalized_tol_
         diff_abs_max_normalized_tol = diff_abs_max_normalized_tol_
         rel_diff_tol = rel_diff_tol_ 
-        nt = int(os.environ['OMP_NUM_THREADS'])
+        nt = int(os.environ.get('OMP_NUM_THREADS', 1))
         if nt > 1: # use a looser tolerance for comparison of multithreaded run
             diff_norm_normalized_tol = 1e-2
             diff_abs_max_normalized_tol = 1e-1

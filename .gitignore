@@ -25,6 +25,10 @@ models/__pycache__/
 # building info
 darts/build_info.txt
 
+# simulation results
+results_*/**
+solution.pvd
+
 *.exp
 *.png
 *.xlsx
@@ -40,3 +44,4 @@ darts/build_info.txt
 *.log
 *.nc
 *.h5
+*.vim

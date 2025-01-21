@@ -803,6 +803,29 @@ class CPG_Reservoir(ReservoirBase):
                 make_full = False
             save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
 
+    def update_perm(self, permx, permy, permz):
+        '''
+        recompute the transmissiblity without re-initializing the reservoir since there are no changes in the geometry
+        '''
+        # make 1D, also convert the type to be able to convert to value_vector_discr
+        # store to self to save in vtk
+        assert self.reservoir.permx.size == permx.flatten().size, f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        self.reservoir.permx = np.array(permx, dtype=np.float64).flatten()
+        self.reservoir.permy = np.array(permy, dtype=np.float64).flatten()
+        self.reservoir.permz = np.array(permz, dtype=np.float64).flatten()
+        permx = value_vector_discr(self.reservoir.permx)
+        permy = value_vector_discr(self.reservoir.permy)
+        permz = value_vector_discr(self.reservoir.permz)
+        self.reservoir.discretizer.set_permeability(permx, permy, permz)
+        # calculate transmissibilities
+        displaced_tags = dict()
+        displaced_tags[elem_loc.MATRIX] = set()
+        displaced_tags[elem_loc.FRACTURE] = set()
+        displaced_tags[elem_loc.BOUNDARY] = set()
+        displaced_tags[elem_loc.FRACTURE_BOUNDARY] = set()
+        self.reservoir.discretizer.calc_tpfa_transmissibilities(displaced_tags)
+
+
 #####################################################################
 
 def save_array(arr: np.array, fname: str, keyword: str, local_to_global: np.array, global_to_local: np.array, mode='w',
