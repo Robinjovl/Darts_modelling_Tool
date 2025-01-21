@@ -180,7 +180,7 @@ class Compositional(PhysicsBase):
                 state = value_vector([uniform_pressure, 0])
                 enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temp)
 
-                enthalpy = np.array(mesh.enthalpy, copy=False)
+                enthalpy = np.array(mesh.temperature, copy=False)  # TODO: access first and second state variable, not T or H by name
                 enthalpy.fill(enth)
 
         # set initial composition
@@ -223,7 +223,7 @@ class Compositional(PhysicsBase):
                 depth = np.array(mesh.depth, copy=True)
 
                 # set initial enthalpy through given temperature and pressure
-                enthalpy = np.array(mesh.enthalpy, copy=False)
+                enthalpy = np.array(mesh.temperature, copy=False)  # TODO: access first and second state variable, not T or H by name
                 temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
 
                 for j in range(mesh.n_blocks):
