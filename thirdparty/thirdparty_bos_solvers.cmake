@@ -36,12 +36,7 @@ message(STATUS "    Fetching bos_solvers ${OPENDARTS_CONFIG}")
 add_library(linear_solvers STATIC IMPORTED GLOBAL)
 
 if (CUDA)
-  # message(STATUS "Checking for MPI implementation, needed for GPU build.")
-  # find_package(MPI REQUIRED)
   add_library(amgx SHARED IMPORTED GLOBAL)
-  # target_link_libraries(amgx INTERFACE 
-  #   MPI::MPI_CXX
-  # )
   set_target_properties(amgx
     PROPERTIES
     IMPORTED_LOCATION ${BOS_SOLVERS_DIR}/lib/libamgxsh.so
@@ -50,6 +45,9 @@ if (CUDA)
       CUDA::cusparse
       amgx
   )
+  install(FILES ${BOS_SOLVERS_DIR}/lib/libamgxsh.so
+      DESTINATION ./) 
+
 endif()
 
 # When setting the library files to import, we need to do it in different ways for

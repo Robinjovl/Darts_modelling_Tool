@@ -37,8 +37,8 @@ fi
 # cd ..
 
 # to add amgx shared library to wheels
-cp -v ./engines/lib/darts_linear_solvers/lib/libamgxsh.so ./darts
+# cp -v ./engines/lib/darts_linear_solvers/lib/libamgxsh.so ./darts
 
 # build DARTS wheel
-./helper_scripts/build_install_darts.sh
+# ./helper_scripts/build_install_darts.sh
 
