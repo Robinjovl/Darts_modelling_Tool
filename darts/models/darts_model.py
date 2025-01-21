@@ -229,52 +229,30 @@ class DartsModel:
         self.reservoir.set_wells(verbose)
         return
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+    def set_initial_conditions(self):
         """
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
-
-        :param initial_values: Map of scalars/arrays of initial values for each primary variable, keys are the variables
-        :type initial_values: dict
-        :param gradient: Map of scalars of gradients for initial values
-        :type gradient: dict
         """
-        initial_values = initial_values if initial_values is not None else self.initial_values
-        gradient = gradient if gradient is not None else (self.gradient if hasattr(self, 'gradient') else None)
+        assert hasattr(self, 'initial_values'), "Initial values not specified in Model class"
+        initial_values = self.initial_values
+        gradient = self.gradient if hasattr(self, 'gradient') else None
 
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
-
-        for i, variable in enumerate(self.physics.vars):
-            # Check if variable exists in initial values dictionary
-            if variable not in initial_values.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
-
-            if variable == 'pressure':
-                values = np.array(self.reservoir.mesh.pressure, copy=False)
-            elif variable == 'temperature':
-                values = np.array(self.reservoir.mesh.temperature, copy=False)
-            elif variable == 'enthalpy':
-                values = np.array(self.reservoir.mesh.enthalpy, copy=False)
-            else:
-                values = np.array(self.reservoir.mesh.composition, copy=False)
-
-            # values = np.array(self.reservoir.mesh.values[i], copy=False)
-            initial_value = initial_values[variable]
-
-            if variable not in ['pressure', 'temperature', 'enthalpy']:
-                c = i - 1
-                values[c::(self.physics.nc - 1)] = initial_value
-            elif isinstance(initial_values[variable], (list, np.ndarray)):
-                # If initial value is an array, assign array
-                values[:] = initial_value
-            elif gradient is not None and variable in gradient.keys():
-                # If gradient has been defined, calculate distribution over depth and assign to array
-                values[:self.reservoir.mesh.n_res_blocks] = initial_value + \
-                    np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_res_blocks] * gradient[variable]
-            else:
-                # Else, assign constant value to each cell in array
-                values.fill(initial_value)
-
-        return
+        if gradient is None:
+            # SET INITIAL CONDITIONS FROM INITIAL VALUES, EITHER UNIFORM OR ARRAY
+            return self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh,
+                                                               pressure_input=initial_values['pressure'],
+                                                               temperature_input=initial_values['temperature'] if 'temperature' in initial_values.keys() else None,
+                                                               composition_input=np.array([initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]]),
+                                                               )
+        else:
+            # SET INITIAL CONDITIONS BASED ON GRADIENTS FROM INITIAL VALUES
+            return self.physics.set_nonuniform_initial_conditions(mesh=self.reservoir.mesh,
+                                                                  pressure_grad=gradient['pressure'] if 'pressure' in gradient.keys() else 0.,
+                                                                  temperature_grad=gradient['temperature'] if 'temperature' in gradient.keys() else 0.,
+                                                                  p_at_ref_depth=initial_values['pressure'] if 'pressure' in initial_values.keys() else 1.,
+                                                                  T_at_ref_depth=initial_values['temperature'] if 'temperature' in initial_values.keys() else 293.15,
+                                                                  composition_input=[initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]],
+                                                                  )
 
     def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
         """

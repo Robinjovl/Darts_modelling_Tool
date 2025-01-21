@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.base.operators_base import PropertyOperators
@@ -122,39 +123,52 @@ class Geothermal(PhysicsBase):
                                                                                     rate, self.rate_itor)
         return
 
-    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_temperature):
+    def set_uniform_initial_conditions(self, mesh: conn_mesh,
+                                       pressure_input: Union[float, list, np.ndarray],
+                                       composition_input: Union[list, np.ndarray] = None,
+                                       temperature_input: Union[float, list, np.ndarray] = None):
         """""
         Function to set uniform initial reservoir condition
 
-        :param mesh: :class:`Mesh` object
-        :param uniform_pressure: Uniform pressure setting
-        :param uniform_temperature: Uniform temperature setting
+        :param mesh: conn_mesh object
+        :param pressure_input: Pressure [bar], uniform or array
+        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays, not used in Geothermal physics
+        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
         """
         assert isinstance(mesh, conn_mesh)
         # nb = mesh.n_blocks
 
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
-
-        state = value_vector([uniform_pressure, 0])
-        enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temperature)
+        pressure[:] = pressure_input
 
         enthalpy = np.array(mesh.enthalpy, copy=False)
-        enthalpy.fill(enth)
+        if hasattr(pressure_input, '__len__'):
+            # Pressure specified as an array
+            for j in range(mesh.n_blocks):
+                state = value_vector([pressure_input[j], 0])
+                temp = temperature_input[j] if hasattr(temperature_input, "__len__") else temperature_input
+                enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+        else:
+            state = value_vector([pressure_input, 0])
+            enth = self.property_containers[0].compute_total_enthalpy(state, temperature_input)
+            enthalpy[:] = enth
 
-    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad, ref_depth_p=0, p_at_ref_depth=1,
-                                          ref_depth_T=0, T_at_ref_depth=293.15):
+    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, pressure_grad: float = 0., temperature_grad: float = 0.,
+                                          ref_depth_p: float = 0., p_at_ref_depth: float = 1.,
+                                          ref_depth_T: float = 0., T_at_ref_depth: float = 293.15,
+                                          composition_input: Union[list, np.ndarray] = None):
         """
-        Function to set nonuniform initial reservoir condition
+        Method to set initial conditions with gradients
 
-        :param mesh: :class:`Mesh` object
-        :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
-        :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
-        :param ref_depth_p: the reference depth for the pressure, km
-        :param p_at_ref_depth: the value of the pressure at the reference depth, bars
-        :param ref_depth_T: the reference depth for the temperature, km
-        :param T_at_ref_depth: the value of the temperature at the reference depth, K
+        :param mesh: conn_mesh object
+        :param pressure_grad: Pressure gradient [bar/km], calculates pressure based on depth [1/km], default is 0
+        :param temperature_grad: Temperature gradient [K/km], calculates temperature based on depth [1/km], default is 0
+        :param ref_depth_p: Reference depth for pressure [km], default is 0
+        :param p_at_ref_depth: Pressure at reference depth [bar], default is 1
+        :param ref_depth_T: Reference depth for temperature [K], default is 0
+        :param T_at_ref_depth: Temperature at reference depth [K], default is 293.15
+        :param composition_input: Unused variable in Geothermal physics
         """
         assert isinstance(mesh, conn_mesh)
 

@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
@@ -150,18 +151,16 @@ class Compositional(PhysicsBase):
         return
 
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
-                                       uniform_pressure: float, uniform_composition: list, uniform_temp: float = None):
+                                       pressure_input: Union[float, list, np.ndarray],
+                                       composition_input: Union[list, np.ndarray] = None,
+                                       temperature_input: Union[float, list, np.ndarray] = None):
         """
-        Function to set uniform initial conditions.
+        Method to set initial conditions by arrays or uniformly for all cells
 
-        :param mesh: Mesh object
-        :type mesh:
-        :param uniform_pressure: Uniform pressure setting
-        :type uniform_pressure: float
-        :param uniform_composition: Uniform composition setting
-        :type uniform_composition: list
-        :param uniform_temp: Uniform temperature setting, default is None for isothermal
-        :type uniform_temp: float
+        :param mesh: conn_mesh object
+        :param pressure_input: Pressure [bar], uniform or array
+        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
+        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
         """
         assert isinstance(mesh, conn_mesh)
 
@@ -169,19 +168,25 @@ class Compositional(PhysicsBase):
         """ Uniform Initial conditions """
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
+        pressure[:] = pressure_input
 
         # if thermal, set initial temperature or enthalpy
-        if uniform_temp is not None:
+        if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
                 temperature = np.array(mesh.temperature, copy=False)
-                temperature.fill(uniform_temp)
+                temperature[:] = temperature_input
             else:
-                state = value_vector([uniform_pressure, 0])
-                enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temp)
-
                 enthalpy = np.array(mesh.temperature, copy=False)  # TODO: access first and second state variable, not T or H by name
-                enthalpy.fill(enth)
+                if hasattr(pressure_input, '__len__'):
+                    # Pressure specified as an array
+                    for j in range(mesh.n_blocks):
+                        state = value_vector([pressure_input[j], 0])
+                        temp = temperature_input[j] if hasattr(temperature_input, "__len__") else temperature_input
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+                else:
+                    state = value_vector([pressure_input, 0])
+                    enth = self.property_containers[0].compute_total_enthalpy(state, temperature_input)
+                    enthalpy[:] = enth
 
         # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))
@@ -189,36 +194,43 @@ class Compositional(PhysicsBase):
         # composition[:] = np.array(uniform_composition)
         if self.nc == 2:
             for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = uniform_composition[:]
+                composition[c::(self.nc - 1)] = composition_input[:] if not hasattr(composition_input[0], "__len__") \
+                    else composition_input[0, :]
         else:
             for c in range(self.nc - 1):  # Denis
-                composition[c::(self.nc - 1)] = uniform_composition[c]
+                composition[c::(self.nc - 1)] = composition_input[c] if not hasattr(composition_input[0], "__len__") \
+                    else composition_input[c, :]
 
-    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, input_pressure, input_composition, input_temperature = None,
-                                          pressure_grad: float = 0., ref_depth_p: float = 0, p_at_ref_depth: float = 1.,
-                                          temperature_grad: float = 0., ref_depth_T: float = 0, T_at_ref_depth: float = 293.15):
+    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, pressure_grad: float = 0., temperature_grad: float = 0.,
+                                          ref_depth_p: float = 0., p_at_ref_depth: float = 1.,
+                                          ref_depth_T: float = 0., T_at_ref_depth: float = 293.15,
+                                          composition_input: Union[list, np.ndarray] = None):
         """
-        Function to set non-uniform initial conditions.
+        Method to set initial conditions with gradients
 
-        :param mesh: Mesh object
-        :type mesh: conn_mesh
-        :param input_pressure: Array of pressures
-        :param input_composition: Array of compositions
-        :param input_temperature: Array of temperatures, default is None for isothermal
+        :param mesh: conn_mesh object
+        :param pressure_grad: Pressure gradient [bar/km], calculates pressure based on depth [1/km], default is 0
+        :param temperature_grad: Temperature gradient [K/km], calculates temperature based on depth [1/km], default is 0
+        :param ref_depth_p: Reference depth for pressure [km], default is 0
+        :param p_at_ref_depth: Pressure at reference depth [bar], default is 1
+        :param ref_depth_T: Reference depth for temperature [K], default is 0
+        :param T_at_ref_depth: Temperature at reference depth [K], default is 293.15
+        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
         """
         assert isinstance(mesh, conn_mesh)
         nb = mesh.n_blocks
 
-        """ Uniform Initial conditions """
+        """ Non-Uniform Initial conditions """
+        depth = np.array(mesh.depth, copy=True)
         # set initial pressure
         pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = input_pressure
+        pressure[:] = (depth[:pressure.size] / 1000 - ref_depth_p) * pressure_grad + p_at_ref_depth
 
-        # if thermal, set initial temperature
-        if input_temperature is not None:
+        # if thermal, set initial temperature/enthalpy
+        if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
                 temperature = np.array(mesh.temperature, copy=False)
-                temperature[:] = input_temperature
+                temperature[:] = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
             else:
                 depth = np.array(mesh.depth, copy=True)
 
@@ -227,7 +239,8 @@ class Compositional(PhysicsBase):
                 temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
 
                 for j in range(mesh.n_blocks):
-                    state = value_vector([pressure[j], 0])
+                    comp = composition_input[:, j] if hasattr(composition_input[0], "__len__") else composition_input
+                    state = value_vector([pressure[j], 0] + comp)
                     enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
 
         # set initial composition
@@ -236,10 +249,12 @@ class Compositional(PhysicsBase):
         # composition[:] = np.array(uniform_composition)
         if self.nc == 2:
             for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = input_composition[:]
+                composition[c::(self.nc - 1)] = composition_input[:] if not hasattr(composition_input[0], "__len__") \
+                    else composition_input[0, :]
         else:
             for c in range(self.nc - 1):  # Denis
-                composition[c::(self.nc - 1)] = input_composition[c]
+                composition[c::(self.nc - 1)] = composition_input[c] if not hasattr(composition_input[0], "__len__") \
+                    else composition_input[c, :]
 
     def init_wells(self, wells):
         """
