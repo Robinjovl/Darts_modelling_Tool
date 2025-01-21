@@ -16,7 +16,7 @@ Help_Info()
   echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
   echo "   -t : Enable testing: ctest of solvers. Default: don't test"
   echo "   -w : Enable generation of python wheel. Default: false"
-  echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
+  echo "   -m : Sequential version build (without OpenMP). Default: false"
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
@@ -34,7 +34,7 @@ testing=false     # Whether to enable the testing (ctest) of solvers.
 wheel=false       # Whether to generate python wheel.
 bos_solvers_artifact=false # Fetch the bos_solvers library from artifacts (for CI/CD purposes)
 iter_solvers=false # Iterative linear solvers, will be set below depending on -a and -b flags
-MT=true           # Build openDARTS multi-threaded. This is for engines and bos_solvers (if defined)
+seq_build=false   # Build openDARTS multi-threaded. This is for engines and bos_solvers (if defined)
 skip_req=false    # Skip building requirements.
 config="Release"  # Default configuration (install).
 NT=8              # Number of threads by default 8
@@ -52,8 +52,8 @@ while getopts ":chtwmrab:d:j:g:" option; do
            testing=true;;
         w) # Generate wheel
            wheel=true;;
-        m) # Multi-thread
-           MT=true;;
+        m) # without OpenMP
+           seq_build=true;;
         r) # skip buildrequirements
            skip_req=true;;
         a) # Fetch the bos_solvers library from artifacts
@@ -77,9 +77,9 @@ if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     # tests are only available in open-DARTS, bos_solvers do not have testing
     testing=false
 fi
-if [ "$iter_solvers" == false ] && [ "$MT" == true ]; then
-   echo '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
-   MT=false
+if [ "$iter_solvers" == false ] && [ "$seq_build" == false ]; then
+   echo '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequential build.'
+   seq_build=true
 fi
 # ------------------------------------------------------------------------------
 
@@ -176,7 +176,7 @@ else
     if [[ "$special_gpp" == true ]]; then
         cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
     fi
-    if [[ "$MT" == true ]]; then
+    if [[ "$seq_build" == false ]]; then
         cmake_options+=" -D OPENDARTS_CONFIG=MT"
     fi
     if [[ ! -z "$bos_solvers_dir" ]]; then
