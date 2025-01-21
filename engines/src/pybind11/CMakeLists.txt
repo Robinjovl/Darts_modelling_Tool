@@ -36,15 +36,22 @@ set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
 )
 
 # Define the engines library
-# pybind11_add_module(engines
-#   ${OD_ENGINES_PYBIND11_SRC_FILES}
-#   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
-# )
-
-add_library(engines SHARED
-  ${OD_ENGINES_PYBIND11_SRC_FILES}
-  ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
-)
+if(CUDA)
+  # Manual python binding to support cuda
+  add_library(engines SHARED
+    ${OD_ENGINES_PYBIND11_SRC_FILES}
+    ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
+  )
+  target_link_libraries(engines PUBLIC
+    Python3::Python
+    pybind11::module
+  )
+else()
+  pybind11_add_module(engines
+    ${OD_ENGINES_PYBIND11_SRC_FILES}
+    ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
+  )
+endif()
 
 if (CUDA)
   set(CUDA_SOURCES
@@ -83,11 +90,8 @@ else()
     )
 endif()
 
-# Manual python binding to support cuda
 target_link_libraries(engines
   PUBLIC
-    Python3::Python
-    pybind11::module
     opendarts_compiler_flags
     engines_global
     engines_wells

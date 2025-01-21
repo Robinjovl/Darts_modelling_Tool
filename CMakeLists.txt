@@ -205,8 +205,10 @@ if(NOT ONLY_SOLVERS)
   include(thirdparty/thirdparty_eigen.cmake)
 
   #   thirdparty/pybind11 ------------------------------------------------------
-  set(Python3_FIND_VIRTUALENV "STANDARD")
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+  if(CUDA)
+    set(Python3_FIND_VIRTUALENV "STANDARD")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+  endif()
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
 
