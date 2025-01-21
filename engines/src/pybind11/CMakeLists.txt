@@ -66,6 +66,7 @@ if (CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
 
     PROPERTIES LANGUAGE CUDA)
   
