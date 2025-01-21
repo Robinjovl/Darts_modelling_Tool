@@ -26,11 +26,8 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        T_init = 450.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
+        self.initial_values = {'pressure': 200.,
+                               'temperature': 450.
                                }
 
     def set_reservoir(self, resolution):

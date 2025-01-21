@@ -28,10 +28,8 @@ class ModelGeothermal(Model_CPG):
                                                        pressure_grad=self.idata.initial.pressure_gradient,
                                                        temperature_grad=self.idata.initial.temperature_gradient)
         elif self.idata.initial.type == 'uniform':
-            state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
-            self.initial_values = {self.physics.vars[0]: state_init[0],
-                                   self.physics.vars[1]: enth_init}
+            self.initial_values = {'pressure': self.idata.initial.initial_pressure,
+                                   'temperature': self.idata.initial.initial_temperature}
             super().set_initial_conditions()
 
     def set_well_controls(self, time: float = 0., verbose=True):

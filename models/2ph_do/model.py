@@ -26,7 +26,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
         self.initial_values = {self.physics.vars[0]: 400,
-                               self.physics.vars[1]: self.ini,
+                               self.physics.vars[1]: self.ini[0],
                                }
 
     def set_reservoir(self):

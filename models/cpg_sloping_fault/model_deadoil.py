@@ -22,7 +22,7 @@ class ModelDeadOil(Model_CPG):
         if self.reservoir.nz == 1:
             # uniform initial conditions, # pressure in bars # composition
             P_at_surface = 1.  # bars
-            self.initial_values = {self.physics.vars[0]: P_at_surface, self.physics.vars[1]: self.ini}
+            self.initial_values = {self.physics.vars[0]: P_at_surface, self.physics.vars[1]: self.ini[0]}
             self.physics.gradient = {self.physics.vars[0]: 0.1}  # gradient 0.1 bars/m
         else:
             depth_array = np.array(self.reservoir.mesh.depth, copy=False)
