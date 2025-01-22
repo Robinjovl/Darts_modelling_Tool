@@ -42,6 +42,16 @@ if(CUDA)
     ${OD_ENGINES_PYBIND11_SRC_FILES}
     ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
   )
+  message(FATAL_ERROR "${Python3_SOABI}")
+  set_target_properties(engines PROPERTIES
+    OUTPUT_NAME "engines.${Python3_SOABI}"
+  )
+  if (WIN32)
+    set_target_properties(engines PROPERTIES
+      SUFFIX "pyd"
+    )
+  endif()
+
   target_link_libraries(engines PUBLIC
     Python3::Python
     pybind11::module
