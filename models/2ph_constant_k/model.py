@@ -390,20 +390,20 @@ class Model(DartsModel):
 
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
-            #injector.control = self.physics.new_rate_inj(0.5, self.inj_stream, 0)
+            #injector.control = self.physics.new_rate_inj(0.5, "phase_molar_rate", 'gas', self.inj_stream)
             #producer.control = self.physics.new_bhp_prod(50.)
             z = 1
         elif self.reservoir_type == '2D':
-            injector.control = self.physics.new_rate_inj(20., self.inj_stream, 0)
+            injector.control = self.physics.new_rate_inj(20., "phase_molar_rate", 'gas', self.inj_stream)
             producer.control = self.physics.new_bhp_prod(50.)
         else:
-            injector.control = self.physics.new_rate_inj(0., self.inj_stream, 0)
+            injector.control = self.physics.new_rate_inj(0., "phase_molar_rate", 'gas', self.inj_stream)
             producer.control = self.physics.new_rate_prod(0., 0)
 
     def set_spe10_well_controls_initialized(self):
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
-        injector.control = self.physics.new_rate_inj(20., self.inj_stream, 0)
+        injector.control = self.physics.new_rate_inj(20., "phase_molar_rate", 'gas', self.inj_stream)
         producer.control = self.physics.new_bhp_prod(np.min(self.p_init) - 50.)
 
 class ModelProperties(PropertyContainer):
