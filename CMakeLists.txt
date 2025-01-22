@@ -242,6 +242,7 @@ if(CUDA)
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
         set(CMAKE_CUDA_ARCHITECTURES native)
 
         add_compile_definitions(WITH_GPU=1)

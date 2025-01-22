@@ -39,13 +39,13 @@ if (CUDA)
   add_library(amgx SHARED IMPORTED GLOBAL)
   set_target_properties(amgx
     PROPERTIES
-    IMPORTED_LOCATION ${BOS_SOLVERS_DIR}/lib/libamgxsh.so
+    IMPORTED_LOCATION ${BOS_SOLVERS_DIR}/lib/libamgxsh${CMAKE_SHARED_LIBRARY_SUFFIX}
   )
   target_link_libraries(linear_solvers INTERFACE 
       CUDA::cusparse
       amgx
   )
-  install(FILES ${BOS_SOLVERS_DIR}/lib/libamgxsh.so
+  install(FILES ${BOS_SOLVERS_DIR}/lib/libamgxsh${CMAKE_SHARED_LIBRARY_SUFFIX}
       DESTINATION ./) 
 
 endif()

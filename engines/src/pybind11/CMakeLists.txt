@@ -46,7 +46,9 @@ if(CUDA)
   set_target_properties(engines PROPERTIES
     OUTPUT_NAME "engines.${Python3_SOABI}"
   )
-  set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  # The following property may speed up compilation, at the cost of some performance
+  # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
   if (WIN32)
     set_target_properties(engines PROPERTIES
       SUFFIX "pyd"
