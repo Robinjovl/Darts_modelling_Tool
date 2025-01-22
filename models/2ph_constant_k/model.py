@@ -240,8 +240,8 @@ class Model(DartsModel):
 
     def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
         if self.reservoir_type == '1D' or self.reservoir_type == '2D':
-            self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh, uniform_pressure=self.p_init,
-                                                        uniform_composition=self.ini_comp)
+            self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh, pressure_input=self.p_init,
+                                                        composition_input=self.ini_comp)
         else:
             # get depths
             depths = np.asarray(self.reservoir.mesh.depth)
@@ -276,8 +276,8 @@ class Model(DartsModel):
                            dTdh=0.).reshape((nb, self.physics.n_vars))
 
             # assign initial condition with evaluated initialized properties
-            self.set_initial_conditions_from_depth_table(depth=init.depths,
-                                                         initial_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
+            self.physics.set_initial_conditions(mesh=self.reservoir.mesh, input_depth=init.depths,
+                                                input_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
 
     def set_well_controls(self):
         injector = self.reservoir.get_well('I1')
