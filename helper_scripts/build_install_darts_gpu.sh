@@ -11,7 +11,7 @@ if [[ "$GSELINSOLVERSPATH" == "" ]]; then
   exit 1
 fi
 
-./helper_scripts/build_darts_cmake.sh -G -j20 -b $GSELINSOLVERSPATH 
+./helper_scripts/build_darts_cmake.sh -G -j20 -b $GSELINSOLVERSPATH -w
 
 # cp -r $GSELINSOLVERSPATH/lib darts_linear_solvers
 # cp -r $GSELINSOLVERSPATH/include darts_linear_solvers
