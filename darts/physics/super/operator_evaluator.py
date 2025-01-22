@@ -339,7 +339,7 @@ class CtrlRateOperators(operator_set_evaluator_iface):
         super().__init__()
 
         self.property = property_container
-        self.np_fl = property_container.np_fl
+        self.nph = property_container.nph
         self.thermal = property_container.thermal
 
         self.n_ops = property_container.nph * 4
@@ -355,11 +355,11 @@ class CtrlRateOperators(operator_set_evaluator_iface):
             # Flux operator for "phase_molar_rate":
             vec_values_as_np[ph_idx] = self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
             # Flux operator for "phase_mass_rate":
-            vec_values_as_np[self.np_fl + ph_idx] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            vec_values_as_np[self.nph + ph_idx] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
             # Flux operator for "phase_volumetric_rate":
-            vec_values_as_np[self.np_fl * 2 + ph_idx] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
+            vec_values_as_np[self.nph * 2 + ph_idx] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
             if self.thermal:
                 # Flux operator for "phase_advective_heat_rate":
-                vec_values_as_np[self.np_fl * 3 + ph_idx] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx])
+                vec_values_as_np[self.nph * 3 + ph_idx] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx])
 
         return 0
