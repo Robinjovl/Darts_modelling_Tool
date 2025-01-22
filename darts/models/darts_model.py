@@ -55,6 +55,11 @@ class DartsModel:
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
+        # Initial values for depth initialization table
+        self.input_depth = []
+        self.input_distribution = {}
+        self.gradients = {}
+
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,
@@ -232,61 +237,50 @@ class DartsModel:
     def set_initial_conditions(self):
         """
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
-        """
-        assert hasattr(self, 'initial_values'), "Initial values not specified in Model class"
-        initial_values = self.initial_values
-        gradient = self.gradient if hasattr(self, 'gradient') else None
 
-        if gradient is None:
-            # SET INITIAL CONDITIONS FROM INITIAL VALUES, EITHER UNIFORM OR ARRAY
+        Initial conditions can be specified in multiple ways:
+        1) Uniform or array -> specify constant or array of values for each variable self.input_distribution
+        2) Reference value with gradients -> specify reference depth in self.input_depth,
+                                             reference value in self.input_distribution,
+                                             gradient for variables in self.gradients (in unit/m)
+        3) Depth table -> specify depths in self.input_depth and initial distributions of unknowns over depth
+                          in self.input_distributions; if single value has been specified it will be constant over depth
+        """
+        # If full arrays have been specified, use self.physics.set_uniform_initial_conditions() method
+        if np.all([(hasattr(self.input_distribution[variable], "__len__") and  # array
+                    len(self.input_distribution[variable]) == self.reservoir.mesh.n_blocks)
+                   for variable in self.input_distribution.keys()]):
+            temperature_input = self.input_distribution['temperature'] if 'temperature' in self.input_distribution.keys() else None
+            comp_input = np.array([self.input_distribution[comp] for comp in self.physics.vars[1:self.physics.nc]])
             return self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh,
-                                                               pressure_input=initial_values['pressure'],
-                                                               temperature_input=initial_values['temperature'] if 'temperature' in initial_values.keys() else None,
-                                                               composition_input=np.array([initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]]),
+                                                               pressure_input=self.input_distribution['pressure'],
+                                                               temperature_input=temperature_input,
+                                                               composition_input=comp_input,
                                                                )
-        else:
-            # SET INITIAL CONDITIONS BASED ON GRADIENTS FROM INITIAL VALUES
-            return self.physics.set_nonuniform_initial_conditions(mesh=self.reservoir.mesh,
-                                                                  pressure_grad=gradient['pressure'] if 'pressure' in gradient.keys() else 0.,
-                                                                  temperature_grad=gradient['temperature'] if 'temperature' in gradient.keys() else 0.,
-                                                                  p_at_ref_depth=initial_values['pressure'] if 'pressure' in initial_values.keys() else 1.,
-                                                                  T_at_ref_depth=initial_values['temperature'] if 'temperature' in initial_values.keys() else 293.15,
-                                                                  composition_input=[initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]],
-                                                                  )
 
-    def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
-        """
-        Function to set initial conditions from given distribution of properties over depth.
+        # Else, create depth table for initial distribution, ensure depths are not identical for interpolation
+        self.input_depth = np.array(self.input_depth)
+        if not self.input_depth:
+            self.input_depth = np.array([np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth) + 1.])
+        elif len(self.input_depth) == 1:
+            self.input_depth = np.append(self.input_depth, np.array([np.amax(self.reservoir.mesh.depth) + 1.]))
 
-        :param depth: depth
-        :param initial_distribution: initial distributions of unknowns over depth,
-                                    must have keys equal to self.physics.vars
-        :type initial_distribution: dict
-        """
+        for variable, input_array in self.input_distribution.items():
+            # Ensure input_array is an array
+            input_array = input_array if hasattr(input_array, "__len__") else np.array([input_array])
 
-        # all depths
-        depths = np.asarray(self.reservoir.mesh.depth)
+            # If input for variable is a single value, calculate distribution with first depth as reference depth
+            if len(input_array) == 1:
+                # Find whether gradient has been specified, else set to 0.
+                gradient = self.gradients[variable] if variable in self.gradients.keys() else 0.
 
-        # adjust the size of composition array in c++
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
+                # Calculate distribution with depths
+                input_array = np.append(input_array, (self.input_depth[1:]-self.input_depth[0]) * gradient + input_array[0])
 
-        z_counter = 0
-        nz_vars = self.physics.nc - 1
-        for variable in self.physics.vars:
-            if variable not in initial_distribution.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
+            self.input_distribution[variable] = input_array
 
-            values_foo = interp1d(depth, initial_distribution[variable], kind='linear', fill_value='extrapolate')
-
-            if variable == 'pressure':
-                np.asarray(self.reservoir.mesh.pressure)[:] = values_foo(depths)
-            elif variable == 'temperature':
-                np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
-            elif variable == 'enthalpy':
-                np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
-            else:           # compositions
-                np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
-                z_counter += 1
+        return self.physics.set_initial_conditions(mesh=self.reservoir.mesh, input_depth=self.input_depth,
+                                                   input_distribution=self.input_distribution)
 
     def set_boundary_conditions(self):
         """

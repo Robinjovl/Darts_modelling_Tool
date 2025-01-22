@@ -237,6 +237,19 @@ class PhysicsBase:
         return
 
     @abc.abstractmethod
+    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict):
+        """
+        Function to set initial conditions from given distribution of properties over depth.
+
+        :param mesh: conn_mesh object
+        :param input_depth: Array of depths over which depth table has been specified
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :type input_distribution: dict
+        """
+        pass
+
+    @abc.abstractmethod
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
                                        pressure_input: Union[float, list, np.ndarray],
                                        composition_input: Union[list, np.ndarray] = None,
@@ -248,25 +261,6 @@ class PhysicsBase:
         :param pressure_input: Pressure [bar], uniform or array
         :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
         :param temperature_input: Temperature [K], only required for thermal models, uniform or array
-        """
-        pass
-
-    @abc.abstractmethod
-    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, pressure_grad: float = 0., temperature_grad: float = 0.,
-                                          ref_depth_p: float = 0., p_at_ref_depth: float = 1.,
-                                          ref_depth_T: float = 0., T_at_ref_depth: float = 293.15,
-                                          composition_input: Union[list, np.ndarray] = None):
-        """
-        Method to set initial conditions with gradients
-
-        :param mesh: conn_mesh object
-        :param pressure_grad: Pressure gradient [bar/km], calculates pressure based on depth [1/km], default is 0
-        :param temperature_grad: Temperature gradient [K/km], calculates temperature based on depth [1/km], default is 0
-        :param ref_depth_p: Reference depth for pressure [km], default is 0
-        :param p_at_ref_depth: Pressure at reference depth [bar], default is 1
-        :param ref_depth_T: Reference depth for temperature [K], default is 0
-        :param T_at_ref_depth: Temperature at reference depth [K], default is 293.15
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
         """
         pass
 

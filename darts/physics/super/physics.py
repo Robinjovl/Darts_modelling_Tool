@@ -1,11 +1,11 @@
 import numpy as np
 from typing import Union
+from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
-from darts.physics.super.initialize import Initialize
 
 
 class Compositional(PhysicsBase):
@@ -150,6 +150,63 @@ class Compositional(PhysicsBase):
                                                                       self.n_vars, rate, self.rate_itor)
         return
 
+    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict):
+        """
+        Function to set initial conditions from given distribution of properties over depth.
+
+        :param mesh: conn_mesh object
+        :param input_depth: Array of depths over which depth table has been specified
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :type input_distribution: dict
+        """
+        # Assertions of consistent depth table specification
+        assert 'pressure' in input_distribution.keys(), "Pressure must be specified"
+        assert not self.thermal or ('temperature' in input_distribution.keys() or
+                                    'enthalpy' in input_distribution.keys()), \
+            "Temperature or enthalpy must be specified for thermal models"
+        input_depth = input_depth if hasattr(input_depth, "__len__") else np.array([input_depth])
+        for key, input_values in input_distribution.values():
+            input_values = input_values if hasattr(input_values, "__len__") else np.ones(
+                len(input_depth)) * input_values
+            assert len(input_values) == len(input_depth)
+
+        # Get depths and primary variable arrays from mesh object
+        depths = np.asarray(mesh.depth)
+
+        # adjust the size of composition array in c++
+        mesh.composition.resize(mesh.n_blocks * (self.nc - 1))
+
+        z_counter = 0
+        nz_vars = self.nc - 1
+        for variable in input_distribution.keys():
+            # if variable not in input_distribution.keys():
+            #     raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
+
+            values_foo = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+
+            if variable == 'pressure':
+                np.asarray(mesh.pressure)[:] = values_foo(depths)
+            elif variable == 'temperature':
+                temperature = values_foo(depths)
+
+                if self.state_spec == PhysicsBase.StateSpecification.PT:
+                    np.asarray(mesh.temperature)[:] = temperature
+                else:
+                    pressure_foo = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
+                    pressure = pressure_foo(depths)
+
+                    enthalpy = np.array(mesh.temperature, copy=False)  # TODO: access first and second state variable, not T or H by name
+                    for j in range(mesh.n_blocks):
+                        state = np.array([pressure[j], temperature[j]])
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+            elif variable == 'enthalpy':
+                np.asarray(mesh.temperature)[:] = values_foo(depths)  # TODO: access first and second state variable, not T or H by name
+            else:  # compositions
+                composition = np.array(mesh.composition, copy=False)
+                composition[z_counter::nz_vars] = values_foo(depths)[:]
+                z_counter += 1
+
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
                                        pressure_input: Union[float, list, np.ndarray],
                                        composition_input: Union[list, np.ndarray] = None,
@@ -187,61 +244,6 @@ class Compositional(PhysicsBase):
                     state = value_vector([pressure_input, 0])
                     enth = self.property_containers[0].compute_total_enthalpy(state, temperature_input)
                     enthalpy[:] = enth
-
-        # set initial composition
-        mesh.composition.resize(nb * (self.nc - 1))
-        composition = np.array(mesh.composition, copy=False)
-        # composition[:] = np.array(uniform_composition)
-        if self.nc == 2:
-            for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = composition_input[:] if not hasattr(composition_input[0], "__len__") \
-                    else composition_input[0, :]
-        else:
-            for c in range(self.nc - 1):  # Denis
-                composition[c::(self.nc - 1)] = composition_input[c] if not hasattr(composition_input[0], "__len__") \
-                    else composition_input[c, :]
-
-    def set_nonuniform_initial_conditions(self, mesh: conn_mesh, pressure_grad: float = 0., temperature_grad: float = 0.,
-                                          ref_depth_p: float = 0., p_at_ref_depth: float = 1.,
-                                          ref_depth_T: float = 0., T_at_ref_depth: float = 293.15,
-                                          composition_input: Union[list, np.ndarray] = None):
-        """
-        Method to set initial conditions with gradients
-
-        :param mesh: conn_mesh object
-        :param pressure_grad: Pressure gradient [bar/km], calculates pressure based on depth [1/km], default is 0
-        :param temperature_grad: Temperature gradient [K/km], calculates temperature based on depth [1/km], default is 0
-        :param ref_depth_p: Reference depth for pressure [km], default is 0
-        :param p_at_ref_depth: Pressure at reference depth [bar], default is 1
-        :param ref_depth_T: Reference depth for temperature [K], default is 0
-        :param T_at_ref_depth: Temperature at reference depth [K], default is 293.15
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
-        """
-        assert isinstance(mesh, conn_mesh)
-        nb = mesh.n_blocks
-
-        """ Non-Uniform Initial conditions """
-        depth = np.array(mesh.depth, copy=True)
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = (depth[:pressure.size] / 1000 - ref_depth_p) * pressure_grad + p_at_ref_depth
-
-        # if thermal, set initial temperature/enthalpy
-        if self.thermal:
-            if self.state_spec == PhysicsBase.StateSpecification.PT:
-                temperature = np.array(mesh.temperature, copy=False)
-                temperature[:] = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
-            else:
-                depth = np.array(mesh.depth, copy=True)
-
-                # set initial enthalpy through given temperature and pressure
-                enthalpy = np.array(mesh.temperature, copy=False)  # TODO: access first and second state variable, not T or H by name
-                temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
-
-                for j in range(mesh.n_blocks):
-                    comp = composition_input[:, j] if hasattr(composition_input[0], "__len__") else composition_input
-                    state = value_vector([pressure[j], 0] + comp)
-                    enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
 
         # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))
