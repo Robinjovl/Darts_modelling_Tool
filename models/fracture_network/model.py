@@ -140,13 +140,15 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                       pressure_grad=self.idata.initial.pressure_gradient,
-                                                       temperature_grad=self.idata.initial.temperature_gradient)
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            self.input_depth = [0.]
+            self.initial_values = {'pressure': 1., 'temperature': 293.15}
+            self.gradients = {'pressure': self.idata.initial.pressure_gradient / 1000,
+                              'temperature': self.idata.initial.temperature_gradient / 1000}
         elif self.idata.initial.type == 'uniform':
             self.initial_values = {'pressure': self.idata.initial.initial_pressure,
                                    'temperature': self.idata.initial.initial_temperature}
-            super().set_initial_conditions()
+        super().set_initial_conditions()
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "I" in wname
