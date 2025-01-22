@@ -29,7 +29,6 @@ public:
   // number of operators:
   // mass: NC accumulation operators, NC*NP flux operators
   // energy: 1    fluid energy accumulation,
-  //         1    rock energy accumulation,
   //         NP   fluid energy flux,
   //         1    fluid conduction,
   //         1    rock conduction,
