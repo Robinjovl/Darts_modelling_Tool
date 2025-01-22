@@ -56,7 +56,7 @@ class DartsModel:
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
         # Initial values for depth initialization table
-        self.input_depth = []
+        self.input_depth: list = None
         self.initial_values = {}
         self.gradients = {}
 
@@ -260,7 +260,7 @@ class DartsModel:
 
         # Else, create depth table for initial distribution, ensure depths are not identical for interpolation
         self.input_depth = np.array(self.input_depth)
-        if not self.input_depth:
+        if self.input_depth is None:
             self.input_depth = np.array([np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth) + 1.])
         elif len(self.input_depth) == 1:
             self.input_depth = np.append(self.input_depth, np.array([np.amax(self.reservoir.mesh.depth) + 1.]))
