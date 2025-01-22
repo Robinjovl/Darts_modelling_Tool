@@ -124,7 +124,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;")
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
