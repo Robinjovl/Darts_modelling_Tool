@@ -124,7 +124,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -244,7 +244,7 @@ if(CUDA)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
         set(CMAKE_CUDA_ARCHITECTURES 80)
-
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
