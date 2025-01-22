@@ -57,7 +57,7 @@ class DartsModel:
 
         # Initial values for depth initialization table
         self.input_depth = []
-        self.input_distribution = {}
+        self.initial_values = {}
         self.gradients = {}
 
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
@@ -239,21 +239,21 @@ class DartsModel:
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
 
         Initial conditions can be specified in multiple ways:
-        1) Uniform or array -> specify constant or array of values for each variable self.input_distribution
+        1) Uniform or array -> specify constant or array of values for each variable self.initial_values
         2) Reference value with gradients -> specify reference depth in self.input_depth,
-                                             reference value in self.input_distribution,
+                                             reference value in self.initial_values,
                                              gradient for variables in self.gradients (in unit/m)
         3) Depth table -> specify depths in self.input_depth and initial distributions of unknowns over depth
-                          in self.input_distributions; if single value has been specified it will be constant over depth
+                          in self.initial_values; if single value has been specified it will be constant over depth
         """
         # If full arrays have been specified, use self.physics.set_uniform_initial_conditions() method
-        if np.all([(hasattr(self.input_distribution[variable], "__len__") and  # array
-                    len(self.input_distribution[variable]) == self.reservoir.mesh.n_blocks)
-                   for variable in self.input_distribution.keys()]):
-            temperature_input = self.input_distribution['temperature'] if 'temperature' in self.input_distribution.keys() else None
-            comp_input = np.array([self.input_distribution[comp] for comp in self.physics.vars[1:self.physics.nc]])
+        if np.all([(hasattr(self.initial_values[variable], "__len__") and  # array
+                    len(self.initial_values[variable]) == self.reservoir.mesh.n_blocks)
+                   for variable in self.initial_values.keys()]):
+            temperature_input = self.initial_values['temperature'] if 'temperature' in self.initial_values.keys() else None
+            comp_input = np.array([self.initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]])
             return self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh,
-                                                               pressure_input=self.input_distribution['pressure'],
+                                                               pressure_input=self.initial_values['pressure'],
                                                                temperature_input=temperature_input,
                                                                composition_input=comp_input,
                                                                )
@@ -265,7 +265,7 @@ class DartsModel:
         elif len(self.input_depth) == 1:
             self.input_depth = np.append(self.input_depth, np.array([np.amax(self.reservoir.mesh.depth) + 1.]))
 
-        for variable, input_array in self.input_distribution.items():
+        for variable, input_array in self.initial_values.items():
             # Ensure input_array is an array
             input_array = input_array if hasattr(input_array, "__len__") else np.array([input_array])
 
@@ -277,10 +277,10 @@ class DartsModel:
                 # Calculate distribution with depths
                 input_array = np.append(input_array, (self.input_depth[1:]-self.input_depth[0]) * gradient + input_array[0])
 
-            self.input_distribution[variable] = input_array
+            self.initial_values[variable] = input_array
 
         return self.physics.set_initial_conditions(mesh=self.reservoir.mesh, input_depth=self.input_depth,
-                                                   input_distribution=self.input_distribution)
+                                                   input_distribution=self.initial_values)
 
     def set_boundary_conditions(self):
         """
