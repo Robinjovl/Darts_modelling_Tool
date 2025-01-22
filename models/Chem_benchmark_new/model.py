@@ -253,10 +253,10 @@ class Model(CICDModel):
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_gas_rate, self.inj_stream_gas, 0)
+                w.control = self.physics.new_rate_inj(self.inj_gas_rate, "phase_molar_rate", 'gas', self.inj_stream_gas)
                 # w.control = self.physics.new_bhp_inj(125, self.inj_stream_gas)
             elif "INJ_WAT" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_wat_rate, self.inj_stream_wat, 1)
+                w.control = self.physics.new_rate_inj(self.inj_wat_rate, "phase_molar_rate", 'wat', self.inj_stream_wat)
                 # w.control = self.physics.new_bhp_inj(125, self.inj_stream_wat)
             else:
                 w.control = self.physics.new_bhp_prod(95)

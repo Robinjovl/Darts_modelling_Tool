@@ -154,9 +154,9 @@ class Model(DartsModel, OptModuleSettings):
             if i == 0:
                 w.control = self.physics.new_bhp_prod(self.p_init - 10)
             else:
-                # w.control = self.physics.new_rate_inj(200, self.inj, 1)
+                # w.control = self.physics.new_rate_inj(200, "phase_molar_rate", 'oil', self.inj)
                 w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                # w.control = self.physics.new_rate_inj(5, self.inj, 0)
+                # w.control = self.physics.new_rate_inj(5, "phase_molar_rate", 'wat', self.inj)
                 # w.control = self.physics.new_bhp_inj(450, self.inj)
 
     def set_op_list(self):
@@ -218,9 +218,9 @@ class Model(DartsModel, OptModuleSettings):
                 if i == 0:
                     w.control = self.physics.new_bhp_prod(self.p_init - 10)
                 else:
-                    # w.control = self.physics.new_rate_inj(200, self.inj, 1)
+                    # w.control = self.physics.new_rate_inj(200, "phase_molar_rate", 'oil', self.inj)
                     w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                    # w.control = self.physics.new_rate_inj(5, self.inj, 0)
+                    # w.control = self.physics.new_rate_inj(5, "phase_molar_rate", 'wat', self.inj)
                     # w.control = self.physics.new_bhp_inj(450, self.inj)
 
             DartsModel.run(self, ts, verbose=export_to_vtk)

@@ -94,7 +94,7 @@ class Model(CICDModel):
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_gas_inj(1, self.inj_stream)
+                w.control = self.physics.new_rate_inj(1, "phase_molar_rate", 'gas', self.inj_stream)
             else:
                 w.control = self.physics.new_bhp_prod(85)
 
@@ -117,22 +117,6 @@ class CustomPhysics(Compositional):
             self.property_operators = output_properties
 
         return
-
-    def set_well_controls(self):
-        # define well control factories
-        # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
-        self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
-        self.new_rate_gas_inj = lambda rate, inj_stream: rate_inj_well_control(self.phases, 0, self.nc, self.nc, rate,
-                                                                               value_vector(inj_stream), self.rate_itor)
-        # Production wells:
-        self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_gas_prod = lambda rate: rate_prod_well_control(self.phases, 0, self.nc, self.nc, rate,
-                                                                     self.rate_itor)
-        self.new_rate_water_prod = lambda rate: rate_prod_well_control(self.phases, 1, self.nc, self.nc, rate,
-                                                                       self.rate_itor)
-
-        return
-
 
 class RelPerm:
     def __init__(self, phase, swc=0., sgr=0., kre=1., n=2.):
