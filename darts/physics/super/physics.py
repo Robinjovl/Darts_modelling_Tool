@@ -3,8 +3,7 @@ from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
 from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
-
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, CtrlRateOperators, MassFluxOperators
 
 class Compositional(PhysicsBase):
     """
@@ -127,20 +126,69 @@ class Compositional(PhysicsBase):
         else:
             self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
-        self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
+        self.rate_operators = CtrlRateOperators(self.property_containers[self.regions[0]])
 
+        return
+
+    def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive',
+                          itor_precision='d', is_barycentric: bool = False):
+        """
+        Function to initialize set interpolator objects based on the set of operators.
+        It creates timers for each of the interpolators.
+
+        :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
+        :type platform: str
+        :param itor_type: Type of interpolation method, 'multilinear' (default) or 'linear'
+        :type itor_type: str
+        :param itor_mode: Mode of interpolation, 'adaptive' (default) or 'static'
+        :type itor_mode: str
+        :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
+        :type itor_precision: str
+        :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
+        :type is_barycentric: bool
+        """
+        self.acc_flux_itor = {}
+        self.property_itor = {}
+        self.mass_flux_itor = {}
+        for region in self.regions:
+            self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
+                                                                  platform=platform, algorithm=itor_type,
+                                                                  mode=itor_mode, precision=itor_precision,
+                                                                  timer_name='reservoir %d interpolation' % region, region=str(region),
+                                                                  is_barycentric=is_barycentric)
+
+            self.property_itor[region] = self.create_interpolator(self.property_operators[region], n_ops=self.n_ops,
+                                                                  platform=platform, algorithm=itor_type,
+                                                                  mode=itor_mode, precision=itor_precision,
+                                                                  timer_name='property %d interpolation' % region, region=str(region))
+
+            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
+                                                                   platform=platform, algorithm=itor_type,
+                                                                   mode=itor_mode, precision=itor_precision,
+                                                                   timer_name='Mass flux %d interpolation' % region,
+                                                                   region=str(region))
+
+        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
+                                                        timer_name='wellbore interpolation',
+                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                        precision=itor_precision, region='-1')
+
+        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.rate_operators.n_ops,
+                                                  timer_name='well controls interpolation',
+                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                  precision=itor_precision)
         return
 
     def define_well_controls(self):
         # define well control factories
         # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
         self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
-        self.new_rate_inj = lambda rate, inj_stream, iph: rate_inj_well_control(self.phases, iph, self.n_vars,
-                                                                                self.n_vars, rate, value_vector(inj_stream),
-                                                                                self.rate_itor)
+        self.new_rate_inj = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name, target_composition: (
+            rate_inj_well_control(self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars,
+                                  self.n_vars, target_rate_value, value_vector(target_composition), self.rate_itor))
         # Production wells:
         self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_prod = lambda rate, iph: rate_prod_well_control(self.phases, iph, self.n_vars,
+        self.new_rate_prod = lambda rate: rate_prod_well_control(self.phases, 0, self.n_vars,
                                                                       self.n_vars, rate, self.rate_itor)
         return
 

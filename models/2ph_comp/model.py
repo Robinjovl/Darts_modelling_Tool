@@ -1,9 +1,9 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from cicd_model import CICDModel
+from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
-from physics import Compositional
+from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
