@@ -64,8 +64,15 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 #   ST: single threaded (Default)
 #   MT: multi threaded
 #   GPU: GPU support
-set(GPU_CONFIG ${OPENDARTS_CONFIG} STREQUAL "GPU")
-if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
+if (NOT DEFINED OPENDARTS_CONFIG)
+  set(OPENDARTS_CONFIG "ST")
+endif()
+
+if (${OPENDARTS_CONFIG} STREQUAL "GPU")
+  set(GPU_CONFIG 1)
+endif()
+
+if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(OPENDARTS_CONFIG "ST") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if(NOT DEFINED BOS_SOLVERS_DIR)
@@ -83,7 +90,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
 
-if(DEFINED BOS_SOLVERS_DIR)
+if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -125,7 +132,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -175,10 +182,6 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
-# Define a build option for CUDA support
-# option(CUDA "Enable CUDA support" OFF)
-
-
 
 
 # Report options for this build
@@ -210,8 +213,6 @@ if(NOT ONLY_SOLVERS)
   include(thirdparty/thirdparty_eigen.cmake)
 
   #   thirdparty/pybind11 ------------------------------------------------------
-  set(Python3_FIND_VIRTUALENV "STANDARD")
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
 
@@ -232,18 +233,20 @@ message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
 
 
-# If CUDA support is enabled, find CUDA and set up CUDA files
+# Configure GPU build
 if(CUDA)
-    find_package(CUDAToolkit REQUIRED) # Alternatively: find_package(CUDAToolkit REQUIRED)
+    find_package(CUDAToolkit REQUIRED)
     
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
         enable_language(CUDA)
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-        set(CMAKE_CUDA_ARCHITECTURES 	89)
-
-        add_compile_definitions(WITH_GPU=1)
+        cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
+        set(CMAKE_CUDA_ARCHITECTURES native)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
+        add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
     endif()
@@ -257,7 +260,7 @@ add_library(opendarts_compiler_flags INTERFACE)
 
 target_compile_features(opendarts_compiler_flags
   INTERFACE
-  cxx_std_11
+  cxx_std_20
 )
 
 target_compile_options(opendarts_compiler_flags 

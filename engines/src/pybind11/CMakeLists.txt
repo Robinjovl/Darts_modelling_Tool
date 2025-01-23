@@ -38,12 +38,7 @@ set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
 )
 
 # Define the engines library
-# pybind11_add_module(engines
-#   ${OD_ENGINES_PYBIND11_SRC_FILES}
-#   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
-# )
-
-add_library(engines SHARED
+pybind11_add_module(engines
   ${OD_ENGINES_PYBIND11_SRC_FILES}
   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
 )
@@ -61,6 +56,7 @@ if (CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
 
     PROPERTIES LANGUAGE CUDA)
   
@@ -68,6 +64,8 @@ if (CUDA)
     ${CUDA_SOURCES}
   )
 
+  # The following property may speed up compilation, at the cost of some performance
+  # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
@@ -85,11 +83,8 @@ else()
     )
 endif()
 
-# Manual python binding to support cuda
 target_link_libraries(engines
   PUBLIC
-    Python3::Python
-    pybind11::module
     opendarts_compiler_flags
     engines_global
     engines_wells
