@@ -74,7 +74,7 @@ class PropertyContainer(PropertyBase):
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.
 
-        self.phase_props = [self.dens, self.dens_m, self.sat, self.nu, self.mu, self.kr, self.pc, self.enthalpy,
+        self.phase_props = [self.dens, self.dens_m, self.sat, self.mu, self.kr, self.pc, self.enthalpy,
                             self.cond, self.mass_source]
 
         self.output_props = {"sat0": lambda: self.sat[0]}

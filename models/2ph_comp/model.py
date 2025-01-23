@@ -33,16 +33,18 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10,
-                                         permx=100, permy=100, permz=10, poro=0.3, depth=1000)
+        nz, ny, nx = 10, 1, 10
+        dz, dy, dx = 2, 1, 4
+        depth = np.ones((nx, ny, nz)) * np.linspace(1000, 1000+nz*dz, nz)
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
+                                         permx=100, permy=100, permz=100, poro=0.3, depth=depth)
         return
 
     def set_wells(self):
         self.reservoir.add_well("I1")
         self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
         self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, self.reservoir.nz))
 
     def set_physics(self):
         """Physical properties"""
@@ -68,7 +70,16 @@ class Model(CICDModel):
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+        property_container.output_props = {
+            "sat0": lambda: property_container.sat[0],
+            "dens0": lambda: property_container.dens[0],
+            "nu0": lambda: property_container.nu[0],
+            "x00": lambda: property_container.x[0,0]
+            }
+
         self.physics.add_property_region(property_container)
+
+
 
         return
 
