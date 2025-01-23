@@ -82,7 +82,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
 
-if(DEFINED BOS_SOLVERS_DIR AND NOT CUDA)
+if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -205,10 +205,6 @@ if(NOT ONLY_SOLVERS)
   include(thirdparty/thirdparty_eigen.cmake)
 
   #   thirdparty/pybind11 ------------------------------------------------------
-  if(CUDA)
-    set(Python3_FIND_VIRTUALENV "STANDARD")
-    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-  endif()
   include(thirdparty/thirdparty_pybind11.cmake)
 endif()
 
