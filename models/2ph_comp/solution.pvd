@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">
+<Collection>
+<DataSet timestep="20.0" group="" part="0" file="data\restarted_from_case0\vtk_files\solution_ts0.vts" name=""/>
+<DataSet timestep="21.0" group="" part="0" file="data\restarted_from_case0\vtk_files\solution_ts1.vts" name=""/>
+<DataSet timestep="22.0" group="" part="0" file="data\restarted_from_case0\vtk_files\solution_ts2.vts" name=""/>
+<DataSet timestep="23.0" group="" part="0" file="data\restarted_from_case0\vtk_files\solution_ts3.vts" name=""/>
+<DataSet timestep="20.0" group="" part="0" file="data\restarted_from_case0\vtk_files1\vtk_files\solution_ts0.vts" name=""/>
+<DataSet timestep="21.0" group="" part="0" file="data\restarted_from_case0\vtk_files1\vtk_files\solution_ts1.vts" name=""/>
+<DataSet timestep="22.0" group="" part="0" file="data\restarted_from_case0\vtk_files1\vtk_files\solution_ts2.vts" name=""/>
+<DataSet timestep="23.0" group="" part="0" file="data\restarted_from_case0\vtk_files1\vtk_files\solution_ts3.vts" name=""/>
+</Collection>
+</VTKFile>

@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.base.physics_base import PhysicsBase
+from darts.models.output import Output
 
 from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
 from darts.engines import print_build_info as engines_pbi
@@ -47,18 +48,16 @@ class DartsModel:
         self.timer.node["simulation"] = timer_node()  # Create timer.node called "simulation" to record simulation time
         self.timer.node["newton update"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
+        self.timer.node["output"] = timer_node()
         self.timer.node["initialization"] = timer_node()  # Create timer.node called "initialization" to record initialization time
         self.timer.node["initialization"].start()  # Start recording "initialization" time
-        self.output_folder = 'output'
-        self.sol_filename = "solution.h5"
-        self.well_filename = 'well_data.h5'
-
         self.params = sim_params()  # Create sim_params object to set simulation parameters
-
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
+
+
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,
-             verbose: bool = False, output_folder: str = None, itor_mode: str = 'adaptive',
+             verbose: bool = False, itor_mode: str = 'adaptive',
              itor_type: str = 'multilinear', is_barycentric: bool = False):
         """
         Function to initialize the model, which includes:
@@ -77,8 +76,6 @@ class DartsModel:
         :type restart: bool
         :param verbose: Switch for verbose
         :type verbose: bool
-        :param output_folder: folder for h5 output files
-        :type output_folder: str
         :param itor_mode: specifies either 'static' or 'adaptive' interpolator
         :type itor_mode: str
         :param itor_type: specifies either 'linear' or 'multilinear' interpolator
@@ -103,20 +100,11 @@ class DartsModel:
         self.physics.init_wells(self.reservoir.wells)
         self.init_well_rates()
 
-        if output_folder is not None:
-            self.output_folder = output_folder
-
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_initial_conditions()
         self.set_well_controls()
         self.reset()
-
-        # self.restart = restart
-
-        # save solution vector
-        if restart is False:
-            self.save_data_to_h5(kind = 'solution')
 
     def reset(self):
         """
@@ -125,16 +113,26 @@ class DartsModel:
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
 
-    def set_output(self, output_folder = 'output', sol_filename = 'reservoir_solution.h5', restart = False, all_phase_props = True, precision = 'd'):
+    def set_output(self, output_folder = 'output', sol_filename = 'reservoir_solution.h5', well_filename = 'well_data.h5',
+                   save_initial = True, all_phase_props = True, precision = 'd', verbose = False):
         """
        Function to initialize output class
         : param output_folder: folder for h5 output files
         : param sol_filename: filename of output file
-        : param restart: Boolean to check if existing file should be overwritten or appended, deault is False (overwritten)
+        : param save_inital:
         : param all_phase_props: Boolean to output all phase properties
-        : param precision: data precision of saved data ('s' single precision, 'd' double precssion)
+        : param precision: data precision of saved data ('s' single precision, 'd' double precision)
         """
-        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params, output_folder, sol_filename, restart, all_phase_props, precision)
+
+        self.output_folder = output_folder
+        self.sol_filename = sol_filename
+        self.well_filename = well_filename
+        self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        self.well_filepath = os.path.join(self.output_folder, self.well_filename)
+
+        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, verbose)
+
         return
 
     def set_wells(self, verbose: bool = False):
@@ -363,7 +361,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True,
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_reservoir_data : bool = True,
             log_3d_body_path: bool = False, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.

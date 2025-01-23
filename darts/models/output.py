@@ -8,6 +8,7 @@ import shutil
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
 from darts.tools.plot_well_rates import *
+from darts.physics.base.operators_base import PropertyOperators
 # from darts.tools.plot_well_rates import *
 
 #%%
@@ -16,13 +17,15 @@ class Output:
     """
     Base class for all output related functionality
     """
-    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, restart, all_phase_props, precision):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, well_filename,
+                 save_initial, all_phase_props, precision, verbose):
         super().__init__()
 
         self.reservoir = reservoir
         self.physics = physics
         self.op_list = op_list
         self.params = params
+        self.verbose = verbose
 
         self.timerr = timer
         self.timer = timer.node['output']
@@ -30,19 +33,24 @@ class Output:
         self.timer.node["output_well"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
 
-        self.sol_filename = sol_filename
-        self.well_filename = 'well_data.h5'
         self.output_folder = output_folder
+        self.sol_filename = sol_filename
+        self.well_filename = well_filename
         self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
-        self.precision = precision
 
-        self.restart = restart
-        if self.restart is False:
+        self.precision = precision
+        self.precision_map = {
+            'd': np.float64,
+            's': np.float32
+        }
+
+        if save_initial:
             self.save_data_to_h5(kind='reservoir')
 
         if all_phase_props:
-            phase_props_labels = ['dens', 'dens_m', 'sat', 'nu', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
+            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
+            self.physics.property_itor = {}
 
             for region in self.physics.regions:  # loop over the different sets of operators
                 temp_dict = {}
@@ -50,11 +58,21 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j, phase_name in enumerate(self.physics.phases):
-                        temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+                    # for j in range(self.physics.property_containers[region].nph):
+                        temp_dict[f"{name}_{phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+                        # print(name, phase_name, temp_dict[f"{name}_{phase_name}"]())
 
                 for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
                     for j, phase_name in enumerate(self.physics.phases):  # loop over phases
-                        temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j,i]
+                        temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j, i]
+
+                self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], self.physics.thermal, temp_dict)
+
+                self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region], n_ops=self.physics.n_ops,
+                                                                                      platform='cpu', algorithm='multilinear',
+                                                                                      mode='adaptive', precision='d',
+                                                                                      timer_name='property %d interpolation' % region,
+                                                                                      region=str(region))
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
@@ -101,20 +119,24 @@ class Output:
 
         return 0
 
-    def load_restart_data(self, filename: str = os.path.join('restart', 'reservoir_solution.h5'), timestep: int = -1):
+    def load_restart_data(self, reservoir_filename: str, well_filename: str, timestep: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         :param filename (str): Path to the restart file (default: 'restart/reservoir_solution.h5').
         :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
         """
 
-        if not os.path.exists(filename):
+        if not os.path.exists(reservoir_filename) or not os.path.exists(well_filename):
             raise FileNotFoundError(f"The restart file does not exist: {filename}")
 
         # Read data from the file
-        time, cell_id, X, var_names = self.read_specific_data(filename, timestep)
+        time, reservoir_cell_id, Xres, var_names = self.read_specific_data(reservoir_filename, timestep)
+        time, well_cell_id, Xwell, var_names = self.read_specific_data(well_filename, timestep)
 
-        print(f"Restarting from {filename} at time = {time[0]:.6f} days")
+        X = np.concatenate([Xres, Xwell[:, len(self.reservoir.wells):, :]], axis=1)
+        cell_id = np.concatenate([reservoir_cell_id, well_cell_id[len(self.reservoir.wells):]])
+
+        print(f"Restarting from {reservoir_filename, well_filename} at time = {time[0]:.6f} days")
 
         # Update the simulation engine with the loaded data
         self.physics.engine.t = time[0]
@@ -134,10 +156,7 @@ class Output:
         :param add_static_data: flag to add static output
         """
 
-        precision_map = {
-            'd': np.float64, # Double precision
-            's': np.float32  # Single precision
-        }
+
 
         with h5py.File(filename, 'w') as f:
             # add static data group
@@ -159,7 +178,7 @@ class Output:
                 cell_ids_dataset[:] = cell_ids
 
             dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
-                                         maxshape=(None, nb, self.physics.n_vars), dtype=precision_map[self.precision])
+                                         maxshape=(None, nb, self.physics.n_vars), dtype=self.precision_map[self.precision])
 
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
@@ -189,7 +208,7 @@ class Output:
             sol_output_path = os.path.join(self.output_folder, self.sol_filename)
             if os.path.exists(sol_output_path): #and not restart:
                 os.remove(sol_output_path)
-            self.configure_h5_output(filename=sol_output_path, cell_ids=np.arange(self.reservoir.mesh.n_blocks),
+            self.configure_h5_output(filename=sol_output_path, cell_ids=np.arange(self.reservoir.mesh.n_res_blocks),
                                 add_static_data=False, description='Reservoir data')
 
         # Find relevant connections for well data
@@ -217,7 +236,7 @@ class Output:
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
-        X = np.array(self.physics.engine.X, copy=False)
+        X = np.array(self.physics.engine.X, copy=False)#[:self.physics.n_vars*self.reservoir.n]
 
         # Open the HDF5 file in append mode
         with h5py.File(filename, "a") as f:
@@ -231,6 +250,9 @@ class Output:
             x_dataset = f["dynamic/X"]
             x_dataset.resize((x_dataset.shape[0] + 1, x_dataset.shape[1], x_dataset.shape[2]))
             x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape((self.reservoir.mesh.n_blocks, self.physics.n_vars))[cell_id]
+
+        if self.verbose:
+            print(f'Saving data to {filename} at {self.physics.engine.t}')
 
     def save_data_to_h5(self, kind):
         """
@@ -306,36 +328,37 @@ class Output:
         :return property_array : dict of property arrays per timestep, per gridblock
         :return timesteps: ndarray the time labels of the evaluated timesteps
         """
-        # Read binary file
-        if filepath is None:
-            path = os.path.join(self.output_folder, self.sol_filename)
-        else:
-            path = filepath
-
-        if not os.path.exists(path) and not engine:
-            raise FileNotFoundError(f"The specified file does not exist: {path}")
 
         if engine is False:
-            # get data from file
+            if filepath is None:
+                path = os.path.join(self.output_folder, self.sol_filename)
+            else:
+                path = filepath
+
+            if not os.path.exists(path) and not engine:
+                raise FileNotFoundError(f"The specified file does not exist: {path}")
+
             timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep)
+
         else:
-            # get data from engine
             timesteps = np.array(self.physics.engine.t).reshape(1,)
-            cell_id = np.arange(self.reservoir.mesh.n_blocks)
-            X = np.array(self.physics.engine.X, copy = True)
+            cell_id = np.arange(self.reservoir.mesh.n_res_blocks)
+            X = np.array(self.physics.engine.X[:self.physics.n_vars*self.reservoir.mesh.n_res_blocks], copy = True)
             var_names = self.physics.vars
 
         # Initialize property_array
         n_vars = len(var_names)
         n_ops = self.physics.n_ops
         nb = len(cell_id)
-        props = list(var_names) + output_properties if output_properties is not None else list(var_names)
+
+        props = list(var_names) + self.properties if output_properties is None else list(var_names) + output_properties
+        prop_list = self.properties if output_properties is None else output_properties
+        prop_idxs = [self.properties.index(prop) for prop in prop_list]
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
-        if output_properties is not None:
-            prop_idxs = [self.properties.index(prop) for prop in output_properties]
 
         # Loop over timesteps
         for ts, timestep in enumerate(timesteps):
+
             # Extract vector of states
             for j, variable in enumerate(var_names):
                 if engine is False:
@@ -343,54 +366,67 @@ class Output:
                 else:
                     property_array[variable][ts, :] = X[j::n_vars]
 
-            if output_properties is not None:
-                states_numpy = np.stack([property_array[var][ts] for var in var_names]).T.flatten()
-                state = value_vector(states_numpy)
-                values = value_vector(np.zeros(n_ops * nb))
-                values_numpy = np.array(values, copy=False)
-                dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
-                i = 0
-                for region, prop_itor in self.physics.property_itor.items():
-                    prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
-                    i += 1
+            # Evaluate properties
+            states_numpy = np.stack([property_array[var][ts] for var in var_names]).T.flatten()
+            state = value_vector(states_numpy)
+            values = value_vector(np.zeros(n_ops * nb))
+            values_numpy = np.array(values, copy=False)
+            dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
+            i = 0
+            for region, prop_itor in self.physics.property_itor.items():
+                prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
+                i += 1
 
-                for j, prop in enumerate(output_properties):
-                    property_array[prop][ts] = values_numpy[prop_idxs[j]::n_ops]
+            for j, prop in enumerate(prop_list):
+                property_array[prop][ts] = values_numpy[prop_idxs[j]::n_ops]
 
         return timesteps, property_array
 
-    def output_to_xarray(self, output_properties: list = None, timestep: int = None):
+    def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False):
         """
-        Function to return array of properties.
-        Primary variables (vars) are obtained from engine, secondary variables (props) are interpolated by property_itor.
+        Generates an xarray Dataset of properties and saves it as a NetCDF file.
+        State variables area obtained from the engine or *.h5 file.
+        Properties are interpolated by the property iterator.
 
-        :returns: property_array
-        :rtype: np.ndarray
+        :param output_properties: List of properties to include in the dataset. If None, all properties are included.
+        :type output_properties: list, optional
+        :param timestep: Specific timestep to output. If None, all timesteps are included.
+        :type timestep: int, optional
+        :param engine: import state variable from engine if True. Default is False.
+        :type engine: bool, optional
+        :returns: xarray Dataset containing the property data.
+        :rtype: xarray.Dataset
         """
+
         # Interpolate properties
-        if timestep is None:
-            timesteps, data = self.output_properties(output_properties)
-        else:
-            timesteps, data = self.output_properties(output_properties, timestep)
+        time, data = self.output_properties(filepath, output_properties, timestep, engine)
         props = list(data.keys())
 
         # Initialize coords and data_vars for Xarray Dataset
-        array_shape = (len(timesteps), self.reservoir.nz, self.reservoir.ny, self.reservoir.nx)
+        array_shape = (len(time), self.reservoir.nz, self.reservoir.ny, self.reservoir.nx)
         for prop, array in data.items():
             data[prop] = array.reshape(array_shape)
 
         # Initialize coords and data_vars for Xarray Dataset
-        dx, dy, dz = self.reservoir.global_data['dx'], self.reservoir.global_data['dy'], self.reservoir.global_data[
-            'dz']
+        dx, dy, dz = self.reservoir.global_data['dx'], self.reservoir.global_data['dy'], self.reservoir.global_data['dz']
         x = np.cumsum(dx[:, 0, 0]) - dx[0, 0, 0] * 0.5
         y = np.cumsum(dy[0, :, 0]) - dy[0, 0, 0] * 0.5
         z = np.cumsum(dz[0, 0, :]) - dz[0, 0, 0] * 0.5
-        # coords = {'time': timesteps, 'x': x, 'y': y, 'z': z}
-        coords = {'time': timesteps, 'z': z, 'y': y, 'x': x}
+        coords = {'time': time, 'z': z, 'y': y, 'x': x}
         data_vars = {prop: (list(coords.keys()), data[prop]) for prop in props}
         dataset = xr.Dataset(data_vars=data_vars, coords=coords)
+        if self.precision == 'd':
+            encoding = {prop: {'dtype': 'float64'} for prop in data.keys()}
+        else:
+            encoding = {prop: {'dtype': 'float32'} for prop in data.keys()}
 
-        dataset.to_netcdf(os.path.join(self.output_folder, 'reservoir_xarray.nc'))
+        # dataset.to_netcdf(os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'))
+        # Save to NetCDF with specified encoding
+        dataset.to_netcdf(
+            os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'),
+            engine='netcdf4',
+            encoding=encoding
+        )
 
         return dataset
 
@@ -427,12 +463,12 @@ class Output:
                 plt.savefig(self.output_folder + '/figures/%s_ts%d_zx%d.png'%(var, timestep, z))
 
             else:
-                # model is 1D reservoir
+                # model is a 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
                 plt.savefig(self.output_folder + '/figures/%s_ts%d.png' % (var, timestep))
-        plt.close()
+            plt.close()
 
-    def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None):
+    def output_to_vtk(self, filepath: str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
         Function to export results at timestamp t into `.vtk` format.
 
@@ -445,28 +481,28 @@ class Output:
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
 
-        main_dir = os.path.join(self.output_folder, 'vtk_files')
-        if not os.path.exists(main_dir):
-            os.mkdir(main_dir)
-
         # Set default output directory
         if output_directory is None:
             output_directory = self.output_folder
 
-        # Find index of properties to output
-        ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
-        tot_props = self.physics.vars + ev_props
+        main_dir = os.path.join(output_directory, 'vtk_files')
+        if not os.path.exists(main_dir):
+            os.makedirs(main_dir, exist_ok = True)
 
-        if output_properties is None:
-            # If None, all variables and properties from property_operators will be passed
-            # prop_idxs = {prop: i for i, prop in enumerate(tot_props)}
-            prop_idxs = {prop: i for i, prop in enumerate(ev_props)}
-        else:
-            # Else, it finds the indices of output_properties in the output data
-            prop_idxs = {prop: tot_props.index(prop) for prop in output_properties}
+        # # Find index of properties to output
+        # ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
+        # tot_props = self.physics.vars + ev_props
+        #
+        # if output_properties is None:
+        #     # If None, all variables and properties from property_operators will be passed
+        #     # prop_idxs = {prop: i for i, prop in enumerate(tot_props)}
+        #     prop_idxs = {prop: i for i, prop in enumerate(ev_props)}
+        # else:
+        #     # Else, it finds the indices of output_properties in the output data
+        #     prop_idxs = {prop: tot_props.index(prop) for prop in output_properties}
 
-        timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
-
+        # timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
+        timesteps, property_array = self.output_properties(filepath, output_properties, ith_step, engine)
         prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
 
         for t, time in enumerate(timesteps):
@@ -498,8 +534,8 @@ class Output:
         :type m: DartsModel
         """
 
-        h5_well_data_address = os.path.join(self.output_folder, self.well_filename)
-        h5_well_data = load_hdf5_to_dict(h5_well_data_address)
+        # h5_well_data_address = os.path.join(self.output_folder, self.well_filename)
+        h5_well_data = load_hdf5_to_dict(self.well_filepath)
 
         # Calculate well rates
         perfs = [p for well in self.reservoir.wells for p in well.perforations]
@@ -517,22 +553,26 @@ class Output:
         # Create new folders in which well rates output will be stored
         main_dir = os.path.join(self.output_folder, 'figures/output_well_rates')
         if not os.path.exists(main_dir):
-            os.mkdir(main_dir)
+            os.makedirs(main_dir, exist_ok = True)
         elif os.path.exists(main_dir):
             shutil.rmtree(main_dir)
-            os.mkdir(main_dir)
+            os.makedirs(main_dir, exist_ok = True)
+
         for well in self.reservoir.wells:
             well_dir = os.path.join(main_dir, 'well_' + well.name)
-            os.mkdir(well_dir)
+            os.makedirs(well_dir, exist_ok = True)
             for perf in well.perforations:
                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
-                os.mkdir(perf_dir)
+                os.makedirs(perf_dir, exist_ok = True)
 
+        well_rates_dict = {}
         for rate_type in types_of_well_rates:
-            if rate_type == 'heat_rate' and not self.physics.thermal:
+            # if rate_type == 'heat_rate' and not self.physics.thermal:
+            if rate_type == 'heat_rate':
                 continue
 
-            time, Python_rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, self.physics.thermal,pc)
+            time, Python_rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, self.physics.thermal, pc)
+            well_rates_dict['time'] = time
 
             """""""""  Plot well rates over time """""""""
             """ Rates for each perforation """
@@ -552,17 +592,26 @@ class Output:
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
                                 plt.savefig(perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
                                             pc.phases_name[phase] + '.png')
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
+                                            pc.phases_name[phase]] = phase_molar_rate_for_perf
+
                             elif rate_type == 'phases_mass_rates':
                                 plt.ylabel(pc.phases_name[phase] + ' mass rate [kg/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
                                 plt.savefig(perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
                                             pc.phases_name[phase] + '.png')
+                                well_rates_dict['\well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
+                                            pc.phases_name[phase]] = phase_molar_rate_for_perf
+
                             elif rate_type == 'phases_volumetric_rates':
                                 plt.ylabel(pc.phases_name[phase] + ' volumetric rate [m$^3$/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                                plt.tight_layout()
                                 plt.savefig(
                                     perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_volumetric_rate_' +
                                     pc.phases_name[phase] + '.png')
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_volumetric_rate_' +
+                                    pc.phases_name[phase]] = phase_molar_rate_for_perf
 
                     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
                         for component in range(pc.nc_fl):
@@ -584,13 +633,19 @@ class Output:
                             if rate_type == 'components_molar_rates':
                                 plt.ylabel(pc.components_name[component] + ' molar rate [kmole/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                                plt.tight_layout()
                                 plt.savefig(perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
                                             pc.components_name[component] + '.png')
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
+                                            pc.components_name[component]] = component_molar_rate_for_perf
                             elif rate_type == 'components_mass_rates':
                                 plt.ylabel(pc.components_name[component] + ' mass rate [kg/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                                plt.tight_layout()
                                 plt.savefig(perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
                                             pc.components_name[component] + '.png')
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
+                                            pc.components_name[component]] = component_mass_rate_for_perf
 
                     elif rate_type == 'heat_rate':
                         heat_rate_of_all_phases_for_perf = - np.sum(Python_rates[:, perf_counter, :], axis=1)
@@ -600,7 +655,9 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel('heat rate [kJ/day]', fontsize=16)
                         perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                        plt.tight_layout()
                         plt.savefig(perf_dir + '\well_' + well.name + '_perf_' + str(perf[0]) + '_heat_rate.png')
+                        well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_heat_rate'] = heat_rate_of_all_phases_for_perf
 
                     perf_counter += 1
 
@@ -621,7 +678,9 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel(pc.phases_name[phase] + ' molar rate [kmol/day]', fontsize=16)
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
                         plt.savefig(well_dir + '\well_' + well.name + '_molar_rate_' + pc.phases_name[phase] + '.png')
+                        well_rates_dict['well_' + well.name + '_molar_rate_' + pc.phases_name[phase]] = phase_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -642,7 +701,9 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel(pc.phases_name[phase] + ' mass rate [kg/day]', fontsize=16)
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
                         plt.savefig(well_dir + '/well_' + well.name + '_mass_rate_' + pc.phases_name[phase] + '.png')
+                        well_rates_dict['well_' + well.name + '_mass_rate_' + pc.phases_name[phase]] = phase_mass_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -663,8 +724,10 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel(pc.phases_name[phase] + ' volumetric rate [m$^3$/day]', fontsize=16)
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
                         plt.savefig(
                             well_dir + '\well_' + well.name + '_volumetric_rate_' + pc.phases_name[phase] + '.png')
+                        well_rates_dict['well_' + well.name + '_volumetric_rate_' + pc.phases_name[phase]] = phase_volumetric_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -685,8 +748,10 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel(pc.components_name[component] + ' molar rate [kmole/day]', fontsize=16)
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
                         plt.savefig(
                             well_dir + '\well_' + well.name + '_molar_rate_' + pc.components_name[component] + '.png')
+                        well_rates_dict['well_' + well.name + '_molar_rate_' + pc.components_name[component]] = component_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -707,8 +772,10 @@ class Output:
                         plt.xlabel('time [day]', fontsize=16)
                         plt.ylabel(pc.components_name[component] + ' mass rate [kg/day]', fontsize=16)
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
                         plt.savefig(
                             well_dir + '/well_' + well.name + '_mass_rate_' + pc.components_name[component] + '.png')
+                        well_rates_dict['well_' + well.name + '_mass_rate_' + pc.components_name[component]] = component_mass_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -729,44 +796,12 @@ class Output:
                     plt.xlabel('time [day]', fontsize=16)
                     plt.ylabel('heat rate [kJ/day]', fontsize=16)
                     well_dir = os.path.join(main_dir, 'well_' + well.name)
+                    plt.tight_layout()
                     plt.savefig(well_dir + '/well_' + well.name + '_heat_rate.png')
+                    well_rates_dict['/well_' + well.name + '_heat_rate'] = heat_rate_for_well
 
                     perf_counter += len(well.perforations)
 
-    # def output_phase_properties(self, phase_props_labels=['dens', 'dens_m', 'sat', 'nu', 'mu', 'kr', 'pc', 'enthalpy', 'cond'], timestep=None, verbose=False):
-    #     """
-    #     By default the PropertyContainer() contains a number of phase properties. With the this function enables fast interpretation of
-    #     phase properties at every grid block.
-    #
-    #     :param phase_props_labels: list of desired phase properties
-    #     :param timestep : desired timestape at which you want to evaluate properties
-    #     :return: property_array: property_array containing all the desired props at each grid cell
-    #     """
-    #
-    #     for region in self.physics.regions:  # loop over the different sets of operators
-    #         phase_props = self.physics.property_containers[region].phase_props
-    #         temp_dict = {}
-    #         for i, name in enumerate(phase_props_labels):
-    #             for j, phase_name in enumerate(self.physics.phases):
-    #                 temp_dict[f"{name} {phase_name}"] = lambda i=i, j=j: phase_props[i][j]
-    #
-    #         self.physics.property_containers[region].output_props = temp_dict
-    #
-    #     self.physics.init_physics(verbose=True)
-    #     self.reset()
-    #     self.set_output()
-    #
-    #     target_solution_file = os.path.join('one_to_rule_them_all', 'restart_data.h5')
-    #     filepath = target_solution_file
-    #     timesteps, property_array = self.output_properties(filepath=filepath,
-    #                                                        output_properties=self.output_properties,
-    #                                                        timestep=None)
-    #
-    #     if verbose:
-    #         for i, name in enumerate(property_array.keys()):
-    #             plt.figure()
-    #             plt.title(name)
-    #             plt.plot(property_array[name].T)
-    #             plt.show()
-    #
-    #     return property_array
+            plt.close()
+
+        return well_rates_dict
