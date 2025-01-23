@@ -174,10 +174,6 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
-# Define a build option for CUDA support
-# option(CUDA "Enable CUDA support" OFF)
-
-
 
 
 # Report options for this build
@@ -233,9 +229,9 @@ message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
 
 
-# If CUDA support is enabled, find CUDA and set up CUDA files
+# Configure GPU build
 if(CUDA)
-    find_package(CUDAToolkit REQUIRED) # Alternatively: find_package(CUDAToolkit REQUIRED)
+    find_package(CUDAToolkit REQUIRED)
     
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
