@@ -260,7 +260,7 @@ add_library(opendarts_compiler_flags INTERFACE)
 
 target_compile_features(opendarts_compiler_flags
   INTERFACE
-  cxx_std_11
+  cxx_std_20
 )
 
 target_compile_options(opendarts_compiler_flags 
