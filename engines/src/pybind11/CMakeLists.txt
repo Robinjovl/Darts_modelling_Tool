@@ -36,35 +36,10 @@ set(OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES
 )
 
 # Define the engines library
-if(CUDA)
-  # Manual python binding to support cuda
-  add_library(engines SHARED
-    ${OD_ENGINES_PYBIND11_SRC_FILES}
-    ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
-  )
-
-  set_target_properties(engines PROPERTIES
-    OUTPUT_NAME "engines.${Python3_SOABI}"
-  )
-  # The following property may speed up compilation, at the cost of some performance
-  # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-  if (WIN32)
-    set_target_properties(engines PROPERTIES
-      SUFFIX "pyd"
-    )
-  endif()
-
-  target_link_libraries(engines PRIVATE
-    Python3::Python
-    pybind11::module
-  )
-else()
-  pybind11_add_module(engines
-    ${OD_ENGINES_PYBIND11_SRC_FILES}
-    ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
-  )
-endif()
+pybind11_add_module(engines
+  ${OD_ENGINES_PYBIND11_SRC_FILES}
+  ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
+)
 
 if (CUDA)
   set(CUDA_SOURCES
@@ -87,6 +62,8 @@ if (CUDA)
     ${CUDA_SOURCES}
   )
 
+  # The following property may speed up compilation, at the cost of some performance
+  # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
