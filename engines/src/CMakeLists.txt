@@ -352,9 +352,9 @@ endif()
 
 target_sources(engines_engines
   PRIVATE
-	  ${HYPRE_INCLUDE_DIRS}
     ${OD_ENGINES_ENGINES_SRC_FILES}
     ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+	  ${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_engines
