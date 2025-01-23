@@ -223,7 +223,7 @@ build-windows-3.9-ODLS:
         - pip install wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j $(($(nproc) + 1)) $ODLS
     artifacts:
       paths:
         - './dist/*.whl'
@@ -274,7 +274,7 @@ build-windows-3.9-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j $(($(nproc) + 1))
     artifacts:
       paths:
         - '*.log'
@@ -634,7 +634,6 @@ test-windows-3.9-ODLS:
         - '.\models\pkl_win.zip'
       when: always
       expire_in: 1 week
-      when: always
 
 ###################################################################################
 

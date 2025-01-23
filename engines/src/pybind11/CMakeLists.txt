@@ -92,7 +92,6 @@ target_link_libraries(engines
     engines_interpolator
     engines_conn_mesh
 )
-set_target_properties(engines PROPERTIES PREFIX "")
 
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
