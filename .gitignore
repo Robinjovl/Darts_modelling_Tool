@@ -2,7 +2,7 @@
 .DS_Store
 
 # binaries
-darts/*.so
+darts/*.so*
 darts/*.pyd
 darts/*.dll
 dist/

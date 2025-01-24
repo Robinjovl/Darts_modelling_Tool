@@ -2,6 +2,23 @@ cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Configure runtime path for finding dynamic libraries
+set(CMAKE_INSTALL_RPATH $ORIGIN)  # shared libraries will be searched in darts folder
+set(CMAKE_MACOSX_RPATH 1)
+
+# Set DARTS installation folder
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
+
+# Disable C++ 11 ABI to support old libraries
+set(SET_CXX11_ABI_0 TRUE)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
+
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -250,3 +267,9 @@ if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
 # ------------------------------------------------------------------------------
+find_library(LIBSTDCXX libstdc++.so.6 REQUIRED)
+# Install libstdc++ alongside your library
+install(
+    FILES ${LIBSTDCXX}
+    DESTINATION ./
+)
