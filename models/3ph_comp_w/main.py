@@ -4,7 +4,7 @@ import pandas as pd
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.operators_base import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 
 
 def plot_sol(n):
@@ -62,12 +62,14 @@ if __name__ == '__main__':
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        # n.save_restart_data()
+        n.save_data_to_h5('solution')
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
+        time_data.to_excel(writer, sheet_name='Sheet1')
         writer.close()
     else:
-        n.load_restart_data()
+        # n.load_restart_data()
+        n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
     if True:
@@ -79,7 +81,7 @@ if __name__ == '__main__':
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
-            plt.savefig(str(i) + '.png')
+        plt.savefig('out.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

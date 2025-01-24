@@ -29,27 +29,24 @@ public:
   // number of operators:
   // mass: NC accumulation operators, NC*NP flux operators
   // energy: 1    fluid energy accumulation,
-  //         1    rock energy accumulation,
   //         NP   fluid energy flux,
   //         1    fluid conduction,
   //         1    rock conduction,
   //         1    temperature,
   //         1    water density,
   //         1    steam density
-  const static uint8_t N_OPS = NC + NC * NP + NP + 7;
+  const static uint8_t N_OPS = NC /*acc*/ + NC * NP /*flux*/ + 2 + NP /*energy acc, flux, cond*/ + NP /*density*/ + 1 /*temperature*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NC;
   const static uint8_t FE_ACC_OP = NC + NC * NP;
-  const static uint8_t RE_ACC_OP = NC + NC * NP + 1;
-  const static uint8_t FE_FLUX_OP = NC + NC * NP + 2;
-  const static uint8_t FE_COND_OP = NC + NC * NP + NP + 2;
-  const static uint8_t RE_COND_OP = NC + NC * NP + NP + 3;
-  const static uint8_t FE_TEMP_OP = NC + NC * NP + NP + 4;
-  const static uint8_t DENS_OP = NC + NC * NP + NP + 5;
+  const static uint8_t FE_FLUX_OP = NC + NC * NP + 1;
+  const static uint8_t FE_COND_OP = NC + NC * NP + NP + 1;
+  const static uint8_t DENS_OP = NC + NC * NP + NP + 2;
+  const static uint8_t TEMP_OP = NC + NC * NP + NP + 2 + NP;
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_nce_g_gpu()
@@ -62,10 +59,10 @@ public:
     free_device_data(mesh_grav_coef_d);
   }
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const { return N_VARS; };
+  uint8_t get_n_ops() const { return N_OPS; };
+  uint8_t get_n_comps() const { return NC; };
+  uint8_t get_z_var() const { return Z_VAR; };
 
   engine_nce_g_gpu() { engine_name = std::to_string(NP) + "-phase " + std::to_string(NC) + "-component enthalpy-based thermal flow with gravity GPU engine"; };
 

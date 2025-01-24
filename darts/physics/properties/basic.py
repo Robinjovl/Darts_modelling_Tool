@@ -27,8 +27,8 @@ class PhaseRelPerm:
             self.n = n
         else:  # water
             self.kre = kre
-            self.sr = 0
-            self.sr1 = 0
+            self.sr = sgr
+            self.sr1 = swc
             self.n = n
 
     def evaluate(self, sat):
@@ -102,14 +102,16 @@ class CapillaryPressure:
         :param sat: saturation
         :return: Pc
         '''
-        Se = (sat[1] - self.swc)/(1 - self.swc)
-        if Se < self.eps:
-            Se = self.eps
-        pc = self.p_entry * Se ** (-1/self.labda)
+        if self.nph > 1:
+            Se = (sat[1] - self.swc)/(1 - self.swc)
+            if Se < self.eps:
+                Se = self.eps
+            pc = self.p_entry * Se ** (-1/self.labda)
 
-        Pc = np.zeros(self.nph, dtype=object)
-        Pc[1] = pc
-
+            Pc = np.zeros(self.nph, dtype=object)
+            Pc[1] = pc
+        else:
+            Pc = [0.0]
         return Pc
 
 
@@ -138,14 +140,6 @@ class CapillaryPressure_VG:  # Van Genuchten
         return Pc
 
 
-class Diffusion:
-    def __init__(self, diff_coeff=0.):
-        self.D = diff_coeff
-
-    def evaluate(self):
-        return self.D
-
-
 class RockCompactionEvaluator:
     def __init__(self, pref=1., compres=1.45e-5):
         self.Pref = pref
@@ -153,11 +147,3 @@ class RockCompactionEvaluator:
 
     def evaluate(self, pressure):
         return 1.0 + self.compres * (pressure - self.Pref)
-
-
-class RockEnergyEvaluator:
-    def __init__(self, T_ref=273.15):
-        self.T_ref = T_ref
-
-    def evaluate(self, temperature):
-        return temperature - self.T_ref  # T-T_0, multiplied by rock hcap inside engine

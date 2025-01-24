@@ -85,15 +85,14 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11,
-                 diff_coef=0, rock_comp=1e-6, solid_dens=[]):
+    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6):
         # Call base class constructor
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
-                         diff_coef=diff_coef, rock_comp=rock_comp, solid_dens=solid_dens, temperature=1.)
+                         rock_comp=rock_comp, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc):
 
-        ph = [0, 1, 2]
+        ph = np.array([0, 1, 2], dtype=np.intp)
 
         for i in range(self.nc):
             self.x[i][i] = 1

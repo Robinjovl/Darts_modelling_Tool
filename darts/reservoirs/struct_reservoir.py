@@ -6,12 +6,11 @@ import numpy as np
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_vector, index_vector
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from pyevtk import hl, vtk
 from scipy.interpolate import griddata
 
 
 class StructReservoir(ReservoirBase):
-    def __init__(self, timer: timer_node, nx: int, ny: int, nz: int, dx, dy, dz, permx, permy, permz, poro, depth,
+    def __init__(self, timer: timer_node, nx: int, ny: int, nz: int, dx, dy, dz, permx, permy, permz, poro, depth=None, start_z=0,
                  rcond=0, hcap=0, actnum=1, global_to_local=0, op_num=0, coord=0, zcorn=0, is_cpg=False, cache=False):
         """
         Class constructor method
@@ -27,6 +26,8 @@ class StructReservoir(ReservoirBase):
         :param permy: permeability of the reservoir blocks in the y-direction (scalar or vector form) [mD]
         :param permz: permeability of the reservoir blocks in the z-direction (scalar or vector form) [mD]
         :param poro: porosity of the reservoir blocks
+        :param depth: nx*ny*nz array of depths in KJI-order (I is the fastest index). If None, will be computed based on geometry (start_z and dz)
+        :param start_z: top reservoir depth (a single float value or nx*ny values)
         :param actnum: attribute of activity of the reservoir blocks (all are active by default)
         :param global_to_local: one can define arbitrary indexing (mapping from global to local) for local
           arrays. Default indexing is by X (fastest),then Y, and finally Z (slowest)
@@ -42,11 +43,16 @@ class StructReservoir(ReservoirBase):
         self.ny = ny
         self.nz = nz
         self.n = nx * ny * nz
+        self.ndims = (nx > 1) + (ny > 1) + (nz > 1)
 
-        self.permx = permx
-        self.permy = permy
-        self.permz = permz
-        self.global_data = {'dx': dx, 'dy': dy, 'dz': dz,
+        dx = self.convert_to_3d_array(dx)
+        dy = self.convert_to_3d_array(dy)
+        dz = self.convert_to_3d_array(dz)
+
+        permx = self.convert_to_3d_array(permx)
+        permy = self.convert_to_3d_array(permy)
+        permz = self.convert_to_3d_array(permz)
+        self.global_data = {'dx': dx, 'dy': dy, 'dz': dz, 'start_z' : start_z,
                             'poro': poro, 'permx': permx, 'permy': permy, 'permz': permz, 'rcond': rcond, 'hcap': hcap,
                             'depth': depth, 'actnum': actnum, 'op_num': op_num,
                             }
@@ -56,19 +62,6 @@ class StructReservoir(ReservoirBase):
         self.zcorn = zcorn
         self.is_cpg = is_cpg
         self.global_to_local = global_to_local
-
-        self.vtk_z = 0
-        self.vtk_y = 0
-        self.vtk_x = 0
-        self.vtk_filenames_and_times = {}
-        self.vtkobj = 0
-
-        if np.isscalar(self.coord):
-            # Usual structured grid generated from DX, DY, DZ, DEPTH
-            self.vtk_grid_type = 0
-        else:
-            # CPG grid from COORD ZCORN
-            self.vtk_grid_type = 1
 
         self.boundary_volumes = {'xy_minus': None, 'xy_plus': None,
                                  'yz_minus': None, 'yz_plus': None,
@@ -90,6 +83,9 @@ class StructReservoir(ReservoirBase):
 
         volume = self.discretizer.calc_volumes()
         self.global_data['volume'] = volume
+
+        if self.global_data['depth'] is None: # pick z coordinates from the centers, and change the order from KJI to IJK
+            self.global_data['depth'] = self.discretizer.centroids_all_cells[:, 2].flatten(order='F')
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [self.global_data['poro'], self.global_data['rcond'], self.global_data['hcap'],
@@ -141,7 +137,7 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
+    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.0762,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
@@ -171,7 +167,7 @@ class StructReservoir(ReservoirBase):
 
         # add completion only if target block is active
         if res_block_local > -1:
-            if len(well.perforations) == 0:
+            if len(well.perforations) == 0:  # if adding the first perforation
                 well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_block_local]
                 well.well_body_depth = well.well_head_depth
                 if self.discretizer.is_cpg:
@@ -187,6 +183,10 @@ class StructReservoir(ReservoirBase):
                     well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
 
                 well.segment_volume *= well.segment_depth_increment
+            else:  # update well depth
+                well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
+                well.well_body_depth = well.well_head_depth
+                
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     print('Neglected duplicate perforation for well %s to block [%d, %d, %d]' % (well.name, i, j, k))
@@ -218,6 +218,42 @@ class StructReservoir(ReservoirBase):
                 idx = j
         return idx
 
+    def convert_to_3d_array(self, data):
+        """
+        Class method which converts the data object (scalar or vector) to a true 3D array (Nx,Ny,Nz)
+
+        :param data: any type of data, e.g. permeability of the cells (scalar, vector, or array form)
+        :return data: true data 3D data array
+        """
+        if np.isscalar(data):
+            if type(data) != int:
+                data = data * np.ones((self.nx, self.ny, self.nz), dtype=type(data))
+            else:
+                data = data * np.ones((self.nx, self.ny, self.nz))
+        else:
+            if data.ndim == 1:
+
+                # make 3d array if 1d array is passed with lenght nx or ny or nz
+                data_array = np.zeros((self.nx, self.ny, self.nz))
+                if data.size == self.nz:
+                    for k in range(self.nz):
+                        data_array[:, :, k] = data[k]
+                    data = data_array
+                elif data.size == self.ny:
+                    for j in range(self.ny):
+                        data_array[:, j, :] = data[j]
+                    data = data_array
+                elif data.size == self.nx:
+                    for i in range(self.nx):
+                        data_array[i, :, :] = data[i]
+                    data = data_array
+                else:
+                    assert data.size == self.n, "size is %s instead of %s" % (data.size, self.n)
+                data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
+            else:
+                assert data.shape == (self.nx, self.ny, self.nz), "shape is %s instead of %s" % (data.shape, (self.nx, self.ny, self.nz))
+        return data
+
     def get_cell_cpg_widths(self):
         assert self.discretizer.is_cpg
 
@@ -244,65 +280,203 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def output_to_vtk(self, file_name, t, local_cell_data, global_cell_data, export_constant_data=True):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False, plot_zeros: bool = True,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
+        assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
+        import matplotlib.pyplot as plt
+        output_props = output_props if output_props is not None else list(data.keys())
+        n_plots = len(output_props)
+        lims = lims if lims is not None else {}
+        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
+        figsize = figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
 
-        nb = self.discretizer.nodes_tot
-        cell_data = global_cell_data.copy()
+        if self.ndims == 1:
+            if fig is None:
+                fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
-        # only for the first export call
-        if len(self.vtk_filenames_and_times) == 0:
-            if self.vtk_grid_type == 0:
-                if (self.n == self.nx) or (self.n == self.ny) or (self.n == self.nz) or (self.ny == 1):
-                    self.generate_vtk_grid(
-                        compute_depth_by_dz_sum=False)  # Add this (if condition) for special 1D or 2D crossection
+                for j, prop in enumerate(output_props):
+                    axs[j].set_title(prop)
+
+            for j, prop in enumerate(output_props):
+                ax = fig.axes[j]
+
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
+
+                if self.nx > 1:
+                    x = self.discretizer.centroids_all_cells[:, 0]
+                    ax.plot(x, data[prop][:])
+                    if prop in lims.keys():
+                        ax.set(ylim=lims[prop])
+                    if logx:
+                        ax.set_xscale('log')
+                        ax.set_xlim([np.min(x), np.max(x)])
+                elif self.nz > 1:
+                    z = self.discretizer.centroids_all_cells[:, 2]
+                    ax.plot(data[prop][:], z)
+                    if prop in lims.keys():
+                        ax.set(xlim=lims[prop])
+
+        elif self.ndims == 2:
+            dx, dy, dz = self.global_data['dx'], self.global_data['dy'], self.global_data['dz']
+            xgrid = np.append(0, np.cumsum(dx[:, 0, 0]))
+            ygrid = np.append(0, np.cumsum(dy[0, :, 0])) if self.ny > 1 else np.append(0, np.cumsum(dz[0, 0, :]))
+            X, Y = np.meshgrid(xgrid, ygrid)
+            shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
+
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
+
+            for j, prop in enumerate(output_props):
+                axs[j].set_title(prop)
+                if prop not in lims.keys():
+                    lims[prop] = [None, None]
+
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
+
+                im = axs[j].pcolormesh(X, Y, data[prop][:].reshape(shape), cmap=cmap, vmin=lims[prop][0], vmax=lims[prop][1])
+                if self.nz > 1:
+                    axs[j].invert_yaxis()
+                if logx:
+                    axs[j].set_xscale('log')
+                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
+                    axs[j].set_aspect('auto')
                 else:
-                    self.generate_vtk_grid()
-            else:
-                self.generate_cpg_vtk_grid()
-            self.vtk_path = './vtk_data/'
-            if len(self.vtk_filenames_and_times) == 0:
-                os.makedirs(self.vtk_path, exist_ok=True)
+                    axs[j].set_aspect(aspect_ratio)
 
-            if export_constant_data:
-                mesh_geom_dtype = np.float32
-                for key, data in self.global_data.items():
-                    if np.isscalar(data):
-                        if type(data) == int:
-                            data = data * np.ones(nb, dtype=int)
-                        else:
-                            data = data * np.ones(nb, dtype=mesh_geom_dtype)
-                    cell_data[key] = data
+                divider = make_axes_locatable(axs[j])
+                if colorbar_loc == 'right':
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                else:
+                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                    cbar = fig.colorbar(im, cax=cax, orientation='horizontal')
+                # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+            plt.tight_layout()
 
-        vtk_file_name = self.vtk_path + file_name + '_ts%d' % len(self.vtk_filenames_and_times)
+        return fig
 
-        for key, value in local_cell_data.items():
-            global_array = np.ones(nb, dtype=value.dtype) * np.nan
-            global_array[self.discretizer.local_to_global] = value
-            cell_data[key] = global_array
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Method to initialize objects required for output of structured reservoir into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
+
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
+        from pyevtk.hl import gridToVTK
+
+        self.vtk_initialized = True
+        self.vtk_z = 0
+        self.vtk_y = 0
+        self.vtk_x = 0
+        self.vtk_filenames_and_times = {}
+        self.vtkobj = 0
+
+        if np.isscalar(self.coord):
+            # Usual structured grid generated from DX, DY, DZ, DEPTH
+            self.vtk_grid_type = 0
+        else:
+            # CPG grid from COORD ZCORN
+            self.vtk_grid_type = 1
 
         if self.vtk_grid_type == 0:
-            vtk_file_name = hl.gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            if (self.n == self.nx) or (self.n == self.ny) or (self.n == self.nz) or (self.ny == 1):
+                self.generate_vtk_grid(compute_depth_by_dz_sum=False)  # Add this (if condition) for special 1D or 2D crossection
+            else:
+                self.generate_vtk_grid()
         else:
-            for key, value in cell_data.items():
-                self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+            self.generate_cpg_vtk_grid()
 
-            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-            if len(self.vtk_filenames_and_times) == 0:
-                for key, data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+        if export_grid_data:
+            cell_data = {}
+            mesh_geom_dtype = np.float32
+            for key, data in self.global_data.items():
+                if np.isscalar(data):
+                    if type(data) is int:
+                        cell_data[key] = data * np.ones(self.discretizer.nodes_tot, dtype=int)
+                    elif type(data) is float:
+                        cell_data[key] = data * np.ones(self.discretizer.nodes_tot, dtype=mesh_geom_dtype)
+                else:
+                    cell_data[key] = np.array(data).flatten(order='F')
+            mesh_filename = output_directory + '/mesh'
 
-        # in order to have correct timesteps in Paraview, write down group file
-        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-        # and does not support reading, track all written files and times and re-write the complete
-        # group file every time
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(mesh_filename, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
+                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
 
-        self.vtk_filenames_and_times[vtk_file_name] = t
+                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+        return
 
-        self.group = vtk.VtkGroup(file_name)
-        for fname, t in self.vtk_filenames_and_times.items():
-            self.group.addFile(fname, t)
-        self.group.save()
+    def output_to_vtk(self, ith_step: int, time_steps : float, output_directory: str, prop_names: list, data: dict):
+        """
+        Function to export results of structured reservoir at timestamp t into `.vtk` format.
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param prop_names: List of keys for properties
+        :type prop_names: list
+        :param data: Data for output
+        :type data: dict
+        """
+        from pyevtk.hl import gridToVTK
+        from pyevtk.vtk import VtkGroup
+
+        # only for the first export call
+        os.makedirs(output_directory, exist_ok=True)
+        if not self.vtk_initialized:
+            self.init_vtk(output_directory)
+
+        for ts, t in enumerate(time_steps):
+            if len(time_steps) == 1:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            else:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
+
+            cell_data = {}
+            for prop_name in prop_names:
+                local_data = data[prop_name][ts]
+                global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
+                global_array[self.discretizer.local_to_global] = local_data
+                cell_data[prop_name] = global_array
+
+            if self.vtk_grid_type == 0:
+                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+            else:
+                for key, value in cell_data.items():
+                    self.vtkobj.AppendScalarData(key, cell_data[key][self.global_data['actnum'] == 1])
+
+                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+                if len(self.vtk_filenames_and_times) == 0:
+                    for key, data in self.global_data.items():
+                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
+
+            # in order to have correct timesteps in Paraview, write down group file
+            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+            # and does not support reading, track all written files and times and re-write the complete
+            # group file every time
+
+            self.vtk_filenames_and_times[vtk_file_name] = t
+            vtk_group = VtkGroup('solution')
+            for fname, t in self.vtk_filenames_and_times.items():
+                vtk_group.addFile(fname, t)
+            vtk_group.save()
 
     def generate_vtk_grid(self, strict_vertical_layers=True, compute_depth_by_dz_sum=True):
         # interpolate 2d array using grid (xx, yy) and specified method

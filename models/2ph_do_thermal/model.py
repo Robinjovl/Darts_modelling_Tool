@@ -93,7 +93,7 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
     def evaluate(self, state):
         """
@@ -113,7 +113,7 @@ class ModelProperties(PropertyContainer):
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        self.ph = [0, 1]
+        self.ph = np.array([0, 1], dtype=np.intp)
 
         for j in self.ph:
             # molar weight of mixture
@@ -129,9 +129,7 @@ class ModelProperties(PropertyContainer):
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
-        mass_source = np.zeros(self.nc)
-
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return
 
     def evaluate_at_cond(self, pressure, zc):
 

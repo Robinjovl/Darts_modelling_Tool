@@ -41,70 +41,52 @@ from typing import List
 
 # Definitions for the unstructured discretization class:
 class UnstructDiscretizer:
-    def __init__(self, permx, permy, permz, frac_aper, mesh_file: str, physical_tags: dict = None, poro=0.2,
-                 num_matrix_cells=0, num_fracture_cells=0, num_well_cells=0, verbose=False):
+    # Store the currently available matrix and fracture geometries supported by this unstructured discretizer:
+    geometries3D = ['hexahedron', 'wedge', 'tetra', 'pyramid']
+    geometries2D = ['quad', 'triangle']
+
+    def __init__(self, mesh_file: str, physical_tags: dict, verbose=False):
         """
         Class constructor method
 
-        :param permx: permeability data object (either in scalar or vector form) in x-direction
-        :param permy: permeability data object (either in scalar or vector form) in y-direction
-        :param permz: permeability data object (either in scalar or vector form) in z-direction
-        :param frac_aper: fracture aperture data object (either in scalar or vector form)
         :param mesh_file: name of the mesh file (in string form)
-        :param num_matrix_cells: number of matrix cells, if known before hand! (in scalar form)
-        :param num_fracture_cells: number of fracture cells, if known before hand! (in scalar form)
         """
         self.verbose = verbose
         self.mesh_file = mesh_file  # Name of the input meshfile
         self.mesh_data = []  # Initialize empty mesh data list
         self.mat_cell_info_dict = {}  # Dictionary containing information of all the matrix cells
-        self.frac_cell_info_dict = {}  # Dictionary containing information of all the fracture cells
-        self.frac_bound_cell_info_dict = {}  # Dictionary containing information of all the segments of fracture boundaries
-        self.bound_cell_info_dict = {}  # Dictionary containing information of all the boundary cells
-        self.output_face_info_dict = {} # Dictionary containing information of all the faces for output
-        self.well_cell_info_dict = {}
         self.mat_cells_to_node = {}  # Dictionary containing all the cells belonging to each matrix node
+        self.frac_cell_info_dict = {}  # Dictionary containing information of all the fracture cells
         self.frac_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node
-        self.frac_bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node on boundary
+        self.bound_face_info_dict = {}  # Dictionary containing information of all the boundary faces
         self.bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node
-        self.well_cells_to_node = {}
-        self.geometries_in_mesh_file = []  # List with geometries found in mesh file
-        self.mat_geometries_in_file = []  # List with matrix geometries found in mesh file
-        self.frac_geometries_in_file = []  # List with fracture geometries found in mesh file
-        self.well_geometries_in_file = []
-        self.matrix_cell_count = 0  # Number of matrix cells found when calc. matrix cell information
-        self.fracture_cell_count = 0  # Number of fracture cells found when calc. fracture cell information
-        self.bound_cell_count = 0  # Number of boundary cells
-        self.output_face_count = 0 # Number of faces for output
-        # self.well_cell_count = 0
-        self.layers = list()
-        self.layer_types = list()
-        self.wells = list()
-        self.well_faces = list()
-        self.well_cells = list()
-        self.top_cells = list()
-        self.mat_cells_tot = num_matrix_cells  # Total number of matrix cells
-        self.frac_cells_tot = num_fracture_cells  # Total number of fracture cells
-        self.well_cells_tot = num_well_cells
-        self.output_face_tot = 0  # Number of output faces
-        self.frac_bound_cells_tot = 0 # Number of segments on the boundary of faults
-        self.volume_all_cells = {}  # Volume of matrix and fracture cells (later as numpy.array)
-        self.depth_all_cells = {}  # Depth of matrix and fracture cells (later as numpy.array)
-        self.centroid_all_cells = {}  # Centroid of matrix and fracture cells (later as numpy.array)
+        self.frac_bound_face_info_dict = {}  # Dictionary containing information of all the segments of fracture boundaries
+        self.frac_bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node on boundary
+        self.output_face_info_dict = {}  # Dictionary containing information of all the faces for output
+        self.vtk_output_nodes_to_cells = {}
+        self.vtk_output_cell_idxs = {}
 
-        self.bound_cells_to_node = {}
+        self.mat_cells_tot = 0  # Total number of matrix cells
+        self.frac_cells_tot = 0  # Total number of fracture cells
+        self.bound_faces_tot = 0
+        self.output_faces_tot = 0  # Number of output faces
+        self.frac_bound_faces_tot = 0  # Number of segments on the boundary of faults
+
+        self.volume_all_cells = []  # Volume of matrix and fracture cells (later as numpy.array)
+        self.depth_all_cells = []  # Depth of matrix and fracture cells (later as numpy.array)
+        self.centroid_all_cells = []  # Centroid of matrix and fracture cells (later as numpy.array)
+
         self.boundary_connections = {}
-        self.tol = 1.E-10 # Tolerance in MPxA
+        self.tol = 1.E-10  # Tolerance in MPxA
         self.mpfa_connections = {}  # Pairs of cells which has a common sub-interface per node (int. region)
-        self.mpsa_connections = {} # Stress flux connections
-        self.n_dim = 0 # Mesh dimension (2 for 2D, 3 for 3D)
-        self.mpfa_connections_num = 0 # Number of MPFA connections
-        self.mpsa_connections_num = 0 # Number of MPSA connections
+        self.mpsa_connections = {}  # Stress flux connections
+        self.n_dim = 0  # Mesh dimension (2 for 2D, 3 for 3D)
+        self.mpfa_connections_num = 0  # Number of MPFA connections
+        self.mpsa_connections_num = 0  # Number of MPSA connections
 
-        self.physical_tags = physical_tags if physical_tags is not None else {'matrix': [], 'boundary': []}
+        self.physical_tags = physical_tags
         self.boundary_conditions = {tag: {'cells': []} for tag in self.physical_tags['boundary']}
-        # self.physical_tags = physical_tags
-        # self.boundary_conditions = {tag: {'cells': []} for tag in physical_tags['boundary']}
+
         self.disp_gradients = {}    # Displacement gradient & corresponding stencil for every matrix cell
         self.ith_iter = 0
         self.Ft_prev = {}
@@ -114,24 +96,6 @@ class UnstructDiscretizer:
         self.Ft2 = {}
         self.Fcont1 = {}
         self.Fcont2 = {}
-
-        # Store the currently available matrix and fracture geometries supported by this unstructured discretizer:
-        self.available_matrix_geometries = {'hexahedron', 'wedge', 'tetra', 'pyramid'}
-        self.available_fracture_geometries = {'quad', 'triangle'}
-
-        # Permeability data (perm{x,y,z}) can come in two forms:
-        #   scalar:                 kx,y,z=cte
-        #   vector (N_mat x 1):     kx,y,z are variable on domain (for matrix cells)
-        self.perm_x_cell = self.check_matrix_data_input(permx, 'permx')
-        self.perm_y_cell = self.check_matrix_data_input(permy, 'permx')
-        self.perm_z_cell = self.check_matrix_data_input(permz, 'permx')
-        self.poro_cell = self.check_matrix_data_input(poro, 'poro')
-
-        # Convery fracture aperture to permeability by two types:
-        #   scalar:                 constant aperature for all fractures
-        #   vector (N_frac x 1):    variable aperture for each fracture segment
-        self.fracture_aperture = self.check_fracture_data_input(frac_aper, 'frac_aper')
-        self.perm_frac_cell = (self.fracture_aperture ** 2) / 12 * 1E15
 
     def init_matrix_stiffness(self, props):
         self.stiffness = {}
@@ -151,7 +115,7 @@ class UnstructDiscretizer:
             self.stiffness[id] = prop
             self.stf[id] = self.get_stiffness_submatrices(prop)
 
-    def check_matrix_data_input(self, data, data_name: str):
+    def check_matrix_data_input(self, data):
         """
         Class method which checks the input data for matrix cells
 
@@ -165,9 +129,11 @@ class UnstructDiscretizer:
                 data = data * np.ones((self.mat_cells_tot,), dtype=type(data))
                 # ONLY UNCOMMENT THIS LINE BELOW IF YOU WANT HETEROGENEITY BY RANDOM INPUT:
                 # data = data * np.random.uniform(0.95, 1.05, (self.mat_cells_tot,))
+            else:
+                assert len(data) == self.mat_cells_tot, "Length of matrix data {:d} not equal to number of matrix cells {:d}".format(len(data), self.mat_cells_tot)
         return data
 
-    def check_fracture_data_input(self, data, data_name: str):
+    def check_fracture_data_input(self, data):
         """
         Class method which checks the input data for fracture cells
 
@@ -179,11 +145,18 @@ class UnstructDiscretizer:
             if np.isscalar(data):
                 # Input data object is scalar value
                 data = data * np.ones((self.frac_cells_tot,), dtype=type(data))
+            else:
+                assert len(data) == self.frac_cells_tot, "Length of fracture data {:d} is not equal to number of fracture cells {:d}".format(len(data), self.frac_cells_tot)
         return data
 
-    def load_mesh(self, cache=0):
+    def load_mesh(self, permx, permy, permz, frac_aper, cache: bool = False):
         """
         Class method which loads the mesh data of a specified file, using the module meshio module (third party).
+
+        :param permx: permeability data object (either in scalar or vector form) in x-direction
+        :param permy: permeability data object (either in scalar or vector form) in y-direction
+        :param permz: permeability data object (either in scalar or vector form) in z-direction
+        :param frac_aper: fracture aperture data object (either in scalar or vector form)
         """
         start_time_module = time.time()
         read_from_cache = False
@@ -193,819 +166,262 @@ class UnstructDiscretizer:
                 if self.verbose:
                     print('Start loading mesh from cache file (pickle)...')
                 with open(self.mesh_file + '.meshObject.cache', 'rb') as handle:
-                    self.meshObject = pickle.load(handle)
+                    meshObject = pickle.load(handle)
 
-                self.mesh_data = self.meshObject['mesh_data']
-                self.mat_cells_tot = self.meshObject['mat_cells_tot']
-                self.frac_cells_tot = self.meshObject['frac_cells_tot']
-                read_from_cache = True
-                if self.verbose:
-                    print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
-                    print(self.mesh_data)
+                self.mesh_data = meshObject['mesh_data']
+                self.mat_cells_tot = meshObject['mat_cells_tot']
+                self.frac_cells_tot = meshObject['frac_cells_tot']
+                self.bound_faces_tot = meshObject['bound_faces_tot']
+                self.frac_bound_faces_tot = meshObject['frac_bound_faces_tot']
+                self.output_faces_tot = meshObject['output_faces_tot']
 
-        if not read_from_cache:
-            if self.verbose:
-                print('Start loading mesh from mesh file...')
-            self.mesh_data = meshio.read(self.mesh_file)
-
-            # Store all available geometries of the objects found by meshio in a list:
-            for ith_geometry in self.mesh_data.cells_dict:
-                self.geometries_in_mesh_file.append(ith_geometry)
-
-                if ith_geometry in self.available_matrix_geometries:
-                    self.mat_geometries_in_file.append(ith_geometry)
-                if ith_geometry in self.available_fracture_geometries:
-                    self.frac_geometries_in_file.append(ith_geometry)
-
-            # Create default dictionary entry:
-            for geometry in self.available_matrix_geometries:
-                self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
-
-            for geometry in self.available_fracture_geometries:
-                self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
-
-            if self.verbose:
-                print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
-                print(self.mesh_data)
-
-            # If matrix cells have not yet been specified (prior to loading mesh), then count them here:
-            count_mat_cells = False
-            count_frac_cells = False
-            if self.mat_cells_tot == 0:
-                count_mat_cells = True
-            if self.frac_cells_tot == 0:
-                count_frac_cells = True
-
-            for ith_geometry in self.mesh_data.cells_dict:
-                # Find and store number of cells:
-                if ith_geometry in self.available_fracture_geometries:
-                    # Geometry indicates (supported) fracture type geometry (2D element):
-                    if count_frac_cells:
-                        self.frac_cells_tot += self.mesh_data.cells_dict[ith_geometry].shape[0]
-                elif ith_geometry in self.available_matrix_geometries:
-                    # Geometry indicates (supported) matrix type geometry (3D element):
-                    if count_mat_cells:
-                        self.mat_cells_tot += self.mesh_data.cells_dict[ith_geometry].shape[0]
-                else:
-                    # Found geometry which is not supported by discretizer!
-                    print('!!!!!!!!!!!!UNSUPORTED GEOMETRY FOUND!!!!!!!!!!!!')
-            if self.verbose:
-                print('Total number of matrix cells found: {:d}'.format(self.mat_cells_tot))
-                print('Total number of fracture cells found: {:d}'.format(self.frac_cells_tot))
-                print('------------------------------------------------\n')
-
-        # Interpret input perm_data:
-        self.perm_x_cell = self.check_matrix_data_input(self.perm_x_cell, 'permx')
-        self.perm_y_cell = self.check_matrix_data_input(self.perm_y_cell, 'permy')
-        self.perm_z_cell = self.check_matrix_data_input(self.perm_z_cell, 'permz')
-        self.fracture_aperture = self.check_fracture_data_input(self.fracture_aperture, 'frac_aper')
-        self.perm_frac_cell = self.check_fracture_data_input(self.perm_frac_cell, 'perm_frac')
-
-        if cache and not read_from_cache:
-            self.meshObject = {}
-            self.meshObject['mesh_data'] = self.mesh_data
-            self.meshObject['mat_cells_tot'] = self.mat_cells_tot
-            self.meshObject['frac_cells_tot'] = self.frac_cells_tot
-
-            with open(self.mesh_file + '.meshObject.cache', 'wb') as handle:
-                pickle.dump(self.meshObject, handle, protocol=4)
-            if self.verbose:
-                print("Files have been read and cached.")
-        return 0
-
-    def calc_cell_information(self, cache=0):
-        """
-        Class method which calculates the geometrical properties of the grid
-        """
-        start_time_module = time.time()
-        read_from_cache = False
-
-        if cache:
-            if os.path.isfile(self.mesh_file + '.cellInfoDict.cache'):
                 if self.verbose:
                     print('Load cell information from cache...')
                 with open(self.mesh_file + '.cellInfoDict.cache', 'rb') as handle:
-                    self.cellInfoDict = pickle.load(handle)
+                    cellInfoDict = pickle.load(handle)
 
-                self.mat_cells_to_node = self.cellInfoDict['mat_cells_to_node']
-                self.frac_cells_to_node = self.cellInfoDict['frac_cells_to_node']
-                self.mat_cell_info_dict = self.cellInfoDict['mat_cell_info_dict']
-                self.frac_cell_info_dict = self.cellInfoDict['frac_cell_info_dict']
-                self.matrix_cell_count = self.cellInfoDict['matrix_cell_count']
-                self.fracture_cell_count = self.cellInfoDict['fracture_cell_count']
+                self.mat_cell_info_dict = cellInfoDict['mat_cell_info_dict']
+                self.mat_cells_to_node = cellInfoDict['mat_cells_to_node']
+                self.frac_cell_info_dict = cellInfoDict['frac_cell_info_dict']
+                self.frac_cells_to_node = cellInfoDict['frac_cells_to_node']
+                self.bound_face_info_dict = cellInfoDict['bound_face_info_dict']
+                self.bound_cells_to_node = cellInfoDict['bound_cells_to_node']
+                self.frac_bound_face_info_dict = cellInfoDict['frac_bound_face_info_dict']
+                self.frac_bound_cells_to_node = cellInfoDict['frac_bound_cells_to_node']
+                self.output_face_info_dict = cellInfoDict['output_face_info_dict']
+
                 read_from_cache = True
                 if self.verbose:
-                    print('Time to read cell info: {:f} [sec]'.format((time.time() - start_time_module)))
-                    print('------------------------------------------------\n')
-
-        if not read_from_cache:
-
-            if self.verbose:
-                print('Start calculation cell information...')
-            # Find cells belonging to particular node:
-            actual_mat_cell_id = 0
-            actual_frac_cell_id = 0
-            global_count = 0
-
-            for geometry in self.geometries_in_mesh_file:
-                # Main loop over different existing geometries
-                for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
-                    global_count += 1
-
-                    # Calculate general information for cell, based on geometry, nodes belong to cell and their coordinates:
-                    if geometry in self.available_matrix_geometries:
-                        actual_mat_cell_id = self.matrix_cell_count + ith_cell
-
-                        for ith_node in range(len(nodes_to_cell)):
-                            key = nodes_to_cell[ith_node]
-                            self.mat_cells_to_node.setdefault(key, [])
-                            self.mat_cells_to_node[key].append(actual_mat_cell_id)
-
-                        if ith_cell == (len(self.mesh_data.cells_dict[geometry]) - 1):
-                            self.matrix_cell_count = self.matrix_cell_count + ith_cell + 1
-
-                    elif geometry in self.available_fracture_geometries:
-                        actual_frac_cell_id = self.fracture_cell_count + ith_cell
-
-                        for ith_node in range(len(nodes_to_cell)):
-                            key = nodes_to_cell[ith_node]
-                            self.frac_cells_to_node.setdefault(key, [])
-                            self.frac_cells_to_node[key].append(actual_frac_cell_id)
-
-                        if ith_cell == (len(self.mesh_data.cells_dict[geometry]) - 1):
-                            self.fracture_cell_count = self.fracture_cell_count + ith_cell + 1
-
-                    # Construct control volume object depending on geometry (class):
-                    if geometry == 'hexahedron':
-                        self.mat_cell_info_dict[actual_mat_cell_id] = \
-                            Hexahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                       np.array([self.perm_x_cell[actual_mat_cell_id],
-                                                 self.perm_y_cell[actual_mat_cell_id],
-                                                 self.perm_z_cell[actual_mat_cell_id]]))
-
-                    elif geometry == 'wedge':
-                        self.mat_cell_info_dict[actual_mat_cell_id] = \
-                            Wedge(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                  np.array([self.perm_x_cell[actual_mat_cell_id],
-                                            self.perm_y_cell[actual_mat_cell_id],
-                                            self.perm_z_cell[actual_mat_cell_id]]))
-
-                    elif geometry == 'tetra':
-                        self.mat_cell_info_dict[actual_mat_cell_id] = \
-                            Tetrahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                        np.array([self.perm_x_cell[actual_mat_cell_id],
-                                                  self.perm_y_cell[actual_mat_cell_id],
-                                                  self.perm_z_cell[actual_mat_cell_id]]))
-
-                    elif geometry == 'pyramid':
-                        self.mat_cell_info_dict[actual_mat_cell_id] = \
-                            Pyramid(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                    np.array([self.perm_x_cell[actual_mat_cell_id],
-                                              self.perm_y_cell[actual_mat_cell_id],
-                                              self.perm_z_cell[actual_mat_cell_id]]))
-
-                    elif geometry == 'quad':
-                        self.frac_cell_info_dict[actual_frac_cell_id] = \
-                            Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                       self.fracture_aperture[actual_frac_cell_id])
-
-                    elif geometry == 'triangle':
-                        self.frac_cell_info_dict[actual_frac_cell_id] = \
-                            Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                     self.fracture_aperture[actual_frac_cell_id])
-
-            if self.verbose:
-                print('Time to calculate cell info: {:f} [sec]'.format((time.time() - start_time_module)))
-                print('------------------------------------------------\n')
-
-        # Some fail safe, check if number of fracture cells and number of
-        # matrix cells are the same as pre-assumed count, if exists:
-        if not self.matrix_cell_count == self.mat_cells_tot:
-            print('Matrix cells found after calc. cell info not same as pre-assumed matrix cell count!!!!!!')
-        if not self.fracture_cell_count == self.frac_cells_tot:
-            print('Matrix cells found after calc. cell info not same as pre-assumed matrix cell count!!!!!!')
-
-        if cache and not read_from_cache:
-            self.cellInfoDict = {}
-            self.cellInfoDict['mat_cells_to_node'] = self.mat_cells_to_node
-            self.cellInfoDict['frac_cells_to_node'] = self.frac_cells_to_node
-            self.cellInfoDict['mat_cell_info_dict'] = self.mat_cell_info_dict
-            self.cellInfoDict['frac_cell_info_dict'] = self.frac_cell_info_dict
-            self.cellInfoDict['matrix_cell_count'] = self.matrix_cell_count
-            self.cellInfoDict['fracture_cell_count'] = self.fracture_cell_count
-
-            with open(self.mesh_file + '.cellInfoDict.cache', 'wb') as handle:
-                pickle.dump(self.cellInfoDict, handle, protocol=4)
-            if self.verbose:
-                print("Files have been read and cached.")
-        return 0
-
-    def load_mesh_with_bounds(self):
-        start_time_module = time.time()
-        if self.verbose:
-            print('Start loading mesh...')
-        self.mesh_data = meshio.read(self.mesh_file)
-
-        # Store all available geometries of the objects found by meshio in a list:
-        for ith_geometry in self.mesh_data.cells_dict:
-            # self.geometries_in_mesh_file.append(ith_geometry)
-
-            if ith_geometry in self.available_matrix_geometries:
-                self.mat_geometries_in_file.append(ith_geometry)
-            if ith_geometry in self.available_fracture_geometries:
-                self.frac_geometries_in_file.append(ith_geometry)
-
-        # Create default dictionary entry:
-        for geometry in self.mat_geometries_in_file:
-            self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
-
-        for geometry in self.frac_geometries_in_file:
-            self.mesh_data.cells_dict.setdefault(geometry, np.array([]))
-
-        # Count all the cells, boundary cells and fractures by their types
-        self.mat_cells_tot = self.bound_cells_tot = self.frac_cells_tot = 0
-        for geometry, types in self.mesh_data.cell_data_dict['gmsh:physical'].items():
-            unique, counts = np.unique(types, return_counts=True)
-            for type, count in zip(unique, counts):
-                if type in self.physical_tags['fracture_shape']:
-                    self.frac_bound_cells_tot += count
-                elif type in self.physical_tags['boundary']:
-                    self.bound_cells_tot += count
-                elif type in self.physical_tags['matrix']:
-                    self.mat_cells_tot += count
-                elif type in self.physical_tags['fracture']:
-                    self.frac_cells_tot += count
-                elif type in self.physical_tags['output']:
-                    self.output_face_tot += count
-                else:
-                    # Found geometry which is not supported by discretizer!
-                    print('!!!!!!!!!!!!UNSUPORTED GEOMETRY FOUND!!!!!!!!!!!!')
-
-        self.perm_x_cell = self.check_matrix_data_input(self.perm_x_cell, 'permx')
-        self.perm_y_cell = self.check_matrix_data_input(self.perm_y_cell, 'permy')
-        self.perm_z_cell = self.check_matrix_data_input(self.perm_z_cell, 'permz')
-
-        # Find cells belonging to particular node:
-        cell_count = 0
-        mat_count = 0
-        face_count = 0
-        bound_count = 0
-        global_count = 0
-        frac_bound_count = 0
-        output_count = 0
-        self.geom_order = [geom[0] for geom in sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()), key=lambda x: -x[1][0])]
-
-        for geometry, tags in sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()), key=lambda x: -x[1][0]):
-            # Main loop over different existing geometries
-            for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
-                global_count += 1
-
-                # Calculate general information for cell, based on geometry, nodes belong to cell and their coordinates:
-                # matrix cells
-                if tags[ith_cell] in self.physical_tags['matrix']:
-                    for key in nodes_to_cell:
-                        self.mat_cells_to_node.setdefault(key, [])
-                        self.mat_cells_to_node[key].append(cell_count)
-
-                    if geometry == 'hexahedron':
-                        self.mat_cell_info_dict[cell_count] = \
-                            Hexahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                       np.array([self.perm_x_cell[mat_count],
-                                                 self.perm_y_cell[mat_count],
-                                                 self.perm_z_cell[mat_count]]),
-                                       tags[ith_cell])
-                    elif geometry == 'wedge':
-                        self.mat_cell_info_dict[cell_count] = \
-                            Wedge(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                  np.array([self.perm_x_cell[mat_count],
-                                            self.perm_y_cell[mat_count],
-                                            self.perm_z_cell[mat_count]]), tags[ith_cell])
-                    elif geometry == 'tetra':
-                        self.mat_cell_info_dict[cell_count] = \
-                            Tetrahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                        np.array([self.perm_x_cell[mat_count],
-                                                  self.perm_y_cell[mat_count],
-                                                  self.perm_z_cell[mat_count]]),
-                                        tags[ith_cell])
-                    elif geometry == 'pyramid':
-                        self.mat_cell_info_dict[cell_count] = \
-                            Pyramid(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                    np.array([self.perm_x_cell[mat_count],
-                                              self.perm_y_cell[mat_count],
-                                              self.perm_z_cell[mat_count]]), tags[ith_cell])
-                    cell_count += 1
-                    mat_count += 1
-                # boundary cells
-                elif tags[ith_cell] in self.physical_tags['boundary']:
-                    for key in nodes_to_cell:
-                        self.bound_cells_to_node.setdefault(key, [])
-                        self.bound_cells_to_node[key].append(face_count)
-
-                    if geometry == 'quad':
-                        self.bound_cell_info_dict[face_count] = \
-                            Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0,
-                                       tags[ith_cell])
-                        self.boundary_conditions[tags[ith_cell]]['cells'].append(face_count)
-                    elif geometry == 'triangle':
-                        self.bound_cell_info_dict[face_count] = \
-                            Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0,
-                                     tags[ith_cell])
-                        self.boundary_conditions[tags[ith_cell]]['cells'].append(face_count)
-                    face_count += 1
-                    bound_count += 1
-                # fracture cells
-                elif tags[ith_cell] in self.physical_tags['fracture']:
-                    for key in nodes_to_cell:
-                        self.frac_cells_to_node.setdefault(key, [])
-                        self.frac_cells_to_node[key].append(cell_count)
-
-                    if geometry == 'quad':
-                        self.frac_cell_info_dict[cell_count] = \
-                            Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tags[ith_cell])
-                    elif geometry == 'triangle':
-                        self.frac_cell_info_dict[cell_count] = \
-                            Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tags[ith_cell])
-                    cell_count += 1
-                # fracture boundaries
-                elif tags[ith_cell] in self.physical_tags['fracture_shape']:
-                    for key in nodes_to_cell:
-                        self.frac_bound_cells_to_node.setdefault(key, [])
-                        self.frac_bound_cells_to_node[key].append(face_count)
-
-                    if geometry == 'line':
-                        self.frac_bound_cell_info_dict[face_count] = \
-                            Line(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tags[ith_cell])
-                        self.boundary_conditions[tags[ith_cell]]['cells'].append(face_count)
-                    face_count += 1
-                    bound_count += 1
-                # output faces
-                elif tags[ith_cell] in self.physical_tags['output']:
-                    if geometry == 'quad':
-                        self.output_face_info_dict[output_count] = \
-                            Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tags[ith_cell])
-                    elif geometry == 'triangle':
-                        self.output_face_info_dict[output_count] = \
-                            Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tags[ith_cell])
-                    output_count += 1
-
-        self.matrix_cell_count = mat_count
-        self.bound_cell_count = bound_count
-        self.fracture_cell_count = cell_count - mat_count
-        self.frac_bound_cell_count = frac_bound_count
-        self.output_face_count = output_count
-
-        if self.verbose:
-            print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
-            print(self.mesh_data)
-
-    def load_mesh_with_wells(self, well_centers, well_radii, cache=0):
-        """
-        Class method which reads msh file with meshio or reads mesh_data from cache
-        """
-        start_time_module = time.time()
-        read_from_cache = False
-
-        if cache:
-            if os.path.isfile(self.mesh_file + '.meshObject.cache'):
-                if self.verbose:
-                    print('Start loading mesh from cache file (pickle)...')
-                with open(self.mesh_file + '.meshObject.cache', 'rb') as handle:
-                    self.meshObject = pickle.load(handle)
-
-                self.mesh_data = self.meshObject['mesh_data']
-                self.mat_cells_tot = self.meshObject['mat_cells_tot']
-                self.well_cells_tot = self.meshObject['well_cells_tot']
-                self.layer_types = self.meshObject['layer_types']
-                self.wells = self.meshObject['wells']
-                self.well_centers = self.meshObject['well_centers']
-                self.well_points = self.meshObject['well_points']
-                read_from_cache = True
-
-                if self.verbose:
-                    print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
+                    print('Time to load Mesh and cell info: {:f} [sec]'.format((time.time() - start_time_module)))
                     print(self.mesh_data)
 
         if not read_from_cache:
             if self.verbose:
-                print('Start reading mesh file with meshio...')
+                print('Start loading mesh...')
             self.mesh_data = meshio.read(self.mesh_file)
 
             # Count all the cells, boundary cells and fractures by their types
-            self.mat_cells_count = self.well_cells_tot = 0
-            """"
-            Mesh object variables:
-            cells_dict: dictionary[keys: geometry type] containing array of cells [nodes] of all cells of specific geometry
-            cell_data_dict['gmsh:physical']: dictionary[keys: geometry type] containing array of physical tags for each cell
-            """
-            for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
-                unique, counts = np.unique(tags, return_counts=True)
+            self.mat_cells_tot = self.frac_cells_tot = self.bound_faces_tot = self.frac_bound_faces_tot = self.output_faces_tot = 0
+            for geometry, types in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+                unique, counts = np.unique(types, return_counts=True)
                 for type, count in zip(unique, counts):
-                    if type in self.physical_tags['well']:
+                    if type in self.physical_tags['matrix']:
                         self.mat_cells_tot += count
-                        self.well_cells_tot += count
-                        self.wells.append(type)
-                    elif type in self.physical_tags['matrix']:
-                        self.mat_cells_tot += count
-                        self.layer_types.append(type)
+                    elif type in self.physical_tags['fracture']:
+                        self.frac_cells_tot += count
+                    elif type in self.physical_tags['boundary']:
+                        self.bound_faces_tot += count
+                    elif type in self.physical_tags['fracture_boundary']:
+                        self.frac_bound_faces_tot += count
+                    elif type in self.physical_tags['output']:
+                        self.output_faces_tot += count
                     else:
-                        # Found geometry which is not supported by discretizer!
-                        print('!!!!!!!!!!!!UNSUPPORTED GEOMETRY FOUND!!!!!!!!!!!!')
-
-            self.well_points = [[[] for i in range(2)] for j in range(self.well_cells_tot)]
-            self.well_centers = well_centers
-
-            # find points in well faces
-            for i, well_center in enumerate(self.well_centers):
-                for ith_point, point in enumerate(self.mesh_data.points):
-                    dist0 = np.sqrt((well_center[0][0] - point[0]) ** 2 + (well_center[0][1] - point[1]) ** 2 + (well_center[0][2] - point[2]) ** 2)
-                    dist1 = np.sqrt((well_center[1][0] - point[0]) ** 2 + (well_center[1][1] - point[1]) ** 2 + (well_center[1][2] - point[2]) ** 2)
-                    if dist0 <= well_radii[i] * 1.01 and dist0 >= well_radii[i] * 0.99:
-                        self.well_points[i][0].append(ith_point)
-                    elif dist1 <= well_radii[i] * 1.01 and dist1 >= well_radii[i] * 0.99:
-                        self.well_points[i][1].append(ith_point)
+                        raise ValueError("Unsupported physical tag found", type)
 
             if self.verbose:
-                print('Time to read Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
-                print(self.mesh_data)
+                print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
 
                 print('Total number of matrix cells found: {:d}'.format(self.mat_cells_tot))
-                print('Total number of well cells found: {:d}'.format(self.well_cells_tot))
+                print('Total number of fracture cells found: {:d}'.format(self.frac_cells_tot))
+                print('Total number of boundary faces found: {:d}'.format(self.bound_faces_tot))
+                print('Total number of fracture boundary faces found: {:d}'.format(self.frac_bound_faces_tot))
+                print('Total number of output faces found: {:d}'.format(self.output_faces_tot))
+
+                print(self.mesh_data)
                 print('------------------------------------------------\n')
 
-        # Interpret input perm_data:
-        self.perm_x_cell = self.check_matrix_data_input(self.perm_x_cell, 'permx')
-        self.perm_y_cell = self.check_matrix_data_input(self.perm_y_cell, 'permy')
-        self.perm_z_cell = self.check_matrix_data_input(self.perm_z_cell, 'permz')
+            # Interpret input perm_data:
+            self.perm_x_cell = self.check_matrix_data_input(permx)
+            self.perm_y_cell = self.check_matrix_data_input(permy)
+            self.perm_z_cell = self.check_matrix_data_input(permz)
+            self.fracture_aperture = self.check_fracture_data_input(frac_aper)
+            self.perm_frac_cell = (self.fracture_aperture ** 2) / 12 * 1E15
 
-        if cache and not read_from_cache:
-            self.meshObject = {}
-            self.meshObject['mesh_data'] = self.mesh_data
-            self.meshObject['mat_cells_tot'] = self.mat_cells_tot
-            self.meshObject['well_cells_tot'] = self.well_cells_tot
-            self.meshObject['layer_types'] = self.layer_types
-            self.meshObject['wells'] = self.wells
-            self.meshObject['well_centers'] = self.well_centers
-            self.meshObject['well_points'] = self.well_points
-            # self.meshObject['frac_cells_tot'] = self.frac_cells_tot
-
-            with open(self.mesh_file + '.meshObject.cache', 'wb') as handle:
-                pickle.dump(self.meshObject, handle, protocol=4)
-            if self.verbose:
-                print("Files have been read and cached.")
-        return 0
-
-    def calc_cell_information_with_wells(self, well_locations, well_radii, cache=0):
-        """
-        Class method which calculates the geometrical properties of the grid
-        """
-        start_time_module = time.time()
-        read_from_cache = False
-
-        if cache:
-            if os.path.isfile(self.mesh_file + '.cellInfoDict.cache'):
-                if self.verbose:
-                    print('Load cell information from cache...')
-                with open(self.mesh_file + '.cellInfoDict.cache', 'rb') as handle:
-                    self.cellInfoDict = pickle.load(handle)
-
-                self.mat_cells_to_node = self.cellInfoDict['mat_cells_to_node']
-                self.mat_cell_info_dict = self.cellInfoDict['mat_cell_info_dict']
-                self.matrix_cell_count = self.cellInfoDict['matrix_cell_count']
-                self.well_cell_count = self.cellInfoDict['well_cell_count']
-                self.layers = self.cellInfoDict['layers']
-                self.well_cells = self.cellInfoDict['well_cells']
-                self.top_cells = self.cellInfoDict['top_cells']
-                read_from_cache = True
-                if self.verbose:
-                    print('Time to read cell info: {:f} [sec]'.format((time.time() - start_time_module)))
-                    print('------------------------------------------------\n')
-
-        if not read_from_cache:
-            if self.verbose:
-                print('Start calculation cell information...')
             # Find cells belonging to particular node:
+            cell_count = 0  # number of 3D elements
             mat_count = 0
-            well_count = 0
+            frac_count = 0
+            face_count = 0  # number of 2D elements
+            bound_count = 0
+            frac_bound_count = 0
+            output_count = 0
+            self.geom_order = [geom[0] for geom in
+                               sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()), key=lambda x: -x[1][0])]
 
-            self.layers = [[] for i in enumerate(self.layer_types)]  # list of cells of particular layer type
-            self.well_cells = [[] for i in range(self.well_cells_tot)]
-            self.top_cells = []
-            self.z_max = max(self.mesh_data.points[:, 2])  # for finding top cells
-
-            for geometry, tags in sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()),
-                                         key=lambda x: -x[1][0]):
+            for geometry, tags in sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()), key=lambda x: -x[1][0]):
                 # Main loop over different existing geometries
                 for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
-                    # well cells -> assign cylindrical volume
-                    if tags[ith_cell] in self.physical_tags['well']:
-                        geometry = 'cylinder'
-                        nodes_to_cell = []
-                        nodes_to_cell.extend(self.well_points[well_count][0])  # bottom nodes
-                        nodes_to_cell.extend(self.well_points[well_count][1])  # top nodes
-
-                        for key in nodes_to_cell:
-                            self.mat_cells_to_node.setdefault(key, [])
-                            self.mat_cells_to_node[key].append(mat_count)
-
-                        well_loc = self.well_centers[well_count]
-                        radius = well_radii[well_count]
-                        self.mat_cell_info_dict[mat_count] = \
-                            Cylinder(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], well_loc, radius, geometry,
-                                     np.array([self.perm_x_cell[mat_count],
-                                               self.perm_y_cell[mat_count],
-                                               self.perm_z_cell[mat_count]]),
-                                     tags[ith_cell])
-                        self.well_cells[well_count].append(mat_count)
-                        well_count += 1
-                        mat_count += 1
-
-                        self.layers[4].append(ith_cell)
-                        # self.layer_types.index("F")
-
-                    else:
-                        # Calculate general information for cell, based on geometry, nodes belong to cell and their coordinates:
-                        # matrix cells
-                        if tags[ith_cell] in self.physical_tags['matrix']:
-                            for key in nodes_to_cell:
-                                self.mat_cells_to_node.setdefault(key, [])
-                                self.mat_cells_to_node[key].append(mat_count)
-
-                            self.layers[tags[ith_cell] - self.physical_tags['matrix'][0]].append(ith_cell)
-
-                            if geometry == 'hexahedron':
-                                self.mat_cell_info_dict[mat_count] = \
-                                    Hexahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                               np.array([self.perm_x_cell[mat_count],
-                                                         self.perm_y_cell[mat_count],
-                                                         self.perm_z_cell[mat_count]]),
-                                               tags[ith_cell])
-                            elif geometry == 'wedge':
-                                self.mat_cell_info_dict[mat_count] = \
-                                    Wedge(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                          np.array([self.perm_x_cell[mat_count],
-                                                    self.perm_y_cell[mat_count],
-                                                    self.perm_z_cell[mat_count]]), tags[ith_cell])
-                            elif geometry == 'tetra':
-                                self.mat_cell_info_dict[mat_count] = \
-                                    Tetrahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                                np.array([self.perm_x_cell[mat_count],
-                                                          self.perm_y_cell[mat_count],
-                                                          self.perm_z_cell[mat_count]]),
-                                                tags[ith_cell])
-                            elif geometry == 'pyramid':
-                                self.mat_cell_info_dict[mat_count] = \
-                                    Pyramid(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
-                                            np.array([self.perm_x_cell[mat_count],
-                                                      self.perm_y_cell[mat_count],
-                                                      self.perm_z_cell[mat_count]]), tags[ith_cell])
-                            mat_count += 1
-
-                            # Add top cells to list
-                            if tags[ith_cell] == self.layer_types[-1]:
-                                coord_nodes_in_cell = self.mat_cell_info_dict[ith_cell].coord_nodes_to_cell
-                                if sum(coord_nodes_in_cell[:, 2] == self.z_max) >= 4:
-                                    self.top_cells.append(ith_cell)
-
-            self.matrix_cell_count = mat_count
-            self.well_cell_count = well_count
-            if self.verbose:
-                print('Time to calculate cell info: {:f} [sec]'.format((time.time() - start_time_module)))
-                print('------------------------------------------------\n')
-
-        if cache and not read_from_cache:
-            self.cellInfoDict = {}
-            self.cellInfoDict['mat_cells_to_node'] = self.mat_cells_to_node
-            self.cellInfoDict['mat_cell_info_dict'] = self.mat_cell_info_dict
-            self.cellInfoDict['matrix_cell_count'] = self.matrix_cell_count
-            self.cellInfoDict['well_cell_count'] = self.well_cell_count
-            self.cellInfoDict['layers'] = self.layers
-            self.cellInfoDict['well_cells'] = self.well_cells
-            self.cellInfoDict['top_cells'] = self.top_cells
-
-            with open(self.mesh_file + '.cellInfoDict.cache', 'wb') as handle:
-                pickle.dump(self.cellInfoDict, handle, protocol=4)
-            print("Files have been read and cached.")
-        return 0
-
-    def load_mesh_with_wells_old(self, well_locations, well_radius):
-        start_time_module = time.time()
-        if self.verbose:
-            print('Start loading mesh...')
-        self.mesh_data = meshio.read(self.mesh_file)
-
-        # Count all the cells, boundary cells and fractures by their types
-        self.mat_cells_tot = self.well_cells_tot = 0
-        """"
-        Mesh object variables:
-        cells_dict: dictionary[keys: geometry type] containing array of cells [nodes] of all cells of specific geometry
-        cell_data_dict['gmsh:physical']: dictionary[keys: geometry type] containing array of physical tags for each cell
-        """
-        for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
-            unique, counts = np.unique(tags, return_counts=True)
-            for type, count in zip(unique, counts):
-                if type in self.physical_tags['well']:
-                    self.mat_cells_tot += count
-                    self.wells.append(type)
-                elif type in self.physical_tags['matrix']:
-                    self.mat_cells_tot += count
-                    self.layers.append(type)
-                else:
-                    # Found geometry which is not supported by discretizer!
-                    print('!!!!!!!!!!!!UNSUPPORTED GEOMETRY FOUND!!!!!!!!!!!!')
-
-        self.perm_x_cell = self.check_matrix_data_input(self.perm_x_cell, 'permx')
-        self.perm_y_cell = self.check_matrix_data_input(self.perm_y_cell, 'permy')
-        self.perm_z_cell = self.check_matrix_data_input(self.perm_z_cell, 'permz')
-
-        # Find cells belonging to particular node:
-        mat_count = 0
-        well_count = 0
-
-        self.layers = [[] for i in enumerate(self.layers)]  # list of cells of particular layer type
-        self.well_cells = []
-        self.well_points = [[] for i in enumerate(well_locations)]
-        self.top_cells = []
-        self.z_max = max(self.mesh_data.points[:, 2])  # for finding top cells
-
-        # find points in well faces
-        for i, well_loc in enumerate(well_locations):
-            for ith_point, point in enumerate(self.mesh_data.points):
-                dist = np.sqrt((well_loc[0] - point[0]) ** 2 + (well_loc[2] - point[2]) ** 2)
-                if dist <= well_radius[i] * 1.01 and dist >= well_radius[i] * 0.99:
-                    self.well_points[i].append(ith_point)
-
-        for geometry, tags in sorted(list(self.mesh_data.cell_data_dict['gmsh:physical'].items()),
-                                     key=lambda x: -x[1][0]):
-            # Main loop over different existing geometries
-            for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
-                # well cells -> assign cylindrical volume
-                if tags[ith_cell] in self.physical_tags['well']:
-                    geometry = 'cylinder'
-                    nodes_to_cell = self.well_points[well_count]
-                    for key in nodes_to_cell:
-                        self.mat_cells_to_node.setdefault(key, [])
-                        self.mat_cells_to_node[key].append(mat_count)
-
-                    well_loc = well_locations[well_count]
-                    radius = well_radius[well_count]
-                    self.mat_cell_info_dict[mat_count] = \
-                        Cylinder(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], well_loc, radius, geometry,
-                                 np.array([self.perm_x_cell[mat_count],
-                                           self.perm_y_cell[mat_count],
-                                           self.perm_z_cell[mat_count]]),
-                                 tags[ith_cell])
-                    self.well_cells.append(mat_count)
-                    well_count += 1
-                    mat_count += 1
-
-                    self.layers[4].append(ith_cell)
-
-                else:
-                    # print("mat", ith_cell)
                     # Calculate general information for cell, based on geometry, nodes belong to cell and their coordinates:
+                    tag = tags[ith_cell]
+
                     # matrix cells
-                    if tags[ith_cell] in self.physical_tags['matrix']:
+                    if tag in self.physical_tags['matrix']:
                         for key in nodes_to_cell:
                             self.mat_cells_to_node.setdefault(key, [])
                             self.mat_cells_to_node[key].append(mat_count)
-
-                        self.layers[tags[ith_cell] - self.physical_tags['matrix'][0]].append(ith_cell)
 
                         if geometry == 'hexahedron':
                             self.mat_cell_info_dict[mat_count] = \
                                 Hexahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                            np.array([self.perm_x_cell[mat_count],
                                                      self.perm_y_cell[mat_count],
-                                                     self.perm_z_cell[mat_count]]),
-                                           tags[ith_cell])
+                                                     self.perm_z_cell[mat_count]]), tag)
                         elif geometry == 'wedge':
                             self.mat_cell_info_dict[mat_count] = \
                                 Wedge(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                       np.array([self.perm_x_cell[mat_count],
                                                 self.perm_y_cell[mat_count],
-                                                self.perm_z_cell[mat_count]]), tags[ith_cell])
+                                                self.perm_z_cell[mat_count]]), tag)
                         elif geometry == 'tetra':
                             self.mat_cell_info_dict[mat_count] = \
                                 Tetrahedron(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                             np.array([self.perm_x_cell[mat_count],
                                                       self.perm_y_cell[mat_count],
-                                                      self.perm_z_cell[mat_count]]),
-                                            tags[ith_cell])
+                                                      self.perm_z_cell[mat_count]]), tag)
                         elif geometry == 'pyramid':
                             self.mat_cell_info_dict[mat_count] = \
                                 Pyramid(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                         np.array([self.perm_x_cell[mat_count],
                                                   self.perm_y_cell[mat_count],
-                                                  self.perm_z_cell[mat_count]]), tags[ith_cell])
+                                                  self.perm_z_cell[mat_count]]), tag)
+
+                        cell_count += 1
                         mat_count += 1
+                    # fracture cells
+                    elif tag in self.physical_tags['fracture']:
+                        for key in nodes_to_cell:
+                            self.frac_cells_to_node.setdefault(key, [])
+                            self.frac_cells_to_node[key].append(frac_count)
 
-                        # Add top cells to list
-                        if tags[ith_cell] == 90007:
-                            coord_nodes_in_cell = self.mat_cell_info_dict[ith_cell].coord_nodes_to_cell
-                            if sum(coord_nodes_in_cell[:, 2] == self.z_max) >= 4:
-                                self.top_cells.append(ith_cell)
+                        if geometry == 'quad':
+                            self.frac_cell_info_dict[frac_count] = \
+                                Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
+                                           self.fracture_aperture[frac_count], tag)
+                        elif geometry == 'triangle':
+                            self.frac_cell_info_dict[frac_count] = \
+                                Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
+                                         self.fracture_aperture[frac_count], tag)
 
-        self.matrix_cell_count = mat_count
-        self.well_cell_count = well_count
+                        frac_count += 1
+                        cell_count += 1
+                    # boundary cells
+                    elif tag in self.physical_tags['boundary']:
+                        for key in nodes_to_cell:
+                            self.bound_cells_to_node.setdefault(key, [])
+                            self.bound_cells_to_node[key].append(face_count)
 
-        if self.verbose:
-            print('Time to load Mesh: {:f} [sec]'.format((time.time() - start_time_module)))
-            print(self.mesh_data)
+                        if geometry == 'quad':
+                            self.bound_face_info_dict[face_count] = \
+                                Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
+                                           0.0, tag)
+                            self.boundary_conditions[tag]['cells'].append(face_count)
+                        elif geometry == 'triangle':
+                            self.bound_face_info_dict[face_count] = \
+                                Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
+                                         0.0, tag)
+                            self.boundary_conditions[tag]['cells'].append(face_count)
+                        face_count += 1
+                        bound_count += 1
+                    # fracture boundaries
+                    elif tag in self.physical_tags['fracture_boundary']:
+                        for key in nodes_to_cell:
+                            self.frac_bound_cells_to_node.setdefault(key, [])
+                            self.frac_bound_cells_to_node[key].append(face_count)
+
+                        if geometry == 'line':
+                            self.frac_bound_face_info_dict[face_count] = \
+                                Line(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tag)
+                            self.boundary_conditions[tag]['cells'].append(face_count)
+                        face_count += 1
+                        bound_count += 1
+                    # output faces
+                    elif tag in self.physical_tags['output']:
+                        if geometry == 'quad':
+                            self.output_face_info_dict[output_count] = \
+                                Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0,
+                                           tag)
+                        elif geometry == 'triangle':
+                            self.output_face_info_dict[output_count] = \
+                                Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0,
+                                         tag)
+                        face_count += 1
+                        output_count += 1
+
+            assert mat_count == self.mat_cells_tot, "Total matrix cells not equal to number in load_mesh()"
+            assert frac_count == self.frac_cells_tot, "Total fracture cells not equal to number in load_mesh()"
+            assert bound_count == self.bound_faces_tot, "Total boundary faces not equal to number in load_mesh()"
+            assert frac_bound_count == self.frac_bound_faces_tot, "Total fracture boundary faces not equal to number in load_mesh()"
+            assert output_count == self.output_faces_tot, "Total output faces not equal to number in load_mesh()"
+
+        if cache and not read_from_cache:
+            meshObject = {}
+            meshObject['mesh_data'] = self.mesh_data
+            meshObject['mat_cells_tot'] = self.mat_cells_tot
+            meshObject['frac_cells_tot'] = self.frac_cells_tot
+            meshObject['bound_faces_tot'] = self.bound_faces_tot
+            meshObject['frac_bound_faces_tot'] = self.frac_bound_faces_tot
+            meshObject['output_faces_tot'] = self.output_faces_tot
+
+            with open(self.mesh_file + '.meshObject.cache', 'wb') as handle:
+                pickle.dump(meshObject, handle, protocol=4)
+
+            cellInfoDict = {}
+            cellInfoDict['mat_cell_info_dict'] = self.mat_cell_info_dict
+            cellInfoDict['mat_cells_to_node'] = self.mat_cells_to_node
+            cellInfoDict['frac_cell_info_dict'] = self.frac_cell_info_dict
+            cellInfoDict['frac_cells_to_node'] = self.frac_cells_to_node
+            cellInfoDict['bound_face_info_dict'] = self.bound_face_info_dict
+            cellInfoDict['bound_cells_to_node'] = self.bound_cells_to_node
+            cellInfoDict['frac_bound_face_info_dict'] = self.frac_bound_face_info_dict
+            cellInfoDict['frac_bound_cells_to_node'] = self.frac_bound_cells_to_node
+            cellInfoDict['output_face_info_dict'] = self.output_face_info_dict
+
+            with open(self.mesh_file + '.cellInfoDict.cache', 'wb') as handle:
+                pickle.dump(cellInfoDict, handle, protocol=4)
+
+            if self.verbose:
+                print("Files have been read and cached.")
         return 0
 
-    def write_mesh_to_vtk(self, output_directory, property_array, cell_property, filename):
-        # First check if output directory already exists:
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-
-        # Allocate empty new cell_data_dict dictionary:
-        cell_data_dict = dict()
-
-        for ith_prop in range(len(cell_property)):
-            cell_data_dict[cell_property[ith_prop]] = []
-            left_bound = 0
-            right_bound = 0
-
-            for ith_geometry in self.mesh_data.cells_dict:
-                left_bound = right_bound
-                right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-
-                if len(cell_property) > 1:
-                    prop_array = list(property_array[left_bound:right_bound, ith_prop])
-                else:
-                    prop_array = list(property_array[left_bound:right_bound])
-
-                cell_data_dict[cell_property[ith_prop]].append(prop_array)
-
-        mesh = meshio.Mesh(
-            # Mesh.points,
-            # Mesh.cells_dict.items(),
-            self.mesh_data.points,  # list of point coordinates
-            self.mesh_data.cells_dict.items(),  # list of
-            # Each item in cell data must match the cells array
-            cell_data=cell_data_dict)
-
-        # print('Writing mesh to VTK file')
-        meshio.write("{:s}/{:s}".format(output_directory, filename), mesh)
-        return 0
-
-    def write_to_vtk(self, output_directory, property_array, cell_property, ith_step):
+    def find_vtk_output_cells(self):
         """
-        Class method which writes output of unstructured grid to VTK format
-
-        :param output_directory: directory of output files
-        :param property_array: np.array containing all cell properties (N_cells x N_prop)
-        :param cell_property: list with property names (visible in ParaView (format strings)
-        :param ith_step: integer containing the output step
-        :return:
+        Method to find the fracture and matrix cells (nodes and idxs) for output to .vtk format
         """
-        # First check if output directory already exists:
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        self.vtk_output_nodes_to_cells = {'fracture': {}, 'matrix': {}}
+        self.vtk_output_cell_idxs = {'fracture': {}, 'matrix': {}}
+        cell_count = 0
+        for geometry, tags in self.mesh_data.cell_data_dict['gmsh:physical'].items():
+            nodes = {}
+            cell_idxs = {}
 
-        # Allocate empty new cell_data_dict dictionary:
-        cell_data_dict = dict()
+            # Find if matrix or fracture geometry
+            if geometry in self.geometries3D:
+                cell_type = 'matrix'
+            elif geometry in self.geometries2D:
+                cell_type = 'fracture'
+            else:
+                raise ValueError("Unsupported cell type found", geometry)
 
-        for ith_prop, prop in enumerate(cell_property):
-            cell_data_dict[prop] = []
-            left_bound = 0
-            right_bound = 0
-            # for ith_geometry in self.mesh_data.cells_dict:
-            for ith_geometry in self.mat_geometries_in_file:
-                left_bound = right_bound
-                right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
-                cell_data_dict[prop] += [list(property_array[ith_prop, left_bound:right_bound])]
+            # Main loop over different existing geometries
+            for ith_cell, nodes_to_cell in enumerate(self.mesh_data.cells_dict[geometry]):
+                # matrix cells and fracture cells
+                tag = tags[ith_cell]
+                if tag in self.physical_tags[cell_type]:
+                    nodes.setdefault(tag, [])
+                    nodes[tag].append(nodes_to_cell)
+                    cell_idxs.setdefault(tag, [])
+                    cell_idxs[tag].append(cell_count)
+                    cell_count += 1
 
-        cell_data_dict['matrix_cell_bool'] = []
-        left_bound = 0
-        right_bound = 0
-        for ith_geometry in self.mat_geometries_in_file:
-            # for ith_geometry in self.mesh_data.cells_dict:
-            left_bound = right_bound
-            right_bound = right_bound + self.mesh_data.cells_dict[ith_geometry].shape[0]
+            # Append the lists of nodes of all physical tags in particular geometry
+            for ith_tag, tag in enumerate(cell_idxs.keys()):
+                if tag in self.physical_tags[cell_type]:
+                    self.vtk_output_nodes_to_cells[cell_type].setdefault(geometry, [])
+                    self.vtk_output_nodes_to_cells[cell_type][geometry] += nodes[tag]
+                    self.vtk_output_cell_idxs[cell_type].setdefault(geometry, [])
+                    self.vtk_output_cell_idxs[cell_type][geometry] += cell_idxs[tag]
 
-            if (ith_geometry in self.available_fracture_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'] += [list(np.zeros(((right_bound - left_bound),)))]
-
-            elif (ith_geometry in self.available_matrix_geometries) and (right_bound - left_bound) > 0:
-                cell_data_dict['matrix_cell_bool'] += [list(np.ones(((right_bound - left_bound),)))]
-
-        # Temporarily store mesh_data in copy:
-        # Mesh = meshio.read(self.mesh_file)
-        reporting_cells = {geometry: self.mesh_data.cells_dict[geometry] for geometry in self.mat_geometries_in_file}
-        # cells = self.mesh_data.cells_dict['wedge']
-
-        mesh = meshio.Mesh(
-            # Mesh.points,
-            # Mesh.cells_dict.items(),
-            self.mesh_data.points,  # list of point coordinates
-            reporting_cells,  # list of
-            # Each item in cell data must match the cells array
-            cell_data=cell_data_dict)
-
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
-        return 0
+        return
 
     def write_volume_to_file(self, file_name):
         """
@@ -1062,6 +478,7 @@ class UnstructDiscretizer:
         Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
         :return:
         """
+        self.volume_all_cells = np.zeros(self.mat_cells_tot + self.frac_cells_tot)
         tot_cell_count = 0
         for ith_cell in self.frac_cell_info_dict:
             self.volume_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].volume
@@ -1071,10 +488,26 @@ class UnstructDiscretizer:
             self.volume_all_cells[tot_cell_count] = self.mat_cell_info_dict[ith_cell].volume
             tot_cell_count += 1
 
-        self.volume_all_cells = np.array(list(self.volume_all_cells.values()))
         return 0
 
     def store_centroid_all_cells(self):
+        """
+        Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
+        :return:
+        """
+        self.centroid_all_cells = np.zeros((self.mat_cells_tot + self.frac_cells_tot, 3))
+        tot_cell_count = 0
+        for ith_cell in self.frac_cell_info_dict:
+            self.centroid_all_cells[tot_cell_count,:] = self.frac_cell_info_dict[ith_cell].centroid
+            tot_cell_count += 1
+
+        for ith_cell in self.mat_cell_info_dict:
+            self.centroid_all_cells[tot_cell_count,:] = self.mat_cell_info_dict[ith_cell].centroid
+            tot_cell_count += 1
+
+        return 0
+
+    def store_centroid_all_cells_1(self):
         """
         Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
         :return:
@@ -1091,11 +524,13 @@ class UnstructDiscretizer:
         self.centroid_all_cells = np.array(list(self.centroid_all_cells.values()))
         return 0
 
-    def store_depth_all_cells(self, boundary_cells: bool = True):
+
+    def store_depth_all_cells(self):
         """
         Class method which loops over all the cells and stores the depth in single array (first frac, then mat)
         :return:
         """
+        self.depth_all_cells = np.zeros(self.mat_cells_tot + self.frac_cells_tot + self.bound_faces_tot)
         tot_cell_count = 0
         for ith_cell in self.frac_cell_info_dict:
             self.depth_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].depth
@@ -1105,12 +540,10 @@ class UnstructDiscretizer:
             self.depth_all_cells[tot_cell_count] = self.mat_cell_info_dict[ith_cell].depth
             tot_cell_count += 1
 
-        if boundary_cells:
-            for ith_cell in self.bound_cell_info_dict:
-                self.depth_all_cells[tot_cell_count] = self.bound_cell_info_dict[ith_cell].depth
-                tot_cell_count += 1
+        for ith_cell in self.bound_face_info_dict:
+            self.depth_all_cells[tot_cell_count] = self.bound_face_info_dict[ith_cell].depth
+            tot_cell_count += 1
 
-        self.depth_all_cells = np.array(list(self.depth_all_cells.values()))
         return 0
 
     @staticmethod
@@ -1182,146 +615,6 @@ class UnstructDiscretizer:
         file.close()
         return 0
 
-    def calc_boundary_cells_new(self, boundary_data):
-        """
-        Class method which calculates constant boundary values at a specif constant x,y,z-coordinate
-
-        :param boundary_data: dictionary with the boundary direction (x,y, or z) and type (min or max)
-        :return:
-        """
-        # Specify boundary cells, simply set specify the single coordinate which is not-changing and its value:
-        index = []  # Dynamic list containing indices of the nodes (points) which lay on the boundary:
-        if boundary_data['boundary_dir'] == 'X':
-            # Check if coordinate of points is on the boundary:
-            if boundary_data['boundary_type'] == 'min':
-                index = self.mesh_data.points[:, 0] == np.min(self.mesh_data.points[:, 0])
-            elif boundary_data['boundary_type'] == 'max':
-                index = self.mesh_data.points[:, 0] == np.max(self.mesh_data.points[:, 0])
-
-        elif boundary_data['boundary_dir'] == 'Y':
-            # Check if coordinate of points is on the boundary:
-            if boundary_data['boundary_type'] == 'min':
-                index = self.mesh_data.points[:, 1] == np.min(self.mesh_data.points[:, 1])
-            elif boundary_data['boundary_type'] == 'max':
-                index = self.mesh_data.points[:, 1] == np.max(self.mesh_data.points[:, 1])
-
-        elif boundary_data['boundary_dir'] == 'Z':
-            # Check if coordinate of points is on the boundary:
-            if boundary_data['boundary_type'] == 'min':
-                index = self.mesh_data.points[:, 2] == np.min(self.mesh_data.points[:, 2])
-            elif boundary_data['boundary_type'] == 'max':
-                index = self.mesh_data.points[:, 2] == np.max(self.mesh_data.points[:, 2])
-
-        # Convert dynamic list to numpy array:
-        boundary_points = np.array(list(compress(range(len(index)), index)))
-
-        # Find cells containing boundary cells, for wedges or hexahedrons, the boundary cells must contain,
-        # on the X or Y boundary four nodes exactly and on the Z axis four or three ndoes!
-        #     0------0          0
-        #    /     / |         /  \
-        #  0------0  0        0----0
-        #  |      | /         |    |
-        #  0------0           0----0
-        # Hexahedron       Wedge (prism)
-        # Create loop over all matrix cells which are of the geometry 'matrix_cell_type'
-        count = 0  # Counter for number of matrix cells on the boundary
-        boundary_cells = {}  # Dictionary with matrix cells on the boundary
-        for geometry in self.geometries_in_mesh_file:
-            if geometry in self.available_matrix_geometries:
-                # Matrix geometry found, check if any matrix control volume has exactly 4 or 3 nodes which intersect
-                # with the boundary_points list:
-                for ith_cell, ith_row in enumerate(self.mesh_data.cells_dict[geometry]):
-                    if len(set.intersection(set(ith_row), set(boundary_points))) == 4 or \
-                            len(set.intersection(set(ith_row), set(boundary_points))) == 3:
-                        # Store cell since it is on the left boundary:
-                        boundary_cells[count] = ith_cell
-                        count += 1
-
-        boundary_cells = np.array(list(boundary_cells.values()), dtype=int) + self.fracture_cell_count
-        return boundary_cells
-
-    def calc_boundary_cells(self, boundary_data):
-        """
-        Class method which calculates constant boundary values at a specif constant x,y,z-coordinate
-
-        :param boundary_data: dictionary with the boundary location (X,Y,Z, and location)
-        :return:
-        """
-        # Specify boundary cells, simply set specify the single coordinate which is not-changing and its value:
-        # First boundary:
-        index = []  # Dynamic list containing indices of the nodes (points) which lay on the boundary:
-        if boundary_data['first_boundary_dir'] == 'X':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 0] == boundary_data['first_boundary_val']
-        elif boundary_data['first_boundary_dir'] == 'Y':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 1] == boundary_data['first_boundary_val']
-        elif boundary_data['first_boundary_dir'] == 'Z':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 2] == boundary_data['first_boundary_val']
-
-        # Convert dynamic list to numpy array:
-        left_boundary_points = np.array(list(compress(range(len(index)), index)))
-
-        # Second boundary (same as above):
-        index = []
-        if boundary_data['second_boundary_dir'] == 'X':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 0] == boundary_data['second_boundary_val']
-        elif boundary_data['second_boundary_dir'] == 'Y':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 1] == boundary_data['second_boundary_val']
-        elif boundary_data['second_boundary_dir'] == 'Z':
-            # Check if first coordinate of points is on the boundary:
-            index = self.mesh_data.points[:, 2] == boundary_data['second_boundary_val']
-
-        right_boundary_points = np.array(list(compress(range(len(index)), index)))
-
-        # Find cells containing boundary cells, for wedges or hexahedrons, the boundary cells must contain,
-        # on the X or Y boundary four nodes exactly!
-        #     0------0          0
-        #    /     / |         /  \
-        #  0------0  0        0----0
-        #  |      | /         |    |
-        #  0------0           0----0
-        # Hexahedron       Wedge (prism)
-        # Create loop over all matrix cells which are of the geometry 'matrix_cell_type'
-        left_count = 0  # Counter for number of left matrix cells on the boundary
-        left_boundary_cells = {}  # Dictionary with matrix cells on the left boundary
-        for geometry in self.geometries_in_mesh_file:
-            if geometry in self.available_matrix_geometries:
-                # Matrix geometry found, check if any matrix control volume has exactly 4 nodes which intersect with
-                # the left_boundary_points list:
-                for ith_cell, ith_row in enumerate(
-                        self.mesh_data.cells_dict[geometry]):
-
-                    if len(set.intersection(set(ith_row), set(left_boundary_points))) == 4 or \
-                            len(set.intersection(set(ith_row), set(
-                                left_boundary_points))) == 3:  # Store cell since it is on the left boundary:
-                        left_boundary_cells[left_count] = ith_cell
-                        left_count += 1
-
-        right_count = 0
-        right_boundary_cells = {}
-        for geometry in self.geometries_in_mesh_file:
-            if geometry in self.available_matrix_geometries:
-                # Matrix geometry found, check if any matrix control volume has exactly 4 nodes which intersect with
-                # the right_boundary_points list:
-                for ith_cell, ith_row in enumerate(
-                        self.mesh_data.cells_dict[geometry]):
-                    if len(set.intersection(set(ith_row), set(right_boundary_points))) == 4 or \
-                            len(set.intersection(set(ith_row), set(
-                                right_boundary_points))) == 3:  # Store cell since it is on the left boundary:
-                        # Store cell since it is on the left boundary:
-                        right_boundary_cells[right_count] = ith_cell
-                        right_count += 1
-
-        left_boundary_cells = np.array(list(left_boundary_cells.values()), dtype=int) + \
-                              self.fracture_cell_count
-        right_boundary_cells = np.array(list(right_boundary_cells.values()), dtype=int) + \
-                               self.fracture_cell_count
-        return left_boundary_cells, right_boundary_cells
-
     def find_cells(self, tag: int, type: str = 'face'):
         """
         Function to find cells that share geometrical element with physically tagged geometry
@@ -1334,7 +627,7 @@ class UnstructDiscretizer:
             warnings.warn("Invalid type of physical geometry provided: " + str(type))
 
         for element in self.boundary_conditions[tag]['cells']:
-            nodes_to_geometry = self.bound_cell_info_dict[element].nodes_to_cell
+            nodes_to_geometry = self.bound_face_info_dict[element].nodes_to_cell
 
             for ith_cell, cell in self.mat_cell_info_dict.items():
                 if ith_cell not in cell_idxs:
@@ -1345,7 +638,7 @@ class UnstructDiscretizer:
         return cell_idxs
 
     # Two-Point Flux Approximation (TPFA)
-    def calc_connections_all_cells(self, cache=0):
+    def calc_connections_all_cells(self, cache: bool = False):
         """
         Class methods which calculates the connection list for all cell types (matrix & fracture)
 
@@ -1390,11 +683,7 @@ class UnstructDiscretizer:
         count_mat_frac_conn = 0
         count_frac_frac_conn = 0
         offset_frac_cell_count = 0
-
-        if self.fracture_cell_count == 0:
-            offset_mat_cell_count = 0
-        else:
-            offset_mat_cell_count = self.fracture_cell_count
+        offset_mat_cell_count = self.frac_cells_tot
 
         # Back to using dictionaries, performance increase of ~700%
         cell_m = {}
@@ -1504,12 +793,14 @@ class UnstructDiscretizer:
                     if intsect_cells_to_face[0] == ith_cell:
 
                         # Check if any fractures are present throughout the domain:
-                        if self.fracture_cell_count > 0:
+                        if self.frac_cells_tot > 0:
 
                             # Check if there exists a fracture on the currently investigated
                             # interface:
                             try:
-                                for geometry in self.frac_geometries_in_file:
+                                for geometry in ['quad', 'triangle']:
+                                    if geometry not in self.mesh_data.cells_dict.keys():
+                                        continue
                                     # todo: this is most likely the reason why models with a lot of fractures are
                                     #  extremely slow, check after holiday if this can be done in another way!!!
                                     if any(np.equal(np.sort(self.mesh_data.cells_dict[geometry], axis=1),
@@ -1688,7 +979,7 @@ class UnstructDiscretizer:
                         # double cross product
                         n = np.cross(self.mesh_data.points[pts[1]] - self.mesh_data.points[pts[0]], np.cross(self.mesh_data.points[pts[1]] - self.mesh_data.points[pts[0]],
                                     self.frac_cell_info_dict[id[0]].centroid - self.mesh_data.points[pts[0]]))
-                        if n.dot(self.frac_bound_cell_info_dict[b_id].centroid - self.frac_cell_info_dict[id[0]].centroid) < 0: n = -n
+                        if n.dot(self.frac_bound_face_info_dict[b_id].centroid - self.frac_cell_info_dict[id[0]].centroid) < 0: n = -n
                         self.faces[id[0]][id[1]] = Face(id[0], id[1], id[0], b_id, pts, self.mesh_data.points[pts], 0,
                                                         FType.FRAC_BOUND, 1, n)
         # fracture-matrix connections
@@ -1870,7 +1161,7 @@ class UnstructDiscretizer:
                             if faces[id_faces[k]][0][1] not in self.connections[faces[id_faces[k]][0][0]]:
                                 self.connections[faces[id_faces[k]][0][0]][faces[id_faces[k]][0][1]] = (faces[id_faces[k]][0][0], b_id)
 
-                        bc_data = self.boundary_conditions[self.bound_cell_info_dict[b_id].prop_id]['flow']
+                        bc_data = self.boundary_conditions[self.bound_face_info_dict[b_id].prop_id]['flow']
                         assert(abs(bc_data['a']) + abs(bc_data['b']) > 0)
                         if bc_data['b'] != 0.0:
                             inds_to_check.remove(bc_counter)
@@ -3564,23 +2855,22 @@ class UnstructDiscretizer:
         :param skin: skin
         :return: well_index, well_index_thermal
         '''
-        kx = self.perm_x_cell[res_block - self.fracture_cell_count] # perm array contains only cells data
-        ky = self.perm_y_cell[res_block - self.fracture_cell_count] # perm array contains only cells data
+        if res_block < self.frac_cells_tot:
+            well_index = well_indexD = 1e+5 # set big value for well perf in fracture
+            return well_index, well_indexD
+        kx = self.perm_x_cell[res_block - self.frac_cells_tot] # perm array contains only cells data
+        ky = self.perm_y_cell[res_block - self.frac_cells_tot] # perm array contains only cells data
         points = self.mesh_data.points
         cells = self.mesh_data.cells
         # check the mesh contains only wedges (quads are boundary faces, so they are allowed too)
         for k in self.mesh_data.cell_data_dict['gmsh:geometrical'].keys():
+            if k == 'triangle':  # boundary faces
+                continue
             if k != 'wedge' and k != 'quad':
-                raise('Error: only wedge cells are supported in calc_equivalent_well_index')
-        # find index i with wedges data
-        wedge_i = 0
-        while True:
-            if cells[wedge_i].type == 'wedge':
-                break
-            wedge_i += 1
-        node_cell = cells[wedge_i].data[res_block]
-        coord_top_triangle = points[node_cell[0:3]]
-        coord_bot_triangle = points[node_cell[3:6]]
+                raise('Error: only wedge cells are supported in calc_equivalent_well_index', k)
+        node_cell = self.mat_cell_info_dict[res_block - self.frac_cells_tot].coord_nodes_to_cell
+        coord_top_triangle = node_cell[:3,:]
+        coord_bot_triangle = node_cell[3:,:]
         # in counter-clockwise direction
         x1 = coord_top_triangle[0][0]
         y1 = coord_top_triangle[0][1]
@@ -3600,3 +2890,79 @@ class UnstructDiscretizer:
         conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2) / 2.
         well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
         return well_index, well_indexD 
+        
+    def calc_frac_aper_by_stress(self, initial_frac_aper: float, sh_max: float, sh_min: float, sh_max_azimuth: float,
+                                 sigma_c: float) -> np.array:
+        '''
+        :param initial_frac_aper: a value of initial fracture aperture, in uncompressed conditions? #TODO
+        :param Sh_max: horizontal maximal principal stress, MPa
+        :param Sh_min: horizontal minimal principal stress, MPa
+        :param SHmax_azimuth: direction of Sh_max, from X-axis, counter-clockwize, degrees
+        :param sigma_c: #TODO ? [MPa] typically for sandstone is ?, for Dinantian rock is 70-250 MPa
+        :return:  an array of computed apertures for all fractures
+        '''
+        print('calc_frac_aper_by_stress:', 'initial_frac_aper=', initial_frac_aper, ' sh_max=', sh_max,
+              ' sh_min=', sh_min, ' sh_max_azimuth=', sh_max_azimuth, ' sigma_c=', sigma_c)
+
+        num_frac = len(self.frac_cell_info_dict)  # number of fractures
+        if num_frac == 0:
+            return None
+
+        act_frac_sys = np.zeros((num_frac, 4))  # create an array to store the fracture system
+        for ii in range(num_frac):  # loop over the fractures
+            ith_line = self.frac_cell_info_dict[ii].coord_nodes_to_cell
+            act_frac_sys[ii, :2] = ith_line[0, :2]
+            act_frac_sys[ii, 2:] = ith_line[1, :2]
+
+        def calc_aperture(sigma_n, sigma_c, e_0_in=None):  # function to calculate the aperture
+            # BARTON-BANDIS MODEL parameters
+            JRC = 7.225
+            JCS = 17.5
+            if e_0_in is None:
+                e_0 = JRC * (0.2 * sigma_c / JCS - 0.1) / 5.
+            else:
+                e_0 = e_0_in
+            # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1002/2015JB012657
+            v_m = -0.1032 - 0.0074 * JRC + 1.135 * (JCS / e_0) ** -0.251
+            K_ni = -7.15 + 1.75 * JRC + 0.02 * JCS / e_0
+            aper = e_0 - 1. / (1 / v_m + K_ni / sigma_n)
+            return aper  # return the final aperture in mm.
+
+        def get_normal_stress_on_fault(x0, y0, x1, y1, frac_angle):
+            stress_tensor_orig = np.zeros((2, 2))
+            stress_tensor_orig[0, 0] = sh_max
+            stress_tensor_orig[1, 1] = sh_min
+
+            # rotate principal stress tensor to fracture coordinate system (SHmax || frac)
+            a = (sh_max_azimuth - frac_angle) / 180 * np.pi
+            rot_1 = np.array([[np.cos(a), np.sin(a)], [-np.sin(a), np.cos(a)]])
+            rot_2 = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
+            stress_tensor = rot_1 @ stress_tensor_orig @ rot_2
+
+            stress_n = stress_tensor[0, 0]  # Sh_min new is normal to the fault
+            return stress_n
+
+        epsilon = 1e-4  # small number to avoid division by zero
+        dx = act_frac_sys[:, 0] - act_frac_sys[:, 2] + epsilon * np.random.rand(
+            num_frac)  # calculate the x and y components of the fracture
+        dy = act_frac_sys[:, 1] - act_frac_sys[:, 3] + epsilon * np.random.rand(num_frac)
+        # calculate the angle of the fracture
+        frac_angles = np.arctan(dy / dx) * 180 / np.pi + epsilon * np.random.rand(num_frac)
+        sigma_n = []
+        for fi in range(frac_angles.size):
+            sigma_n.append(
+                get_normal_stress_on_fault(act_frac_sys[:, 0], act_frac_sys[:, 1], act_frac_sys[:, 2], act_frac_sys[:, 3],
+                                           frac_angles[fi]))
+        sigma_n = np.array(sigma_n)
+        factor_aper = 1  # factor to increase the aperture, if needed to compensate for unknowns in the model
+        fracture_aper = calc_aperture(sigma_n, sigma_c, initial_frac_aper) * 1e-3 * factor_aper  # calculate the aperture, convert to [m]
+        fracture_aper[fracture_aper < 1e-6] = 1e-6  # set the minimum aperture
+        fracture_aper[fracture_aper > 1e-2] = 1e-2  # set the maximum aperture
+
+        fracture_aper = np.array(fracture_aper)
+
+        # for debugging/plotting
+        # np.save('frac_tips.npy', act_frac_sys, allow_pickle=True)
+        # np.save('frac_aper.npy', [frac_angles, sigma_n, fracture_aper], allow_pickle=True)
+
+        return fracture_aper        

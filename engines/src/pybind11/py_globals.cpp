@@ -86,14 +86,16 @@ void pybind_globals(py::module &m)
     .def_readwrite("linear_type", &sim_params::linear_type)
     .def_readwrite("linear_params", &sim_params::linear_params)
     .def_readwrite("nonlinear_norm_type", &sim_params::nonlinear_norm_type)
-	  .def_readwrite("log_transform", &sim_params::log_transform)
+	.def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("trans_mult_exp", &sim_params::trans_mult_exp)
     .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
     .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
-    .def_readwrite("assembly_kernel", &sim_params::assembly_kernel);
-  
+    .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
+    .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
+    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance);
+
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
     .def(py::init<>())
     .def_readwrite("max_i_linear", &linear_solver_params::max_i_linear)
@@ -165,6 +167,7 @@ void pybind_globals(py::module &m)
 #endif // defined(__linux__) || defined(__APPLE__)
 
 #ifdef _OPENMP
+  m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);
   // if the amount of threads is not defined explicitly, use a half of available threads
   if (!std::getenv("OMP_NUM_THREADS"))

@@ -52,12 +52,12 @@ public:
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_comps() { return NC; };
-  const uint8_t get_z_var() { return Z_VAR; };
+  uint8_t get_n_vars() const override { return N_VARS; };
+  uint8_t get_n_ops() const override { return N_OPS; };
+  uint8_t get_n_comps() const override { return NC; };
+  uint8_t get_z_var() const override { return Z_VAR; };
 
   engine_nc_cg_cpu() { engine_name = "Multiphase " + std::to_string(NC) + "-component isothermal flow with gravity and capillarity CPU engine"; };
 

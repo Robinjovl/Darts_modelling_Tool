@@ -2,7 +2,7 @@ include conf_gcc.mk
 include conf_nvcc.mk
 
 TARGET      = ../darts/engines.so
-IFLAGS      = -I./src -I./src/interpolation -I../thirdparty/eigen -I./src/pybind11 -I./src/mech
+IFLAGS      = -I./src -I./src/interpolation -I../thirdparty/eigen -I./src/pybind11 -I./src/mech -I../discretizer/src
 IFLAGS      += -I$(LINEAR_SOLVERS_DIR)/include -I../thirdparty/pybind11/include $(shell python3-config --includes)
 IFLAGS_GPU  = $(IFLAGS) -I/usr/local/cuda/include
 
@@ -10,10 +10,10 @@ IFLAGS_GPU  = $(IFLAGS) -I/usr/local/cuda/include
 # Force the same value here for correct linking when engines are built elsewhere, and solvers are taken from manylinux2010
 DFLAGS      = -DPYBIND11_ENABLED -D_GLIBCXX_USE_CXX11_ABI=0
 DFLAGS_GPU	= $(DFLAGS) -DWITH_GPU
-LFLAGS_BASE	+= -L$(LINEAR_SOLVERS_DIR)/lib $(PYTHON_LFLAGS) 
+LFLAGS_BASE	+= -L$(LINEAR_SOLVERS_DIR)/lib $(PYTHON_LFLAGS) discretizer.so
 LFLAGS_MT  	= $(LFLAGS_BASE) -ldarts_linear_solvers_mt
 # using origin enable library search in the same folder as binary 
-LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lcusolver -lamgxsh -lgomp -L../darts-linear-solvers/lib/AMGX/build -Xlinker "-rpath=\$$ORIGIN" 
+LFLAGS_GPU 	= $(LFLAGS_BASE) -L$(LINEAR_SOLVERS_DIR)/lib/AMGX/build -ldarts_linear_solvers_gpu -lcusparse -lcublas -lcusolver -lamgxsh -lgomp -Xlinker "-rpath=\$$ORIGIN" 
 #LFLAGS_GPU 	= $(LFLAGS_BASE) -ldarts_linear_solvers_gpu -lcusparse -lcublas -lgomp
 LFLAGS      = $(LFLAGS_BASE) -ldarts_linear_solvers
 
@@ -59,31 +59,21 @@ OBJ =  conn_mesh.o \
     pybind11/py_evaluator_iface.o \
     pybind11/py_globals.o \
     pybind11/py_ms_well.o \
-    pybind11/py_operator_set_interpolator_pz.o \
     pybind11/py_operator_set_interpolator_pz_cap_gra.o \
-    pybind11/py_operator_set_interpolator_pz_cap_gra_dif.o \
-    pybind11/py_operator_set_interpolator_pz_dif.o \
-    pybind11/py_operator_set_interpolator_pz_kin.o \
-    pybind11/py_operator_set_interpolator_pz_kin_phi.o \
-    pybind11/py_operator_set_interpolator_pz_kin_dif.o \
-    pybind11/py_operator_set_interpolator_pz_kin_dif_np.o \
-    pybind11/py_operator_set_interpolator_pz_sol.o \
-    pybind11/py_operator_set_interpolator_pze.o \
-    pybind11/py_operator_set_interpolator_pze_dvelocity.o \
     pybind11/py_operator_set_interpolator_pze_gra.o \
-    pybind11/py_operator_set_interpolator_pzt.o \
-    pybind11/py_operator_set_interpolator_pzt_kin.o \
     pybind11/py_operator_set_interpolator_super.o \
     pybind11/py_operator_set_interpolator_rates.o \
     pybind11/py_well_controls.o \
-    engines_build_info.o
+    engines_build_info.o \
+    logging.o
 
 OBJ_GPU =  	engine_base_gpu.o \
 	    interpolation/evaluator_iface.o \
 	    engine_nc_cg_gpu.cu.o \
 	    engine_nce_g_gpu.cu.o \
 	    pybind11/py_engine_nc_cg_gpu.o \
-	    pybind11/py_engine_super_gpu.o 
+	    pybind11/py_engine_super_gpu.o \
+        pybind11/py_gpu_tools.o
 
 
 

@@ -26,6 +26,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("RHS", &engine_base::RHS) \
 		.def_readwrite("t", &engine_base::t) \
 		.def_readwrite("op_vals_arr", &engine_base::op_vals_arr) \
+		.def_readwrite("op_ders_arr", &engine_base::op_ders_arr) \
 		.def_readwrite("timer", &engine_base::timer) \
 		.def_readwrite("CFL_max", &engine_base::CFL_max) \
 		.def_readwrite("n_newton_last_dt", &engine_base::n_newton_last_dt) \
@@ -33,12 +34,17 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("stat", &engine_base::stat) \
 		.def_readwrite("n_linear_last_dt", &engine_base::n_linear_last_dt) \
 		.def_readwrite("op_vals_arr_n", &engine_base::op_vals_arr_n) \
+		.def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 		.def_readwrite("time_data", &engine_base::time_data) \
 		.def_readwrite("time_data_report", &engine_base::time_data_report) \
 		.def_readwrite("engine_name", &engine_base::engine_name) \
 		.def_readwrite("params", &engine_base::params) \
 		.def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 		.def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
+		.def_readwrite("print_linear_system", &engine_base::print_linear_system) \
+		.def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
+		.def_readwrite("molar_weights", &engine_base::molar_weights) \
+		.def_readwrite("dispersivity", &engine_base::dispersivity) \
 		.def("add_value_to_Q", &engine_base::add_value_to_Q)  \
 		.def("clear_Q", &engine_base::clear_Q)  \
 		.def("calc_adjoint_gradient_dirac_all", &engine_base::calc_adjoint_gradient_dirac_all, py::call_guard<py::gil_scoped_release>())  \

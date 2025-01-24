@@ -44,13 +44,13 @@ public:
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
   // number of variables per jacobian matrix block
-  const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
+  const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
-  const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
-  const uint8_t get_n_dim() { return ND_; };
-  const uint8_t get_n_comps() { return 0; };
-  const uint8_t get_z_var() { return -1; };
+  uint8_t get_n_vars() const { return N_VARS; };
+  uint8_t get_n_ops() const { return N_OPS; };
+  uint8_t get_n_dim() const { return ND_; };
+  uint8_t get_n_comps() const { return 0; };
+  uint8_t get_z_var() const { return -1; };
   bool USE_CALCULATED_FLUX;
 
   engine_elasticity_cpu() { engine_name = std::to_string(ND) + "D elastic mechanics CPU engine"; };

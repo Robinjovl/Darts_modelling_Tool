@@ -3,8 +3,9 @@ import pandas as pd
 import sys
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
+from darts.engines.logging import duplicate_output_to_file
 import matplotlib.pyplot as plt
-from darts.physics.operators_base import PropertyOperators as props
+from darts.physics.base.operators_base import PropertyOperators as props
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -43,10 +44,12 @@ def plot_sol(n):
 
     plt.show()
 
+
 if __name__ == '__main__':
+    duplicate_output_to_file("run.log")
 
+    print('START')
 
-    redirect_darts_output('run.log')
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
@@ -59,12 +62,14 @@ if __name__ == '__main__':
         n.print_stat()
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
-        n.save_restart_data()
+        # n.save_restart_data()
+        n.save_data_to_h5('solution')
         writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, 'Sheet1')
+        time_data.to_excel(writer, sheet_name='Sheet1')
         writer.close()
     else:
-        n.load_restart_data()
+        # n.load_restart_data()
+        n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
 
@@ -77,11 +82,12 @@ if __name__ == '__main__':
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
-            plt.savefig(str(i) + '.png')
+        plt.savefig('out.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
+    print('END')
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 

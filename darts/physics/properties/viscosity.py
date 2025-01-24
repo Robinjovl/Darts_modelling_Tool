@@ -91,10 +91,11 @@ class MaoDuan2009(Viscosity):
     b = [0.69161945e-1, -0.27292263e-3, 0.20852448e-6]
     c = [-0.25988855e-2, 0.77989227e-5]
 
-    def __init__(self, components: list, ions: list = None):
+    def __init__(self, components: list, ions: list = None, combined_ions: list = None):
         super().__init__(components, ions)
 
         self.H2O_idx = components.index("H2O")
+        self.combined_ions = combined_ions
 
     def evaluate(self, pressure, temperature, x, rho):
         # Density of pure water (Islam and Carlson, 2012)
@@ -123,7 +124,10 @@ class MaoDuan2009(Viscosity):
         A = self.a[0] + self.a[1] * temperature + self.a[2] * temperature ** 2
         B = self.b[0] + self.b[1] * temperature + self.b[2] * temperature ** 2
         C = self.c[0] + self.c[1] * temperature
-        m = np.sum([55.509 * x[i] / x[self.H2O_idx] for i in range(self.nc, self.nc + self.ni)]) * 0.5  # half because sum of ions molality is double NaCl molality
+        if self.combined_ions is not None:
+            m = 55.509 * x[self.nc] / x[self.H2O_idx]
+        else:
+            m = np.sum([55.509 * x[i] / x[self.H2O_idx] for i in range(self.nc, self.nc + self.ni)]) * 0.5  # half because sum of ions molality is double NaCl molality
 
         mu_r = np.exp(A * m + B * m ** 2 + C * m ** 3)
         mu = mu_r * muH2O  # Pa.s
@@ -135,8 +139,8 @@ class Islam2012(MaoDuan2009):
     """
     Correlation for H2O + NaCl + CO2 viscosity: Islam and Carlson (2012) - Viscosity Models and Effects of Dissolved CO2
     """
-    def __init__(self, components: list, ions: list = None):
-        super().__init__(components, ions)
+    def __init__(self, components: list, ions: list = None, combined_ions: list = None):
+        super().__init__(components, ions, combined_ions)
 
         self.CO2_idx = components.index("CO2") if "CO2" in components else None
 

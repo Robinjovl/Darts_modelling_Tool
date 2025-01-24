@@ -84,7 +84,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate(
 
   if (point.size() != N_DIMS)
     {
-	  printf("Inconsistence in interpolation! Point size = %d should be equal to N_DIMS = %d\n", point.size(), N_DIMS);
+	  printf("Inconsistence in interpolation! Point size = %zu should be equal to N_DIMS = %d\n", point.size(), N_DIMS);
 	}
 
   interpolate_with_derivatives(point.data(), values.data(), &derivatives[0]);

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # this is the name of the package: name that will appear if one `pip list` or `pip install open-darts`
 name = "open-darts"
 # This version has to be incremented manually for every new release.
-version = "1.0.5"
+version = "1.2.1"
 authors = [
     {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"},
 ]
@@ -16,9 +16,9 @@ maintainers = [
 description = "Delft Advanced Research Terra Simulator"
 readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk']
+dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk', 'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'h5py']
 
 license = {text = "LICENSE.md"}
 
@@ -38,6 +38,3 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 
 # Dependencies to be able to build the documentation
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
-
-# Dependencies to use cpg (not available to macOS)
-cpg = ['opmcpg']

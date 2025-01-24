@@ -67,8 +67,8 @@ class engine_base
 public:
 	engine_base()
 	{
-		linear_solver = 0;
-		Jacobian = 0;
+		linear_solver = nullptr;
+		Jacobian = nullptr;
 
 		//adjoint method
 		linear_solver_ad = 0;
@@ -78,12 +78,17 @@ public:
         dg_dx_n = 0;
         dg_dT_general = 0;
         dT_du = 0;
+
+		print_linear_system = false;
+		output_counter = 0;
 	};
 
 	~engine_base()
 	{
-		delete linear_solver;
-		delete Jacobian;
+		if (linear_solver != nullptr)
+			delete linear_solver;
+		if (Jacobian != nullptr)
+			delete Jacobian;
 
 		//adjoint method
 		delete linear_solver_ad;
@@ -96,17 +101,17 @@ public:
 	};
 
 	// get the number of primary unknowns (per block)
-	virtual const uint8_t get_n_vars() = 0;
+	virtual uint8_t get_n_vars() const = 0;
 
 	// get the number of operators (per block)
-	virtual const uint8_t get_n_ops() = 0;
+	virtual uint8_t get_n_ops() const = 0;
 
 	// get the number of components
-	virtual const uint8_t get_n_comps() = 0;
-	virtual const uint8_t get_n_fl_var() { return 0; };
+	virtual uint8_t get_n_comps() const = 0;
+	virtual uint8_t get_n_fl_var() const { return 0; };
 
 	// get the index of Z variable
-	virtual const uint8_t get_z_var() = 0;
+	virtual uint8_t get_z_var() const = 0;
 
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
@@ -131,7 +136,9 @@ public:
 	virtual void average_operator(std::vector<value_t> &av_op);
 
 	virtual void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
-	void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
+	virtual void apply_composition_correction_(std::vector<value_t>& X, std::vector<value_t>& dX);
+
+	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 	virtual void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 
 	void apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -176,6 +183,9 @@ public:
 	 *  Parameters in base engine class exposed to Python
 	 *  @{
 	 */
+
+	/// @brief space dimension
+	const static uint8_t ND = 3;
 
 	/// @brief vector of unknowns in the current timestep
 	std::vector<value_t> X;
@@ -231,6 +241,10 @@ public:
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
 
+	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
+	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
+	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
 	std::vector<value_t> FIPS;
@@ -240,6 +254,9 @@ public:
 	std::vector<value_t> X0, RHS, dX;
 
 	value_t dt, prev_usual_dt, stop_time;
+	
+	index_t output_counter;
+	bool print_linear_system;
 
 	// statistics
 	value_t CFL_max; // maximum value of CFL for last Jacobian assebly
@@ -508,6 +525,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
+	std::string linear_solver_type_str;	
 	// create linear solver
 	if (!linear_solver)
 	{
@@ -519,10 +537,11 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "CPU_GMRES_CPR_AMG";
 			break;
 		}
 #ifdef _WIN32
-#if 0 // can be enabled if amgdll.dll is available \
+#if 0 // can be enabled if amgdll.dll is available
 	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
 		case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
@@ -530,6 +549,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
 			cpr->set_prec(new linsolv_amg1r5<1>);
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "CPU_GMRES_CPR_AMG1R5";
 			break;
 		}
 #endif 
@@ -538,11 +558,13 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
+			linear_solver_type_str = "CPU_GMRES_ILU0";
 			break;
 		}
 		case sim_params::CPU_SUPERLU:
 		{
 			linear_solver = new linsolv_superlu<N_VARS>;
+			linear_solver_type_str = "CPU_SUPERLU";
 			break;
 		}
 
@@ -556,6 +578,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
 			break;
 		}
 #ifdef WITH_AIPS
@@ -589,6 +612,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			cpr->set_prec(new linsolv_aips<1>(n_terms, print_radius, aips_type, print_structure));
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "GPU_GMRES_CPR_AIPS";
 			break;
 		}
 #endif //WITH_AIPS
@@ -604,6 +628,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			// set full system prec
 			cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>);
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
 			break;
 		}
 #ifdef WITH_ADGPRS_NF
@@ -649,24 +674,27 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
 			linear_solver->set_prec(cpr);
+			linear_solver_type_str = "GPU_GMRES_CPR_NF";
 			break;
 		}
 #endif //WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-
+            linear_solver_type_str = "GPU_GMRES_ILU0";
 			break;
 		}
 #endif
 		default:
 		{
-		    std::cerr << "Linear solver type " << params->linear_type << " is not supproted for " << engine_name << std::endl << std::flush;
+		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
 		    exit(1);
 		}
 		
 		}
 	}
+
+	std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;
 
 	n_vars = get_n_vars();
 	n_ops = get_n_ops();
@@ -862,6 +890,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		time_data_report_customized.clear();
 		time_data_customized.clear();
 
+		// WARNING: this variable shadows a member variable of a different type
         index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
 
 		op_vals_arr_customized.resize(n_ops * mesh->n_blocks);   // [1 * n_blocks] array of values of operators

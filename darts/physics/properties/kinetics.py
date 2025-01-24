@@ -1,7 +1,6 @@
 import abc
 import warnings
 import numpy as np
-from darts.physics.properties.flash import SolidFlash
 
 
 class Kinetics:
@@ -67,12 +66,10 @@ class LawOfMassAction(Kinetics):
 
 
 class HydrateKinetics(Kinetics):
-    def __init__(self, components: list, phases: list, Mw, flash: SolidFlash, hydrate_eos, fluid_eos: list,
-                 stoich: list = None, perm: float = 300., poro: float = 0.2, k: float = None, F_a=1.,
-                 moridis: bool = True, enthalpy: bool = False):
+    def __init__(self, components: list, phases: list, Mw, hydrate_eos, fluid_eos: list, stoich: list = None,
+                 perm: float = 300., poro: float = 0.2, k: float = None, F_a=1., moridis: bool = True, enthalpy: bool = False):
         super().__init__(stoich)
 
-        self.flash = flash
         self.hydrate_eos = hydrate_eos
         self.fluid_eos = fluid_eos
 
@@ -111,12 +108,11 @@ class HydrateKinetics(Kinetics):
     def calc_df(self, pressure, temperature, x):
         # Calculate fugacity difference between water in fluid phases and water in hydrate phase
         if x[0, 0] != 0.:
-            f0 = self.flash.fugacity(pressure, temperature, x[0, :], self.fluid_eos[0])
+            f0 = self.fluid_eos[0].fugacity(pressure, temperature, x[0, :])
         else:
-            f0 = self.flash.fugacity(pressure, temperature, x[1, :], self.fluid_eos[1])
+            f0 = self.fluid_eos[1].fugacity(pressure, temperature, x[1, :])
 
-        self.hydrate_eos.component_parameters(pressure, temperature)
-        fwH = self.hydrate_eos.fw(f0)
+        fwH = self.hydrate_eos.fw(pressure, temperature, f0)
 
         df = fwH - f0[self.water_idx]  # if df < 0 formation, if df > 0 dissociation
         xH = self.hydrate_eos.xH()

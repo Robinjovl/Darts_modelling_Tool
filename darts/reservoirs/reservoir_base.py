@@ -21,6 +21,11 @@ class ReservoirBase:
         self.cache = cache
         self.wells = []
 
+        self.poro, self.permx, self.permy, self.permz = [], [], [], []
+        self.hcap, self.rcond = [], []
+
+        self.vtk_initialized = False
+
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
@@ -88,7 +93,7 @@ class ReservoirBase:
         # first put only area here, to be multiplied by segment length later
         well.segment_volume = pi * wellbore_diameter ** 2 / 4
 
-        # also to be filled up when the first perforation is made
+        # will be updated  in add_perforation
         well.well_head_depth = 0
         well.well_body_depth = 0
         well.segment_depth_increment = 0
@@ -167,7 +172,59 @@ class ReservoirBase:
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def output_to_vtk(self, output_directory, output_filename, property_data, ith_step):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False, plot_zeros: bool = True,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
+        """
+        Method for plotting output using matplotlib library.
+        Implementation is specific to inherited Reservoir classes
+
+        :param data: Data for output
+        :type data: dict
+        :param output_props: List of properties to plot
+        :type output_props: list
+        :param lims: Dictionary of lists with [lower, upper] limits for output variables, will default to [None, None]
+        :type lims: dict
+        :param fig: Figure object, default is None
+        :param figsize: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
+        :param aspect_ratio: Aspect ratio ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param plot_zeros: Bool to plot zero values, default is True
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
+        """
+        pass
+
+    @abc.abstractmethod
+    def init_vtk(self, output_directory: str, export_grid_data: bool = True):
+        """
+        Method to initialize objects required for output into `.vtk` format.
+        This method can also export the mesh properties, e.g. porosity, permeability, etc.
+
+        :param output_directory: Path for output
+        :type output_directory: str
+        :param export_grid_data: Switch for mesh properties output, default is True
+        :type export_grid_data: bool
+        """
+        pass
+
+    @abc.abstractmethod
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
+        """
+        Function to export results at timestamp t into `.vtk` format.
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param t: Current time [days]
+        :type t: float
+        :param output_directory: Path to save .vtk file
+        :type output_directory: str
+        :param prop_names: List of keys for properties
+        :type prop_names: list
+        :param data: Data for output
+        :type data: dict
+        """
         pass
 
     def write_cache(self):
@@ -177,6 +234,6 @@ class ReservoirBase:
         # first write cache
         if self.cache:
             self.write_cache()
-        # Now destroy all objects in physics
+        # Now destroy all objects in Reservoir
         for name in list(vars(self).keys()):
             delattr(self, name)

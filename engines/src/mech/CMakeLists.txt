@@ -19,7 +19,7 @@ set(OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/contact.h  
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_elastic_cpu.tpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/matrix.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/matrix.h
 )
 
 # Define the engines_mechanics library
@@ -36,6 +36,7 @@ target_sources(engines_mechanics
   PRIVATE
     ${OD_ENGINES_MECHANICS_SRC_FILES}
     ${OD_ENGINES_MECHANICS_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
+	${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_mechanics
@@ -44,7 +45,9 @@ target_link_libraries(engines_mechanics
     linear_solvers
     engines_global
     engines_interpolator
+	opendarts_discretizer
     Eigen3::Eigen
+	HYPRE::HYPRE
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
