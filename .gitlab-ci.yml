@@ -229,8 +229,9 @@ build-windows-3.9-ODLS:
         - export LD="/opt/gcc-13.3.0/bin/ld"
         - which gcc
         - /opt/gcc-13.3.0/bin/g++ --version
+        - unset CMAKE_TOOLCHAIN_FILE
         - export LD_LIBRARY_PATH="/opt/gcc-13.3.0/lib64:$LD_LIBRARY_PATH"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS -g /opt/gcc-13.3.0/bin/g++
+        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
     artifacts:
       paths:
         - './dist/*.whl'
