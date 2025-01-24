@@ -98,10 +98,10 @@ assemble_jacobian_array_kernel3(const unsigned int n_blocks, value_t dt,
     else
     {
       // process diag
-      jac_diag += mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + rowblockvalid];
+      jac_diag += PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + rowblockvalid];
       if (c == 0)
       {
-        rhs += mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + r] - op_vals_arr_n[i * N_OPS + ACC_OP + r]); // acc operators only
+        rhs += PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + r] - op_vals_arr_n[i * N_OPS + ACC_OP + r]); // acc operators only
       }
     }
   }
@@ -214,7 +214,7 @@ assemble_jacobian_array_kernel4_spmv0(const unsigned int n_blocks, value_t dt,
       // process diag
       for (index_t c = 0; c < N_VARS; c++)
       {
-        jac_diag[c] += mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + r * N_VARS + c];
+        jac_diag[c] += PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + r * N_VARS + c];
       }
     }
   }
@@ -332,7 +332,7 @@ assemble_jacobian_array_kernel4_lincomb(const unsigned int n_blocks, value_t dt,
       // process diag
       for (index_t c = 0; c < N_VARS; c++)
       {
-        jac_diag[c] += mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + r * N_VARS + c];
+        jac_diag[c] += PV[i] * op_ders_arr[(i * N_OPS + ACC_OP) * N_VARS + r * N_VARS + c];
       }
     }
   }

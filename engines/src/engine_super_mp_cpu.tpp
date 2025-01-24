@@ -267,8 +267,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -286,9 +284,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		{
 			X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
 		}
-
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
 	if (THERMAL)
 	{

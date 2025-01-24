@@ -46,25 +46,25 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, value_t dt,
   // [NC] mass eqns
   for (uint8_t c = 0; c < NC; c++)
   {
-    RHS_l[c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+    RHS_l[c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
     // CFL_out[c] = 0;
     // CFL_in[c] = 0;
     // connected_with_well = 0;
     for (uint8_t v = 0; v < N_VARS; v++)
     {
-      jac_diag_l[c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+      jac_diag_l[c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
     }
   }
   // [1] energy eqn
   // fluid energy
-  RHS_l[NC] = mesh->PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
+  RHS_l[NC] = PV[i] * (op_vals_arr[i * N_OPS + FE_ACC_OP] - op_vals_arr_n[i * N_OPS + FE_ACC_OP]);
   // + rock energy (no rock compressibility included in these computations)
-  RHS_l[NC] += mesh->RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+  RHS_l[NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
   for (uint8_t v = 0; v < N_VARS; v++)
   {
-    jac_diag_l[NC * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
-    jac_diag_l[NC * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+    jac_diag_l[NC * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + FE_ACC_OP) * N_VARS + v];
+    jac_diag_l[NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -380,18 +380,18 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_L2()
       for (int c = 0; c < nc; c++)
       {
         res[c] += RHS[(w->well_body_idx + i_w) * n_vars + c] * RHS[(w->well_body_idx + i_w) * n_vars + c];
-        norm[c] += PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c];
+        norm[c] += mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c] * mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c];
       }
       res[E_VAR] += RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] * RHS[(w->well_body_idx + i_w) * n_vars + E_VAR];
-      norm[E_VAR] += PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
+      norm[E_VAR] += mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
     }
     // and then add RHS for well control equations
     for (int c = 0; c < nc; c++)
     {
       // well constraints should not be normalized, so pre-multiply by norm
-      res[c] += RHS[w->well_head_idx * n_vars + c] * RHS[w->well_head_idx * n_vars + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
+      res[c] += RHS[w->well_head_idx * n_vars + c] * RHS[w->well_head_idx * n_vars + c] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
     }
-    res[E_VAR] += RHS[(w->well_head_idx) * n_vars + E_VAR] * RHS[(w->well_head_idx) * n_vars + E_VAR] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
+    res[E_VAR] += RHS[(w->well_head_idx) * n_vars + E_VAR] * RHS[(w->well_head_idx) * n_vars + E_VAR] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
   }
 
   for (int v = 0; v < n_vars; v++)
@@ -419,10 +419,10 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_Linf()
 
       for (int c = 0; c < nc; c++)
       {
-        res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + c] / (PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c]));
+        res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + c] / (mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c]));
         residual = std::max(residual, res);
       }
-      res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] / (PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP]));
+      res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] / (mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP]));
       residual = std::max(residual, res);
     }
     // and then add RHS for well control equations

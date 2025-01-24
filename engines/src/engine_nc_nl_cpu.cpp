@@ -256,8 +256,6 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 	X_init.resize(n_vars * mesh->n_blocks);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -269,8 +267,6 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 		{
 			X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
 		}
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
