@@ -309,12 +309,6 @@ tuple<vector<value_t>, vector<value_t>> ms_well::evaluate_phase_velocities(
 }
 
 void ms_well::set_velocity_evaluator(void* evaluator) {
-  delete get_py_object(velocity_evaluator);
   velocity_evaluator = evaluator;
 }
 
-
-ms_well::~ms_well() {
-  auto obj = get_py_object(velocity_evaluator);
-  delete obj;
-}

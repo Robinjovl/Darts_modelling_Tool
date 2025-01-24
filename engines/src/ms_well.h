@@ -196,8 +196,6 @@ public:
 
   void set_velocity_evaluator(void* evaluator);
 
-  ~ms_well();
-
 private:
   void* velocity_evaluator;  // pointer to py object
 };
