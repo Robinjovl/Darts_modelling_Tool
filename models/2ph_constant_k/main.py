@@ -526,8 +526,10 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
                 n.params.max_ts = ts_mult * 0.5
             elif t < 2000:
                 n.params.max_ts = ts_mult * 1.0
-            else:
+            elif t < 5000:
                 n.params.max_ts = ts_mult * 1.5
+            else:
+                n.params.max_ts = ts_mult * 2.0
 
         n.run(30.5, log_3d_body_path=log_3d_body_path)
         if reservoir_type != '1D' and vtk_output:
