@@ -73,6 +73,7 @@ enum class LoggingLevel {
   // continue running.
   CRITICAL = 50
 };
+
 #define LEVELS(X)                                                              \
   X(DEBUG, debug,                                                              \
     "Detailed information, typically only of interest to a "                   \
@@ -89,10 +90,6 @@ enum class LoggingLevel {
     "A serious error, indicating that the program itself may be "              \
     "unable to continue running.")
 
-// Bring logging levels into scope
-/*#define LEVEL(level, name, desc) \*/
-/*  constexpr LoggingLevel level = LoggingLevel::level;*/
-/*LEVELS(LEVEL)*/
 using enum LoggingLevel;
 
 /**
