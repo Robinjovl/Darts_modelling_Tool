@@ -1,3 +1,5 @@
+#pragma once
+
 // Option 1: assemble in single pass, one block (row) per thread
 template<typename IndexType, typename ValueType, typename InterpValueType,
     int _BLOCK_SIZE>
