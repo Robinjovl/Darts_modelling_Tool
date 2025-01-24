@@ -222,12 +222,12 @@ build-windows-3.9-ODLS:
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - pip install wheel
     script:
-        - GCC_VERSION="13.3.0"
         - echo "build *.so on linux started with ODLS=$ODLS"
         # Export the custom GCC compiler environment variables
-        - export CXX="/opt/gcc-${GCC_VERSION}/bin/g++"
-        - export CC="/opt/gcc-${GCC_VERSION}/bin/gcc"
-        - export LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:$LD_LIBRARY_PATH"
+        - export CXX="/opt/gcc-13.3.0/bin/g++"
+        - export CC="/opt/gcc-13.3.0/bin/gcc"
+        - export LD="/opt/gcc-13.3.0/bin/ld"
+        - export LD_LIBRARY_PATH="/opt/gcc-13.3.0/lib64:$LD_LIBRARY_PATH"
         - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
     artifacts:
       paths:
