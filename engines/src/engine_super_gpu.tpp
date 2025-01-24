@@ -377,19 +377,19 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
   if (v == 0)
   {
-    rhs = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+    rhs = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 
     // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
     if (i < n_res_blocks)
-      rhs += (mesh->PV[i] + mesh->RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+      rhs += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
   }
 
-  jac_diag = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
+  jac_diag = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
 
   // Include derivatives for reaction term if part of reservoir cells:
   if (i < n_res_blocks)
   {
-    jac_diag += (mesh->PV[i] + mesh->RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+    jac_diag += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
   }
 
   // if thermal is enabled, full up the last equation
@@ -397,10 +397,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   {
     if (v == 0)
     {
-      rhs += mesh->RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+      rhs += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
     }
 
-    jac_diag += mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -603,7 +603,7 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
 
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
-  allocate_device_data(RV, &RV_d);
+  allocate_device_data(mesh->RV, &RV_d);
   allocate_device_data(mesh->heat_capacity, &mesh_hcap_d);
   allocate_device_data(mesh->tranD, &mesh_tranD_d);
   allocate_device_data(mesh->rock_cond, &mesh_rcond_d);
@@ -611,7 +611,7 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   allocate_device_data(mesh->kin_factor, &mesh_kin_factor_d);
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
 
-  copy_data_to_device(RV, RV_d);
+  copy_data_to_device(mesh->RV, RV_d);
   copy_data_to_device(mesh->heat_capacity, mesh_hcap_d);
   copy_data_to_device(mesh->tranD, mesh_tranD_d);
   copy_data_to_device(mesh->rock_cond, mesh_rcond_d);

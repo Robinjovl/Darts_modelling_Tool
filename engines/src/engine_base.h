@@ -230,8 +230,6 @@ public:
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
-	std::vector<value_t> PV;					   // [n_blocks]     array of initial pore volumes
-	std::vector<value_t> RV;					   // [n_blocks]     array of initial rock volumes
 	std::vector<std::vector<index_t>> block_idxs;  // [N_OPS_NUM] array of block indices corresponding to given operator set number
 	std::vector<std::vector<value_t>> op_axis_min; // [N_OPS_NUM] array of axis minimum values for each operator set
 	std::vector<std::vector<value_t>> op_axis_max; // [N_OPS_NUM] array of axis minimum values for each operator set
@@ -703,8 +701,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -718,8 +714,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		{
 			X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
 		}
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
 
 	op_vals_arr.resize(n_ops * mesh->n_blocks);

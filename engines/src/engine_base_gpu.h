@@ -378,9 +378,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   RHS.resize(n_vars * mesh->n_blocks);
   dX.resize(n_vars * mesh->n_blocks);
 
-  PV.resize(mesh->n_blocks);
-  RV.resize(mesh->n_blocks);
-
   old_z.resize(nc);
   new_z.resize(nc);
   FIPS.resize(nc);
@@ -399,7 +396,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   allocate_device_data(RHS, &RHS_d);
   allocate_device_data(RHS, &RHS_wells_d);
 
-  allocate_device_data(PV, &PV_d);
+  allocate_device_data(mesh->PV, &PV_d);
   allocate_device_data(mesh->tran, &mesh_tran_d);
   allocate_device_data(jac_wells, &jac_wells_d);
   allocate_device_data(jac_well_head_idxs, &jac_well_head_idxs_d);
@@ -417,8 +414,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     {
       X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
     }
-    PV[i] = mesh->volume[i] * mesh->poro[i];
-    RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
   }
 
   t = 0;
@@ -522,7 +517,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
   copy_data_within_device(op_vals_arr_n_d, op_vals_arr_d, op_vals_arr.size());
 
-  copy_data_to_device(PV, PV_d);
+  copy_data_to_device(mesh->PV, PV_d);
   copy_data_to_device(mesh->tran, mesh_tran_d);
   copy_data_to_device(jac_well_head_idxs, jac_well_head_idxs_d);
 
