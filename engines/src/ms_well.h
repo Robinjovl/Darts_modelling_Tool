@@ -198,6 +198,8 @@ public:
 
 private:
   void* velocity_evaluator;  // pointer to py object
+                             // memory is managed by pybind11 
+                             // no need for manual management 
 };
 
 #endif
