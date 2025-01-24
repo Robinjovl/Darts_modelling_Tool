@@ -269,7 +269,6 @@ endif()
 # ------------------------------------------------------------------------------
 find_library(LIBSTDCXX libstdc++.so.6 REQUIRED)
 # Install libstdc++ alongside your library
-install(
-    FILES ${LIBSTDCXX}
-    DESTINATION ./
-)
+install(CODE "execute_process(COMMAND cp -L ${LIBSTDCXX}  ${CMAKE_INSTALL_PREFIX})")
+
+

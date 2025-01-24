@@ -13,7 +13,7 @@ setup(
         exclude = ['discretizer', 'engines', 'models', 'solvers', 'docs', 'thirdparty']),
 
     # Now only include already built libraries, and build_info, otherwise it will not find the file when using darts.
-    package_data={'darts': ['*.pyd', '*.so', '*.dll', 'build_info.txt']},
+    package_data={'darts': ['*.pyd', '*.so', '*.dll', 'build_info.txt', 'libstdc++.so.6']},
 
     # Package metadata
     description='Delft Advanced Research Terra Simulator',
