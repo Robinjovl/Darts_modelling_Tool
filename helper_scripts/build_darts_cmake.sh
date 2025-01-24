@@ -41,7 +41,7 @@ MT=true           # Build openDARTS multi-threaded. This is for engines and bos_
 GPU=false         # Build openDARTS with GPU. This applies to engines and bos_solvers.
 skip_req=false    # Skip building requirements.
 config="Release"  # Default configuration (install).
-NT=8              # Number of threads by default 8
+NT=$(($(nproc) + 1))  # Number of threads by default is the number of threads
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 

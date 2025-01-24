@@ -223,15 +223,7 @@ build-windows-3.9-ODLS:
         - pip install wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-        # Export the custom GCC compiler environment variables
-        - export CXX="/opt/gcc-13.3.0/bin/g++"
-        - export CC="/opt/gcc-13.3.0/bin/gcc"
-        - export LD="/opt/gcc-13.3.0/bin/ld"
-        - which gcc
-        - /opt/gcc-13.3.0/bin/g++ --version
-        - unset CMAKE_TOOLCHAIN_FILE
-        - export LD_LIBRARY_PATH="/opt/gcc-13.3.0/lib64:$LD_LIBRARY_PATH"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j $(($(nproc) + 1)) $ODLS
     artifacts:
       paths:
         - './dist/*.whl'
@@ -282,7 +274,7 @@ build-windows-3.9-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j $(($(nproc) + 1))
     artifacts:
       paths:
         - '*.log'
