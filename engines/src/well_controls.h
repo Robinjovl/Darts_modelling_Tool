@@ -105,10 +105,10 @@ class rate_inj_well_control : public well_control_iface
 {
 public:
   rate_inj_well_control(std::vector <std::string> phase_names_, std::string ctrl_rate_type_, index_t ctrl_phase_index_, index_t n_equations_, index_t n_variables_,
-                        value_t target_rate_, std::vector <value_t> &target_composition_,
+                        value_t target_rate_, std::vector <value_t> &target_stream_,
                         operator_set_gradient_evaluator_iface* rate_etor_) :
     phase_names(phase_names_), ctrl_rate_type(ctrl_rate_type_), ctrl_phase_idx(ctrl_phase_index_), n_equations(n_equations_), n_variables(n_variables_),
-    target_rate(target_rate_), target_composition(target_composition_), rate_etor(rate_etor_)
+    target_rate(target_rate_), target_stream(target_stream_), rate_etor(rate_etor_)
   {
     name = "Injector with constant " + phase_names[ctrl_phase_idx] + " rate ";
     state.resize(n_variables);
@@ -140,7 +140,7 @@ public:
   std::vector <std::string> phase_names;
   std::string ctrl_rate_type;
   value_t target_rate;
-  std::vector <value_t> target_composition;
+  std::vector <value_t> target_stream;
   operator_set_gradient_evaluator_iface *rate_etor;
 
   std::vector<value_t> state;
