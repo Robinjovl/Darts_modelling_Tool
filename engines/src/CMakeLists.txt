@@ -262,6 +262,11 @@ target_link_libraries(engines_wells
     engines_interpolator
 )
 
+target_link_libraries(engines_wells
+  PRIVATE
+    pybind11::pybind11
+)
+
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
 target_include_directories(engines_wells

@@ -182,7 +182,7 @@ class DartsModel:
             if os.path.exists(sol_output_path): #and not restart:
                 os.remove(sol_output_path)
             self.configure_h5_output(filename=sol_output_path, cell_ids=np.arange(self.reservoir.mesh.n_blocks),
-                                add_static_data=False, description='Reservoir data')
+                                     add_static_data=False, description='Reservoir data')
 
         # Find relevant connections for well data
         if kind == 'well':
@@ -196,7 +196,7 @@ class DartsModel:
             if os.path.exists(well_output_path):
                 os.remove(well_output_path)
             self.configure_h5_output(filename=well_output_path, cell_ids=self.id_well_data,
-                                add_static_data=True, description='Well data')
+                                     add_static_data=True, description='Well data')
 
         if hasattr(self, 'output_configured'):
             self.output_configured.append(kind)
@@ -243,6 +243,9 @@ class DartsModel:
 
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
+        if any(well.model_type == "ms_well" for well in self.reservoir.wells):
+            assert hasattr(self,'wells_initial_conditions'), "Initial conditions of the multi-segmented well/wells are not defined!"
+
         for i, variable in enumerate(self.physics.vars):
             # Check if variable exists in initial values dictionary
             if variable not in initial_values.keys():
@@ -273,6 +276,36 @@ class DartsModel:
             else:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
+
+                # # For initial composition
+                # vectors_to_interleave = [self.wells_initial_conditions[key]
+                #                          for key in self.wells_initial_conditions
+                #                          if key not in {"initial_pressure", "initial_temperature"}]
+                # max_length = max(len(vec) for vec in vectors_to_interleave)  # Determine the longest vector
+                # wells_initial_composition = []
+                # for i in range(max_length):
+                #     for vec in vectors_to_interleave:
+                #         if i < len(vec):  # Ensure we don't go out of bounds
+                #             wells_initial_composition.append(vec[i])
+            start = self.reservoir.mesh.n_res_blocks
+            end = start
+            for well in self.reservoir.wells:
+                if well.model_type == "basic_well":
+                    end += 2
+                elif well.model_type == "ms_well":
+                    end += well.num_segments
+                if well.model_type == "ms_well":
+                    if variable == 'pressure':
+                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
+                        values[start:end:] = wells_initial_pressure_profile[::-1]
+                    elif variable == 'temperature':
+                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"]
+                        values[start:end:] = wells_initial_temperature_profile[::-1]
+                    elif variable not in ['pressure', 'temperature']:
+                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
+                        values[start * (self.physics.nc-1) + c:end * (self.physics.nc-1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[::-1]
+
+                start = end
 
         return
 
@@ -306,7 +339,7 @@ class DartsModel:
                 np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
             elif variable == 'enthalpy':
                 np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
-            else:           # compositions
+            else:   # compositions
                 np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
                 z_counter += 1
 
@@ -435,7 +468,7 @@ class DartsModel:
                     print("Cut timestep to %2.10f" % dt)
                 if dt < self.params.min_ts:
                     break
-                    
+
         # update current engine time
         self.physics.engine.t = stop_time
 
@@ -445,7 +478,8 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_solution_data : bool = True, 
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True,
+            save_solution_data: bool = True,
             log_3d_body_path: bool = False, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -478,7 +512,7 @@ class DartsModel:
             dt = min(self.prev_dt * self.params.mult_ts, self.params.max_ts)
         self.prev_dt = dt
 
-        ts = 0
+        ts_counter = 0
 
         if log_3d_body_path:
             self.physics.body_path_start(output_folder=self.output_folder)
@@ -489,10 +523,10 @@ class DartsModel:
             if converged:
                 t += dt
                 self.physics.engine.t = t
-                ts += 1
+                ts_counter += 1
                 if verbose:
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
+                          % (ts_counter, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
 
                 dt = min(dt * self.params.mult_ts, self.params.max_ts)
 
@@ -548,6 +582,9 @@ class DartsModel:
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
+
+        self.iter_counter = 0
+
         for i in range(max_newt+1):
             # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
@@ -571,7 +608,9 @@ class DartsModel:
                  self.physics.engine.well_residual_last_dt < self.params.well_tolerance_coefficient * self.params.tolerance_newton) or
                     self.physics.engine.n_newton_last_dt == self.params.max_i_newton):
                 if i > 0:  # min_i_newton
+                    self.iter_counter = 0
                     break
+            self.iter_counter += 1
             r_code = self.physics.engine.solve_linear_equation()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
@@ -610,8 +649,8 @@ class DartsModel:
             # If the function has not been overloaded, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+        # n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        rhs += self.set_rhs_flux(t) * dt
         return
 
     def save_data_to_h5(self, kind):
@@ -682,7 +721,6 @@ class DartsModel:
                 var_names = file['dynamic/variable_names'][:]
                 time = file['dynamic/time'][timestep].reshape(1)
                 X = file['dynamic/X'][timestep].reshape(1, len(cell_id), len(var_names))
-
 
         for i, name in enumerate(var_names):
             var_names[i] = name.decode()
@@ -826,8 +864,8 @@ class DartsModel:
             assert (self.well_perf_conn_ids[well.name].size == len(well.perforations) and \
                     (block_m[self.well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
             # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
-            assert(len(well_head_conn_id) == 1)
+            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_head_idx + 1))[0]
+            assert (len(well_head_conn_id) == 1)
             self.well_head_conn_id[well.name] = well_head_conn_id[0]
 
     def reconstruct_velocities(self):
@@ -853,7 +891,7 @@ class DartsModel:
 
         # resize storage for velocities inside engine
         self.physics.engine.darcy_velocities.resize(self.reservoir.mesh.n_res_blocks * self.physics.nph * 3)
-        
+
         # allocate & transfer data to device
         if self.platform == 'gpu':
             from darts.engines import copy_data_to_device, allocate_device_data

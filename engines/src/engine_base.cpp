@@ -1038,8 +1038,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->segment_transmissibility * (-q_Q[ww][p]);
-                            vals_term += rates[p_idx] * w->segment_transmissibility * (-q_Q[ww][p]);
+                            ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
+                            vals_term += rates[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
                     }
@@ -1146,8 +1146,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
-							vals_term += rates[p_idx] * w->segment_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							vals_term += rates[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
 					}

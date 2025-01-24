@@ -1,12 +1,14 @@
-#ifndef B7CB6645_948A_4B50_A7D5_980BEFD16090
-#define B7CB6645_948A_4B50_A7D5_980BEFD16090
+#pragma once
 
+#include <cstdint>
 #include <vector>
-#include "globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
+#include "openDARTS/auxiliary/timer_node.hpp"
 using namespace opendarts::auxiliary;
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#else
+#include "timer_node.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 
 /**
@@ -248,4 +250,3 @@ public:
 };
 #endif
 
-#endif /* B7CB6645_948A_4B50_A7D5_980BEFD16090 */

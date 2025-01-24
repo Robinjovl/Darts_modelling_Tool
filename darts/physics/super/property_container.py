@@ -48,6 +48,7 @@ class PropertyContainer(PropertyBase):
         self.viscosity_ev = {}
         self.enthalpy_ev = {}
         self.conductivity_ev = {}
+        self.IFT_ev = {}
 
         self.rel_perm_ev = []
         self.rel_well_perm_ev = []
@@ -110,12 +111,12 @@ class PropertyContainer(PropertyBase):
 
         for ith_comp, zi in enumerate(vec_composition):
             if zi < self.min_z:
-                #print(vec_composition)
+                # print(vec_composition)
                 vec_composition[ith_comp] = self.min_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
             elif zi > 1 - self.min_z:
-                #print(vec_composition)
+                # print(vec_composition)
                 vec_composition[ith_comp] = 1 - self.min_z
                 temp_sum += vec_composition[ith_comp]
             else:
@@ -142,7 +143,7 @@ class PropertyContainer(PropertyBase):
             self.sat[j] = (self.nu[j] / self.dens_m[j]) / Vtot
 
         return
-        
+
     def compute_saturation_full(self, state):
         pressure, temperature, zc = self.get_state(state)
         self.clean_arrays()

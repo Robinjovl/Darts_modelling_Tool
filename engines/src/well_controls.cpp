@@ -119,37 +119,37 @@ value_t volume_rate_well_control::check_constraint_violation, (value_t dt, std::
 int rate_inj_well_control::add_to_jacobian(value_t /*dt*/, index_t well_head_idx, value_t segment_trans,
 	index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t * jacobian_row, std::vector<value_t>& RHS)
 {
-  value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
-  value_t *X_well_body = X_well_head + n_block_size;
-  value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
-  const uint16_t n_block_size_sq = n_block_size * n_block_size;
-  value_t p_diff = X_well_head[0] - X_well_body[0];
-  value_t current_rate;
+ // value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
+ // value_t *X_well_body = X_well_head + n_block_size;
+ // value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
+ // const uint16_t n_block_size_sq = n_block_size * n_block_size;
+ // value_t p_diff = X_well_head[0] - X_well_body[0];
+ // value_t current_rate;
 
-  state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
-  rate_etor->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
-  current_rate = rates[target_phase_idx] * p_diff * segment_trans;
+ // state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
+ // rate_etor->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
+ // current_rate = rates[target_phase_idx] * p_diff * segment_trans;
 
-  // first equation - rate constraint
-  RHS_well_head[0] = current_rate - target_rate;
-  
-  // all the rest - injection stream constraint
-  int idx = 1;
-  for (value_t is : injection_stream)
-  {
-    RHS_well_head[idx] = X_well_head[idx] - is;
-    idx++;
-  }
+ // // first equation - rate constraint
+ // RHS_well_head[0] = current_rate - target_rate;
+ // 
+ // // all the rest - injection stream constraint
+ // int idx = 1;
+ // for (value_t is : injection_stream)
+ // {
+ //   RHS_well_head[idx] = X_well_head[idx] - is;
+ //   idx++;
+ // }
 
-  // fill diagonal H block - it`s always the first
-  memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
-  jacobian_row[n_block_size * P_VAR + P_VAR] = rates_derivs[target_phase_idx * n_state_size] * p_diff * segment_trans + rates[target_phase_idx] * segment_trans;
-  jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR] = - rates[target_phase_idx] * segment_trans;
-  for (int idx = 1; idx < n_state_size; idx++)
-  {
-	jacobian_row[n_block_size * P_VAR + P_VAR + idx] = rates_derivs[target_phase_idx * n_state_size + idx] * p_diff * segment_trans;
-    jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx] = 1;
-  }
+ // // fill diagonal H block - it`s always the first
+ // memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
+ // jacobian_row[n_block_size * P_VAR + P_VAR] = rates_derivs[target_phase_idx * n_state_size] * p_diff * segment_trans + rates[target_phase_idx] * segment_trans;
+ // jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR] = - rates[target_phase_idx] * segment_trans;
+ // for (int idx = 1; idx < n_state_size; idx++)
+ // {
+	//jacobian_row[n_block_size * P_VAR + P_VAR + idx] = rates_derivs[target_phase_idx * n_state_size + idx] * p_diff * segment_trans;
+ //   jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx] = 1;
+ // }
 
   return 0;
 }
@@ -168,13 +168,13 @@ int rate_inj_well_control::check_constraint_violation(value_t dt, index_t well_h
 
 int rate_inj_well_control::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
 {
-  // initialize by setting a bit higher pressure to enusure correct flow direction
-  state_block[0] = state_neighbour[0] * 1.01;
-  // also set initial composition equal to target injection stream
-  for (int i = 1; i < state_block.size(); i++)
-  {
-    state_block[i] = injection_stream[i - 1];
-  }
+  //// initialize by setting a bit higher pressure to enusure correct flow direction
+  //state_block[0] = state_neighbour[0] * 1.01;
+  //// also set initial composition equal to target injection stream
+  //for (int i = 1; i < state_block.size(); i++)
+  //{
+  //  state_block[i] = injection_stream[i - 1];
+  //}
   return 0;
 }
 
