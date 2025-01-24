@@ -188,8 +188,9 @@ class Compositional(PhysicsBase):
                                   self.n_vars, target_rate_value, value_vector(target_composition), self.rate_itor))
         # Production wells:
         self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_prod = lambda rate: rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                      self.n_vars, rate, self.rate_itor)
+        self.new_rate_prod = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name: rate_prod_well_control(
+            self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars, self.n_vars,
+            target_rate_value, self.rate_itor)
         return
 
     def set_uniform_initial_conditions(self, mesh: conn_mesh,

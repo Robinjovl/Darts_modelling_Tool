@@ -90,7 +90,7 @@ class Model(CICDModel):
                 w.control = self.physics.new_rate_inj(self.well_rate, "phase_molar_rate", 'wat', self.inj)
                 #w.control = self.physics.new_bhp_inj(450, self.inj)
             else:
-                w.control = self.physics.new_rate_prod(self.well_rate, iph=0)
+                w.control = self.physics.new_rate_prod(self.well_rate, "phase_molar_rate", 'wat')
 
     def set_rhs_flux(self, t: float = None):
         '''

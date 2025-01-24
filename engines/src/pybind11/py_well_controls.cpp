@@ -97,9 +97,9 @@ void pybind_well_controls(py::module &m)
     .def_readwrite("target_rate", &rate_inj_well_control_mass_balance::target_rate);
 
   py::class_<rate_prod_well_control>(m, "rate_prod_well_control", well_control_iface)
-    .def(py::init<std::vector <std::string>, index_t, index_t, index_t,
+    .def(py::init<std::vector <std::string>, std::string, index_t, index_t, index_t,
          value_t, 
-         operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 7>())
+         operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 8>())
     .def_readwrite("target_rate", &rate_prod_well_control::target_rate);
 
 

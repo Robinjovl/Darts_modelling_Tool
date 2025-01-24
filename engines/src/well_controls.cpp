@@ -240,12 +240,12 @@ int rate_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, v
   // take state from well body
   state.assign(X.begin() + (well_head_idx + 1) * n_block_size + P_VAR, X.begin() + (well_head_idx + 1) * n_block_size + P_VAR + n_state_size);
   rate_etor->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
-  current_rate = rates[target_phase_idx] * p_diff * segment_trans;
+  current_rate = rates[FLUX_OP] * p_diff * segment_trans;
 
-  // first equation - rate constraint
+  // first equation - rate control
   RHS_well_head[0] = current_rate - target_rate;
 
-  // all the rest - upstream constraint
+  // all the rest - upstream control
   for (int i = 1; i < n_variables; i++)
   {
     RHS_well_head[i] = X_well_head[i] - X_well_body[i];
@@ -253,18 +253,18 @@ int rate_prod_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, v
 
   // fill jacobian
   memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
-  jacobian_row[n_block_size * P_VAR + P_VAR] = -rates[target_phase_idx] * segment_trans;
+  jacobian_row[n_block_size * P_VAR + P_VAR] = -rates[FLUX_OP] * segment_trans;
   
   // if target phase does not exist, set a constant small value to pressure derivative
   // it will let the pressure drop and eventually pressure constraint might work
   if (fabs(jacobian_row[n_block_size * P_VAR + P_VAR]) < 1e-3)
 	jacobian_row[n_block_size * P_VAR + P_VAR] = -1;
 
-  jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR] = rates_derivs[target_phase_idx * n_state_size] * p_diff * segment_trans + rates[target_phase_idx] * segment_trans;
+  jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR] = rates_derivs[FLUX_OP * n_state_size] * p_diff * segment_trans + rates[FLUX_OP] * segment_trans;
   
   for (int idx = 1; idx < n_state_size; idx++)
   {
-	jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR + idx] = rates_derivs[target_phase_idx * n_state_size + idx] * p_diff * segment_trans;
+	jacobian_row[n_block_size_sq + n_block_size * P_VAR + P_VAR + idx] = rates_derivs[FLUX_OP * n_state_size + idx] * p_diff * segment_trans;
 	jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx] = 1;
 	jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx + n_block_size_sq] = -1;
   }
@@ -290,7 +290,7 @@ int rate_prod_well_control::check_constraint_violation(value_t dt, index_t well_
     std::cout << phase_names[i] << " rate is " << fabs(rates[i] * p_diff * segment_trans) << "  ";
   std::cout << std::endl;
   */
-  return fabs(rates[target_phase_idx] * p_diff * segment_trans) > target_rate;
+  return fabs(rates[FLUX_OP] * p_diff * segment_trans) > target_rate;
 }
 
 int rate_prod_well_control::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
