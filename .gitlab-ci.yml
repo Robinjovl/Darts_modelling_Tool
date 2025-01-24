@@ -227,6 +227,8 @@ build-windows-3.9-ODLS:
         - export CXX="/opt/gcc-13.3.0/bin/g++"
         - export CC="/opt/gcc-13.3.0/bin/gcc"
         - export LD="/opt/gcc-13.3.0/bin/ld"
+        - which gcc
+        - /opt/gcc-13.3.0/bin/g++ --version
         - export LD_LIBRARY_PATH="/opt/gcc-13.3.0/lib64:$LD_LIBRARY_PATH"
         - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
     artifacts:
