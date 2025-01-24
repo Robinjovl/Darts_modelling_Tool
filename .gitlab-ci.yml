@@ -199,7 +199,7 @@ build-windows-3.9-ODLS:
 .build-linux-dockcross:
     extends: .build-linux
     # Dockcross is an image specifically made for building Python wheels, based on CentOS 7 with old glibc - it will run on even old systems
-    image: dockcross/manylinux2014-x64:latest
+    image: moonlyss/dockcross-manylinux2014-x64-gcc13:latest
     # Install samba client to upload build results to shared folder TODO remove
     before_script:
         - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
