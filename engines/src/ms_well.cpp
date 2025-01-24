@@ -1,6 +1,8 @@
 #include <iostream>
 
 #include "ms_well.h"
+#include "globals.h"
+#include "pybind11/pybind11.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -12,6 +14,10 @@
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
+
+
+using namespace std;
+namespace py = pybind11;
 
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
@@ -278,8 +284,36 @@ int ms_well::cross_flow(std::vector<value_t>& X)
   }
 
   return 0;
+};
+
+
+// Function to convert the `void` pointer to `py::object`
+py::object* get_py_object(void* ptr) {
+    return static_cast<py::object*>(ptr);
 }
 
 
-;
+tuple<vector<value_t>, vector<value_t>> ms_well::evaluate_phase_velocities(
+    vector<value_t> Xn_ms_well, 
+    vector<value_t> X_ms_well, 
+    value_t dt
+  ) {
 
+  // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
+  py::object result = get_py_object(velocity_evaluator)->attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
+
+  //// convert the py::object into a C++ tuple
+  auto result_tuple = result.cast<std::tuple<std::vector<value_t>, std::vector<value_t>>>();
+      
+  return result_tuple;
+}
+
+void ms_well::set_velocity_evaluator(void* evaluator) {
+  velocity_evaluator = evaluator;
+}
+
+
+ms_well::~ms_well() {
+  auto obj = get_py_object(velocity_evaluator);
+  delete obj;
+}

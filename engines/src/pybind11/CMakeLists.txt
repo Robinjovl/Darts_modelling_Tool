@@ -66,6 +66,7 @@ target_link_libraries(engines
     engines_mechanics
     engines_interpolator
     engines_conn_mesh
+    pybind11::pybind11
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

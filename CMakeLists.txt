@@ -2,6 +2,9 @@ cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# Set DARTS installation folder
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
 # Load cmake modules -----------------------------------------------------------

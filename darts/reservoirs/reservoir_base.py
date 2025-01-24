@@ -128,7 +128,7 @@ class ReservoirBase:
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector((well_geometry.pipe_length - well_geometry.z)[::-1])
             well.num_segments = well_geometry.num_segments
-            well.velocity_evaluator = PipeVelocityEvaluator(well_geometry, physics, darts_model)
+            well.set_velocity_evaluator(PipeVelocityEvaluator(well_geometry, physics, darts_model))
 
             # will be updated in add_perforation
             # well.well_head_depth = well_geometry.pipe_length - well_geometry.z[-1]

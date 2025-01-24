@@ -191,7 +191,6 @@ target_link_libraries(engines_conn_mesh
     engines_interpolator
     opendarts_compiler_flags
     linear_solvers
-    pybind11::pybind11
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)
@@ -261,6 +260,10 @@ target_link_libraries(engines_wells
     opendarts_compiler_flags
     linear_solvers
     engines_interpolator
+)
+
+target_link_libraries(engines_wells
+  PRIVATE
     pybind11::pybind11
 )
 
@@ -342,7 +345,6 @@ target_link_libraries(engines_engines
     engines_interpolator
     Eigen3::Eigen
 	HYPRE::HYPRE
-    pybind11::pybind11
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

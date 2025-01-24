@@ -1,6 +1,6 @@
+#include <pybind11/pytypes.h>
 #ifdef PYBIND11_ENABLED
 
-#include "py_globals.h"
 #include "ms_well.h"
 #include <pybind11/stl.h>
 
@@ -23,7 +23,8 @@ void pybind_ms_well(py::module &m)
     .def_readwrite("model_type", &ms_well::model_type)
     .def_readwrite("segments_volumes", &ms_well::segments_volumes)
     .def_readwrite("segments_depths", &ms_well::segments_depths)
-    .def_readwrite("velocity_evaluator", &ms_well::velocity_evaluator)
+    .def("set_velocity_evaluator", (void (ms_well::*)(py::object*)) &ms_well::set_velocity_evaluator)
+    /*.def_readwrite("velocity_evaluator",(std::shared_ptr<py::object>ms_well::*) &ms_well::velocity_evaluator)*/
     .def_readwrite("num_segments", &ms_well::num_segments)
     .def_readwrite("perforations", &ms_well::perforations)
     .def_readwrite("segment_volume", &ms_well::segment_volume)

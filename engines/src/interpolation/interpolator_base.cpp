@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <assert.h>
 #include "interpolator_base.hpp"
+#include "globals.h"
 
 namespace std
 {

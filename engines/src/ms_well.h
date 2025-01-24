@@ -1,6 +1,7 @@
 #ifndef MS_WELL_H
 #define MS_WELL_H
 
+#include <memory>
 #include <vector>
 #include <tuple>
 #include <unordered_map>
@@ -9,8 +10,17 @@
 #include "well_controls.h"
 #include "evaluator_iface.h"
 
-#include <pybind11/pybind11.h>
-namespace py = pybind11;
+
+using unique_void_ptr = std::unique_ptr<void, void(*)(void const*)>;
+
+template<typename T>
+auto unique_void(T * ptr) -> unique_void_ptr
+{
+    return unique_void_ptr(ptr, [](void const * data) {
+         T const * p = static_cast<T const*>(data);
+         delete p;
+    });
+}
 
 // Does not seem to be needed
 // class csr_matrix_base;
@@ -118,7 +128,6 @@ public:
   std::string model_type;
   std::vector<value_t> segments_depths;
   std::vector<value_t> segments_volumes;
-  py::object velocity_evaluator;
   index_t num_segments;
   value_t segment_volume;
   value_t well_transmissibility;
@@ -178,6 +187,19 @@ public:
   }
 
   WellType well_type;          // type to be producer or injector
+  
+  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities(
+    std::vector<value_t> Xn_ms_well, 
+    std::vector<value_t> X_ms_well, 
+    value_t dt
+  );
+
+  void set_velocity_evaluator(void* evaluator);
+
+  ~ms_well();
+
+private:
+  void* velocity_evaluator;  // pointer to py object
 };
 
 #endif
