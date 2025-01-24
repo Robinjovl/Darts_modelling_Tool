@@ -230,7 +230,7 @@ build-windows-3.9-ODLS:
         - which gcc
         - /opt/gcc-13.3.0/bin/g++ --version
         - export LD_LIBRARY_PATH="/opt/gcc-13.3.0/lib64:$LD_LIBRARY_PATH"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS -g /opt/gcc-13.3.0/bin/g++
     artifacts:
       paths:
         - './dist/*.whl'
