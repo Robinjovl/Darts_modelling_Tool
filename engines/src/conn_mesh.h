@@ -33,6 +33,8 @@ public:
 
   int set_wells_tran(std::vector<value_t> &wells_tran);     // set trans for wells part (well indexes)
 
+  int set_volume_and_poro(std::vector<value_t> &volume_, 
+                          std::vector<value_t> &poro_);     // set volume, porosity and calculate PV/RV  
   int set_volume(std::vector<value_t> &volume_);            // set volume and adjust PV/RV
   int set_poro(std::vector<value_t> &poro_);                // set porosity and adjust PV/RV
 
