@@ -78,7 +78,7 @@ class Model(CICDModel):
         else:
             if self.compositional:
                 # Define fluid components, phases and Flash object
-                from dartsflash.libflash import PHFlash, FlashParams, EoS
+                from dartsflash.libflash import PXFlash, FlashParams, EoS
                 from dartsflash.libflash import CubicEoS, AQEoS
                 from dartsflash.components import CompData
                 phases = ['water', 'steam']
@@ -107,7 +107,7 @@ class Model(CICDModel):
                 zero = 1e-10
                 property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=zero/10)
 
-                property_container.flash_ev = PHFlash(flash_params)
+                property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
 
                 # properties implemented in python
                 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
