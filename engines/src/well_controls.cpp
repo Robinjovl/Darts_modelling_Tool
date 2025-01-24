@@ -135,7 +135,7 @@ int rate_inj_well_control::add_to_jacobian(value_t /*dt*/, index_t well_head_idx
   
   // all the rest - stream control
   int idx = 1;
-  for (value_t is : target_stream)
+  for (value_t is : injection_stream)
   {
     RHS_well_head[idx] = X_well_head[idx] - is;
     idx++;
@@ -173,7 +173,7 @@ int rate_inj_well_control::initialize_well_block(std::vector<value_t>& state_blo
   // also set initial composition equal to target injection stream
   for (int i = 1; i < state_block.size(); i++)
   {
-    state_block[i] = target_stream[i - 1];
+    state_block[i] = injection_stream[i - 1];
   }
   return 0;
 }
@@ -770,7 +770,7 @@ int rate_inj_well_control::add_to_csr_jacobian(value_t dt, index_t well_head_idx
 
 	// all the rest - composition control
 	int idx = 1;
-	for (value_t is : target_stream)
+	for (value_t is : injection_stream)
 	{
 		RHS_well_head[idx] = X_well_head[idx] - is;
 		idx++;

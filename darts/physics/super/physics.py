@@ -182,10 +182,10 @@ class Compositional(PhysicsBase):
     def define_well_controls(self):
         # define well control factories
         # Injection wells (upwind method requires both bhp and target_stream for bhp controlled injection wells):
-        self.new_bhp_inj = lambda bhp, target_stream: bhp_inj_well_control(bhp, value_vector(target_stream))
-        self.new_rate_inj = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name, target_stream: (
+        self.new_bhp_inj = lambda bhp, injection_stream: bhp_inj_well_control(bhp, value_vector(injection_stream))
+        self.new_rate_inj = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name, injection_stream: (
             rate_inj_well_control(self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars,
-                                  self.n_vars, target_rate_value, value_vector(target_stream), self.rate_itor))
+                                  self.n_vars, target_rate_value, value_vector(injection_stream), self.rate_itor))
         # Production wells:
         self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
         self.new_rate_prod = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name: rate_prod_well_control(

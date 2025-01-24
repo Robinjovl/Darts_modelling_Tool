@@ -86,7 +86,7 @@ void pybind_well_controls(py::module &m)
     .def(py::init<std::vector <std::string>, std::string, index_t, index_t, index_t,
          value_t, std::vector <value_t> &,
          operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 9>())
-    .def_readwrite("target_stream", &rate_inj_well_control::target_stream)
+    .def_readwrite("injection_stream", &rate_inj_well_control::injection_stream)
     .def_readwrite("target_rate", &rate_inj_well_control::target_rate);
 
   py::class_<rate_inj_well_control_mass_balance>(m, "rate_inj_well_control_mass_balance", well_control_iface)
