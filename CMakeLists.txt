@@ -267,8 +267,18 @@ if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
 # ------------------------------------------------------------------------------
-find_library(LIBSTDCXX libstdc++.so.6 REQUIRED)
+
+if(WIN32)
+    find_library(LIBSTDCXX libstdc++.dll REQUIRED)
+elseif(APPLE)
+    find_library(LIBSTDCXX libstdc++.dylib REQUIRED)
+else()
+    find_library(LIBSTDCXX libstdc++.so.6 REQUIRED)
+endif()
+
 # Install libstdc++ alongside your library
-install(CODE "execute_process(COMMAND cp -L ${LIBSTDCXX}  ${CMAKE_INSTALL_PREFIX})")
+install(CODE "
+    execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
+")
 
 
