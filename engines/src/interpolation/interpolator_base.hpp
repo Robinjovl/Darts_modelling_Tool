@@ -3,6 +3,7 @@
 
 #include <array>
 #include <limits>
+#include <cmath>
 
 #include "evaluator_iface.h"
 
