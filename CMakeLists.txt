@@ -268,18 +268,15 @@ if(ENABLE_TESTING)
 endif()
 # ------------------------------------------------------------------------------
 
-if(WIN32)
-    find_library(LIBSTDCXX libstdc++.dll REQUIRED)
-elseif(APPLE)
-    find_library(LIBSTDCXX libstdc++.dylib REQUIRED)
-else()
+
+if(UNIX AND NOT APPLE)
     get_filename_component(CMAKE_CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
     set(LIBSTDCXX ${CMAKE_CXX_COMPILER_DIR}/../lib64/libstdc++.so.6)
-endif()
 
-# Install libstdc++ alongside your library
-install(CODE "
-    execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
-")
+    # Install libstdc++ alongside your library
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
+    ")
+endif()
 
 
