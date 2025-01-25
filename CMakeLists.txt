@@ -270,8 +270,11 @@ endif()
 
 
 if(UNIX AND NOT APPLE)
-    get_filename_component(CMAKE_CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
-    set(LIBSTDCXX ${CMAKE_CXX_COMPILER_DIR}/../lib64/libstdc++.so.6)
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
+        OUTPUT_VARIABLE LIBSTDCXX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
 
     # Install libstdc++ alongside your library
     install(CODE "
