@@ -1,26 +1,27 @@
 cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+# Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_MACOSX_RPATH 1)
-set(CMAKE_INSTALL_RPATH $ORIGIN)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Configure runtime path for finding dynamic libraries
+set(CMAKE_INSTALL_RPATH $ORIGIN)  # shared libraries will be searched in darts folder
+set(CMAKE_MACOSX_RPATH 1)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
+# Set DARTS installation folder
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
+# Disable C++ 11 ABI to support old libraries
 set(SET_CXX11_ABI_0 TRUE)
-set(CMAKE_INSTALL_PREFIX "../darts")
-set(CMAKE_INSTALL_RPATH $ORIGIN)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
-endif()
+
+
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -307,3 +308,18 @@ if(ENABLE_TESTING)
 endif()
 # ------------------------------------------------------------------------------
 
+<<<<<<< HEAD
+=======
+
+if(UNIX AND NOT APPLE)
+    get_filename_component(CMAKE_CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+    set(LIBSTDCXX ${CMAKE_CXX_COMPILER_DIR}/../lib64/libstdc++.so.6)
+
+    # Install libstdc++ alongside your library
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
+    ")
+endif()
+
+
+>>>>>>> ce0b9b76653364561c2f7f935d6e183f81178119
