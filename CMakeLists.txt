@@ -273,7 +273,8 @@ if(WIN32)
 elseif(APPLE)
     find_library(LIBSTDCXX libstdc++.dylib REQUIRED)
 else()
-    find_library(LIBSTDCXX libstdc++.so.6 REQUIRED)
+    get_filename_component(CMAKE_CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+    set(LIBSTDCXX ${CMAKE_CXX_COMPILER_DIR}/../lib64/libstdc++.so.6)
 endif()
 
 # Install libstdc++ alongside your library
