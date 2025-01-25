@@ -308,8 +308,6 @@ if(ENABLE_TESTING)
 endif()
 # ------------------------------------------------------------------------------
 
-<<<<<<< HEAD
-=======
 
 if(UNIX AND NOT APPLE)
     get_filename_component(CMAKE_CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
@@ -321,5 +319,3 @@ if(UNIX AND NOT APPLE)
     ")
 endif()
 
-
->>>>>>> ce0b9b76653364561c2f7f935d6e183f81178119
