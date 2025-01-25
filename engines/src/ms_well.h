@@ -194,12 +194,7 @@ public:
     value_t dt
   );
 
-  void set_velocity_evaluator(void* evaluator);
-
-private:
-  void* velocity_evaluator;  // pointer to py object
-                             // memory is managed by pybind11 
-                             // no need for manual management 
+  std::shared_ptr<void> velocity_evaluator;  // pointer to py object
 };
 
 #endif
