@@ -269,6 +269,8 @@ endif()
 # ------------------------------------------------------------------------------
 
 
+# Bundle standard C++ library used by the compiler,
+# to support running even old systems
 if(UNIX AND NOT APPLE)
     execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
@@ -276,7 +278,6 @@ if(UNIX AND NOT APPLE)
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
-    # Install libstdc++ alongside your library
     install(CODE "
         execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
     ")
