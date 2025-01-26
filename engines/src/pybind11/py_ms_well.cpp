@@ -1,11 +1,9 @@
 #ifdef PYBIND11_ENABLED
+#include "py_globals.h"
+#include "pybind11/stl.h"
 #include <memory>
 #include <stdexcept>
-#include <pybind11/attr.h>
-#include <pybind11/pytypes.h>
-
 #include "ms_well.h"
-#include <pybind11/stl.h>
 
 namespace py = pybind11;
 
@@ -21,6 +19,7 @@ py::object &get_py_object(std::shared_ptr<void> ptr) {
 tuple<vector<value_t>, vector<value_t>>
 ms_well::evaluate_phase_velocities(vector<value_t> Xn_ms_well,
                                    vector<value_t> X_ms_well, value_t dt) {
+  py::gil_scoped_acquire gil;  // Acquire the GIL
 
   // method evaluate_phase_velocities_and_derivatives of the Python object
   // returns the velocities of the two phases and derivatives of velocities of
