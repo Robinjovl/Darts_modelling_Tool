@@ -134,7 +134,18 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-std=c++20")
+  # LTO seems to make DARTS build faster, while also increasing performance
+
+  # No need for manual -O optimization flag, CMake build types automatically handle it.
+  # Debug: O0    Release: 03
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-std=c++20;-flto")
+
+  # # Compiler flags based on build type
+  # if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    # list(APPEND opendarts_cxx_compiler_flags "")
+  # else()
+  #   list(APPEND opendarts_cxx_compiler_flags "")
+  # endif()
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
