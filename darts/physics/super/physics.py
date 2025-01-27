@@ -219,8 +219,7 @@ class Compositional(PhysicsBase):
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
-                temperature = np.array(mesh.temperature, copy=False)
-                temperature[:] = temperature_input
+                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = temperature_input
             else:
                 # interpolate pressure and temperature to compute enthalpies
                 enthalpy = np.empty(mesh.n_blocks)
