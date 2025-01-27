@@ -110,7 +110,7 @@ if [[ "$clean_mode" == true ]]; then
     echo '\n   Cleaning build folder, dist folder and generated python modules'
     rm -rf darts/*.so
     rm -rf dist
-    rm -r build
+    rm -rf build
 fi
 
 

@@ -22,7 +22,11 @@ docs/_build
 **/__pycache__/
 darts/__pycache__/
 models/__pycache__/
+<<<<<<< HEAD
 .cache/
+=======
+**/.cache/
+>>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
 
 # building info
 darts/build_info.txt

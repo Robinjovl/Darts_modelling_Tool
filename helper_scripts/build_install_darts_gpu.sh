@@ -6,4 +6,12 @@ if [[ "$GSELINSOLVERSPATH" == "" ]]; then
   exit 1
 fi
 
-./helper_scripts/build_darts_cmake.sh -G -j20 -b $GSELINSOLVERSPATH -w
+CLEAN_FLAG=""
+for arg in "$@"; do
+  if [[ "$arg" == "-c" ]]; then
+    CLEAN_FLAG="-c"
+    break
+  fi
+done
+
+./helper_scripts/build_darts_cmake.sh -G -j20 -b $GSELINSOLVERSPATH -w $CLEAN_FLAG

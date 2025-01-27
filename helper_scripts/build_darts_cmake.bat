@@ -64,7 +64,7 @@ rmdir /s /q dist 2> NUL
 if %clean_mode%==true (
   echo - Cleaning up
   rmdir /s /q build 2> NUL
-  goto :eof
+  REM goto :eof
 )
 
 if %skip_req%==false (

@@ -166,6 +166,7 @@ class DartsModel:
     def configure_output(self, kind: str):
         """
         Configuration of output
+        
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         :param restart: Boolean to check if existing file should be overwritten or appended
@@ -206,6 +207,7 @@ class DartsModel:
     def load_restart_data(self, filename: str = os.path.join('restart', 'solution.h5'), timestep = -1):
         """
         Function to load data from previous simulation and uses them for following simulation.
+        
         :param output_folder: restart_data filename
         :type output_folder: str
         """
@@ -636,8 +638,10 @@ class DartsModel:
     def save_data_to_h5(self, kind):
         """
         Function to write output solution or well output to *.h5 file
+        
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
+        
         """
 
         if not hasattr(self, 'output_configured') or kind not in self.output_configured:
@@ -655,6 +659,7 @@ class DartsModel:
     def save_specific_data(self, filename):
         """
         Function to write output to *.h5 file
+        
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
@@ -676,6 +681,7 @@ class DartsModel:
     def read_specific_data(self, filename: str, timestep: int = None):
         """
         Function to read *.h5 files contents.
+        
         :param filename: path to *.h5 filename to append data to
         :param timestep:
         :return time: time of the saved data in days
@@ -710,12 +716,14 @@ class DartsModel:
 
     def output_properties(self, output_properties: list = None, timestep: int = None) -> tuple:
         """
-        Function to read *.h5 data and evaluate properties per grid block, per timestep
+        Function to read *.h5 data and evaluate properties per grid block, per timestep. 
+        
         :param output_properties: List of properties to evaluate for output
         :return property_array : dictionary containing the states and evaluated properties
         :return timesteps: np.ndarray containing the timesteps at which the properties were evaluated
         :rtype: tuple
         """
+        
         # Read binary file
         path = os.path.join(self.output_folder, self.sol_filename)
         if timestep is None:

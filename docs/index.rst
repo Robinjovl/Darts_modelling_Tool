@@ -18,6 +18,7 @@ Welcome to DARTS documentation!
 
    getting_started/installation.md
    getting_started/tutorial.md
+   getting_started/example_models.md
 
 .. toctree::
    :maxdepth: 2
