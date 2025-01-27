@@ -2,6 +2,8 @@
 #include <chrono>
 #include <iostream>
 #include <numeric>
+#include <sstream>
+#include <strstream>
 #include <unordered_set>
 
 #include "linalg/vector3.h"
@@ -514,7 +516,8 @@ void Mesh::generate_adjacency_matrix() {
   }
 
   t2 = steady_clock::now();
-  logger.info("Adjacency matrix:\t{}\t[ms]", duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+  logger.info("Adjacency matrix:\t{}\t[ms]",
+              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 // fills:
@@ -525,26 +528,26 @@ void Mesh::generate_adjacency_matrix() {
 
 // print internal arrays to screen (for debugging)
 void Mesh::print_elems_nodes() {
-  cout << "Elements:\n";
+  logger.log("Elements:");
 
   // loop through all elements
   for (index_t i = 0; i < num_of_elements; i++) {
     const auto &el1 = elems[i];
 
-    cout << "\t id=" << el1.elem_id << " " << get_ijk_as_str(el1.elem_id, false)
-         << " n_pts=" << int(el1.n_pts) << " pts_offset=" << el1.pts_offset
-         << "\n";
+    logger.log("\t id={} {} n_pts={} pts_offset={}", el1.elem_id,
+               get_ijk_as_str(el1.elem_id, false), el1.n_pts, el1.pts_offset);
     // loop through all nodes belonging to particular element
     for (index_t l = el1.pts_offset; l < el1.pts_offset + el1.n_pts; l++) {
       index_t node_id = elem_nodes[l];
-      cout << "\t Node=" << node_id << " Elems:\t";
+      std::ostringstream out;
+      out << "\t Node=" << node_id << " Elems:\t";
       // loop through all elements that share this node
       for (index_t k = elems_of_node_offset[node_id];
            k < elems_of_node_offset[node_id + 1]; k++) {
         index_t nebr_id = elems_of_node[k];
-        cout << nebr_id << " ";
+        out << nebr_id << " ";
       }
-      cout << "\n";
+      logger.log(out.str());
     }
   }
 }
@@ -733,9 +736,11 @@ void Mesh::print_arrays() const {
     std::array<value_t, 3> d = calc_cell_sizes(i1, j1, k1);
 
     // if (i < 500 )
-    cout << idx << " " << ijk_str << " C=" << centroids[counter]
+    std::ostrstream out;
+    out << idx << " " << ijk_str << " C=" << centroids[counter]
          << "\tV=" << volumes[counter] << "\tDX=" << d[0] << "\tDY=" << d[1]
          << "\tDZ=" << d[2] << "\n";
+    logger.log(out.str());
 
     counter++;
   } // loop by cells
@@ -1034,11 +1039,13 @@ std::vector<int> Mesh::cpg_elems_nodes(
       elem_nodes_sorted.push_back(n);
   }
 
-  cout << "num_of_elements: " << num_of_elements << "\n";
-  cout << "num_of_cells:    " << nx * ny * nz << "\n";
-  cout << "active_cells:    " << num_of_cells << "\n";
-  cout << "number_of_faces: " << number_of_faces << "\n";
-  cout << "bnd_faces_num:   " << bnd_faces_num << "\n";
+  logger.info("num_of_elements: {}\n"
+              "num_of_cells:    {}\n"
+              "active_cells:    {}\n"
+              "number_of_faces: {}\n"
+              "bnd_faces_num:   {}",
+              num_of_elements, nx * ny * nz, num_of_cells, number_of_faces,
+              bnd_faces_num);
 
   // fill elems_of_node, elems_of_node_offset
   elems_of_node_offset.reserve(
@@ -1293,5 +1300,5 @@ void Mesh::cpg_connections(
       it = conn_type_map.erase(it);
   }
 
-  cout << conns.size() << " connections:\n";
+  logger.debug("{} connections:", conns.size());
 }
