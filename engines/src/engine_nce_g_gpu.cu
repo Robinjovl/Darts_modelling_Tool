@@ -254,14 +254,14 @@ int engine_nce_g_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
 
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
-  allocate_device_data(RV, &RV_d);
+  allocate_device_data(mesh->RV, &RV_d);
   allocate_device_data(mesh->heat_capacity, &mesh_hcap_d);
   allocate_device_data(mesh->tranD, &mesh_tranD_d);
   allocate_device_data(mesh->rock_cond, &mesh_rcond_d);
   allocate_device_data(mesh->poro, &mesh_poro_d);
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
 
-  copy_data_to_device(RV, RV_d);
+  copy_data_to_device(mesh->RV, RV_d);
   copy_data_to_device(mesh->heat_capacity, mesh_hcap_d);
   copy_data_to_device(mesh->tranD, mesh_tranD_d);
   copy_data_to_device(mesh->rock_cond, mesh_rcond_d);
