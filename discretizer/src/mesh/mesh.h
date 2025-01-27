@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <array>
+#include <iostream>
 
 #include "elem.h"
 
@@ -165,7 +166,7 @@ namespace mesh
 		        const int num_of_cells,
 		        const double multiplier,
 		        const bool append) const
-		{
+		{ 
 		        std::cout << "Writing array " << keyword << " to file " << filename << "\n";
 		
 		        std::ofstream f;

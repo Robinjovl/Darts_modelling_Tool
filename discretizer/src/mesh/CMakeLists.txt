@@ -5,6 +5,7 @@
 set(DISCRETIZER_MESH_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/elem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mesh.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logger.cpp
 )
 
 # Then the public headers
@@ -38,6 +39,7 @@ target_link_libraries(discretizer_mesh
     discretizer_linalg
   PRIVATE 
 	  mshio
+    opendarts_logging
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

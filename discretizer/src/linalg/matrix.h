@@ -9,7 +9,6 @@
 #include <numeric>
 #include <valarray>
 #include <assert.h>
-#include <iostream>
 #include <fstream>
 #include <limits>
 #include <iomanip>
