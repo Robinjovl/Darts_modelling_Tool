@@ -1,11 +1,13 @@
 #pragma once
 
+#include <format>
 #include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 /**
  * @namespace logging
@@ -74,6 +76,8 @@ enum class LoggingLevel {
   CRITICAL = 50
 };
 
+using enum LoggingLevel;
+
 #define LEVELS(X)                                                              \
   X(DEBUG, debug,                                                              \
     "Detailed information, typically only of interest to a "                   \
@@ -90,8 +94,6 @@ enum class LoggingLevel {
     "A serious error, indicating that the program itself may be "              \
     "unable to continue running.")
 
-using enum LoggingLevel;
-
 /**
  * The default log verbosity level.
  *
@@ -99,56 +101,6 @@ using enum LoggingLevel;
  * in debug information.
  */
 constexpr LoggingLevel DEFAULT_LOGGING_LEVEL = LoggingLevel::INFO;
-
-/** Basic wrapper around c++ std::cout object to expose it to python. */
-void log(const std::string &msg);
-
-void set_file(const std::string &filename);
-
-/**
- * Logs a message with a specified logging level.
- *
- * @param level The desired logging level (e.g., DEBUG, INFO, WARNING, ERROR,
- * CRITICAL).
- *
- * @param msg The message to log
- */
-void log(LoggingLevel level, const std::string &msg);
-
-// Log function with different argument order for python
-void log(const std::string &msg, LoggingLevel level);
-
-template <LoggingLevel level> void log(const std::string &msg);
-
-// Macro to generate log functions for each level
-#define ROOT_LOG(level, name, description)                                     \
-  /* Logs a message with level verbosity. */                                   \
-  inline void name(const std::string &msg) { log<LoggingLevel::level>(msg); }
-
-LEVELS(ROOT_LOG);
-
-/** Sets the logging level, which determines the verbosity of log messages.
- *
- * Higher levels produce more detailed logs, while lower levels may only show
- * critical messages. Use this to control the amount of log information based
- * on your needs.
- *
- * @param level The desired logging level (e.g., DEBUG, INFO, WARNING, ERROR,
- * CRITICAL).
- */
-void set_verbosity(LoggingLevel level);
-
-/**
- * Flushes output buffers, ensuring all data is written to the underlying
- * streams.
- *
- * This is particularly useful in case of program crashes or unexpected
- * interruptions, where buffered data might otherwise be lost.
- *
- * Note: Avoid flushing frequently, as it can significantly reduce
- * performance.
- */
-void flush();
 
 struct FStreamWithMutex {
   FStreamWithMutex() {}
@@ -161,8 +113,12 @@ struct FStreamWithMutex {
  */
 class Logger {
 public:
-  Logger(const std::string &name);
+  static Logger s_root_logger;
   std::string m_name;
+
+  Logger(const std::string &name);
+  Logger(Logger &&) = default;          // Enable move constructor
+  Logger(const Logger &other) = delete; // Disable copy constructor
 
   Logger &get_logger(const std::string &name);
   Logger &get_logger(const std::string &name,
@@ -172,37 +128,63 @@ public:
                      const bool screen_output);
 
   void log(const std::string &message);
-  template <LoggingLevel level> void log(const std::string &message);
-  void log(const std::string &message, const LoggingLevel &level);
+  template <LoggingLevel level> void log(const std::string &message) {
+    if (level < m_level) {
+      return;
+    }
+    log(message);
+  }
+
+  template <typename... Args>
+  void log(const std::format_string<Args...> &fmt, Args &&...args) {
+    log(std::format(fmt, std::forward<Args>(args)...));
+  }
+
+  template <LoggingLevel level, typename... Args>
+  void log(const std::format_string<Args...> &message, Args &&...args) {
+    if (level < m_level) {
+      return;
+    }
+
+    log<Args...>(message, std::forward<Args>(args)...);
+  }
 
   // Macro to generate log functions for each level
 #define LOG(level, name, description)                                          \
+  inline void name(const std::string &message) { log<level>(message); }        \
   /** Logs a message with level verbosity. */                                  \
-  inline void name(const std::string &message) {                               \
-    log<LoggingLevel::level>(message);                                         \
+  template <typename... Args>                                                  \
+  inline void name(const std::format_string<Args...> &message,                 \
+                   Args &&...args) {                                           \
+    log<LoggingLevel::level, Args...>(message, std::forward<Args>(args)...);   \
   }
 
   LEVELS(LOG);
 
+  void set_verbosity(LoggingLevel level);
+  void enable_screen_output(bool enabled);
+  void set_file(const std::optional<std::string> &file);
+
+  /**
+   * Flushes output buffers, ensuring all data is written to the underlying
+   * streams.
+   *
+   * This is particularly useful in case of program crashes or unexpected
+   * interruptions, where buffered data might otherwise be lost.
+   *
+   * Note: Avoid flushing frequently, as it can significantly reduce
+   * performance.
+   */
   void flush();
 
-  void set_verbosity(LoggingLevel level);
-
-  void set_file(const std::optional<std::string> &file);
-  void enable_screen_output(bool enabled);
-  static Logger s_root_logger;
-
+  // Debugging logging
   std::string get_visual_repr(const std::string &prefix = "") const;
   void print_loggers(const std::string &prefix = "") const;
-
-  Logger(const Logger &other) = delete; // Disable copy constructor
-  Logger(Logger &&) = default;          // Enable move constructor
 
 private:
   // Make default constructor private because
   // it is only used to create the root logger
   Logger();
-
   LoggingLevel m_level = DEFAULT_LOGGING_LEVEL;
   std::unordered_map<std::string, std::unique_ptr<Logger>> m_child_loggers;
   std::optional<std::string> m_file = std::nullopt; // Log file name, optional
@@ -216,10 +198,6 @@ private:
   static std::mutex s_loggers_mutex;
 };
 
-Logger &get_logger(const std::string &name,
-                   const std::optional<std::string> &file = std::nullopt,
-                   const bool enable_screen_output = true);
-
 // Logging logger.
 //
 // You can use this logger to control logging related logs.
@@ -227,9 +205,67 @@ extern Logger &logger;
 
 // BEGIN GLOBAL LOGGING FUNCTIONS
 
+Logger &get_logger(const std::string &name,
+                   const std::optional<std::string> &file = std::nullopt,
+                   const bool enable_screen_output = true);
+
+/** Sets the logging level, which determines the verbosity of log messages.
+ *
+ * Higher levels produce more detailed logs, while lower levels may only show
+ * critical messages. Use this to control the amount of log information based
+ * on your needs.
+ *
+ * @param level The desired logging level (e.g., DEBUG, INFO, WARNING, ERROR,
+ * CRITICAL).
+ */
+void set_verbosity(LoggingLevel level);
+
+void log(const std::string &message);
+
+template <LoggingLevel level> void log(const std::string &message) {
+  Logger::s_root_logger.log<level>(message);
+}
+
+/**
+ * Logs a message with a specified logging level.
+ *
+ * @param level The desired logging level (e.g., DEBUG, INFO, WARNING, ERROR,
+ * CRITICAL).
+ *
+ * @param msg The message to log
+ */
+template <LoggingLevel level, typename... Args>
+void log(const std::format_string<Args...> &msg, Args &&...args) {
+  Logger::s_root_logger.log<level, Args...>(msg, std::forward<Args>(args)...);
+}
+
+// Macro to generate log functions for each level
+#define ROOT_LOG(level, name, description)                                     \
+  inline void name(const std::string &message) { log<level>(message); }        \
+  /* Logs a message with level verbosity. */                                   \
+  template <typename... Args>                                                  \
+  inline void name(const std::format_string<Args...> &msg, Args &&...args) {   \
+    log<LoggingLevel::level, Args...>(msg, std::forward<Args>(args)...);       \
+  }
+
+LEVELS(ROOT_LOG);
+
 void enable_screen_output(bool enabled);
 std::string get_visual_repr(const std::string &prefix = "");
 void print_loggers(const std::string &prefix = "");
+void set_file(const std::string &filename);
+
+/**
+ * Flushes output buffers, ensuring all data is written to the underlying
+ * streams.
+ *
+ * This is particularly useful in case of program crashes or unexpected
+ * interruptions, where buffered data might otherwise be lost.
+ *
+ * Note: Avoid flushing frequently, as it can significantly reduce
+ * performance.
+ */
+void flush();
 
 // END GLOBAL LOGGING FUNCTIONS
 

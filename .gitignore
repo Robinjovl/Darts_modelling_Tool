@@ -30,7 +30,7 @@ darts/build_info.txt
 **/.cache
 
 # simulation results
-results_*/**
+**/results_*/**
 solution.pvd
 
 *.exp

@@ -6,6 +6,7 @@ import os, sys
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
 from darts.tools.logging import redirect_all_output, abort_redirection
+from darts import logging
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
@@ -24,7 +25,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
     if redirect_log:
-        log_stream = redirect_all_output(log_filename)
+        # log_stream = redirect_all_output(log_filename)
+        logging.set_file(log_filename)
 
     if physics_type == 'geothermal':
         m = ModelGeothermal(iapws_physics=True)
@@ -98,8 +100,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
 
-    if redirect_log:
-        abort_redirection(log_stream)
+    # if redirect_log:
+    #     abort_redirection(log_stream)
     print('Failed' if failed else 'Ok')
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
@@ -225,6 +227,9 @@ def run_test(args: list = [], platform='cpu'):
 ##########################################################################################################
 
 if __name__ == '__main__':
+    logging.get_logger("logging").set_verbosity(logging.DEBUG)
+    # logging.get_logger("discretizer").set_verbosity(logging.DEBUG)
+    logging.set_file("run.log")
     platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
             platform = 'gpu'

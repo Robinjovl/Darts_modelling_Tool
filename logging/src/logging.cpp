@@ -1,4 +1,5 @@
 #include <cassert>
+#include <csignal>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -20,18 +21,14 @@ Logger &logger = logging::get_logger("logging");
 /** Basic wrapper around c++ std::cout object to expose it to python. */
 void log(const string &msg) { Logger::s_root_logger.log(msg); }
 
-template <LoggingLevel level> void log(const string &message) {
-  Logger::s_root_logger.log<level>(message);
-}
+/*template <LoggingLevel level> void log(const string &message) {*/
+/*  Logger::s_root_logger.log<level>(message);*/
+/*}*/
 
-#define INSTANTIATE_GLOBAL_LOG(level, name, description)                       \
-  template void log<level>(const string &);
-
-LEVELS(INSTANTIATE_GLOBAL_LOG)
-
-void log(const string &msg, LoggingLevel level) {
-  Logger::s_root_logger.log(msg, level);
-}
+/*#define INSTANTIATE_GLOBAL_LOG(level, name, description)                       \*/
+/*  template void log<level>(const string &);*/
+/**/
+/*LEVELS(INSTANTIATE_GLOBAL_LOG)*/
 
 void set_verbosity(LoggingLevel level) {
   Logger::s_root_logger.set_verbosity(level);
@@ -42,11 +39,22 @@ void set_file(const string &filename) {
 }
 void flush() { Logger::s_root_logger.flush(); }
 
+void signalHandler(int signum) {
+    std::cout << "Interrupt signal received: " << signum << std::endl;
+    flush();
+    std::exit(signum);
+}
+
 int root_logger_creations = 0;
+
 Logger::Logger() {
   assert(root_logger_creations++ == 0);
   m_name = "root";
+  std::signal(SIGINT, signalHandler);
+  std::signal(SIGTERM, signalHandler);
 }
+
+
 
 Logger::Logger(const string &name) : m_name(name) {}
 
@@ -69,7 +77,7 @@ Logger &Logger::get_logger(const string &name) {
 
   // Trick for using the logging logger even when it is being created
   (name == "logging" && m_name == "root" ? child_logger : logger)
-      .debug("Creating child logger '" + name + "' from '" + m_name + "'.");
+      .debug("Creating child logger '{}' from '{}'.", name, m_name);
   return child_logger;
 }
 
@@ -115,28 +123,28 @@ void Logger::log(const string &message) {
   }
 }
 
-template <LoggingLevel level> void Logger::log(const string &message) {
-  if (level < m_level) {
-    return;
-  }
+/*template <LoggingLevel level> void Logger::log(const string &message) {*/
+/*  if (level < m_level) {*/
+/*    return;*/
+/*  }*/
+/**/
+/*  log(message);*/
+/*}*/
 
-  log(message);
-}
+/*#define INSTANTIATE_LOG(level, name, description) \*/
+/*  template void Logger::log<level>(const string &);*/
+/**/
+/*LEVELS(INSTANTIATE_LOG)*/
 
-#define INSTANTIATE_LOG(level, name, description)                              \
-  template void Logger::log<level>(const string &);
-
-LEVELS(INSTANTIATE_LOG)
-
-void Logger::log(const string &message, const LoggingLevel &level) {
-  if (level < m_level) {
-    return;
-  }
-  log(message);
-}
+/*void Logger::log(const string &message, const LoggingLevel &level) {*/
+/*  if (level < m_level) {*/
+/*    return;*/
+/*  }*/
+/*  log(message);*/
+/*}*/
 
 void Logger::flush() {
-  logger.debug("Flushing " + m_name + ".");
+  logger.debug("Flushing {}.", m_name);
   if (m_fstream) {
     std::lock_guard<std::mutex> lock(m_fstream->mutex);
     m_fstream->stream.flush();
@@ -145,8 +153,6 @@ void Logger::flush() {
   if (m_stdout) {
     cout.flush();
   }
-
-  /*cout << "children: " << to_string(m_child_loggers.size()) << "\n";*/
 
   for (auto &[_, child] : m_child_loggers) {
     child->flush();
@@ -183,11 +189,11 @@ void Logger::set_file(const optional<string> &file) {
 
     // Handle file errors
     if (!m_fstream->stream.is_open()) {
-      logger.error("Failed to open file: " + m_file.value());
+      logger.error("Failed to open file: {}", m_file.value());
       m_fstream.reset();
       m_file = std::nullopt;
     } else {
-      logger.debug("New file stream created for file: " + m_file.value());
+      logger.debug("New file stream created for file: {}", m_file.value());
     }
 
   } else {

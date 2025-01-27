@@ -1,5 +1,6 @@
 #include "discretizer.h"
 #include "linalg/matrix.h"
+#include "logger.h"
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -11,7 +12,6 @@
 
 using std::array;
 using std::copy_n;
-using std::cout;
 using std::endl;
 using std::fill;
 using std::fill_n;
@@ -302,9 +302,8 @@ for (size_t i = 0; i < half_trans.size(); i++) {
 }
 
 t2 = steady_clock::now();
-cout << "Find TPFA trans:\t"
-     << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]"
-     << endl;
+logger.info("Find TPFA trans:\t{}\t[ms]",
+            duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 
 flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 
@@ -321,6 +320,14 @@ for (int i = 0; i < cell_i_idx.size(); i++) {
 }
 file_trans.close();
 #endif // DEBUG_TRANS
+}
+
+void assert_svd(bool success) {
+  if (!success) {
+    logger.critical("SVD failed!"); /*sq_mat.write_in_file("sq_mat_" +
+                               std::to_string(cell_id) + ".txt");*/
+    exit(-1);
+  }
 }
 
 void Discretizer::reconstruct_pressure_gradients_per_cell(
@@ -340,7 +347,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
   value_t d2, lambda2, scale_boundary;
   Vector3 n, x1, x2, temp;
   Matrix to_invert(ND, ND);
-  bool no_neumann_conns, res;
+  bool no_neumann_conns, success;
 
   // loop through the adjacency matrix (matrix cells)
   for (int i = 0; i < mesh->region_ranges.at(mesh::MATRIX).second; i++) {
@@ -602,13 +609,9 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
             printf("Wrong matrix dimension!\n");
             exit(-1);
           }
-          res = A.svd(Zsvd, w_svd);
+          success = A.svd(Zsvd, w_svd);
           assert(Zsvd.M == counter && Zsvd.N == counter);
-          if (!res) {
-            cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" +
-                                        std::to_string(cell_id) + ".txt");*/
-            exit(-1);
-          }
+          assert_svd(success);
           // check SVD
           // Wsvd.set_diagonal(w_svd);
           // assert(A == M * Wsvd * Zsvd.transpose());
@@ -629,13 +632,9 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
             printf("Wrong matrix dimension!\n");
             exit(-1);
           }
-          res = A.svd(Zsvd, w_svd);
+          success = A.svd(Zsvd, w_svd);
           assert(Zsvd.M == counter && Zsvd.N == counter);
-          if (!res) {
-            cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" +
-                                        std::to_string(cell_id) + ".txt");*/
-            exit(-1);
-          }
+          assert_svd(success);
           // check SVD
           // Wsvd.set_diagonal(w_svd);
           // assert(A.transpose() == M * Wsvd * Zsvd.transpose());
@@ -685,9 +684,8 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
   }
 
   t2 = steady_clock::now();
-  cout << "Reconstruction of gradients:\t"
-       << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]"
-       << endl;
+  logger.info("Reconstruction of gradients:\t{}\t[ms]",
+              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
@@ -709,7 +707,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
   value_t d2, lambda2, kappa2, scale_boundary;
   Vector3 n, x1, x2, temp;
   Matrix to_invert(ND, ND);
-  bool no_neumann_conns, res;
+  bool no_neumann_conns, success;
   std::vector<std::pair<index_t, index_t>> sort_vec(MAX_STENCIL);
 
   // loop through the adjacency matrix (matrix cells)
@@ -1057,13 +1055,9 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
             printf("Wrong matrix dimension!\n");
             exit(-1);
           }
-          res = A_p.svd(Zsvd, w_svd);
+          success = A_p.svd(Zsvd, w_svd);
           assert(Zsvd.M == counter && Zsvd.N == counter);
-          if (!res) {
-            cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" +
-                                        std::to_string(cell_id) + ".txt");*/
-            exit(-1);
-          }
+          assert_svd(success);
           // check SVD
           // Wsvd.set_diagonal(w_svd);
           // assert(A == M * Wsvd * Zsvd.transpose());
@@ -1084,13 +1078,9 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
             printf("Wrong matrix dimension!\n");
             exit(-1);
           }
-          res = A_p.svd(Zsvd, w_svd);
+          success = A_p.svd(Zsvd, w_svd);
           assert(Zsvd.M == counter && Zsvd.N == counter);
-          if (!res) {
-            cout << "SVD failed!\n"; /*sq_mat.write_in_file("sq_mat_" +
-                                        std::to_string(cell_id) + ".txt");*/
-            exit(-1);
-          }
+          assert_svd(success);
           // check SVD
           // Wsvd.set_diagonal(w_svd);
           // assert(A.transpose() == M * Wsvd * Zsvd.transpose());
@@ -1140,9 +1130,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
   }
 
   t2 = steady_clock::now();
-  cout << "Reconstruction of gradients:\t"
-       << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]"
-       << endl;
+  logger.info("Reconstruction of gradients:\t{}\t[ms]",
+              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(
@@ -1601,9 +1590,8 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) {
   }
 
   t2 = steady_clock::now();
-  cout << "Find MPFA trans: \t"
-       << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]"
-       << endl;
+  logger.info("Find MPFA trans: \t{}\t[ms]",
+              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 void Discretizer::calc_matrix_matrix(const mesh::Connection &conn,
@@ -1849,8 +1837,8 @@ void Discretizer::set_permeability(std::vector<value_t> &permx,
   perms.resize(mesh->n_cells, Matrix33());
 
   if (permx.size() == 0 || permy.size() == 0 || permz.size() == 0) {
-    cout << "Error in set_permeability: " << permx.size() << permy.size()
-         << permz.size() << "\n";
+    logger.error("Error in set_permeability: {} {} {}", permx.size(),
+                 permy.size(), permz.size());
     return;
   }
 
@@ -1993,7 +1981,7 @@ void Discretizer::write_tran_cube(std::string fname,
   mesh->write_array_to_file(fname, "TRANZ", tranz, dummy_actnum, n_cells_all,
                             1.0, true);
 
-  cout << "number of NNC = " << nnc_counter << "\n";
+  logger.debug("number of NNC = {}", nnc_counter);
 }
 
 // get fault location (only NNC layers)
@@ -2051,7 +2039,7 @@ std::vector<value_t> Discretizer::get_fault_xyz() const {
     }
   }
 
-  cout << "number of NNC = " << nnc_counter << "\n";
+  logger.debug("number of NNC = {}", nnc_counter);
   return fault_xyz;
 }
 
@@ -2074,4 +2062,3 @@ void Discretizer::write_tran_list(std::string fname) const {
 
   f.close();
 }
-

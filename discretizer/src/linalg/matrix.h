@@ -91,7 +91,6 @@ namespace linalg
 	std::gslice_array<T> operator()(const std::size_t start, std::valarray<std::size_t> sizes, std::valarray<std::size_t> strides)
 	{
 	  g = std::gslice(start, sizes, strides);
-	  //std::cout << *this << std::endl;
 	  return values[g];
 	};
 	Matrix<T> transpose() const

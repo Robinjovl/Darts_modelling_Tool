@@ -32,12 +32,12 @@ void pybind_logging(py::module &m) {
                 py::arg("screen") = true, py::return_value_policy::reference);
 
 #define PYBIND_LOG(level, name, description)                                   \
-  m.def(#name, &name, description, py::arg("message"));
+  m.def(#name, static_cast<void (*)(const std::string&)>(&name), description, py::arg("message"));
 
   LEVELS(PYBIND_LOG)
 
 #define PYBIND_CLASS_LOG(level, name, description)                             \
-  .def(#name, &Logger::name, description, py::arg("message"))
+  .def(#name, static_cast<void (Logger::*)(const std::string&)>(&Logger::name), description, py::arg("message"))
 
   py::class_<Logger>(m, "Logger") LEVELS(PYBIND_CLASS_LOG)
       .def(

@@ -10,7 +10,6 @@ set(DISCRETIZER_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_linalg.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_mesh.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../utils.cpp
 )
 
 # Then the public headers
@@ -21,7 +20,6 @@ set(DISCRETIZER_PYBIND11_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_global.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_linalg.h
   ${CMAKE_CURRENT_SOURCE_DIR}/py_mesh.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/../utils.h
 )
 
 # Define the discretizer library

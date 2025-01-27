@@ -97,7 +97,7 @@ set(DISCRETIZER_PUBLIC_HEADER_FILES
 
 # Define the opendarts_discretizer library
 # This is always a static library since we wish to use it internally only
-add_library(opendarts_discretizer OBJECT "")
+add_library(opendarts_discretizer STATIC "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
@@ -133,16 +133,16 @@ target_include_directories(opendarts_discretizer
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PUBLIC_HEADER_FILES})
 
-# # Install the library file of opendarts_discretizer
-# install(TARGETS opendarts_discretizerc 
-#   CONFIGURATIONS RELEASE    
-#   DESTINATION lib
-# )
-#
-# install(TARGETS opendarts_discretizer
-#   CONFIGURATIONS DEBUG     
-#   DESTINATION lib
-# )
+# Install the library file of opendarts_discretizer
+install(TARGETS opendarts_discretizer
+  CONFIGURATIONS RELEASE    
+  DESTINATION lib
+)
+
+install(TARGETS opendarts_discretizer
+  CONFIGURATIONS DEBUG     
+  DESTINATION lib
+)
 
 # Install the public header files
 # install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
