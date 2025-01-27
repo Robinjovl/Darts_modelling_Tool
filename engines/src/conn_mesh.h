@@ -298,6 +298,8 @@ public:
   /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);                       
   std::vector<value_t> mob_multiplier;
                                         
+  /// [n_blocks * n_vars] array of initial state for solution
+  std::vector<value_t> initial_state;
   /// [n_blocks] array of initial pressure values
   std::vector<value_t> pressure;     
   /// [n_blocks] array of reference pressure values
