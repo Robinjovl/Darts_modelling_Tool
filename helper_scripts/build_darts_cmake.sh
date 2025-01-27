@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
 set -e
