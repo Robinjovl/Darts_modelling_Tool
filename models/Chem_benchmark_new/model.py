@@ -244,12 +244,12 @@ class Model(CICDModel):
         if len(self.map) > 0:
             nc = self.physics.nc
             nb = self.reservoir.mesh.n_res_blocks
-            composition = np.array(self.reservoir.mesh.composition, copy=False)
+            initial_state = np.array(self.reservoir.mesh.initial_state, copy=False)
             zc = np.zeros(nb)
             for i in range(nc-1):
                 zc[:] = self.ini_comp[i]
                 zc[self.map == 0] = self.ini_void[i]
-                composition[i:(nc-1)*nb:nc-1] = zc
+                initial_state[(i+1):self.physics.n_vars*nb:self.physics.n_vars] = zc
         return
 
     def set_well_controls(self):
