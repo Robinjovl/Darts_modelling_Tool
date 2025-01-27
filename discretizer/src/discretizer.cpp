@@ -1,6 +1,5 @@
 #include "discretizer.h"
 #include "linalg/matrix.h"
-#include "logger.h"
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -135,37 +134,6 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags &tags) {
         half_trans_thermal[mesh->conns[mesh->adj_matrix[j]].conn_id].push_back(
             Td);
 
-        std::stringstream output;
-        output << "----- TPFA CPP -----\n";
-        output << format("Connection cells (local): {} {}\n", conn.elem_id1,
-                         conn.elem_id2);
-        /*output << format("Connection cells (global): {} {}\n",
-         * mesh->local_to_global[conn.elem_id1],
-         * mesh->local_to_global[conn.elem_id2]);*/
-        /*output << format("Connection cells: {} {}\n",
-         * mesh->get_ijk_as_str(conn.elem_id1, false),
-         * mesh->get_ijk_as_str(conn.elem_id2, false));*/
-        output << format("Connection center: {} {} {}\n", conn_center.x,
-                         conn_center.y, conn_center.z);
-        output << format("d vector: {} {} {}\n", d.x, d.y, d.z);
-        output << format("n vector: {} {} {}\n", n.x, n.y, n.z);
-        output << format("T for connection ={}\n", T);
-        output << format("Area for connection ={}\n", A);
-        output << "dot(d, Kn) for connection =" << dot(d, Kn) << "\n";
-        output << "std::abs(dot(n, d)) for connection =" << std::abs(dot(n, d))
-               << std::endl;
-        // output << "temp4.norm() for connection =" << temp4.norm() <<
-        // std::endl;
-        output << "Between elements: " << conn.elem_id1 << " " << conn.elem_id2
-               << std::endl;
-        output << "Centroid of elem1: " << mesh->centroids[el_id1].x << " "
-               << mesh->centroids[el_id1].y << " " << mesh->centroids[el_id1].z
-               << std::endl;
-        output << "Centroid of elem2: " << mesh->centroids[el_id2].x << " "
-               << mesh->centroids[el_id2].y << " " << mesh->centroids[el_id2].z
-               << std::endl;
-
-        std::cout << output.str();
 #ifdef DEBUG_TRANS
         std::cout << "----- TPFA CPP -----" << std::endl;
         std::cout << "Connection cells (local): " << conn.elem_id1 << " ";
@@ -199,14 +167,6 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags &tags) {
                   << mesh->centroids[el_id2].y << " "
                   << mesh->centroids[el_id2].z << std::endl;
       }
-
-#else
-        /*logger.debug("----- TPFA CPP -----" +*/
-        /*             format("Connection cells (local): {} {}", conn.elem_id1,*/
-        /*                    conn.elem_id2) +*/
-        /*             format("Connection center: {} {} {}", conn_center.x,*/
-        /*                    conn_center.y, conn_center.z));*/
-
 #endif // DEBUG_TRANS
     }
   }
