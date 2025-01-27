@@ -55,11 +55,6 @@ build-linux-3.9-gpu:
         - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_GPU_LINUX == "1"   
     extends: .build-linux-gpu
-<<<<<<< HEAD
-    timeout: 2h
-=======
-
->>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -227,11 +222,7 @@ build-windows-3.9-ODLS:
         - pip install wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-<<<<<<< HEAD
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j $(($(nproc) + 1)) $ODLS
-=======
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS
->>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
     artifacts:
       paths:
         - './dist/*.whl'
@@ -243,11 +234,6 @@ build-windows-3.9-ODLS:
      
 .build-linux-gpu:
     stage: build
-<<<<<<< HEAD
-    timeout: 2h
-=======
-
->>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
     tags:
         - linux_gpu
     before_script:
@@ -286,11 +272,7 @@ build-windows-3.9-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-<<<<<<< HEAD
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j $(($(nproc) + 1))
-=======
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8
->>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
     artifacts:
       paths:
         - '*.log'
@@ -575,11 +557,6 @@ test-windows-3.9-ODLS:
 
 .test-linux-gpu:
     stage: test
-<<<<<<< HEAD
-    timeout: 2h
-=======
-
->>>>>>> 4216e8917930afc73bf500dd926e89f61457a0e1
     tags:
         - linux_gpu
     before_script:
