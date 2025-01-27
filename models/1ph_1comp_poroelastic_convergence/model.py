@@ -120,12 +120,12 @@ class Model(THMCModel):
 
     def set_initial_conditions(self):
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_temperature=self.reservoir.t_init,
-                                                           initial_displacement=[0.0, 0.0, 0.0])
+            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
+                                                        pressure_input=self.reservoir.p_init,
+                                                        temperature_input=self.reservoir.t_init,
+                                                        displacement_input=[0.0, 0.0, 0.0])
         else:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_displacement=self.reservoir.u_init)
+            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
+                                                        pressure_input=self.reservoir.p_init,
+                                                        displacement_input=self.reservoir.u_init)
         return 0

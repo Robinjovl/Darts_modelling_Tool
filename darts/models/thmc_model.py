@@ -172,15 +172,15 @@ class THMCModel(DartsModel):
     def set_initial_conditions(self):
         if self.reservoir.thermoporoelasticity:
             self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_temperature=self.reservoir.t_init,
-                                                        uniform_displacement=self.reservoir.u_init)
+                                                        pressure_input=self.reservoir.p_init,
+                                                        composition_input=self.reservoir.z_init,
+                                                        temperature_input=self.reservoir.t_init,
+                                                        displacement_input=self.reservoir.u_init)
         else:
             self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_displacement=self.reservoir.u_init)
+                                                        pressure_input=self.reservoir.p_init,
+                                                        composition_input=self.reservoir.z_init,
+                                                        displacement_input=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):
