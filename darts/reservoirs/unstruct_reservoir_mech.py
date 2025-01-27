@@ -50,26 +50,18 @@ def set_domain_tags(matrix_tags,
     :param frac_bnd_tag: list of integers
     :return: dictionary of sets containing integer tags for each element type; dictionary of tags for 6 boundaries
     '''
-    # one can specify tags for the each boundary side, or the list of boundary tags (bnd_tags)
-    if bnd_tags is None:
-        boundary_tags = [bnd_xm_tag, bnd_xp_tag, bnd_ym_tag, bnd_yp_tag, bnd_zm_tag, bnd_zp_tag]
-    else:
-        boundary_tags = bnd_tags
     domain_tags = dict()
     domain_tags[elem_loc.MATRIX] = set(matrix_tags)
     domain_tags[elem_loc.FRACTURE] = set(fracture_tags)
-    domain_tags[elem_loc.BOUNDARY] = set(boundary_tags)
+    domain_tags[elem_loc.BOUNDARY] = set(bnd_tags)
     domain_tags[elem_loc.FRACTURE_BOUNDARY] = set(frac_bnd_tags)
+    return domain_tags
 
-    bnd_tags = dict()
-    bnd_tags['BND_X-'] = bnd_xm_tag
-    bnd_tags['BND_X+'] = bnd_xp_tag
-    bnd_tags['BND_Y-'] = bnd_ym_tag
-    bnd_tags['BND_Y+'] = bnd_yp_tag
-    bnd_tags['BND_Z-'] = bnd_zm_tag
-    bnd_tags['BND_Z+'] = bnd_zp_tag
-
-    return domain_tags, bnd_tags
+def E_nu_from_Vp_Vs(density, Vp, Vs):
+    G = density * Vs ** 2
+    nu = 0.5 * (Vp ** 2 - 2 * Vs ** 2) / (Vp ** 2 - Vs ** 2)
+    E = 2 * G * (1 + nu)
+    return E, nu
 
 def get_lambda_mu(E, nu):
     '''
@@ -545,6 +537,12 @@ class UnstructReservoirMech():
                             self.props[m][prop] = val
                         else:
                             self.props[m][prop] = val[i]
+                    else:
+                        if prop in ['permx', 'permy', 'permz'] and 'perm' in self.props[m]:
+                            pass
+                        else:
+                            print('in set_props_tags: ', prop + ' is None')
+                            exit(1)
 
     def init_heterogeneous_properties(self):
         '''

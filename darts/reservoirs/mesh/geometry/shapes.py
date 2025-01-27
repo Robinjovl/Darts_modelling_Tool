@@ -89,7 +89,7 @@ class Shape:
             curves.append(curve.points)
 
         for j, surface in enumerate(self.surfaces):
-            if surface.curves is None:
+            if not surface.curves:
                 points = surface.points
                 surface_curves = []
                 for i in range(len(points)-1):

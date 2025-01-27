@@ -1,8 +1,9 @@
+import abc
 import numpy as np
 from darts.engines import value_vector
 
 from darts.input.input_data import InputData, FluidProps
-from darts.physics.geothermal.physics import Geothermal
+from darts.physics.geothermal.physics import Geothermal as GeothermalBase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 
 from darts.physics.properties.iapws.iapws_property import *
@@ -10,7 +11,7 @@ from darts.physics.properties.iapws.custom_rock_property import *
 from darts.physics.base.property_base import PropertyBase
 
 
-class GeothermalIAPWS(Geothermal):
+class Geothermal(GeothermalBase):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
@@ -23,7 +24,7 @@ class GeothermalIAPWS(Geothermal):
         self.add_property_region(property_container)
 
 
-class GeothermalPH(Geothermal):
+class GeothermalPH(GeothermalBase):
     def __init__(self, idata: InputData, timer):
         # Call base class constructor
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
@@ -43,6 +44,13 @@ class PropertiesIAPWS(PropertyBase):
         self.temperature_ev = idata.fluid.temperature_ev
         self.saturation_ev = idata.fluid.saturation_ev
         self.output_props = {'temperature': lambda: self.temperature}
+
+    @abc.abstractmethod
+    def compute_total_enthalpy(self, state, temperature):
+        pass
+
+
+class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
     def evaluate(self, state):
         self.temperature = self.temperature_ev.evaluate(state)
@@ -103,12 +111,8 @@ class PropertiesPH(PropertyBase):
         if len(ph) == 1:
             self.sat[ph] = 1.
         else:
-            Vtot = 0
-            for j in ph:
-                Vtot += self.nu[j] / self.dens_m[j]
-
-            for j in ph:
-                self.sat[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+            vol = [self.nu[j] / self.dens_m[j] for j in ph]
+            self.saturation[ph] = vol / np.sum(vol)
 
         return
 
@@ -195,7 +199,5 @@ class GeothermalPHFluidProps(FluidProps):
                              'steam': ConstFunc(0.01)}
         self.conduction_ev = {'water': ConstFunc(172.8),
                               'steam': ConstFunc(0.)}
-        self.rel_perm_ev = {'water': iapws_water_relperm_evaluator(),
-                            'steam': iapws_steam_relperm_evaluator()}
         self.rel_perm_ev = {'water', PhaseRelPerm("water"),
                             'steam', PhaseRelPerm("gas")}

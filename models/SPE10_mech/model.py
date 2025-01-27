@@ -34,10 +34,8 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-            self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        else:
-            self.params.linear_type = sim_params.cpu_superlu
+        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+        #self.params.linear_type = sim_params.cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
@@ -73,7 +71,7 @@ class Model(THMCModel):
                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
         nu = 0.2
 
-        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity')
+        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
@@ -102,6 +100,16 @@ class Model(THMCModel):
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             self.idata.initial.initial_composition = [0.67]
+
+        self.idata.mesh.bnd_tags = {}
+        bnd_tags = self.idata.mesh.bnd_tags  # short name
+        bnd_tags['BND_X-'] = 991
+        bnd_tags['BND_X+'] = 992
+        bnd_tags['BND_Y-'] = 993
+        bnd_tags['BND_Y+'] = 994
+        bnd_tags['BND_Z-'] = 995
+        bnd_tags['BND_Z+'] = 996
+        self.idata.mesh.matrix_tags = [99991]
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9

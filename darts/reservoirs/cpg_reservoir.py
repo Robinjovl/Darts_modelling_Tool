@@ -18,6 +18,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 import datetime, time
 import darts
 from pyevtk import hl, vtk
+from pyevtk.hl import pointsToVTK
 import warnings
 
 try:
@@ -688,58 +689,12 @@ class CPG_Reservoir(ReservoirBase):
         self.depth[:] = self.depth_all_cells
         self.volume[:] = self.volume_all_cells
 
-    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
-        '''
-        read COMPDAT from SCH file in Eclipse format, add wells and perforations
-        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
-        :param: sch_fname - path to file
-        '''
-        if sch_fname is None:
-            return
-        print('reading wells (COMPDAT) from', sch_fname)
-        well_dia = 0.152
-        well_rad = well_dia / 2
-
-        keep_reading = True
-        prev_well_name = ''
-        with open(sch_fname) as f:
-            while keep_reading:
-                buff = f.readline()
-                if 'COMPDAT' in buff:
-                    while True:  # be careful here
-                        buff = f.readline()
-                        if len(buff) != 0:
-                            CompDat = buff.split()
-                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
-                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
-                                # define well
-                                if wname == prev_well_name:
-                                    pass
-                                else:
-                                    reservoir.add_well(wname)
-                                    prev_well_name = wname
-                                # define perforation
-                                i1 = int(CompDat[1])
-                                j1 = int(CompDat[2])
-                                k1 = int(CompDat[3])
-                                k2 = int(CompDat[4])
-
-                                well_index = None
-                                if len(CompDat) > 7:
-                                    if CompDat[7] != '*':
-                                        well_index = float(CompDat[7])
-
-                                for k in range(k1, k2 + 1):
-                                    reservoir.add_perforation(wname, cell_index=(i1, j1, k), well_radius=well_rad,
-                                                              well_index=well_index, well_indexD=well_indexD,
-                                                              multi_segment=False, verbose=verbose)
-
-                            if len(CompDat) != 0 and '/' == CompDat[0]:
-                                keep_reading = False
-                                break
-        print('WELLS read from SCH file:', len(reservoir.wells))
-
     def create_vtk_wells(self, output_directory: str):
+        '''
+        creates a file wells.vtk with a tube per well based on its first perforation
+        :param output_directory: 
+        :return: 
+        '''
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
@@ -748,8 +703,8 @@ class CPG_Reservoir(ReservoirBase):
         def create_tube(center, prolongation=1000):
             # Create points for the polyline
             points = vtk.vtkPoints()
-            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
-            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+            points.InsertNextPoint(center[0], center[1], -center[2] + prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], -center[2])  # Point 2
 
             # Create a polyline that connects the points
             lines = vtk.vtkCellArray()
@@ -774,11 +729,13 @@ class CPG_Reservoir(ReservoirBase):
             return tubeFilter.GetOutput()
 
         for w in self.wells:
+            prolongation = 1000
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
                 c = self.centroids_all_cells[res_block_local].values
-                cyl = create_tube(c)
+                cyl = create_tube(c, prolongation=prolongation)
                 appendFilter.AddInputData(cyl)
+                prolongation = 0
                 break  # use only the first perf
 
         # Update the append filter to combine the polydata
@@ -813,6 +770,61 @@ class CPG_Reservoir(ReservoirBase):
         idx = find_cell_index(centers, np.array([x, y, z]))
         ijk = get_ijk(idx, self.nx, self.ny, self.nz)
         return ijk
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        c = np.zeros((self.discr_mesh.n_cells, 3))
+        for i in range(self.discr_mesh.n_cells):
+            cv = c_cpg[i].values
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        if c is not None:
+            pointsToVTK(fname, x, y, z)
+
+    def save_grdecl(self, arrays_save, fname):
+        '''
+        saves cubes into a text file (grdecl format), nx*ny*nz values, I is the fastest index
+        arrays - dictionary of numpy arrays, dimension of n active cells
+        fname - file name to output
+        '''
+
+        actnum = self.global_data['actnum']
+        fname_suf = fname + '.grdecl'
+
+        local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
+        global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
+
+        save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
+        for arr_name in arrays_save.keys():
+            make_full = True
+            if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
+                make_full = False
+            save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
+
+    def update_perm(self, permx, permy, permz):
+        '''
+        recompute the transmissiblity without re-initializing the reservoir since there are no changes in the geometry
+        '''
+        # make 1D, also convert the type to be able to convert to value_vector_discr
+        # store to self to save in vtk
+        assert self.reservoir.permx.size == permx.flatten().size, f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        self.reservoir.permx = np.array(permx, dtype=np.float64).flatten()
+        self.reservoir.permy = np.array(permy, dtype=np.float64).flatten()
+        self.reservoir.permz = np.array(permz, dtype=np.float64).flatten()
+        permx = value_vector_discr(self.reservoir.permx)
+        permy = value_vector_discr(self.reservoir.permy)
+        permz = value_vector_discr(self.reservoir.permz)
+        self.reservoir.discretizer.set_permeability(permx, permy, permz)
+        # calculate transmissibilities
+        displaced_tags = dict()
+        displaced_tags[elem_loc.MATRIX] = set()
+        displaced_tags[elem_loc.FRACTURE] = set()
+        displaced_tags[elem_loc.BOUNDARY] = set()
+        displaced_tags[elem_loc.FRACTURE_BOUNDARY] = set()
+        self.reservoir.discretizer.calc_tpfa_transmissibilities(displaced_tags)
+
 
 #####################################################################
 

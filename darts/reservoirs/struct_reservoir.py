@@ -85,7 +85,7 @@ class StructReservoir(ReservoirBase):
         self.global_data['volume'] = volume
 
         if self.global_data['depth'] is None: # pick z coordinates from the centers, and change the order from KJI to IJK
-            self.global_data['depth'] = self.discretizer.centroids_all_cells[:, :, :, 2].flatten(order='F')
+            self.global_data['depth'] = self.discretizer.centroids_all_cells[:, 2].flatten(order='F')
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [self.global_data['poro'], self.global_data['rcond'], self.global_data['hcap'],
@@ -278,30 +278,41 @@ class StructReservoir(ReservoirBase):
         dz *= self.global_data['actnum']
         return dx, dy, dz
 
-    def plot(self, output_idxs: dict, data: np.ndarray, fig=None, lims: dict = None):
+    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
+                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False, plot_zeros: bool = True,
+                      cmap: str = 'jet', colorbar_loc: str = 'right'):
         assert self.ndims <= 2, "No implementation exists for 3D StructReservoir"
         import matplotlib.pyplot as plt
-        n_plots = len(output_idxs)
+        output_props = output_props if output_props is not None else list(data.keys())
+        n_plots = len(output_props)
         lims = lims if lims is not None else {}
+        axs_shape = axs_shape if axs_shape is not None else (1, n_plots)
+        figsize = figsize if figsize is not None else (axs_shape[1] * 3.5, axs_shape[0] * 3.5)
 
         if self.ndims == 1:
             if fig is None:
-                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+                fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
-                for j, (prop, idx) in enumerate(output_idxs.items()):
+                for j, prop in enumerate(output_props):
                     axs[j].set_title(prop)
 
-            for j, (prop, idx) in enumerate(output_idxs.items()):
+            for j, prop in enumerate(output_props):
                 ax = fig.axes[j]
+
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
 
                 if self.nx > 1:
                     x = self.discretizer.centroids_all_cells[:, 0]
-                    ax.plot(x, data[idx, :])
+                    ax.plot(x, data[prop][:])
                     if prop in lims.keys():
                         ax.set(ylim=lims[prop])
+                    if logx:
+                        ax.set_xscale('log')
+                        ax.set_xlim([np.min(x), np.max(x)])
                 elif self.nz > 1:
                     z = self.discretizer.centroids_all_cells[:, 2]
-                    ax.plot(data[idx, :], z)
+                    ax.plot(data[prop][:], z)
                     if prop in lims.keys():
                         ax.set(xlim=lims[prop])
 
@@ -312,33 +323,37 @@ class StructReservoir(ReservoirBase):
             X, Y = np.meshgrid(xgrid, ygrid)
             shape = (self.ny, self.nx) if self.ny > 1 else (self.nz, self.nx)
 
-            if fig is None:
-                from mpl_toolkits.axes_grid1 import make_axes_locatable
-                fig, axs = plt.subplots(n_plots, 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            fig, axs = plt.subplots(nrows=axs_shape[0], ncols=axs_shape[1], figsize=figsize, dpi=100, facecolor='w', edgecolor='k')
 
-                for j, (prop, idx) in enumerate(output_idxs.items()):
-                    axs[j].set_title(prop)
-                    if prop not in lims.keys():
-                        lims[prop] = [None, None]
-
-                    z = np.empty(shape)
-                    im = axs[j].pcolormesh(X, Y, z, cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
-
-                    divider = make_axes_locatable(axs[j])
-                    cax = divider.append_axes('right', size='5%', pad=0.05)
-                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
-                    # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
-                    # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
-
-            for j, (prop, idx) in enumerate(output_idxs.items()):
-                ax = fig.axes[j]
+            for j, prop in enumerate(output_props):
+                axs[j].set_title(prop)
                 if prop not in lims.keys():
                     lims[prop] = [None, None]
 
-                ax.pcolormesh(X, Y, data[idx, :].reshape(shape), cmap='jet', vmin=lims[prop][0], vmax=lims[prop][1])
-                ax.axis('scaled')
+                if not plot_zeros:
+                    data[prop][data[prop][:] == 0.] = np.nan
+
+                im = axs[j].pcolormesh(X, Y, data[prop][:].reshape(shape), cmap=cmap, vmin=lims[prop][0], vmax=lims[prop][1])
                 if self.nz > 1:
-                    ax.invert_yaxis()
+                    axs[j].invert_yaxis()
+                if logx:
+                    axs[j].set_xscale('log')
+                    axs[j].set_xlim([xgrid[1], xgrid[-1]])
+                    axs[j].set_aspect('auto')
+                else:
+                    axs[j].set_aspect(aspect_ratio)
+
+                divider = make_axes_locatable(axs[j])
+                if colorbar_loc == 'right':
+                    cax = divider.append_axes('right', size='5%', pad=0.05)
+                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                else:
+                    cax = divider.append_axes('bottom', size='15%', pad=0.3)
+                    cbar = fig.colorbar(im, cax=cax, orientation='horizontal')
+                # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
+                # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
+            plt.tight_layout()
 
         return fig
 

@@ -53,7 +53,9 @@ class Geothermal(PhysicsBase):
         n_axes_points = index_vector([n_points] * len(variables))
 
         # Define number of operators:
-        n_ops = 12
+        # N_OPS = NC /*acc*/ + NC * NP /*flux*/ + 2 + NP /*energy acc, flux, cond*/ + NP /*density*/ + 1 /*temperature*/
+        # = nc + nc*NP + 2 + NP + NP + 1 = 10
+        n_ops = 10
 
         # Call PhysicsBase constructor
         super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,

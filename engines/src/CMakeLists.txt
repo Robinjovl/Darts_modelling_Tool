@@ -302,6 +302,7 @@ set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp
 )
 
 # Then the public headers
@@ -314,6 +315,7 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_mp_cpu.tpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/logging.h
 )
 
 # Define the engines_engines library

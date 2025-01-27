@@ -4,6 +4,7 @@
 #include <pybind11/stl_bind.h>
 #include "globals.h"
 #include "ms_well.h"
+#include "logging.h"
 #include "py_globals_interpolation.h"
 
 namespace py = pybind11;

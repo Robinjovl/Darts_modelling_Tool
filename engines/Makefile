@@ -59,24 +59,13 @@ OBJ =  conn_mesh.o \
     pybind11/py_evaluator_iface.o \
     pybind11/py_globals.o \
     pybind11/py_ms_well.o \
-    pybind11/py_operator_set_interpolator_pz.o \
     pybind11/py_operator_set_interpolator_pz_cap_gra.o \
-    pybind11/py_operator_set_interpolator_pz_cap_gra_dif.o \
-    pybind11/py_operator_set_interpolator_pz_dif.o \
-    pybind11/py_operator_set_interpolator_pz_kin.o \
-    pybind11/py_operator_set_interpolator_pz_kin_phi.o \
-    pybind11/py_operator_set_interpolator_pz_kin_dif.o \
-    pybind11/py_operator_set_interpolator_pz_kin_dif_np.o \
-    pybind11/py_operator_set_interpolator_pz_sol.o \
-    pybind11/py_operator_set_interpolator_pze.o \
-    pybind11/py_operator_set_interpolator_pze_dvelocity.o \
     pybind11/py_operator_set_interpolator_pze_gra.o \
-    pybind11/py_operator_set_interpolator_pzt.o \
-    pybind11/py_operator_set_interpolator_pzt_kin.o \
     pybind11/py_operator_set_interpolator_super.o \
     pybind11/py_operator_set_interpolator_rates.o \
     pybind11/py_well_controls.o \
-    engines_build_info.o
+    engines_build_info.o \
+    logging.o
 
 OBJ_GPU =  	engine_base_gpu.o \
 	    interpolation/evaluator_iface.o \

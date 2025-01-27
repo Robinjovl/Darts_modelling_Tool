@@ -1,7 +1,6 @@
 import abc
 import warnings
 import numpy as np
-from darts.physics.properties.flash import SolidFlash
 
 
 class Kinetics:
@@ -67,12 +66,10 @@ class LawOfMassAction(Kinetics):
 
 
 class HydrateKinetics(Kinetics):
-    def __init__(self, components: list, phases: list, Mw, flash: SolidFlash, hydrate_eos, fluid_eos: list,
-                 stoich: list = None, perm: float = 300., poro: float = 0.2, k: float = None, F_a=1.,
-                 moridis: bool = True, enthalpy: bool = False):
+    def __init__(self, components: list, phases: list, Mw, hydrate_eos, fluid_eos: list, stoich: list = None,
+                 perm: float = 300., poro: float = 0.2, k: float = None, F_a=1., moridis: bool = True, enthalpy: bool = False):
         super().__init__(stoich)
 
-        self.flash = flash
         self.hydrate_eos = hydrate_eos
         self.fluid_eos = fluid_eos
 

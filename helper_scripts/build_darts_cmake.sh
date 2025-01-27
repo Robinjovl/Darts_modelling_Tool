@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
 set -e
@@ -111,9 +113,9 @@ else
 
         # Install requirements
         echo -e "\n- Install requirements: START \n"
-
-        echo -e "\n-- Install EIGEN 3 \n"
         cd thirdparty
+		
+        echo -e "\n-- Install EIGEN 3 \n"
         mkdir -p build/eigen
         cd build/eigen
         cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log

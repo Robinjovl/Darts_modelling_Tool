@@ -555,7 +555,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   const value_t *poro = mesh->poro.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
   const value_t *hcap = mesh->heat_capacity.data();
-  const value_t *th_poro = mesh->th_poro.data();
+  const std::vector<value_t>& th_poro = mesh->th_poro;
   // Jacobian as a BCSR matrix
   value_t *Jac = jacobian->get_values();
   index_t *diag_ind = jacobian->get_diag_ind();
@@ -567,9 +567,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 #ifdef _OPENMP
   //#pragma omp parallel reduction (max: CFL_max)
+  if (!row_thread_starts)
+  {
+	  std::cout<<"row_thread_starts are not initialized! Check that linear solvers were compiled with OpenMP\n";
+	  exit(1);
+  }
 #pragma omp parallel
   {
     int id = omp_get_thread_num();
+
     index_t start = row_thread_starts[id];
     index_t end = row_thread_starts[id + 1];
 
@@ -867,8 +873,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * Xn[r_ind + T2U[v]]);
-						  Jac[l_ind1 + T2U[v]] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] * op_vals_arr[i * N_OPS + RE_INTER_OP];
+							  (op_vals_arr[i * N_OPS + TEMP_OP] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + TEMP_OP] * Xn[r_ind + T2U[v]]);
+						  Jac[l_ind1 + T2U[v]] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] * op_vals_arr[i * N_OPS + TEMP_OP];
 					  }
 
 					  // heat conduction
@@ -932,7 +938,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[BC2U[v]]);
+							  (op_vals_arr[i * N_OPS + TEMP_OP] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + TEMP_OP] * cur_bc_prev[BC2U[v]]);
 					  }
 				  }
 			  }
@@ -1056,7 +1062,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  // [7] add fluid heat conduction
 		  /*if (THERMAL)
 		  {
-			  t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
+			  t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
 			  gamma_t_diff = tranD[conn_id] * dt * t_diff;
 
 			  if (t_diff < 0)
@@ -1174,15 +1180,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
       // + rock energy (no rock compressibility included in these computations)
       if (THERMAL && !FIND_EQUILIBRIUM)
       {
-        RHS[i * N_VARS + T_VAR] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + RE_INTER_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+        RHS[i * N_VARS + T_VAR] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + TEMP_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
         for (v = 0; v < NE; v++)
         {
-          Jac[diag_idx + T_VAR * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i];
+          Jac[diag_idx + T_VAR * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
         } // end of fill offdiagonal part + contribute to diagonal
 
-		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
-		//Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
+		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
+		Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
       }
 
       // calc CFL for reservoir cells, not connected with wells
@@ -1615,7 +1621,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		converged *= 1;
 	}
 
-	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
+	dev_u = dev_p = dev_e = std::numeric_limits<value_t>::infinity();
 	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
 
 	if (!converged)
@@ -2217,7 +2223,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

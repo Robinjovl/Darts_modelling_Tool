@@ -1,5 +1,5 @@
 from darts.engines import value_vector, sim_params
-from darts.physics.geothermal.geothermal import GeothermalIAPWS
+from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -105,7 +105,7 @@ class Model(CICDModel):
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
 
-        self.physics = GeothermalIAPWS(self.idata, self.timer)
+        self.physics = Geothermal(self.idata, self.timer)
 
         # Some tuning parameters:
         self.params.first_ts = 1e-6  # Size of the first time-step [days]
@@ -154,7 +154,7 @@ class Model(CICDModel):
         return "I" in wname
 
     def set_well_controls(self):
-        wctrl = self.idata.wells.controls
+        wctrl = self.idata.well_data.controls
         inj_rate = wctrl.inj_rate
         prod_rate = wctrl.prod_rate
 

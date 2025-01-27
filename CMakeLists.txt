@@ -78,12 +78,19 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Compiler flags 
   set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
   
+  # for VS Sanitizer usage: 
+  # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64
+  # to the darts folder, for example: C:\anaconda3\envs\darts_debug\Lib\site-packages\darts
+  # 2. uncomment lines below:
+  #if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  #  list(APPEND opendarts_cxx_compiler_flags "/fsanitize=address")
+  #endif()
+  
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "/openmp")
-    list(APPEND opendarts_cxx_linker_flags "/openmp")
   endif()
 
   message("COMPILER FLAGS:" opendarts_cxx_compiler_flags)

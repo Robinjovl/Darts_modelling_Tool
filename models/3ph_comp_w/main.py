@@ -81,7 +81,7 @@ if __name__ == '__main__':
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
-            plt.savefig(str(i) + '.png')
+        plt.savefig('out.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

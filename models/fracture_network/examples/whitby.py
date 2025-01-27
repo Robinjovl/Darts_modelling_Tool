@@ -35,7 +35,7 @@ def input_data_case_whitby():
     idata.rock.conductivity = 181.44  # [kJ/m/day/K]
 
     # well controls
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.prod_rate = None  # m3/day. if None, well will work under BHP control
     wctrl.inj_rate = None   # m3/day. if None, well will work under BHP control
     wctrl.delta_temp = 40   # bars. inj_temp = initial_temp - delta_temp

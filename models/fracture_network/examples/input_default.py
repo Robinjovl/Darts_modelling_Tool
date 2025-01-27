@@ -70,7 +70,11 @@ def input_data_default():
     idata.fluid = GeothermalIAPWSFluidProps()
 
     # well controls
-    wctrl = idata.wells.controls
+    class InputDataWellControls():  # an empty class - to group custom well control input data
+        def __init__(self):
+            pass
+    idata.well_data.controls = InputDataWellControls()
+    wctrl = idata.well_data.controls  #short name
     wctrl.prod_rate = None  # m3/day. if None, well will work under BHP control
     wctrl.inj_rate = None   # m3/day. if None, well will work under BHP control
     wctrl.delta_temp = 10   # bars. inj_temp = initial_temp - delta_temp
