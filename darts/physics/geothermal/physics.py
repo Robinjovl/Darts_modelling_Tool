@@ -145,33 +145,29 @@ class Geothermal(PhysicsBase):
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)
 
-        # adjust the size of composition array in c++
-        mesh.composition.resize(mesh.n_blocks * (self.nc - 1))
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
 
-        z_counter = 0
-        nz_vars = self.nc - 1
-        for variable in input_distribution.keys():
-            # if variable not in input_distribution.keys():
-            #     raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
+        # Loop over variables to fill initial_state vector in c++
+        for ith_var, variable in enumerate(self.vars):
+            if variable == "enthalpy" and "enthalpy" not in input_distribution.keys():
+                # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
+                p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
+                pressure = p_itor(depths)
 
-            values_foo = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+                temperature = t_itor(depths)
 
-            if variable == 'pressure':
-                np.asarray(mesh.pressure)[:] = values_foo(depths)
-            elif variable == 'temperature':
-                pressure_foo = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
-                pressure = pressure_foo(depths)
-
-                temperature = values_foo(depths)
-                enthalpy = np.array(mesh.enthalpy, copy=False)
+                values = np.empty(mesh.n_blocks)
                 for j in range(mesh.n_blocks):
                     state = np.array([pressure[j], temperature[j]])
-                    enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
-            elif variable == 'enthalpy':
-                np.asarray(mesh.enthalpy)[:] = values_foo(depths)
-            else:  # compositions
-                np.asarray(mesh.composition)[z_counter::nz_vars] = values_foo(depths)
-                z_counter += 1
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+            else:
+                # Else, interpolate primary variable
+                itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+                values = itor(depths)
+
+            np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
 
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
                                        pressure_input: Union[float, list, np.ndarray],
@@ -185,14 +181,14 @@ class Geothermal(PhysicsBase):
         :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays, not used in Geothermal physics
         :param temperature_input: Temperature [K], only required for thermal models, uniform or array
         """
-        assert isinstance(mesh, conn_mesh)
-        # nb = mesh.n_blocks
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
 
         # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = pressure_input
+        np.asarray(mesh.initial_state)[0::self.n_vars] = pressure_input
 
-        enthalpy = np.array(mesh.enthalpy, copy=False)
+        # interpolate pressure and temperature to compute enthalpies
+        enthalpy = np.empty(mesh.n_blocks)
         if hasattr(pressure_input, '__len__'):
             # Pressure specified as an array
             for j in range(mesh.n_blocks):
@@ -203,3 +199,5 @@ class Geothermal(PhysicsBase):
             state = value_vector([pressure_input, 0])
             enth = self.property_containers[0].compute_total_enthalpy(state, temperature_input)
             enthalpy[:] = enth
+
+        np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
