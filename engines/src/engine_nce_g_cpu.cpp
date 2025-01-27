@@ -15,13 +15,6 @@ int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                    sim_params *params_, timer_node *timer_)
 {
-    X_init.resize(N_VARS * mesh_->n_blocks);
-
-    for (index_t i = 0; i < mesh_->n_blocks; i++)
-    {
-        X_init[N_VARS * i + E_VAR] = mesh_->enthalpy[i];
-    }
-
 	// prepare dg_dx_n_temp for adjoint method
 	if (opt_history_matching)
 	{

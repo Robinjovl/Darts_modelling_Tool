@@ -245,13 +245,6 @@ int engine_nce_g_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                    sim_params *params_, timer_node *timer_)
 {
-  X_init.resize(N_VARS * mesh_->n_blocks);
-
-  for (index_t i = 0; i < mesh_->n_blocks; i++)
-  {
-    X_init[N_VARS * i + E_VAR] = mesh_->enthalpy[i];
-  }
-
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
