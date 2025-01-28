@@ -95,7 +95,9 @@ if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
-list (APPEND CMAKE_CXX_FLAGS -static-libstdc++)
+if (LINUX)
+  list (APPEND CMAKE_CXX_FLAGS -static-libstdc++)
+endif()
 
 # Set compiler specific variables
 # Used for compiler flags and other cross compiler variables
@@ -316,19 +318,4 @@ if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
 # ------------------------------------------------------------------------------
-
-
-# Bundle standard C++ library used by the compiler,
-# to support running even old systems
-if(UNIX AND NOT APPLE)
-    execute_process(
-        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
-        OUTPUT_VARIABLE LIBSTDCXX
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    install(CODE "
-        execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
-    ")
-endif()
 
