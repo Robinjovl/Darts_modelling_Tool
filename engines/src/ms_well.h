@@ -177,11 +177,7 @@ public:
 
   WellType well_type;          // type to be producer or injector
   
-  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities(
-    std::vector<value_t> Xn_ms_well, 
-    std::vector<value_t> X_ms_well, 
-    value_t dt
-  );
+  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities_and_derivatives(std::vector<value_t> Xn_ms_well, std::vector<value_t> X_ms_well, value_t dt);
 
   std::shared_ptr<void> velocity_evaluator;  // pointer to py object
 };

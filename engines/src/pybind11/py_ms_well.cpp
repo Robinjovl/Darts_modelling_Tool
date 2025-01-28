@@ -8,8 +8,10 @@
 namespace py = pybind11;
 
 // Function to convert the `void` pointer to `py::object`
-py::object &get_py_object(std::shared_ptr<void> ptr) {
-  if (!ptr) {
+py::object &get_py_object(std::shared_ptr<void> ptr) 
+{
+  if (!ptr) 
+  {
     throw std::runtime_error("Tried to use an unset py object.");
   }
 
@@ -17,20 +19,14 @@ py::object &get_py_object(std::shared_ptr<void> ptr) {
 }
 
 tuple<vector<value_t>, vector<value_t>>
-ms_well::evaluate_phase_velocities(vector<value_t> Xn_ms_well,
-                                   vector<value_t> X_ms_well, value_t dt) {
+ms_well::evaluate_phase_velocities_and_derivatives(vector<value_t> Xn_ms_well, vector<value_t> X_ms_well, value_t dt)
+{
   py::gil_scoped_acquire gil;  // Acquire the GIL
 
-  // method evaluate_phase_velocities_and_derivatives of the Python object
-  // returns the velocities of the two phases and derivatives of velocities of
-  // the two phases in the wellbore
-  py::object result = get_py_object(velocity_evaluator)
-                          .attr("evaluate_phase_velocities_and_derivatives")(
-                              Xn_ms_well, X_ms_well, dt);
-
+  // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of  the two phases in the wellbore
+  py::object result = get_py_object(velocity_evaluator).attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
   //// convert the py::object into a C++ tuple
-  auto result_tuple =
-      result.cast<std::tuple<std::vector<value_t>, std::vector<value_t>>>();
+  auto result_tuple = result.cast<std::tuple<std::vector<value_t>, std::vector<value_t>>>();
 
   return result_tuple;
 }
@@ -58,10 +54,7 @@ void pybind_ms_well(py::module &m)
       .def_readwrite("model_type", &ms_well::model_type)
       .def_readwrite("segments_volumes", &ms_well::segments_volumes)
       .def_readwrite("segments_depths", &ms_well::segments_depths)
-      .def("set_velocity_evaluator",
-           [](ms_well &w, py::object evaluator) {
-             w.velocity_evaluator = make_shared<py::object>(evaluator);
-           })
+      .def("set_velocity_evaluator", [](ms_well &w, py::object evaluator) {w.velocity_evaluator = make_shared<py::object>(evaluator);})
       .def_readwrite("num_segments", &ms_well::num_segments)
       .def_readwrite("perforations", &ms_well::perforations)
       .def_readwrite("segment_volume", &ms_well::segment_volume)
