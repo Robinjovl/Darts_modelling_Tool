@@ -2,6 +2,7 @@
 
 #include <format>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -59,6 +60,8 @@ enum class LoggingLevel {
   // diagnose a problem.
   DEBUG = 10,
 
+  TIMER = 15,
+
   // Confirmation that things are working as expected.
   INFO = 20,
 
@@ -82,6 +85,8 @@ using enum LoggingLevel;
   X(DEBUG, debug,                                                              \
     "Detailed information, typically only of interest to a "                   \
     "developer trying to diagnose a problem.")                                 \
+  X(TIMER, timer,                                                              \
+    "Timer information, the time it took to complete an operation.")           \
   X(INFO, info, "Confirmation that things are working as expected.")           \
   X(WARNING, warning,                                                          \
     "An indication that something unexpected happened, or that a"              \
@@ -127,6 +132,18 @@ public:
                      const std::optional<std::string> &filename,
                      const bool screen_output);
 
+  /*template <typename T> Logger &operator<<(const T &value) {*/
+  /*  if (m_fstream) {*/
+  /*    std::lock_guard<std::mutex> lock(m_fstream->mutex);*/
+  /*    m_fstream->stream << value;*/
+  /*  }*/
+  /**/
+  /*  if (m_stdout) {*/
+  /*    std::cout << value;*/
+  /*  }*/
+  /*  return *this; // Return the current object to allow for method chaining*/
+  /*}*/
+
   void log(const std::string &message);
   template <LoggingLevel level> void log(const std::string &message) {
     if (level < m_level) {
@@ -151,8 +168,9 @@ public:
 
   // Macro to generate log functions for each level
 #define LOG(level, name, description)                                          \
+  /** Logs a message with this verbosity. */                                   \
   inline void name(const std::string &message) { log<level>(message); }        \
-  /** Logs a message with level verbosity. */                                  \
+  /** Logs a message with this verbosity. */                                   \
   template <typename... Args>                                                  \
   inline void name(const std::format_string<Args...> &message,                 \
                    Args &&...args) {                                           \

@@ -2,6 +2,7 @@
 
 #include "elem.h"
 #include "linalg/matrix.h"
+#include "logger.h"
 #include <cctype>
 #include <fstream>
 #include <iostream>
@@ -55,8 +56,7 @@ void inline parse_value(T &value, const std::string &word, bool &break_flag) {
     // else
     //	throw std::runtime_error("unknown type in parsing " + word);
   } catch (const std::invalid_argument &ia) {
-    std::cerr << "Invalid argument: " << ia.what() << " in word: " << word
-              << '\n';
+    dis::logger.error("Invalid argument: {} in word: {}", ia.what(), word);
     break_flag = true;
   }
 }
@@ -90,6 +90,7 @@ void load_single_keyword(std::vector<T> &res, const std::string filename,
       if (first_word == keyword) {
         read_data_mode = 1;
         printf("Reading %s from %s\n", keyword.c_str(), filename.c_str());
+        
         continue;
       }
 

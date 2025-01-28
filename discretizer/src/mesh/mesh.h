@@ -5,9 +5,9 @@
 #include <set>
 #include <string>
 #include <array>
-#include <iostream>
 
 #include "elem.h"
+#include "logger.h"
 
 namespace mesh
 {
@@ -167,7 +167,7 @@ namespace mesh
 		        const double multiplier,
 		        const bool append) const
 		{ 
-		        std::cout << "Writing array " << keyword << " to file " << filename << "\n";
+            logger.log("Writing array {} to file {}", keyword, filename);
 		
 		        std::ofstream f;
 		        if (append)

@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <chrono>
-#include <iostream>
 #include <numeric>
 #include <sstream>
 #include <strstream>
@@ -13,9 +12,8 @@
 
 using namespace mesh;
 using linalg::Vector3;
-using std::cout;
-using std::distance;
-using std::endl;
+/*using std::cout;*/
+/*using std::endl;*/
 using std::find;
 using std::pair;
 using std::set;
@@ -56,7 +54,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags &tags) {
   // load mesh file, which is a list of points in 3D
   mshio::MshSpec spec = mshio::load_msh(filename);
   t2 = steady_clock::now();
-  logger.debug("Reading of {}:\t{}\t[ms]", filename,
+  logger.timer("Reading of {}:\t{}\t[ms]", filename,
                duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 
   t1 = steady_clock::now();
@@ -98,7 +96,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags &tags) {
           return ent.tag == entity_tag;
         });
     if (it == vec.end()) {
-      printf("Entity tag %d not found\n", entity_tag);
+      logger.warning("Entity tag {} not found", entity_tag);
       return -1;
     } else
       return it->physical_group_tags[0];
@@ -219,7 +217,7 @@ void Mesh::gmsh_mesh_reading(string filename, const PhysicalTags &tags) {
   }
 
   t2 = steady_clock::now();
-  logger.info("Processing {} nodes, {} elements:\t{}[ms]", num_of_nodes,
+  logger.timer("Processing {} nodes, {} elements:\t{}[ms]", num_of_nodes,
               num_of_elements,
               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
@@ -452,7 +450,7 @@ void Mesh::gmsh_mesh_construct_connections(const PhysicalTags &tags) {
             });
 
   t2 = steady_clock::now();
-  logger.info("{} connections:\t{}\t[ms]", conns.size(),
+  logger.timer("{} connections:\t{}\t[ms]", conns.size(),
               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
@@ -516,7 +514,7 @@ void Mesh::generate_adjacency_matrix() {
   }
 
   t2 = steady_clock::now();
-  logger.info("Adjacency matrix:\t{}\t[ms]",
+  logger.timer("Adjacency matrix:\t{}\t[ms]",
               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
@@ -1300,5 +1298,5 @@ void Mesh::cpg_connections(
       it = conn_type_map.erase(it);
   }
 
-  logger.debug("{} connections:", conns.size());
+  logger.info("{} connections:", conns.size());
 }
