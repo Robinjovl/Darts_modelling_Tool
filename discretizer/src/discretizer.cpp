@@ -8,6 +8,10 @@
 #include <unordered_set>
 #include <vector>
 
+#if DEBUG_TRANS
+#include <sstream>
+#endif
+
 #define M_PI 3.14159265358979323846
 
 using std::array;
@@ -133,40 +137,40 @@ void Discretizer::calc_tpfa_transmissibilities(const PhysicalTags &tags) {
         half_trans[mesh->conns[mesh->adj_matrix[j]].conn_id].push_back(T);
         half_trans_thermal[mesh->conns[mesh->adj_matrix[j]].conn_id].push_back(
             Td);
-
 #ifdef DEBUG_TRANS
-        std::cout << "----- TPFA CPP -----" << std::endl;
-        std::cout << "Connection cells (local): " << conn.elem_id1 << " ";
-        std::cout << conn.elem_id2 << " " << std::endl;
-        // std::cout << "Connection cells (global): " <<
-        // mesh->local_to_global[conn.elem_id1] << " "; std::cout <<
-        // mesh->local_to_global[conn.elem_id2] << " " << std::endl; std::cout
+        std::ostringstream out;
+        out << "----- TPFA CPP -----" << std::endl;
+        out << "Connection cells (local): " << conn.elem_id1 << " ";
+        out << conn.elem_id2 << " " << std::endl;
+        // out << "Connection cells (global): " <<
+        // mesh->local_to_global[conn.elem_id1] << " "; out <<
+        // mesh->local_to_global[conn.elem_id2] << " " << std::endl; out
         // << "Connection cells: " << mesh->get_ijk_as_str(conn.elem_id1, false)
-        // << " "; std::cout << mesh->get_ijk_as_str(conn.elem_id2, false) << "
+        // << " "; out << mesh->get_ijk_as_str(conn.elem_id2, false) << "
         // " << std::endl;
-        std::cout << "Connection center: " << conn_center.x << " "
-                  << conn_center.y << " ";
-        std::cout << conn_center.z << std::endl;
-        std::cout << "d vector: " << d.x << " " << d.y << " " << d.z
-                  << std::endl;
-        std::cout << "n vector: " << n.x << " " << n.y << " " << n.z
-                  << std::endl;
-        std::cout << "T for connection =" << T << std::endl;
-        std::cout << "Area for connection =" << A << std::endl;
-        std::cout << "dot(d, Kn) for connection =" << dot(d, Kn) << std::endl;
-        std::cout << "std::abs(dot(n, d)) for connection ="
-                  << std::abs(dot(n, d)) << std::endl;
-        // std::cout << "temp4.norm() for connection =" << temp4.norm() <<
+        out << "Connection center: " << conn_center.x << " " << conn_center.y
+            << " ";
+        out << conn_center.z << std::endl;
+        out << "d vector: " << d.x << " " << d.y << " " << d.z << std::endl;
+        out << "n vector: " << n.x << " " << n.y << " " << n.z << std::endl;
+        out << "T for connection =" << T << std::endl;
+        out << "Area for connection =" << A << std::endl;
+        out << "dot(d, Kn) for connection =" << dot(d, Kn) << std::endl;
+        out << "std::abs(dot(n, d)) for connection =" << std::abs(dot(n, d))
+            << std::endl;
+        // out << "temp4.norm() for connection =" << temp4.norm() <<
         // std::endl;
-        std::cout << "Between elements: " << conn.elem_id1 << " "
-                  << conn.elem_id2 << std::endl;
-        std::cout << "Centroid of elem1: " << mesh->centroids[el_id1].x << " "
-                  << mesh->centroids[el_id1].y << " "
-                  << mesh->centroids[el_id1].z << std::endl;
-        std::cout << "Centroid of elem2: " << mesh->centroids[el_id2].x << " "
-                  << mesh->centroids[el_id2].y << " "
-                  << mesh->centroids[el_id2].z << std::endl;
+        out << "Between elements: " << conn.elem_id1 << " " << conn.elem_id2
+            << std::endl;
+        out << "Centroid of elem1: " << mesh->centroids[el_id1].x << " "
+            << mesh->centroids[el_id1].y << " " << mesh->centroids[el_id1].z
+            << std::endl;
+        out << "Centroid of elem2: " << mesh->centroids[el_id2].x << " "
+            << mesh->centroids[el_id2].y << " " << mesh->centroids[el_id2].z
+            << std::endl;
       }
+
+      logger.debug(out.str());
 #endif // DEBUG_TRANS
     }
   }
@@ -236,11 +240,12 @@ for (size_t i = 0; i < half_trans.size(); i++) {
     trans_mat_mat_d.push_back(Transmissibility * DARCY_CONSTANT);
 #endif // DEBUG_TRANS
 #ifdef DEBUG_TRANS
-    std::cout << "CPP Transmissibilty for MAT connection  ("
-              << mesh->conns[i].elem_id1 << ", " << mesh->conns[i].elem_id2
-              << ") = " << Transmissibility
-              << "  * darcy =" << Transmissibility * DARCY_CONSTANT
-              << std::endl;
+    std::ostringstream out;
+    out << "CPP Transmissibilty for MAT connection  ("
+        << mesh->conns[i].elem_id1 << ", " << mesh->conns[i].elem_id2
+        << ") = " << Transmissibility
+        << "  * darcy =" << Transmissibility * DARCY_CONSTANT << std::endl;
+    logger.log(out.str());
 #endif // DEBUG_TRANS
        // myfile << std::fixed << std::setprecision(6) << centroid[i][0].x << "
        // " << centroid[i][0].y << " " << centroid[i][0].z << " " <<
@@ -285,11 +290,11 @@ for (size_t i = 0; i < half_trans.size(); i++) {
 
     flux_rhs.push_back(0.0);
 #ifdef DEBUG_TRANS
-    std::cout << "CPP Transmissibilty for BND connection ("
-              << mesh->conns[i].elem_id1 << ", " << mesh->conns[i].elem_id2
-              << ") = " << half_trans[i][0]
-              << "\t *darcy = " << half_trans[i][0] * DARCY_CONSTANT
-              << std::endl;
+    std::ostringstream out;
+    out << "CPP Transmissibilty for BND connection (" << mesh->conns[i].elem_id1
+        << ", " << mesh->conns[i].elem_id2 << ") = " << half_trans[i][0]
+        << "\t *darcy = " << half_trans[i][0] * DARCY_CONSTANT << std::endl;
+    logger.log(out.str());
 #endif // DEBUG_TRANS
 
     // trans.push_back(-1 * trans2d[i][0] * DARCY_CONSTANT);
@@ -302,8 +307,8 @@ for (size_t i = 0; i < half_trans.size(); i++) {
 }
 
 t2 = steady_clock::now();
-logger.info("Find TPFA trans:\t{}\t[ms]",
-            duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+logger.timer("Find TPFA trans:\t{}\t[ms]",
+             duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 
 flux_offset.push_back(static_cast<index_t>(flux_stencil.size()));
 
@@ -606,7 +611,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
         if (A.M >= A.N) {
           // SVD decomposition A = M W Z*
           if (Zsvd.M != A.N) {
-            printf("Wrong matrix dimension!\n");
+            logger.critical("Wrong matrix dimension!");
             exit(-1);
           }
           success = A.svd(Zsvd, w_svd);
@@ -629,7 +634,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
           // SVD decomposition A* = M W Z*
           A.transposeInplace();
           if (Zsvd.M != A.N) {
-            printf("Wrong matrix dimension!\n");
+            logger.critical("Wrong matrix dimension!");
             exit(-1);
           }
           success = A.svd(Zsvd, w_svd);
@@ -684,8 +689,8 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(
   }
 
   t2 = steady_clock::now();
-  logger.info("Reconstruction of gradients:\t{}\t[ms]",
-              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+  logger.timer("Reconstruction of gradients:\t{}\t[ms]",
+               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
@@ -1052,7 +1057,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
         if (A_p.M >= A_p.N) {
           // SVD decomposition A = M W Z*
           if (Zsvd.M != A_p.N) {
-            printf("Wrong matrix dimension!\n");
+            logger.critical("Wrong matrix dimension!");
             exit(-1);
           }
           success = A_p.svd(Zsvd, w_svd);
@@ -1075,7 +1080,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
           // SVD decomposition A* = M W Z*
           A_p.transposeInplace();
           if (Zsvd.M != A_p.N) {
-            printf("Wrong matrix dimension!\n");
+            logger.critical("Wrong matrix dimension!");
             exit(-1);
           }
           success = A_p.svd(Zsvd, w_svd);
@@ -1130,8 +1135,8 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(
   }
 
   t2 = steady_clock::now();
-  logger.info("Reconstruction of gradients:\t{}\t[ms]",
-              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+  logger.timer("Reconstruction of gradients:\t{}\t[ms]",
+               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(
@@ -1483,7 +1488,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) {
         // std::end(flux.a.values), 0.0);
         /*if (fabs(sum) > 100.0 * EQUALITY_TOLERANCE)
         {
-                std::cout << "Sum of all transmissibilities: " << sum <<
+                out << "Sum of all transmissibilities: " << sum <<
         std::endl; exit(-1);
         }*/
 #endif /* DEBUG_TRANS */
@@ -1564,7 +1569,7 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) {
         // std::end(flux.a.values), 0.0);
         /*if (fabs(sum) > 100.0 * EQUALITY_TOLERANCE)
         {
-                std::cout << "Sum of all transmissibilities: " << sum <<
+                out << "Sum of all transmissibilities: " << sum <<
         std::endl; exit(-1);
         }*/
 #endif /* DEBUG_TRANS */
@@ -1590,8 +1595,8 @@ void Discretizer::calc_mpfa_transmissibilities(const bool with_thermal) {
   }
 
   t2 = steady_clock::now();
-  logger.info("Find MPFA trans: \t{}\t[ms]",
-              duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+  logger.timer("Find MPFA trans: \t{}\t[ms]",
+               duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 }
 
 void Discretizer::calc_matrix_matrix(const mesh::Connection &conn,

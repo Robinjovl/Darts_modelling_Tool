@@ -5,7 +5,6 @@
 #include "logger.h"
 #include <cctype>
 #include <fstream>
-#include <iostream>
 #include <numeric> // std::iota
 #include <string>
 #include <valarray>
@@ -89,8 +88,7 @@ void load_single_keyword(std::vector<T> &res, const std::string filename,
 
       if (first_word == keyword) {
         read_data_mode = 1;
-        printf("Reading %s from %s\n", keyword.c_str(), filename.c_str());
-        
+        dis::logger.info("Reading {} from {}", keyword, filename);
         continue;
       }
 
@@ -144,8 +142,8 @@ void load_single_keyword(std::vector<T> &res, const std::string filename,
   }
 
   infile.close();
-  printf("Reading %s from %s finished. %zu values has been read.\n",
-         keyword.c_str(), filename.c_str(), res.size());
+  dis::logger.info("Reading {} from {} finished. {} values has been read.",
+                   keyword, filename, res.size());
 }
 
 template <typename T>

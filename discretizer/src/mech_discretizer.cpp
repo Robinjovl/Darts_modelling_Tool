@@ -6,9 +6,7 @@
 using namespace dis;
 using std::begin;
 using std::copy_n;
-using std::cout;
 using std::end;
-using std::endl;
 using std::fill_n;
 using std::vector;
 using std::chrono::duration_cast;
@@ -867,7 +865,7 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(
   if (res1.first) {
     id1 = res1.second;
   } else {
-    printf("Gradient within %d cell does not depend on its value!\n", cell_id1);
+    logger.critical("Gradient within {} cell does not depend on its value!", cell_id1);
     exit(-1);
   }
   flux.hooke.a(n_unknowns * id1, {(size_t)flux.hooke.a.M, ND},
@@ -882,7 +880,7 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(
   if (res2.first) {
     id2 = res2.second;
   } else {
-    printf("Gradient within %d cell does not depend on its value!\n", cell_id2);
+    logger.critical("Gradient within {} cell does not depend on its value!", cell_id2);
     exit(-1);
   }
   flux.hooke.a(n_unknowns * id2, {(size_t)flux.hooke.a.M, ND},
@@ -1078,7 +1076,7 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(
   if (res1.first) {
     id1 = res1.second;
   } else {
-    printf("Gradient within %d cell does not depend on its value!\n", cell_id1);
+    logger.critical("Gradient within {} cell does not depend on its value!", cell_id1);
     exit(-1);
   }
   flux.hooke.a(n_unknowns * id1, {ND, ND}, {(size_t)flux.hooke.a.N, 1}) +=
@@ -1106,7 +1104,7 @@ void MechDiscretizer<MODE>::calc_matrix_boundary_mech(
   if (res2.first) {
     id2 = res2.second;
   } else {
-    printf("Gradient within %d cell does not depend on its value!\n", cell_id2);
+    logger.critical("Gradient within {} cell does not depend on its value!", cell_id2);
     exit(-1);
   }
   flux.hooke.a(n_unknowns * id2, {ND, ND}, {(size_t)flux.hooke.a.N, 1}) +=
