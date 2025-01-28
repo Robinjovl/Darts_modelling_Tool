@@ -617,7 +617,7 @@ class Output:
                                             pc.phases_name[phase]] = phase_molar_rate_for_perf
 
                             elif rate_type == 'phases_volumetric_rates':
-                                plt.ylabel(f'{pc.phases_name[phase]} volumetric rate [m³/day]', fontsize=16)
+                                plt.ylabel(f'{pc.phases_name[phase]} volumetric rate [m3/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
                                 os.makedirs(perf_dir, exist_ok=True)
                                 plt.tight_layout()

@@ -89,6 +89,8 @@ xarray_data = n.output.output_to_xarray() # evaluate properties from *.h5 and sa
 for i in range(Nt + 1):
     n.output.plot_xarray(xarray_data, timestep=i, y=0)
 
+print('hello world')
+
 # evaluate all properties, at every time step and output to .vtk
 n.output.output_to_vtk()
 
