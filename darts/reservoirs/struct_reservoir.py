@@ -188,7 +188,6 @@ class StructReservoir(ReservoirBase):
 
                     well.segment_volume *= well.segment_depth_increment
                 else:  # update well depth
-                    if well.model_type == "basic_well":
                         well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
                         well.well_body_depth = well.well_head_depth
 
