@@ -105,7 +105,7 @@ using enum LoggingLevel;
  * The default verbosity level is information because users are not interested
  * in debug information.
  */
-constexpr LoggingLevel DEFAULT_LOGGING_LEVEL = TIMER;
+constexpr LoggingLevel DEFAULT_LOGGING_LEVEL = INFO;
 
 struct FStreamWithMutex {
   FStreamWithMutex() {}
