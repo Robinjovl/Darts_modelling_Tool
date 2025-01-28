@@ -602,6 +602,9 @@ class Output:
                                     plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.phases_name[phase]}.png'))
                                 well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_perf
 
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
+                                            pc.phases_name[phase]] = phase_molar_rate_for_perf
+
                             elif rate_type == 'phases_mass_rates':
                                 plt.ylabel(f'{pc.phases_name[phase]} mass rate [kg/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
@@ -610,14 +613,19 @@ class Output:
                                     plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.phases_name[phase]}.png'))
                                 well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_perf
 
+                                well_rates_dict['\well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
+                                            pc.phases_name[phase]] = phase_molar_rate_for_perf
+
                             elif rate_type == 'phases_volumetric_rates':
-                                plt.ylabel(f'{pc.phases_name[phase]} volumetric rate [mÂ³/day]', fontsize=16)
+                                plt.ylabel(f'{pc.phases_name[phase]} volumetric rate [m³/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
                                 os.makedirs(perf_dir, exist_ok=True)
                                 plt.tight_layout()
                                 if save_figs:
                                     plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{pc.phases_name[phase]}.png'))
                                 well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_perf
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_volumetric_rate_' +
+                                    pc.phases_name[phase]] = phase_molar_rate_for_perf
 
                     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
                         for component in range(pc.nc_fl):
@@ -645,6 +653,8 @@ class Output:
                                     plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.components_name[component]}.png'))
                                 well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.components_name[component]}'] = component_molar_rate_for_perf
 
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' +
+                                            pc.components_name[component]] = component_molar_rate_for_perf
                             elif rate_type == 'components_mass_rates':
                                 plt.ylabel(f'{pc.components_name[component]} mass rate [kg/day]', fontsize=16)
                                 perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
@@ -653,6 +663,8 @@ class Output:
                                 if save_figs:
                                     plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.components_name[component]}.png'))
                                 well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.components_name[component]}'] = component_mass_rate_for_perf
+                                well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' +
+                                            pc.components_name[component]] = component_mass_rate_for_perf
 
                     elif rate_type == 'heat_rate':
                         heat_rate_of_all_phases_for_perf = - np.sum(Python_rates[:, perf_counter, :], axis=1)
@@ -667,6 +679,7 @@ class Output:
                         if save_figs:
                             plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_heat_rate.png'))
                         well_rates_dict[f'well_{well.name}_perf_{str(perf[0])}_heat_rate'] = heat_rate_of_all_phases_for_perf
+                        well_rates_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_heat_rate'] = heat_rate_of_all_phases_for_perf
 
                     perf_counter += 1
 
@@ -692,6 +705,7 @@ class Output:
                         if save_figs:
                             plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.phases_name[phase]}.png'))
                         well_rates_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_well
+                        well_rates_dict['well_' + well.name + '_molar_rate_' + pc.phases_name[phase]] = phase_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -741,6 +755,7 @@ class Output:
                         if save_figs:
                             plt.savefig(os.path.join(well_dir, f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}.png'))
                         well_rates_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}'] = phase_volumetric_rate_for_well
+                        well_rates_dict['well_' + well.name + '_volumetric_rate_' + pc.phases_name[phase]] = phase_volumetric_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -766,6 +781,7 @@ class Output:
                         if save_figs:
                             plt.savefig(os.path.join(well_dir,f'well_{well.name}_molar_rate_{pc.components_name[component]}.png'))
                         well_rates_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}'] = component_molar_rate_for_well
+                        well_rates_dict['well_' + well.name + '_molar_rate_' + pc.components_name[component]] = component_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -791,6 +807,7 @@ class Output:
                         if save_figs:
                             plt.savefig(os.path.join(well_dir,f'well_{well.name}_mass_rate_{pc.components_name[component]}.png'))
                         well_rates_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}'] = component_mass_rate_for_well
+                        well_rates_dict['well_' + well.name + '_mass_rate_' + pc.components_name[component]] = component_mass_rate_for_well
 
                     perf_counter += len(well.perforations)
 
