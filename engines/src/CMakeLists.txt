@@ -48,6 +48,13 @@ target_link_libraries(engines_global
     linear_solvers # gets auxiliary and config via linear_solver. Kept like this for compatibility with old linear solvers
 )
 
+if (CUDA)
+  target_link_libraries(engines_global
+    PUBLIC
+      CUDA::cudart
+  )
+endif()
+
 # Define the include directories required internally (BUILD_INTERFACE)
 # and the ones to propagate when linking to this library (INSTALL_INTERFACE)
 target_include_directories(engines_global
@@ -305,6 +312,7 @@ set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp
 )
 
+
 # Then the public headers
 set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.h
@@ -322,6 +330,20 @@ set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(engines_engines OBJECT "")
 
+if (CUDA)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp 
+
+    PROPERTIES LANGUAGE CUDA)
+
+  target_sources(engines_engines PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
+  )
+endif()
+
+
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)
@@ -332,7 +354,7 @@ target_sources(engines_engines
   PRIVATE
     ${OD_ENGINES_ENGINES_SRC_FILES}
     ${OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES}  # if added as PUBLIC appears in all targets that link to it
-	${HYPRE_INCLUDE_DIRS}
+	  ${HYPRE_INCLUDE_DIRS}
 )
 
 target_link_libraries(engines_engines
@@ -341,7 +363,7 @@ target_link_libraries(engines_engines
     linear_solvers
     engines_interpolator
     Eigen3::Eigen
-	HYPRE::HYPRE
+  	HYPRE::HYPRE
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

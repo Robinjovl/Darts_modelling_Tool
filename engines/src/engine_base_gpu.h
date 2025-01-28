@@ -5,7 +5,6 @@
 #include <unordered_map>
 #include <cmath>
 
-#include <pybind11/pybind11.h>
 
 #include "engine_base.h"
 #include "csr_matrix.h"
@@ -26,26 +25,26 @@ public:
   ~engine_base_gpu();
 
   // get the number of primary unknowns (per block)
-  virtual uint8_t get_n_vars() const = 0;
+  virtual uint8_t get_n_vars() const override = 0;
 
   // get the number of operators (per block)
-  virtual uint8_t get_n_ops() const = 0;
+  virtual uint8_t get_n_ops() const override = 0;
 
   // get the number of components
-  virtual uint8_t get_n_comps() const = 0;
+  virtual uint8_t get_n_comps() const override = 0;
 
   // get the index of Z variable
-  virtual uint8_t get_z_var() const = 0;
+  virtual uint8_t get_z_var() const override = 0;
 
   // initialization
-  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
+  virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) override = 0;
 
   template <uint8_t N_VARS>
   int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_);
 
   // newton loop
-  virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) = 0;
-  virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
+  virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override = 0;
+  virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override = 0;
 
   void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
