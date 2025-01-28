@@ -113,8 +113,8 @@ class DartsModel:
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
 
-    def set_output(self, output_folder = 'output', sol_filename = 'reservoir_solution.h5', well_filename = 'well_data.h5',
-                   save_initial = True, all_phase_props = True, precision = 'd', verbose = False):
+    def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5', well_filename: str = 'well_data.h5',
+                   save_initial: bool = True, all_phase_props : bool = True, precision : str = 'd', compression : bool = False, verbose : bool = False):
         """
        Function to initialize output class
         : param output_folder: folder for h5 output files
@@ -131,7 +131,7 @@ class DartsModel:
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
         self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
-                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, verbose)
+                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
 
         return
 
