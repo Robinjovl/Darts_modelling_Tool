@@ -86,7 +86,7 @@ using enum LoggingLevel;
     "Detailed information, typically only of interest to a "                   \
     "developer trying to diagnose a problem.")                                 \
   X(TIMER, timer,                                                              \
-    "Timer information, the time it took to complete an operation.")           \
+    "Timer information, how long it took to complete an operation.")           \
   X(INFO, info, "Confirmation that things are working as expected.")           \
   X(WARNING, warning,                                                          \
     "An indication that something unexpected happened, or that a"              \
