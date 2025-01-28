@@ -70,6 +70,8 @@ enum class LoggingLevel {
   // working as expected.
   WARNING = 30,
 
+  SUCCESS = 35,
+
   // Due to a more serious problem, the software has not been able to perform
   // some function.
   ERROR = 40,
@@ -80,6 +82,42 @@ enum class LoggingLevel {
 };
 
 using enum LoggingLevel;
+
+constexpr auto RESET = "\033[0m";
+
+// Primary template
+template <LoggingLevel level> constexpr const char *getLogLevelColor() {
+  return RESET; // Default to reset
+}
+
+// Template specializations for each logging level
+template <> constexpr const char *getLogLevelColor<LoggingLevel::DEBUG>() {
+  return "\033[36m"; // Cyan
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::TIMER>() {
+  return "\033[35m"; // Magenta
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::INFO>() {
+  return "\033[37m"; // White/Light Gray
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::WARNING>() {
+  return "\033[33m"; // Yellow
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::SUCCESS>() {
+  return "\033[32m"; // Green
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::ERROR>() {
+  return "\033[31m"; // Red
+}
+
+template <> constexpr const char *getLogLevelColor<LoggingLevel::CRITICAL>() {
+  return "\033[1;31m"; // Bold Red
+}
 
 #define LEVELS(X)                                                              \
   X(DEBUG, debug,                                                              \
@@ -92,6 +130,7 @@ using enum LoggingLevel;
     "An indication that something unexpected happened, or that a"              \
     "problem might occur in the near future (e.g. ‘disk space low’). "         \
     "The software is still working as expected.")                              \
+  X(SUCCESS, success, "An operation was succesful.")                           \
   X(ERROR, error,                                                              \
     "Due to a more serious problem, the software has not been "                \
     "able to perform some function.")                                          \
@@ -149,7 +188,7 @@ public:
     if (level < m_level) {
       return;
     }
-    log(message);
+    log(std::format("{}{}{}", getLogLevelColor<level>(), message, RESET));
   }
 
   template <typename... Args>
@@ -163,7 +202,8 @@ public:
       return;
     }
 
-    log<Args...>(message, std::forward<Args>(args)...);
+    log(std::format("{}{}{}", getLogLevelColor<level>(),
+                    std::format(message, std::forward<Args>(args)...), RESET));
   }
 
   // Macro to generate log functions for each level

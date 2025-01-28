@@ -1037,7 +1037,7 @@ std::vector<int> Mesh::cpg_elems_nodes(
       elem_nodes_sorted.push_back(n);
   }
 
-  logger.info("num_of_elements: {}\n"
+  logger.debug("num_of_elements: {}\n"
               "num_of_cells:    {}\n"
               "active_cells:    {}\n"
               "number_of_faces: {}\n"
@@ -1298,5 +1298,5 @@ void Mesh::cpg_connections(
       it = conn_type_map.erase(it);
   }
 
-  logger.info("{} connections:", conns.size());
+  logger.debug("connections: {}", conns.size());
 }

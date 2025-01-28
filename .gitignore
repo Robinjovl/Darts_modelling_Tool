@@ -50,3 +50,4 @@ solution.pvd
 *.nc
 *.h5
 *.vim
+a.out

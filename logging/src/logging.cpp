@@ -14,6 +14,8 @@
 using namespace std;
 
 namespace logging {
+// ANSI escape sequences for colors
+
 Logger Logger::s_root_logger;
 
 Logger &logger = logging::get_logger("logging");
@@ -25,7 +27,7 @@ void log(const string &msg) { Logger::s_root_logger.log(msg); }
 /*  Logger::s_root_logger.log<level>(message);*/
 /*}*/
 
-/*#define INSTANTIATE_GLOBAL_LOG(level, name, description)                       \*/
+/*#define INSTANTIATE_GLOBAL_LOG(level, name, description) \*/
 /*  template void log<level>(const string &);*/
 /**/
 /*LEVELS(INSTANTIATE_GLOBAL_LOG)*/
@@ -40,9 +42,11 @@ void set_file(const string &filename) {
 void flush() { Logger::s_root_logger.flush(); }
 
 void signalHandler(int signum) {
-    std::cout << "Interrupt signal received: " << signum << std::endl;
-    flush();
-    std::exit(signum);
+  if (signum == SIGINT) {
+    cout << "\n";
+  }
+  flush();
+  std::exit(signum);
 }
 
 int root_logger_creations = 0;
@@ -53,8 +57,6 @@ Logger::Logger() {
   std::signal(SIGINT, signalHandler);
   std::signal(SIGTERM, signalHandler);
 }
-
-
 
 Logger::Logger(const string &name) : m_name(name) {}
 
@@ -119,7 +121,7 @@ void Logger::log(const string &message) {
   }
 
   if (m_stdout) {
-    cout << message + "\n";
+    cout << message << "\n";
   }
 }
 

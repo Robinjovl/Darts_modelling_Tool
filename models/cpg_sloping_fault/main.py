@@ -11,6 +11,7 @@ from darts import logging
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
+cpg_logger = logging.get_logger("cpg", "run.log")
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
@@ -20,7 +21,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     :param export_vtk:
     :return:
     '''
-    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
+    logger = cpg_logger.get_logger(f"{physics_type}-{case}-{platform}")
+    logger.info(f"Test started physics_type: {physics_type} case: {case} platform={platform}")
 
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
@@ -33,7 +35,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     else:
-        print('Error: wrong physics specified:', physics_type)
+        logger.critical(f"Error: wrong physics specified: {physics_type}")
         exit(1)
     m.physics_type = physics_type
 
@@ -98,11 +100,12 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type, logger=logger)
 
-    # if redirect_log:
-    #     abort_redirection(log_stream)
-    print('Failed' if failed else 'Ok')
+    if failed:
+        logger.error("Failed")
+    else:
+        logger.success("Ok")
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
@@ -180,7 +183,7 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
 
 ##########################################################################################################
 # for CI/CD
-def check_performance_local(m, case, physics_type):
+def check_performance_local(m, case, physics_type, logger=logging):
     import platform
 
     os.makedirs('ref', exist_ok=True)
@@ -192,7 +195,7 @@ def check_performance_local(m, case, physics_type):
         pkl_suffix = '_iter'
     else:
         pkl_suffix = '_odls'
-    print('pkl_suffix=', pkl_suffix)
+    logger.info(f"pkl_suffix= {pkl_suffix}")
 
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + physics_type + '.pkl')
@@ -222,13 +225,13 @@ def run_test(args: list = [], platform='cpu'):
         ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
-        print('Not enough arguments provided')
+        cpg_logger.error("Not enough arguments provided")
         return True, 0.0
 ##########################################################################################################
 
 if __name__ == '__main__':
     logging.get_logger("logging").set_verbosity(logging.DEBUG)
-    # logging.get_logger("discretizer").set_verbosity(logging.DEBUG)
+    logging.get_logger("discretizer").set_verbosity(logging.TIMER)
     logging.set_file("run.log")
     platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
