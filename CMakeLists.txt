@@ -95,6 +95,8 @@ if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
+list (APPEND CMAKE_CXX_FLAGS -static-libstdc++)
+
 # Set compiler specific variables
 # Used for compiler flags and other cross compiler variables
 message(STATUS "  Setting compiler and linker flags for: ${CMAKE_CXX_COMPILER_ID}")
