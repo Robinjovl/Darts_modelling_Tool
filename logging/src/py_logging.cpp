@@ -31,6 +31,7 @@ void pybind_logging(py::module &m) {
                 py::arg("name"), py::arg("file") = std::nullopt,
                 py::arg("screen") = true, py::return_value_policy::reference);
 
+
 #define PYBIND_LOG(level, name, description)                                   \
   m.def(#name, static_cast<void (*)(const std::string&)>(&name), description, py::arg("message"));
 

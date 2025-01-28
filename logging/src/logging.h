@@ -2,7 +2,6 @@
 
 #include <format>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -298,15 +297,15 @@ void log(const std::format_string<Args...> &msg, Args &&...args) {
 }
 
 // Macro to generate log functions for each level
-#define ROOT_LOG(level, name, description)                                     \
-  inline void name(const std::string &message) { log<level>(message); }        \
+#define ROOT_LOG(level, name, description)                                \
+  void name(const std::string &message);                                \
   /* Logs a message with level verbosity. */                                   \
   template <typename... Args>                                                  \
   inline void name(const std::format_string<Args...> &msg, Args &&...args) {   \
     log<LoggingLevel::level, Args...>(msg, std::forward<Args>(args)...);       \
   }
 
-LEVELS(ROOT_LOG);
+LEVELS(ROOT_LOG)
 
 void enable_screen_output(bool enabled);
 std::string get_visual_repr(const std::string &prefix = "");

@@ -32,6 +32,13 @@ void log(const string &msg) { Logger::s_root_logger.log(msg); }
 /**/
 /*LEVELS(INSTANTIATE_GLOBAL_LOG)*/
 
+#define ROOT_LOG_IMPL(level, name, description)                                     \
+  void name(const std::string &message) {                               \
+    Logger::s_root_logger.log<level>(message);                                 \
+  }
+
+LEVELS(ROOT_LOG_IMPL)
+
 void set_verbosity(LoggingLevel level) {
   Logger::s_root_logger.set_verbosity(level);
 }
