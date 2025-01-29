@@ -197,8 +197,7 @@ def run(command, log_file=None, errs_to_screen=True, stdout_only_screen=False):
             log_file.write(output)
 
 
-def cmake(source: str, build: str, flags: list[str] = [], log_file=None):
-
+def cmake(source: str, build: str, install:str, flags: list[str] = [], log_file=None):
     command = [
         "cmake",
         "-S",
@@ -206,7 +205,7 @@ def cmake(source: str, build: str, flags: list[str] = [], log_file=None):
         "-B",
         build,
         "-D",
-        f"CMAKE_INSTALL_PREFIX={os.path.join(thirdparty, "install")}",
+        f"CMAKE_INSTALL_PREFIX={install}",
         "-Wno-dev",
     ]
 
@@ -232,7 +231,7 @@ def open_log(name: str):
     return open(os.path.join(base_dir, f"make_{name}.log"), "w")
 
 
-def build(name: str, source: str, build: str, flags: list[str] = []):
+def build(name: str, source: str, build: str, install: str, flags: list[str] = []):
     subtitle(f"Install {name}")
 
     short_name = name.split()[0].lower()
@@ -240,7 +239,7 @@ def build(name: str, source: str, build: str, flags: list[str] = []):
         print("    Generating build files...", end="", flush=True)
         # if flags:
         #     print(" with flags: ", *flags)
-        cmake(source, build, flags, log_file)
+        cmake(source, build, install, flags, log_file)
         print(" DONE.")
         print("    Compiling...", end="", flush=True)
         make_install(build, log_file)
@@ -271,6 +270,7 @@ else:
         "EIGEN 3",
         os.path.join(thirdparty, "eigen"),
         os.path.join(thirdparty, "build", "eigen"),
+        os.path.join(thirdparty, "install")
     )
 
     # Setup hypre build with no MPI support (we only use single processor)
@@ -280,6 +280,7 @@ else:
         "Hypre",
         source=os.path.join(thirdparty, "hypre", "src"),
         build=os.path.join(thirdparty, "hypre", "src", "cmbuild"),
+        install=os.path.join(thirdparty, "install"),
         flags=[
             "HYPRE_BUILD_TESTS=ON",
             "HYPRE_BUILD_EXAMPLES=ON",
@@ -345,7 +346,7 @@ if bos_solvers_dir:
 print("CMake options:", *cmake_options, end="\n\n")
 
 build_dir = os.path.join(base_dir, "build")
-build("darts", base_dir, build_dir, flags=cmake_options)
+build("darts", base_dir, build_dir, os.path.join(base_dir, "darts"), flags=cmake_options)
 
 # Test
 if testing:
