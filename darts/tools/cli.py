@@ -1,4 +1,5 @@
 from os.path import isfile
+from pathlib import Path
 import argparse, os, subprocess, sys
 
 
@@ -63,5 +64,11 @@ def main():
                 f"No '{file}' script found in '{path}'.\nPlease create one, or manually specify the file you want to run."
             )
             exit(1)
+    # Define the new environment variable
+    new_env = {"LD_LIBRARY_PATH": str(Path(__file__).parent.parent) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
+    print(new_env)
+    # Update the environment of the current process
+    env = {**os.environ, **new_env}
 
-    subprocess.run([sys.executable, path] + args.args)
+    res = subprocess.run([sys.executable, path] + args.args, env=env)
+    sys.exit(res.returncode)
