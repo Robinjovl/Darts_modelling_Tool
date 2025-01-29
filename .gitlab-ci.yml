@@ -572,7 +572,11 @@ test-windows-3.9-ODLS:
         # run simulation fot test models set
         - cd models
         # passing additional argument LOG to trigger verbose check performance
+<<<<<<< HEAD
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
+=======
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  darts run_test_suite2.py LOG
+>>>>>>> 9a34ba81b07d58c7ae3698434188098afe87d0be
         - echo "run_test_suite2 returned" $?
         - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
@@ -613,7 +617,7 @@ test-windows-3.9-ODLS:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
-        - python run_test_suite2.py LOG
+        - darts run_test_suite2.py LOG
         - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
         - cd ..
         # test interpolators

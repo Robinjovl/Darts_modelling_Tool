@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +19,7 @@ set(SET_CXX11_ABI_0 TRUE)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
+# Set default build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
 endif()
@@ -105,7 +107,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   
   message(STATUS "  Setting MSVC compiler and linker flags")
   # Compiler flags 
-  set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
+  set(opendarts_cxx_compiler_flags "/MP;/std:c++20")
   
   # for VS Sanitizer usage: 
   # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64
@@ -138,7 +140,6 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # No need for manual -O optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
   set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-std=c++20")
-
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")

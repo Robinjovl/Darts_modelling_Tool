@@ -18,6 +18,11 @@ setup(
         'console_scripts': ['darts = darts.tools.cli:main',],
     },
 
+    # Add darts command line interface
+    entry_points = {
+        'console_scripts': ['darts = darts.tools.cli:main',],
+    },
+
     # Package metadata
     description='Delft Advanced Research Terra Simulator',
 
