@@ -6,6 +6,19 @@ set -e
 set -o pipefail
 # ------------------------------------------------------------------------------
 
+
+# Amend the path if necessary --------------------------------------------------
+# If the script is called from inside the folder helper_scripts, then place us 
+# at the root directory open-darts.
+if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
+    cd ../
+fi
+# ------------------------------------------------------------------------------
+
+python helper_scripts/build.py "$@"
+exit
+
+
 ################################################################################
 # Help info                                                                    #
 ################################################################################
@@ -108,7 +121,7 @@ fi
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
     echo '\n   Cleaning build folder, dist folder and generated python modules'
-    rm -rf darts/*.so
+    rm -f darts/*.so
     rm -rf dist
     rm -rf build
 fi
