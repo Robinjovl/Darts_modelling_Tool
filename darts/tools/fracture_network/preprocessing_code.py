@@ -25,7 +25,7 @@ import numpy as np
 from .calc_intersections_segm_parallel import calc_intersections_segm_parallel
 import os
 import sys
-
+import subprocess
 
 def frac_preprocessing(frac_data_raw, char_len, output_dir='', filename_base='output', merge_threshold=0.66, z_top=0,
                        height_res=50, angle_tol_small_intersect=20, apertures_raw=None, box_data=None, margin=25, mesh_clean=False,
@@ -229,14 +229,17 @@ def frac_preprocessing(frac_data_raw, char_len, output_dir='', filename_base='ou
     print('DONE creating geo-file for cleaned network (input for gmsh)\n')
 
     if mesh_clean:
-        try:
-            print('START meshing cleaned network')
-            print('\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long')
-            print('\t      Click File -> "Save options and default" in gmsh to save the setting.')
-            os.system("gmsh {:s} -o {:s} -save".format(filename_geo_cln, filename_out_cln))
-            print('DONE meshing cleaned network\n')
-        except:
-            print('Cannot write msh file! gmsh not in the PATH!\n')
+        print('START meshing cleaned network')
+        print(
+            '\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long')
+        print('\t      Click File -> "Save options and default" in gmsh to save the setting.')
+        cmd = "gmsh {:s} -o {:s} -save".format(filename_geo_cln, filename_out_cln)
+        filename_log = os.path.join(output_dir, filename_base + '_clean.log')
+        with open(filename_log, "w") as file:
+            r = subprocess.run(cmd.split(), text=True, shell=True, stderr=subprocess.STDOUT, stdout=file)
+        assert r.returncode == 0, 'ERROR meshing cleaned network.' + 'Gmsh output is written to the file ' + filename_log + '. Check gmsh in the PATH'
+        print('DONE meshing cleaned network.', 'Gmsh output is written to the file', filename_log, '\n')
+        
     # --------------------------------------------------------------------------
     print('START writing raw fracture system to file')
     filename_raw = os.path.join(output_dir, filename_base + '_raw_lc_' + str(char_len) + '_fracsys.txt')
@@ -260,15 +263,16 @@ def frac_preprocessing(frac_data_raw, char_len, output_dir='', filename_base='ou
     print('DONE creating geo-file for raw network (input for gmsh)\n')
 
     if mesh_raw:
-        try:
-            print('START meshing raw network')
-            print(
-                '\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long')
-            print('\t      Click File -> "Save options and default" in gmsh to save the setting.')
-            os.system("gmsh {:s} -o {:s} -save".format(filename_geo_raw, filename_out_raw))
-            print('DONE meshing raw network\n')
-        except:
-            print('Cannot write msh file! gmsh not in the PATH!\n')
+        print('START meshing raw network')
+        print(
+            '\tNOTE: In gmsh you need to have under Options -> Geometry -> General -> uncheck "Remove duplicate ..." otherwise meshing will crash/take too long')
+        print('\t      Click File -> "Save options and default" in gmsh to save the setting.')
+        cmd = "gmsh {:s} -o {:s} -save".format(filename_geo_raw, filename_out_raw)
+        filename_log = os.path.join(output_dir, filename_base + '_raw.log')
+        with open(filename_log, "w") as file:
+            r = subprocess.run(cmd.split(), text=True, shell=True, stderr=subprocess.STDOUT, stdout=file)
+        assert r.returncode == 0, 'ERROR meshing raw network.' + 'Gmsh output is written to the file ' + filename_log + '. Check gmsh in the PATH'
+        print('DONE meshing raw network.', 'Gmsh output is written to the file', filename_log, '\n')
 
     print('Preprocessing succesfully finished')
     print('-----------------------------------')

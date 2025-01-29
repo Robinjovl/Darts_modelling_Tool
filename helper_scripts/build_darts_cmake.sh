@@ -139,6 +139,7 @@ if [[ "$skip_req" == false ]]; then
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
     # Request build of tests and examples just to be sure everything is fine in the build 
+    # For debugging: -DHYPRE_ENABLE_PRINT
     cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
     make install -j $NT &>> ../../../../make_hypre.log
     cd ../../../

@@ -88,6 +88,7 @@ if %skip_req%==false (
 
   rem -- Install Hypre
   cd hypre\src\cmbuild
+  rem For debugging: -DHYPRE_ENABLE_PRINT
   cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. > ../../../../make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ../../../../make_hypre.log || goto :error
   cd ..\..\..\
