@@ -161,13 +161,15 @@ if clean:
     thirdpary_dirs = ["eigen", "pybind11", "mshIO", "hypre"]
     thirdpary_dirs = [os.path.join("thirdparty", "build", d) for d in thirdpary_dirs]
 
-    build_dirs = ["dist", "build"]
+    build_dirs = ["dist", "build", os.path.join(base_dir, "thirdparty/hypre/src/cmbuild")]
 
     for dir in build_dirs + thirdpary_dirs:
+        print(f"Removing {dir}")
         shutil.rmtree(dir, True)
 
     for file in glob("darts/*.so"):
         os.remove(file)
+        print(f"Removed {file}")
 
 
 # Build ---------------------------------------------------------------
@@ -279,7 +281,7 @@ else:
     build(
         "Hypre",
         source=os.path.join(thirdparty, "hypre", "src"),
-        build=os.path.join(thirdparty, "hypre", "src", "cmbuild"),
+        build=os.path.join(thirdparty, "build/hypre"),
         install=os.path.join(thirdparty, "install"),
         flags=[
             "HYPRE_BUILD_TESTS=ON",
