@@ -1,4 +1,4 @@
-# 1.2.2 [**-**-2024]
+# 1.2.2 [26-01-2024]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
 - Temperature and pressure operators are added
 - Add enthalpy operators to elastic super engine

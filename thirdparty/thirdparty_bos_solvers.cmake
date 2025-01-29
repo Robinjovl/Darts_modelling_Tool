@@ -11,29 +11,44 @@ unset(thirdparty_missing_components)
 # ------------------------------------------------------------------------------
 
 # Define bos_solvers library name ----------------------------------------------
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  set(DEBUG_SUFFIX "_d")
+  message(STATUS "    Fetching bos_solvers with Debug mode")
+endif()
+
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
 #   GPU: GPU support (not available yet)
-if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-  if(${OPENDARTS_CONFIG} STREQUAL "MT")
-    set(BOS_SOLVERS_SUFFIX "_mt_d")
-  elseif(${OPENDARTS_CONFIG} STREQUAL "ST")
-    set(BOS_SOLVERS_SUFFIX "_d")
-  endif()
-  message(STATUS "    Fetching bos_solvers with Debug mode")
-elseif(${OPENDARTS_CONFIG} STREQUAL "ST")
-  set(BOS_SOLVERS_SUFFIX "") 
+if(${OPENDARTS_CONFIG} STREQUAL "ST")
+  set(BOS_SOLVERS_SUFFIX "${DEBUG_SUFFIX}") 
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
-  set(BOS_SOLVERS_SUFFIX "_mt")
+  set(BOS_SOLVERS_SUFFIX "_mt${DEBUG_SUFFIX}")
+elseif (${OPENDARTS_CONFIG} STREQUAL "GPU")
+  set(BOS_SOLVERS_SUFFIX "_gpu${DEBUG_SUFFIX}")
 else()
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  message(FATAL_ERROR "unknown configuration, should be MT, ST or GPU.")
 endif()
 
 message(STATUS "    Fetching bos_solvers ${OPENDARTS_CONFIG}")
 
 # Adds bos_solvers -------------------------------------------------------------
 add_library(linear_solvers STATIC IMPORTED GLOBAL)
+
+if (CUDA)
+  add_library(amgx SHARED IMPORTED GLOBAL)
+  set_target_properties(amgx
+    PROPERTIES
+    IMPORTED_LOCATION ${BOS_SOLVERS_DIR}/lib/libamgxsh${CMAKE_SHARED_LIBRARY_SUFFIX}
+  )
+  target_link_libraries(linear_solvers INTERFACE 
+      CUDA::cusparse
+      amgx
+  )
+  install(FILES ${BOS_SOLVERS_DIR}/lib/libamgxsh${CMAKE_SHARED_LIBRARY_SUFFIX}
+      DESTINATION ./) 
+
+endif()
 
 # When setting the library files to import, we need to do it in different ways for
 # Windows and linux/macOS

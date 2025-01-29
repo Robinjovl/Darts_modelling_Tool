@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Setup shell script run -------------------------------------------------------
 # Exit when any command fails
 set -e
@@ -17,6 +19,7 @@ Help_Info()
   echo "   -t : Enable testing: ctest of solvers. Default: don't test"
   echo "   -w : Enable generation of python wheel. Default: false"
   echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
+  echo "   -G : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
@@ -35,13 +38,14 @@ wheel=false       # Whether to generate python wheel.
 bos_solvers_artifact=false # Fetch the bos_solvers library from artifacts (for CI/CD purposes)
 iter_solvers=false # Iterative linear solvers, will be set below depending on -a and -b flags
 MT=true           # Build openDARTS multi-threaded. This is for engines and bos_solvers (if defined)
+GPU=false         # Build openDARTS with GPU. This applies to engines and bos_solvers.
 skip_req=false    # Skip building requirements.
 config="Release"  # Default configuration (install).
 NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 
-while getopts ":chtwmrab:d:j:g:" option; do
+while getopts ":chtwmrab:d:j:g:G" option; do
     case "$option" in
         h) # Display help
            Help_Info
@@ -69,6 +73,8 @@ while getopts ":chtwmrab:d:j:g:" option; do
         g) # gpp version
            special_gpp=true
            gpp_version=${OPTARG};;
+        G) # GPU build
+           GPU=true;;
     esac
 done
 
@@ -77,10 +83,17 @@ if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     # tests are only available in open-DARTS, bos_solvers do not have testing
     testing=false
 fi
-if [ "$iter_solvers" == false ] && [ "$MT" == true ]; then
-   echo '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
+
+if [ "$iter_solvers" == false ]; then
+  if [ "$GPU" == true ]; then
+    echo GPU build requires GPU bos solvers. Specify the path with -b.
+    exit 1
+  elif [ "$MT" == true ]; then
+   echo -e '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
    MT=false
+  fi
 fi
+#
 # ------------------------------------------------------------------------------
 
 # Amend the path if necessary --------------------------------------------------
@@ -91,134 +104,142 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
-rm -rf darts/*.so
-rm -rf dist
 	
-# Build loop -------------------------------------------------------------------
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder'
-    rm -r build
-else
-    if [[ "$skip_req" == false ]]; then
-        # update submodules
-        echo -e "\n- Update submodules: START \n"
-        # clean-up previous versions.
-        rm -rf thirdparty/eigen thirdparty/pybind11 thirdparty/mshIO thirdparty/hypre
-        git submodule sync --recursive
-        git submodule update --recursive --init
-        echo -e "\n- Update submodules: DONE! \n"
+    echo '\n   Cleaning build folder, dist folder and generated python modules'
+    rm -rf darts/*.so
+    rm -rf dist
+    rm -rf build
+fi
 
-        # Install requirements
-        echo -e "\n- Install requirements: START \n"
-        cd thirdparty
-		
-        echo -e "\n-- Install EIGEN 3 \n"
-        mkdir -p build/eigen
-        cd build/eigen
-        cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
-        make install -j $NT &>> ../../../make_eigen.log
-        cd ../../
 
-        echo -e "\n-- Install Hypre: START\n"
-        cd hypre/src/cmbuild
-        # Setup hypre build with no MPI support (we only use single processor)
-        # Request build of tests and examples just to be sure everything is fine in the build 
-        cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
-        make install -j $NT &>> ../../../../make_hypre.log
-        cd ../../../
-        echo -e "\n--- Building Hypre: DONE!\n"
+# Build -------------------------------------------------------------------
+if [[ "$skip_req" == false ]]; then
+    # update submodules
+    echo -e "\n- Update submodules: START \n"
+    # clean-up previous versions.
+    rm -rf thirdparty/eigen thirdparty/pybind11 thirdparty/mshIO thirdparty/hypre
+    git submodule sync --recursive
+    git submodule update --recursive --init
+    echo -e "\n- Update submodules: DONE! \n"
 
-        echo -e "\n-- Install SuperLU \n"
-        cd SuperLU_5.2.1
+    # Install requirements
+    echo -e "\n- Install requirements: START \n"
+    cd thirdparty
 
-	    if [[ "$OSTYPE" == "darwin"* ]]; then
-            cp conf_gcc-11_macOS_m1.mk conf.mk
-            cp make_gcc-11_macOS_m1.inc make.inc
-        else
-            cp conf_gcc_linux.mk conf.mk
-  	        cp make_gcc_linux.inc make.inc
-        fi
+    echo -e "\n-- Install EIGEN 3 \n"
+    mkdir -p build/eigen
+    cd build/eigen
+    cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/  &> ../../../make_eigen.log
+    make install -j $NT &>> ../../../make_eigen.log
+    cd ../../
 
-        make -j $NT &> ../../make_superlu.log
-        make install -j $NT &>> ../../make_superlu.log
-        cd ../../
+    echo -e "\n-- Install Hypre: START\n"
+    cd hypre/src/cmbuild
+    # Setup hypre build with no MPI support (we only use single processor)
+    # Request build of tests and examples just to be sure everything is fine in the build 
+    # For debugging: -DHYPRE_ENABLE_PRINT
+    cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. &> ../../../../make_hypre.log
+    make install -j $NT &>> ../../../../make_hypre.log
+    cd ../../../
+    echo -e "\n--- Building Hypre: DONE!\n"
 
-        if [[ "$bos_solvers_artifact" == true ]]; then
-            cd engines
-	        ./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS
-	        cd ..
-        fi
-        echo -e "\n- Install requirements: DONE! \n"
+    echo -e "\n-- Install SuperLU \n"
+    cd SuperLU_5.2.1
+
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+        cp conf_gcc-11_macOS_m1.mk conf.mk
+        cp make_gcc-11_macOS_m1.inc make.inc
     else
-        echo -e "\n- Requirements already installed \n"
+        cp conf_gcc_linux.mk conf.mk
+        cp make_gcc_linux.inc make.inc
     fi
+
+    make -j $NT &> ../../make_superlu.log
+    make install -j $NT &>> ../../make_superlu.log
+    cd ../../
 
     if [[ "$bos_solvers_artifact" == true ]]; then
-        bos_solvers_dir=$PWD"/engines/lib/darts_linear_solvers"
+        cd engines
+      ./update_private_artifacts.sh $SMBNAME $SMBLOGIN $SMBPASS
+      cd ..
     fi
-
-    echo "\n========================================================================"
-    echo "| Building openDARTS: START "
-    echo "========================================================================\n"
-
-    # Setup build folder
-    rm -rf build # Just in case
-    mkdir build
-    cd build
-
-    # Setup build with cmake
-    cmake_options=" -D SET_CXX11_ABI_0=TRUE -D CMAKE_BUILD_TYPE=${config} -D CMAKE_INSTALL_PREFIX=../darts/"
-
-    if [[ "$testing" == true ]]; then
-        cmake_options+=" -D ENABLE_TESTING=ON"
-    fi
-    if [[ "$special_gpp" == true ]]; then
-        cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
-    fi
-    if [[ "$MT" == true ]]; then
-        cmake_options+=" -D OPENDARTS_CONFIG=MT"
-    fi
-    if [[ ! -z "$bos_solvers_dir" ]]; then
-        cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
-    fi
-
-    echo "CMake options: $cmake_options" # Report to user the CMake options
-    cmake $cmake_options .. &> ../make_darts.log
-
-    # Build and install openDARTS
-    make install -j $NT &>> ../make_darts.log
-
-    # Test
-    if [[ "$testing" == true ]]; then
-        ctest
-    fi
-
-    cd ../
-
-    echo "\n========================================================================"
-    echo "| Building openDARTS: DONE! "
-    echo "========================================================================\n"
-
-    echo "************************************************************************"
-    echo "| Building python package open-darts: START "
-    echo "************************************************************************\n"
-
-    # generating build info of darts-package
-    python3 darts/print_build_info.py
-
-    # build darts.whl
-    if [[ "$wheel" == true ]]; then
-        python3 setup.py clean
-        python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
-        echo "-- Python wheel generated! \n"
-    fi
-
-    # installing python package
-    python3 -m pip install . 2>&1 | tee -a make_wheel.log
-
-    echo "\n************************************************************************"
-    echo "| Building python package open-darts: DONE! "
-    echo "************************************************************************\n"
+    echo -e "\n- Install requirements: DONE! \n"
+else
+    echo -e "\n- Requirements already installed \n"
 fi
+
+if [[ "$bos_solvers_artifact" == true ]]; then
+    bos_solvers_dir=$PWD"/engines/lib/darts_linear_solvers"
+fi
+
+echo -e "\n========================================================================"
+echo "| Building openDARTS: START "
+echo -e "========================================================================\n"
+
+# Setup build folder
+mkdir -p build
+cd build
+rm -f CMakeCache.txt  # ensures Cmake doesn't work on outdated configuration
+
+# Setup build with cmake
+cmake_options="-D CMAKE_BUILD_TYPE=${config}"
+
+if [[ "$testing" == true ]]; then
+    cmake_options+=" -D ENABLE_TESTING=ON"
+fi
+if [[ "$special_gpp" == true ]]; then
+    cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
+fi
+
+build=ST    
+if [[ "$GPU" == true ]]; then
+  build=GPU
+elif [[ "$MT" == true ]]; then
+  build=MT
+fi
+cmake_options+=" -D OPENDARTS_CONFIG=$build"
+
+if [[ ! -z "$bos_solvers_dir" ]]; then
+    cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
+fi
+
+echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
+cmake $cmake_options .. 2>&1 | tee ../make_darts.log
+
+# Build and install openDARTS
+make install -j $NT 2>> ../make_darts.log
+
+# Test
+if [[ "$testing" == true ]]; then
+    ctest
+fi
+
+cd ../
+
+echo -e "\n========================================================================"
+echo "| Building openDARTS: DONE! "
+echo -e "========================================================================\n"
+
+echo "************************************************************************"
+echo "| Building python package open-darts: START "
+echo -e "************************************************************************\n"
+
+# generating build info of darts-package
+python3 darts/print_build_info.py
+
+# build darts.whl
+if [[ "$wheel" == true ]]; then
+    python3 setup.py clean
+    python3 setup.py build bdist_wheel 2>&1 | tee make_wheel.log
+    echo -e "-- Python wheel generated! \n"
+fi
+
+# installing python package
+python3 -m pip install . 2>&1 | tee -a make_wheel.log
+
+echo -e "\n************************************************************************"
+echo "| Building python package open-darts: DONE! "
+echo -e "************************************************************************\n"
 # ------------------------------------------------------------------------------
