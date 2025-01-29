@@ -195,7 +195,7 @@ def check_performance_local(m, case, physics_type, logger=logging):
         pkl_suffix = '_iter'
     else:
         pkl_suffix = '_odls'
-    logger.info(f"pkl_suffix= {pkl_suffix}")
+    logger.debug(f"pkl_suffix= {pkl_suffix}")
 
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + physics_type + '.pkl')
@@ -232,6 +232,7 @@ def run_test(args: list = [], platform='cpu'):
 if __name__ == '__main__':
     logging.get_logger("logging").set_verbosity(logging.DEBUG)
     logging.get_logger("discretizer").set_verbosity(logging.TIMER)
+    cpg_logger.set_verbosity(logging.DEBUG)
     logging.set_file("run.log")
     platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':

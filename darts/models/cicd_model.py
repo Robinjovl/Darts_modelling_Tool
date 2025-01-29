@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
 from darts.tools.flux_tools import get_molar_well_rates, get_phase_volumetric_well_rates, get_mass_well_rates
+from darts import logging
 
 import numpy as np
 import pandas as pd
@@ -82,10 +83,10 @@ class CICDModel(DartsModel):
                         print('#%d parameter %s is %d (was %d, %+.2f%%)' % (fail, key, value, reference, rel_diff))
                         fail += 1
             if not fail:
-                print('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                logging.success('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 0
             else:
-                print('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                logging.error('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)

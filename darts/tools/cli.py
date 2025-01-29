@@ -45,15 +45,24 @@ def main():
 
     args = parser.parse_args()
 
-    if args.version:
+    def print_version():
         import pkg_resources
 
         version = pkg_resources.get_distribution("open-darts").version
         print(f"open-darts: v{version}")
+
+
+    if args.version:
+        print_version()
         exit()
     path = args.path
 
-    if os.path.isdir(path) and True:
+    if not path:
+        print_version()
+        print("Please supply the path to a DARTS script.")
+        exit()
+
+    if os.path.isdir(path):
         file = "model.py" if args.model else "main.py"
         filepath = os.path.join(path, file)
 
@@ -66,7 +75,7 @@ def main():
             exit(1)
     # Define the new environment variable
     new_env = {"LD_LIBRARY_PATH": str(Path(__file__).parent.parent) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
-    print(new_env)
+
     # Update the environment of the current process
     env = {**os.environ, **new_env}
 
