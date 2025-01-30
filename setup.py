@@ -14,9 +14,6 @@ setup(
 
     # Now only include already built libraries, and build_info, otherwise it will not find the file when using darts.
     package_data={'darts': ['*.pyd', '*.so', '*.dll', 'build_info.txt', 'lib/*.so', 'lib/*.dll', 'lib/*.pyd', 'libstdc++.so.6']},
-    entry_points = {
-        'console_scripts': ['darts = darts.tools.cli:main',],
-    },
 
     # Add darts command line interface
     entry_points = {
