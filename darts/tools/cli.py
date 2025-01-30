@@ -78,6 +78,8 @@ def main():
 
     # Update the environment of the current process
     env = {**os.environ, **new_env}
+    print("LD_LIBRARY_PATH", env["LD_LIBRARY_PATH"])
+    os.environ["LD_LIBRARY_PATH"] = env["LD_LIBRARY_PATH"]
 
     res = subprocess.run([sys.executable, path] + args.args, env=env)
     sys.exit(res.returncode)
