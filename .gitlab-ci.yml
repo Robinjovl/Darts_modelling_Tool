@@ -571,6 +571,7 @@ test-windows-3.9-ODLS:
     script:
         # run simulation fot test models set
         - cd models
+        - export LD_LIBRARY_PATH=$(python -c "import darts,os;print(os.path.dirname(darts.__file__))"):$LD_LIBRARY_PATH
         # passing additional argument LOG to trigger verbose check performance
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
@@ -578,7 +579,7 @@ test-windows-3.9-ODLS:
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
-        - python main.py
+        - darts main.py
         - cd ../../..
         #
         - echo "test finished"

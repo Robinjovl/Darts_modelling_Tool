@@ -5,6 +5,7 @@ from for_each_model import for_each_model, run_tests, abort_redirection, redirec
 import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
+from darts import logging
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     model_dir = r'.'
@@ -101,9 +102,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         rcode = mrun.returncode
         n_failed_mainpy += rcode
         if not rcode:
-            print('OK')
+            logging.success('OK')
         else:
-            print('FAIL')
+            logging.error('FAIL')
         os.chdir('..')
     n_failed += n_failed_mainpy
     n_total += n_total_mainpy
