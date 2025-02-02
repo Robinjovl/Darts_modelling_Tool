@@ -19,6 +19,23 @@ class Output:
     """
     def __init__(self, timer: timer_node, reservoir, physics, op_list, params, output_folder, sol_filename, well_filename,
                  save_initial, all_phase_props, precision, compression, verbose):
+        """
+        Class constructor method for output related functionalities including saving primary variables (state variables),
+        evaulating secondary variables (properties) and creating visualizations.
+
+        :param timer: timer object to measure time spent saviving data, and evaluating properties
+        :reservoir: reservoir object
+        :param physics: physics object
+        :param op_list: list of operator interpolators
+        :param params: engine params
+        :param output_folder: output folder for saved data and figures
+        :param sol_filename: hdf5 filename for saving reservoir solution
+        :param well_filename: hdf5 filename for saving well solution
+        :param save_initial: boolean flag to save initial conditions of reservoir
+        :param all_phase_props: boolean flag to define properties (secondary variables) aaccording to a predefined list.
+        :param compression: boolean flag to enable compression of hdf5 data
+        :param verbose: boolean flag to enable verbose output
+        """
         super().__init__()
 
         self.reservoir = reservoir
@@ -93,17 +110,26 @@ class Output:
             # If all_phase_props is False, update properties list based on output_props
             self.properties = list(self.physics.property_containers[0].output_props.keys())
 
-    def filter_phase_props(self, new_prop_keys = ['sat1', 'dens0']):
+    def filter_phase_props(self, new_prop_keys):
+        """
+        Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
+
+        :param new_prop_keys: list of properties to keep
+        :type new_prop_keys: list
+
+        :raises ValueError: If any key in `new_prop_keys` is not an available property.
+        """
         for region in self.physics.regions:
             output_dictionary = self.physics.property_containers[region].output_props
             prop_keys = list(output_dictionary.keys())
-            print(f'Available properties in region {region} are {prop_keys}')
 
             # Warn if any key is missing in the available properties
             for key in new_prop_keys:
                 if key not in prop_keys:
-                    print(f"Warning: '{key}' is not an available property, choose properties out of {prop_keys}")
-                    # break
+                    raise ValueError(
+                        f"The following properties are not available: {missing_keys}. "
+                        f"Choose properties from: {prop_keys}"
+                    )
 
             # Create a new dictionary with only the available keys from new_prop_keys
             new_output_dictionary = {}
@@ -123,6 +149,7 @@ class Output:
     def load_restart_data(self, reservoir_filename: str, well_filename: str, timestep: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
+
         :param filename (str): Path to the restart file (default: 'restart/reservoir_solution.h5').
         :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
         """
@@ -200,6 +227,7 @@ class Output:
     def configure_output(self, kind: str):
         """
         Configuration of output
+
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         :param restart: Boolean to check if existing file should be overwritten or appended
@@ -241,6 +269,7 @@ class Output:
     def save_specific_data(self, filename):
         """
         Function to write output to *.h5 file
+
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
@@ -265,6 +294,7 @@ class Output:
     def save_data_to_h5(self, kind):
         """
         Function to write output solution or well output to *.h5 file
+
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         """
@@ -294,61 +324,77 @@ class Output:
 
     def read_specific_data(self, filename: str, timestep: int = None):
         """
-        Function to read *.h5 files contents.
+        Extracts time and data from an HDF5 file for a given timestep.
 
-        :param filename: path to *.h5 filename to append data to
-        :param timestep:
-        :return time: time of the saved data in days
-        :rtype: np.ndarray
-        :return cell_id: cell id of each of the saved grid blocks
-        :rtype: np.ndarray
-        :return X: variables names
-        :rtype: np.ndarray
+        :param filename: Path to the HDF5 file
+        :type file_path: str
+        :param timestep: The timestep to extract data for.
+        :type timestep: int
+
+        :return: time, ndarray with extracted timesteps
+        :return cell_id: ndarray with cell_id of each of the saved grid blocks
+        :return X: ndarray with data, shape: (number_of_timesteps, number_of_cells, number_of_vars)
+        :return var_names: ndarray with variable names
+
+        :raises FileNotFoundError: If the file does not exist.
+        :raises IndexError: If `timestep` is out of range.
         """
 
-        # Open the HDF5 file
-        with h5py.File(filename, 'r') as file:
-            if timestep is None:
-                datapoints = file['dynamic/X'].shape[0] * file['dynamic/X'].shape[1] * file['dynamic/X'].shape[2]
-                print('WARNING: %s contains %d data points...' % (filename, datapoints))
+        try:
+            with h5py.File(filename, 'r') as file:
+                if timestep is None:
+                    datapoints = file['dynamic/X'].shape[0] * file['dynamic/X'].shape[1] * file['dynamic/X'].shape[2]
+                    # print('WARNING: %s contains %d data points...' % (filename, datapoints)) if self.verbose
 
-                cell_id = file['dynamic/cell_id'][:]
-                var_names = file['dynamic/variable_names'][:]
-                time = file['dynamic/time'][:]
-                X = file['dynamic/X'][:]
-            else:
-                cell_id = file['dynamic/cell_id'][:]
-                var_names = file['dynamic/variable_names'][:]
-                time = file['dynamic/time'][timestep].reshape(1)
-                X = file['dynamic/X'][timestep].reshape(1, len(cell_id), len(var_names))
+                    cell_id = file['dynamic/cell_id'][:]
+                    var_names = file['dynamic/variable_names'][:]
+                    time = file['dynamic/time'][:]
+                    X = file['dynamic/X'][:]
+                else:
+                    cell_id = file['dynamic/cell_id'][:]
+                    var_names = file['dynamic/variable_names'][:]
+                    try:
+                        time = file['dynamic/time'][timestep].reshape(1)
+                        X = file['dynamic/X'][timestep].reshape(1, len(cell_id), len(var_names))
+                    except IndexError:
+                        raise IndexError(
+                            f"Timestep {timestep} is out of range in the HDF5 file.")
 
+            for i, name in enumerate(var_names):
+                var_names[i] = name.decode()
 
-        for i, name in enumerate(var_names):
-            var_names[i] = name.decode()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {filename}")
 
         return time, cell_id, X, var_names
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple:
         """
-        Function evaluates properties from saved data in *.h5 file or engine.
+        Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
 
-        :param output_properties: list of properties to evaluate for output, default = None, returns a property_array with only state variables
-        :param filepath: filepath to solution.h5, default = None, points to previously defined output folder
-        :param timestep: timestep at which you want to evaluate properties, default = None results in evaluation of all saved timesteps
-        :param engine: Boolean to evaluate properties directly from engine, default = False, results in properties being evaluated from *.h5
-        :return property_array : dict of property arrays per timestep, per gridblock
-        :return timesteps: ndarray the time labels for property_array per gridblock
+        :param filepath: Path to the solution HDF5 file. Defaults to None, which uses a previously defined output folder.
+        :type filepath: str, optional
+        :param output_properties: List of properties to evaluate. Defaults to None, which returns an array containing only state variables.
+        :type output_properties: list, optional
+        :param timestep: Timestep at which to evaluate properties. Defaults to None, which evaluates all saved timesteps.
+        :type timestep: int, optional
+        :param engine: Whether to evaluate properties directly from the simulation engine. Defaults to False, which reads properties from the HDF5 file.
+        :type engine: bool, optional
+    
+        :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
+        :type property_array: dict
+        :return timesteps: A NumPy array of the time labels.
+        :type timesteps: np.ndarray
+
+        :raises ValueError: If specified property in `output_properties` is not found in any property container
         """
 
-        if engine is False:
-            # Evaluate properties from the *.h5 file
+        if not engine:
+            # Evaluate properties from the HDF5 file
             if filepath is None:
                 path = os.path.join(self.output_folder, self.sol_filename)
             else:
                 path = filepath
-
-            if not os.path.exists(path) and not engine:
-                raise FileNotFoundError(f"The specified file does not exist: {path}")
 
             timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep)
 
@@ -365,12 +411,23 @@ class Output:
         nb = len(cell_id)
 
         output_properties = output_properties if output_properties is not None else list(self.physics.vars)
+
         # primary properties i.e. state variables
         primary_props = [prop for prop in output_properties if prop in var_names]
         primary_prop_idxs = {prop: list(var_names).index(prop) for prop in primary_props}
+
         # secondary properties defined
         secondary_props = [prop for prop in output_properties if prop not in var_names]
-        secondary_prop_idxs = {prop: list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop) for prop in secondary_props}
+        # secondary_prop_idxs = {prop: list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop) for prop in secondary_props}
+        secondary_prop_idxs = {}
+        for prop in secondary_props:
+            for container in self.physics.property_containers.values():
+                if prop in container.output_props:
+                    secondary_prop_idxs[prop] = list(container.output_props.keys()).index(prop)
+                    break
+            else:
+                raise ValueError(f"Secondary property '{prop}' not found in any property container.")
+
         # define property array
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in primary_props + secondary_props}
 
@@ -402,7 +459,6 @@ class Output:
                 for prop_name, prop_idx in secondary_prop_idxs.items():
                     property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
 
-        # property_array['time'] = timesteps
         return timesteps, property_array
 
     def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False):
