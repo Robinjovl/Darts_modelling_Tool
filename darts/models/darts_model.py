@@ -432,9 +432,9 @@ class DartsModel:
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
-                if dt < self.params.min_ts:
-                    print('Stop simulation. Reason: reached min. timestep', self.params.min_ts, 'dt=', dt)
-                    return -1
+                assert dt > self.params.min_ts, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(self.params.min_ts) + ' dt=' + str(dt))
+               
 
         # update current engine time
         self.physics.engine.t = stop_time

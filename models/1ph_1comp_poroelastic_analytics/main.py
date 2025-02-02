@@ -15,6 +15,13 @@ font = {'family' : 'normal',
         'size'   : 18}
 plt.rc('legend',fontsize=12)
 
+try:
+    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+    from darts.engines import set_num_threads
+    set_num_threads(1)
+except:
+    pass
+
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days

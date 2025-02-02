@@ -18,9 +18,11 @@ thirdparty/install
 
 # cache
 docs/_build
+**/.cache
 **/__pycache__/
 darts/__pycache__/
 models/__pycache__/
+**/.cache/
 
 # building info
 darts/build_info.txt
