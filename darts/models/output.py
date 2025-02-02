@@ -295,6 +295,7 @@ class Output:
     def read_specific_data(self, filename: str, timestep: int = None):
         """
         Function to read *.h5 files contents.
+
         :param filename: path to *.h5 filename to append data to
         :param timestep:
         :return time: time of the saved data in days
@@ -329,15 +330,18 @@ class Output:
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple:
         """
-        Function to read *.h5 data and evaluate properties per grid block, per timestep
-        :param output_properties: list of properties to evaluate for output, default = None (no properties)
-        :param filepath: solution filepath, e.g. /solution.h5
-        :param timestep: timestep at which you want to evaluate properties, default = None (all the timesteps are evaluated)
+        Function evaluates properties from saved data in *.h5 file or engine.
+
+        :param output_properties: list of properties to evaluate for output, default = None, returns a property_array with only state variables
+        :param filepath: filepath to solution.h5, default = None, points to previously defined output folder
+        :param timestep: timestep at which you want to evaluate properties, default = None results in evaluation of all saved timesteps
+        :param engine: Boolean to evaluate properties directly from engine, default = False, results in properties being evaluated from *.h5
         :return property_array : dict of property arrays per timestep, per gridblock
-        :return timesteps: ndarray the time labels of the evaluated timesteps
+        :return timesteps: ndarray the time labels for property_array per gridblock
         """
 
         if engine is False:
+            # Evaluate properties from the *.h5 file
             if filepath is None:
                 path = os.path.join(self.output_folder, self.sol_filename)
             else:
@@ -349,6 +353,7 @@ class Output:
             timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep)
 
         else:
+            # Evaluate properties from the engine
             timesteps = np.array(self.physics.engine.t).reshape(1,)
             cell_id = np.arange(self.reservoir.mesh.n_res_blocks)
             X = np.array(self.physics.engine.X[:self.physics.n_vars*self.reservoir.mesh.n_res_blocks], copy = True)
@@ -359,35 +364,45 @@ class Output:
         n_ops = self.physics.n_ops
         nb = len(cell_id)
 
-        props = list(var_names) + self.properties if output_properties is None else list(var_names) + output_properties
-        prop_list = self.properties if output_properties is None else output_properties
-        prop_idxs = [self.properties.index(prop) for prop in prop_list]
-        property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
+        output_properties = output_properties if output_properties is not None else list(self.physics.vars)
+        # primary properties i.e. state variables
+        primary_props = [prop for prop in output_properties if prop in var_names]
+        primary_prop_idxs = {prop: list(var_names).index(prop) for prop in primary_props}
+        # secondary properties defined
+        secondary_props = [prop for prop in output_properties if prop not in var_names]
+        secondary_prop_idxs = {prop: list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop) for prop in secondary_props}
+        # define property array
+        property_array = {prop: np.zeros((len(timesteps), nb)) for prop in primary_props + secondary_props}
 
         # Loop over timesteps
-        for ts, timestep in enumerate(timesteps):
+        for k, timestep in enumerate(timesteps):
 
-            # Extract vector of states
-            for j, variable in enumerate(var_names):
+            # Extract primary properties from X vector
+            for var_name, var_idx in primary_prop_idxs.items():
                 if engine is False:
-                    property_array[variable][ts, :] = X[ts,:nb,j]
+                    property_array[var_name][k] = X[k, :nb, var_idx]
                 else:
-                    property_array[variable][ts, :] = X[j::n_vars]
+                    property_array[var_name][k] = X[var_idx::n_vars]
 
-            # Evaluate properties
-            states_numpy = np.stack([property_array[var][ts] for var in var_names]).T.flatten()
-            state = value_vector(states_numpy)
-            values = value_vector(np.zeros(n_ops * nb))
-            values_numpy = np.array(values, copy=False)
-            dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
-            i = 0
-            for region, prop_itor in self.physics.property_itor.items():
-                prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
-                i += 1
+            # Interpolate secondary properties
+            if secondary_props:
+                if engine is False:
+                    state = value_vector(np.stack([X[k, :nb, j] for j in range(n_vars)]).T.flatten())
+                else:
+                    state = value_vector(np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten())
 
-            for j, prop in enumerate(prop_list):
-                property_array[prop][ts] = values_numpy[prop_idxs[j]::n_ops]
+                values = value_vector(np.zeros(n_ops * nb))
+                values_numpy = np.array(values, copy=False)
+                dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
+                i = 0
+                for region, prop_itor in self.physics.property_itor.items():
+                    prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
+                    i += 1
 
+                for prop_name, prop_idx in secondary_prop_idxs.items():
+                    property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
+
+        # property_array['time'] = timesteps
         return timesteps, property_array
 
     def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False):
