@@ -2722,26 +2722,29 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		time_data["time"].push_back(time + deltat);
 
-		//for (ms_well *w : wells)
-		//{
-		//	w->calc_rates(X, op_vals_arr, time_data);
-		//}
+		for (ms_well *w : wells)
+		{
+			if (w->model_type == "basic_well")
+			{
+				w->calc_rates(X, op_vals_arr, time_data);
+			}
+		}
 
-		//// calculate FIPS
-		//FIPS.assign(nc, 0);
-		//for (index_t i = 0; i < mesh->n_res_blocks; i++)
-		//{
-		//	for (uint8_t c = 0; c < nc; c++)
-		//	{
-		//		// assuming ACC_OP is 0
-		//		FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
-		//	}
-		//}
+		// calculate FIPS
+		FIPS.assign(nc, 0);
+		for (index_t i = 0; i < mesh->n_res_blocks; i++)
+		{
+			for (uint8_t c = 0; c < nc; c++)
+			{
+				// assuming ACC_OP is 0
+				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+			}
+		}
 
-		//for (uint8_t c = 0; c < nc; c++)
-		//{
-		//	time_data["FIPS c " + std::to_string(c) + " (kmol)"].push_back(FIPS[c]);
-		//}
+		for (uint8_t c = 0; c < nc; c++)
+		{
+			time_data["FIPS c " + std::to_string(c) + " (kmol)"].push_back(FIPS[c]);
+		}
 
 		Xn = X;
 		op_vals_arr_n = op_vals_arr;
