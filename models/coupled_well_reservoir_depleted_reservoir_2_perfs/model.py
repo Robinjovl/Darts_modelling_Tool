@@ -98,7 +98,7 @@ class Model(CICDModel):
         if 1:
             from nearwellbore import RadialStruct
             self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=permr, permz=permz, poro=poro,
-                                          R1=1000, logspace=True, boundary_volume=1e10, depth=2850)    # depth is the depth of the top exterface of the reservoir
+                                          R1=1000, logspace=True, boundary_volume=1e10, depth=2750)    # depth is the depth of the top exterface of the reservoir
 
         else:
             from nearwellbore import RadialUnstruct
@@ -203,8 +203,9 @@ class Model(CICDModel):
 
         self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
 
-        # Well with single perforation
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
+        # Well with two perforations
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 2), well_seg_idx=57, well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 4), well_seg_idx=59, well_geometry=well_1_geometry)
 
     def set_well_controls(self):
         inj_stream = [self.zero, 1 - 2 * self.zero]

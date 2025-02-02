@@ -100,7 +100,7 @@ class ReservoirBase:
         :param darts_model: Instance of the class DartsModel
         :type darts_model: DartsModel
         """
-        well = ms_well()  # Change the name of the class ms_well to well, which is general.
+        well = ms_well()
         well.name = well_name
         well.model_type = well_type
 
@@ -120,10 +120,8 @@ class ReservoirBase:
             assert well_ID is None, "For ms_well, well_ID must not be specified!"
             assert well_geometry is not None, "For ms_well, well_geometry must be specified!"
             assert physics is not None, "For ms_well, physics must be specified!"
-            # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
-            # the perforated segment in front of the reservoir.
-            # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated
-            # segment to the wellhead ghost segment.
+            # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated or
+            # non-perforated segment to the wellhead segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes[::-1])
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector((well_geometry.pipe_length - well_geometry.z)[::-1])

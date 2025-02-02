@@ -148,13 +148,18 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), mesh->n_res_conns / 2, 0);
     for (ms_well* w : wells)
     {
-        // zero velocity for perforaiton of each well (I'm sure, this does not work properly if the well has multiple perforations), which will remain unused
-        phase_A_veloc.push_back(0);
-        phase_B_veloc.push_back(0);
+        // zero velocity for perforation of each well, which will remain unused
+        index_t n_perfs = w->perforations.size();
+        phase_A_veloc.insert(phase_A_veloc.end(), n_perfs, 0);
+        phase_B_veloc.insert(phase_B_veloc.end(), n_perfs, 0);
+        /*phase_A_veloc.push_back(0);
+        phase_B_veloc.push_back(0);*/
 
         // derivatives of phase velocities at perforation, which will remain unused
-        phase_A_veloc_ders.push_back(0);
-        phase_B_veloc_ders.push_back(0);
+        phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_perfs, 0);
+        phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
+        /*phase_A_veloc_ders.push_back(0);
+        phase_B_veloc_ders.push_back(0);*/
         if (w->model_type == "ms_well")
         {
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);

@@ -287,25 +287,26 @@ class DartsModel:
                 #     for vec in vectors_to_interleave:
                 #         if i < len(vec):  # Ensure we don't go out of bounds
                 #             wells_initial_composition.append(vec[i])
-            start = self.reservoir.mesh.n_res_blocks
-            end = start
+            start_w_idx = self.reservoir.mesh.n_res_blocks
+            end_w_idx = start_w_idx
             for well in self.reservoir.wells:
                 if well.model_type == "basic_well":
-                    end += 2
+                    end_w_idx += 2
                 elif well.model_type == "ms_well":
-                    end += well.num_segments
+                    end_w_idx += well.num_segments
                 if well.model_type == "ms_well":
                     if variable == 'pressure':
                         wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
-                        values[start:end:] = wells_initial_pressure_profile[::-1]
+                        values[start_w_idx:end_w_idx:] = wells_initial_pressure_profile[::-1]
                     elif variable == 'temperature':
                         wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"]
-                        values[start:end:] = wells_initial_temperature_profile[::-1]
+                        values[start_w_idx:end_w_idx:] = wells_initial_temperature_profile[::-1]
                     elif variable not in ['pressure', 'temperature']:
                         wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
-                        values[start * (self.physics.nc-1) + c:end * (self.physics.nc-1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[::-1]
+                        values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(
+                                    self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[::-1]
 
-                start = end
+                start_w_idx = end_w_idx
 
         return
 

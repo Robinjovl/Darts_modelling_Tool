@@ -32,7 +32,7 @@ class Model(CICDModel):
 
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=300/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=6000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -43,7 +43,7 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nx = 1000   # 2000 worked after two stationary points, 10000 worked after a lot of stationary points, I did not try more than 10000
+        nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=0.1, dy=50, dz=50,
                                          permx=100, permy=100, permz=100, poro=0.2, depth=975)
         self.reservoir.boundary_volumes = {'xy_minus': None, 'xy_plus': None,
@@ -113,13 +113,13 @@ class Model(CICDModel):
                                  not self.physics.property_containers[0].thermal)
 
         self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
-        self.reservoir.add_perforation(well_1_name, cell_index=(1, 1, 6), well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 6), well_seg_idx=20, well_geometry=well_1_geometry)
 
     def set_physics(self):
-        # """Physical properties"""
+        """Physical properties"""
         zero = 1e-5
         components_names = ['CO2', 'C1', 'H2O']
-        phases_names = ['gas', 'liquid']
+        phases_names = ['gas', 'aqueous']
         comp_data = CompData(components_names, setprops=True)
 
         ceos = CubicEoS(comp_data, CubicEoS.PR)
@@ -143,11 +143,11 @@ class Model(CICDModel):
 
         property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
         property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
-                                              ('liquid', Garcia2001(components_names))])
+                                              ('aqueous', Garcia2001(components_names))])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('liquid', Islam2012(components_names))])
+                                                ('aqueous', Islam2012(components_names))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('liquid', PhaseRelPerm("oil"))])
+                                               ('aqueous', PhaseRelPerm("oil"))])
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
         """ Activate physics """
@@ -155,12 +155,12 @@ class Model(CICDModel):
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
-        property_container.output_props = {"sat_CO2_rich_phase": lambda: self.physics.property_containers[0].sat[0],
-                                           "mole_fraction_CO2__in_CO2_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
-                                           "mole_fraction_CO2__in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
-                                           "rho_CO2_rich_phase": lambda: self.physics.property_containers[0].dens[0],
+        property_container.output_props = {"sat_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].sat[0],
+                                           "mole_fraction_CO2_in_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
+                                           "mole_fraction_CO2_in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
+                                           "rho_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].dens[0],
                                            "rho_aqueous_phase": lambda: self.physics.property_containers[0].dens[1],
-                                           "miu_CO2_rich_phase": lambda: self.physics.property_containers[0].mu[0],
+                                           "miu_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].mu[0],
                                            "miu_aqueous_phase": lambda: self.physics.property_containers[0].mu[1]}
 
         return

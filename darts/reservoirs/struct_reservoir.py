@@ -137,19 +137,22 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_ID: float = None, well_geometry: PipeGeometry = None,
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None, well_ID: float = None, well_geometry: PipeGeometry=None,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
-                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+                        skin: float = 0, multi_segment: bool = None, verbose: bool = False):
         """
         Function to add perforations to wells.
         """
         well = self.get_well(well_name)
         # calculate well index and get local index of reservoir block
-        i, j, k = cell_index
+        i, j, k = res_cell_idx
         if well.model_type == "basic_well":
+            assert well_seg_idx is None, "If the well is of the basic type, well_seg_idx must not be specified!"
             res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
                                                                         segment_direction=segment_direction, skin=skin)
         elif well.model_type == "ms_well":
+            assert well_seg_idx is not None, "If the well is of the ms_well type, well_seg_idx must be specified!"
+            assert multi_segment is None, "If the well is of the ms_well type, multi_segment must not be specified!"
             res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_geometry.pipe_ID,
                                                                         segment_direction=segment_direction, skin=skin)
 
@@ -162,11 +165,14 @@ class StructReservoir(ReservoirBase):
         assert well_index >= 0
         assert well_indexD >= 0
 
-        # set well segment index (well block) equal to index of perforation layer
-        if multi_segment:
-            well_block = len(well.perforations)
-        else:
-            well_block = 0
+        if well.model_type == "basic_well":
+            # set well segment index (well block) equal to index of perforation layer
+            if multi_segment:
+                well_block = len(well.perforations)
+            else:
+                well_block = 0
+        elif well.model_type == "ms_well":
+            well_block = well_seg_idx - 2
 
         # add completion only if target block is active
         if res_block_local > -1:

@@ -10,7 +10,6 @@
 #include "well_controls.h"
 #include "evaluator_iface.h"
 
-
 // Does not seem to be needed
 // class csr_matrix_base;
 
@@ -42,11 +41,11 @@ public:
 
   ms_well()
   {
-    segment_volume = 0; // 1 m high, 0.3 m diameter
+    segment_volume = 0;
     segments_volumes = {};
     segments_depths = {};
     num_segments = 0;
-    well_transmissibility = 100000;
+    well_transmissibility = 100000;   // used for wells of the type "basic_well"
     control = 0;
     constraint = 0;
     well_head_depth = 0;
@@ -177,9 +176,8 @@ public:
 
   WellType well_type;          // type to be producer or injector
   
-  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities_and_derivatives(std::vector<value_t> Xn_ms_well, std::vector<value_t> X_ms_well, value_t dt);
-
   std::shared_ptr<void> velocity_evaluator;  // pointer to py object
+  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities_and_derivatives(std::vector<value_t> Xn_ms_well, std::vector<value_t> X_ms_well, value_t dt);
 };
 
 #endif

@@ -6,7 +6,11 @@ import numpy as np
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
-from darts.physics.properties.basic import PhaseRelPerm
+from darts.physics.properties.flash import ConstantK
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.density import DensityBasic
+
+from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity
@@ -29,8 +33,7 @@ class Model(CICDModel):
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
 
-        self.set_reservoir_radial()
-
+        self.set_reservoir()
         self.set_physics()
 
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=3000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
@@ -38,43 +41,19 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
         zero = 1e-5
-        self.initial_values = {self.physics.vars[0]: 5.894002,
+        self.initial_values = {self.physics.vars[0]: 5.332344,
                                self.physics.vars[1]: zero,
                                self.physics.vars[2]: zero
                                }
 
     def set_reservoir(self):
         nx = 1000
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=0.1, dy=50, dz=50,
-                                         permx=100, permy=100, permz=100, poro=0.2, depth=975)
+        depth = np.concatenate((925 * np.ones(nx), 975 * np.ones(nx)))
+        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=2, dx=0.1, dy=50, dz=50,
+                                         permx=100, permy=100, permz=100, poro=0.2, depth=depth)
         self.reservoir.boundary_volumes = {'xy_minus': None, 'xy_plus': None,
                                            'yz_minus': 1e9, 'yz_plus': 1e9,
                                            'xz_minus': None, 'xz_plus': None}
-        return
-
-    def set_reservoir_radial(self):
-        from radial_grid import RadialStruct
-
-        (nr, nz) = (100, 11)
-        (dr, dz) = (5, 50)
-
-        self.nr = nr
-
-        poro = np.ones((nr, nz)) * 0.001
-        perm = np.ones((nr, nz)) * 0.001
-        poro[:, 1:10] = 0.2
-        perm[:, 1:10] = 100
-
-        top_depth = 700
-
-        poro = poro.flatten(order='F')
-        perm = perm.flatten(order='F')
-
-        self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=perm, permz=perm / 10, poro=poro,
-                                      R1=300, logspace=True, boundary_volume=1e6, depth=top_depth)
-
-        self.reservoir.boundary_volumes['xy_plus'] = 1e8
-        self.reservoir.boundary_volumes['xy_minus'] = 1e8
         return
 
     def set_wells(self):
@@ -83,7 +62,7 @@ class Model(CICDModel):
         well_1_type = "ms_well"
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = 50 * np.ones(20)   # From bottom to top of the wellbore
+        well_1_segments_lengths = 50 * np.ones(20)  # From bottom to top of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -91,12 +70,17 @@ class Model(CICDModel):
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
 
-        #%% Set initial conditions in the pipe using SingleAmbientTemperature
+        # %% Set initial conditions in the pipe using SingleAmbientTemperature
         system_temperature = self.physics.property_containers[0].temperature
         pipe_head_pressure = 5   # bar
         pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
 
-        initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1 - 2 * 1e-5, 1e-5, 1e-5]],
+        # Wellhead conditions because of the constant rate control
+        # zero = self.physics.axes_min[1]
+        # well_head_segment_phase = 'gas'
+        # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
+        # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
+        initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1e-5, 1 - 2 * 1e-5, 1e-5]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], system_temperature,
@@ -114,7 +98,23 @@ class Model(CICDModel):
                                  not self.physics.property_containers[0].thermal)
 
         self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 6), well_seg_idx=20, well_geometry=well_1_geometry)
+        reservoir_middle_cell_index = int(self.reservoir.nx / 2)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=19, well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 2), well_seg_idx=20, well_geometry=well_1_geometry)
+
+        """================================================= Well 2 ================================================="""
+        # well_2_name = "P1"
+        # well_2_type = "basic_well"
+        # well_2_ID = 0.1
+        # self.reservoir.add_well(well_2_name, well_2_type, well_ID=well_2_ID)
+        # self.reservoir.add_perforation(well_2_name, cell_index=(1, 1, 1), well_ID=well_2_ID)
+
+        """================================================= Well 3 ================================================="""
+        # well_3_name = "P2"
+        # well_3_type = "basic_well"
+        # well_3_ID = 0.1
+        # self.reservoir.add_well(well_3_name, well_3_type, well_ID=well_3_ID)
+        # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
     def set_physics(self):
         """Physical properties"""
@@ -136,7 +136,7 @@ class Model(CICDModel):
         # Flash-related parameters
         flash_params.split_tol = 1e-14
 
-        system_temperature = 35 + 273.15
+        system_temperature = 10 + 273.15
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
@@ -157,8 +157,8 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         property_container.output_props = {"sat_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].sat[0],
-                                           "mole_fraction_CO2_in_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
-                                           "mole_fraction_CO2_in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
+                                           "mole_fraction_CO2__in_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
+                                           "mole_fraction_CO2__in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
                                            "rho_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].dens[0],
                                            "rho_aqueous_phase": lambda: self.physics.property_containers[0].dens[1],
                                            "miu_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].mu[0],
@@ -168,13 +168,19 @@ class Model(CICDModel):
 
     def set_well_controls(self):
         inj_stream = [1e-5, 1e-5]
-        # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
-        # 58895.98 kmol/day = 30 kg/s
-        self.reservoir.wells[0].control = self.physics.new_rate_inj(0, inj_stream, 0)  # inj rate in kmol/day
+        # inj_stream = [1e-5]
+        for i, w in enumerate(self.reservoir.wells):
+            if i == 0:
+                # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
+                # 58895.98 kmol/day = 30 kg/s
+                w.control = self.physics.new_rate_inj(0, inj_stream, 0)   # inj rate in kmol/day
+            # else:
+            #     w.control = self.physics.new_bhp_prod(self.initial_values['pressure'])
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
+        # inj_comp = np.array([1.0 - 1e-5, 1e-5])
         inj_rate = 58895.98/3   # kmol/day
         inj_flux = inj_rate * inj_comp
         well_head_start_idx = self.reservoir.mesh.n_res_blocks * self.physics.n_vars

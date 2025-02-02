@@ -36,7 +36,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=3000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,   # increase the time step size from 20 to 30 sec
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=3000/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -45,9 +45,6 @@ class Model(CICDModel):
                                self.physics.vars[1]: zero,
                                self.physics.vars[2]: zero
                                }
-        # self.initial_values = {self.physics.vars[0]: 60.915767,
-        #                        self.physics.vars[1]: zero,
-        #                        }
 
     def set_reservoir(self):
         nx = 1000
@@ -64,9 +61,7 @@ class Model(CICDModel):
         well_1_type = "ms_well"
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        # well_1_segments_lengths = np.concatenate(([50], 50 * np.ones(20), [50]))  # From bottom to top of the wellbore
-        # well_1_segments_lengths = 10 * np.ones(2)
-        well_1_segments_lengths = 50 * np.ones(20)
+        well_1_segments_lengths = 50 * np.ones(20)   # From bottom to top of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -84,10 +79,8 @@ class Model(CICDModel):
         # well_head_segment_phase = 'gas'
         # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
         # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
-        initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5]],
+        initial_fluid_conditions = {'phases_names': ['aqueous'], 'phases_compositions': [[1e-5, 1e-5, 1 - 2 * 1e-5]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
-        # initial_fluid_conditions = {'phases_names': ['liquid'], 'phases_compositions': [[1e-5, 1 - 1e-5]],
-        #                             'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], system_temperature,
                                                              pipe_head_pressure, pipe_head_segment_index,
@@ -100,14 +93,12 @@ class Model(CICDModel):
         self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
                                          'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
                                          'initial_C1_mole_fraction': initial_C1_mole_fraction}
-        # self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
-        #                                  'initial_CO2_mole_fraction': initial_CO2_mole_fraction}
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
         self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
         reservoir_middle_cell_index = int(self.reservoir.nx / 2)
-        self.reservoir.add_perforation(well_1_name, cell_index=(reservoir_middle_cell_index, 1, 1), well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=20, well_geometry=well_1_geometry)
 
         """================================================= Well 2 ================================================="""
         # well_2_name = "P1"
@@ -124,10 +115,10 @@ class Model(CICDModel):
         # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
     def set_physics(self):
-        # """Physical properties"""
+        """Physical properties"""
         zero = 1e-5
         components_names = ['CO2', 'C1', 'H2O']
-        phases_names = ['gas', 'liquid']
+        phases_names = ['gas', 'aqueous']
         comp_data = CompData(components_names, setprops=True)
 
         ceos = CubicEoS(comp_data, CubicEoS.PR)
@@ -151,33 +142,11 @@ class Model(CICDModel):
 
         property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
         property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
-                                              ('liquid', Garcia2001(components_names))])
+                                              ('aqueous', Garcia2001(components_names))])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('liquid', Islam2012(components_names))])
-
-        # """Physical properties"""
-        # zero = 1e-5
-        # # Create property containers:
-        # components_names = ['CO2', 'C1', 'H2O']
-        # # components_names = ['CO2', 'H2O']
-        # phases_names = ['gas', 'liquid']
-        # thermal = 0
-        # system_temperature = 35 + 273.15
-        # Mw = [44.0098, 16.04288, 18.0152]
-        # # Mw = [44.0098, 18.0152]
-        #
-        # property_container = PropertyContainer(phases_name=phases_names, components_name=components_names,
-        #                                        Mw=Mw, min_z=zero / 10, temperature=system_temperature)
-        #
-        # """ properties correlations """
-        # property_container.flash_ev = ConstantK(len(components_names), [4, 2, 1e-1], zero)
-        # # property_container.flash_ev = ConstantK(len(components_names), [4, 1e-1], zero)
-        # property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-        #                                       ('liquid', DensityBasic(compr=1e-5, dens0=600))])
-        # property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-        #                                         ('liquid', ConstFunc(0.5))])
+                                                ('aqueous', Islam2012(components_names))])
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('liquid', PhaseRelPerm("oil"))])
+                                               ('aqueous', PhaseRelPerm("oil"))])
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
         """ Activate physics """

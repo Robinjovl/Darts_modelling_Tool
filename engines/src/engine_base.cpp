@@ -1689,24 +1689,41 @@ engine_base::calc_well_residual_L2()
 	for (ms_well *w : wells)
 	{
 		// first sum up RHS for well segments which have perforations
-		int nperf = w->perforations.size();
-		for (int ip = 0; ip < nperf; ip++)
+		if (w->model_type == "basic_well")
 		{
+			int nperf = w->perforations.size();
+			for (int ip = 0; ip < nperf; ip++)
+			{
+				for (int v = 0; v < n_vars; v++)
+				{
+					index_t i_w, i_r;
+					value_t wi, wid;
+					std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
+
+					res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
+					norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				}
+			}
+			// and then add RHS for well control equations
 			for (int v = 0; v < n_vars; v++)
 			{
-				index_t i_w, i_r;
-				value_t wi, wid;
-				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
-
-				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
-				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				// well constraints should not be normalized, so pre-multiply by norm
+				res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 			}
 		}
-		// and then add RHS for well control equations
-		for (int v = 0; v < n_vars; v++)
+		else if (w->model_type == "ms_well")
 		{
-			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
+			for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
+			{
+				for (int c = 0; c < n_vars; c++)
+				{
+					res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
+				}
+			}
+			for (int c = 0; c < n_vars; c++)   ///////////////////////////////////////
+			{
+				norm[c] = 1;                   ///////////////////////////////////////   This works only if we have ms_well
+			}                                  ///////////////////////////////////////
 		}
 	}
 
@@ -2705,26 +2722,26 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		time_data["time"].push_back(time + deltat);
 
-		for (ms_well *w : wells)
-		{
-			w->calc_rates(X, op_vals_arr, time_data);
-		}
+		//for (ms_well *w : wells)
+		//{
+		//	w->calc_rates(X, op_vals_arr, time_data);
+		//}
 
-		// calculate FIPS
-		FIPS.assign(nc, 0);
-		for (index_t i = 0; i < mesh->n_res_blocks; i++)
-		{
-			for (uint8_t c = 0; c < nc; c++)
-			{
-				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
-			}
-		}
+		//// calculate FIPS
+		//FIPS.assign(nc, 0);
+		//for (index_t i = 0; i < mesh->n_res_blocks; i++)
+		//{
+		//	for (uint8_t c = 0; c < nc; c++)
+		//	{
+		//		// assuming ACC_OP is 0
+		//		FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+		//	}
+		//}
 
-		for (uint8_t c = 0; c < nc; c++)
-		{
-			time_data["FIPS c " + std::to_string(c) + " (kmol)"].push_back(FIPS[c]);
-		}
+		//for (uint8_t c = 0; c < nc; c++)
+		//{
+		//	time_data["FIPS c " + std::to_string(c) + " (kmol)"].push_back(FIPS[c]);
+		//}
 
 		Xn = X;
 		op_vals_arr_n = op_vals_arr;
