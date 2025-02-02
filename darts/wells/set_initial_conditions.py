@@ -46,8 +46,10 @@ class SingleAmbientTemperature:
         self.pipe_head_segment_index = pipe_head_segment_index
 
         for phase_composition in initial_fluid_conditions['phases_compositions']:
-            assert sum(phase_composition) == 1, "Summation of initial fluid mole fractions must be equal to 1!"
-            assert len(phase_composition) == property_container.nc, "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
+                "Summation of initial fluid mole fractions must be equal to 1!"
+            assert len(phase_composition) == property_container.nc, \
+                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
         self.initial_fluid_conditions = initial_fluid_conditions
 
         self.measured_depths_segments = sum(self.pipe_geom.segments_lengths) - self.pipe_geom.z
