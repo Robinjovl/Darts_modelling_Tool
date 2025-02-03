@@ -133,6 +133,11 @@ class Model_CPG(CICDModel):
         self.physics.engine.report()
         self.print_well_rate()
 
-
+    def output_properties(self, output_properties, timestep):
+        # overload to add additional arrays (geomechanical proxy results) to vtk output
+        tsteps, props = super().output_properties(output_properties=output_properties, timestep=timestep)
+        if hasattr(self, 'out'):
+            props.update(self.out)
+        return tsteps, props
 
 
