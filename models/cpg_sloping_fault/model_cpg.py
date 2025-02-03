@@ -135,7 +135,8 @@ class Model_CPG(CICDModel):
 
     def output_properties(self, output_properties, timestep):
         # overload to add additional arrays (geomechanical proxy results) to vtk output
-        tsteps, props = super().output_properties(output_properties=output_properties, timestep=timestep)
+        output_properties_2 = ['pressure'] + output_properties
+        tsteps, props = super().output_properties(output_properties=output_properties_2, timestep=timestep)
         if hasattr(self, 'out'):
             props.update(self.out)
         return tsteps, props

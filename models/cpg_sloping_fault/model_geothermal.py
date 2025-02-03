@@ -78,7 +78,7 @@ class ModelGeothermal(Model_CPG):
             if verbose and w.constraint is None and 'rate' in str(type(w.control)):
                 print('A constraint for the well ' + w.name + ' is not initialized!')
 
-    def get_arrays(self):
+    def get_arrays_orig(self):
         '''
         :return: dictionary of current unknown arrays (p, T)
         '''
@@ -109,6 +109,17 @@ class ModelGeothermal(Model_CPG):
         print('P range [bars]:', fmt(P.min()), '-', fmt(P.max()), 'T range [degrees]:', fmt(T.min()), '-', fmt(T.max()))
 
         return a
+
+    def get_arrays(self, ith_step):
+        '''
+        :return: dictionary of current unknown arrays (p, T)
+        '''
+        # Find index of properties to output
+        ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
+        # If output_properties is None, all variables and properties from property_operators will be passed
+        props_names = list(ev_props)
+        timesteps, property_array = self.output_properties(output_properties=props_names, timestep=ith_step)
+        return property_array
 
     def print_well_rate(self):
         inj_well = prd_well = None
