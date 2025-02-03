@@ -244,7 +244,8 @@ class DartsModel:
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
         if any(well.model_type == "ms_well" for well in self.reservoir.wells):
-            assert hasattr(self,'wells_initial_conditions'), "Initial conditions of the multi-segmented well/wells are not defined!"
+            assert hasattr(self, 'wells_initial_conditions'), \
+                "Initial conditions of the multi-segmented well/wells are not defined!"
 
         for i, variable in enumerate(self.physics.vars):
             # Check if variable exists in initial values dictionary
@@ -277,36 +278,28 @@ class DartsModel:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
 
-                # # For initial composition
-                # vectors_to_interleave = [self.wells_initial_conditions[key]
-                #                          for key in self.wells_initial_conditions
-                #                          if key not in {"initial_pressure", "initial_temperature"}]
-                # max_length = max(len(vec) for vec in vectors_to_interleave)  # Determine the longest vector
-                # wells_initial_composition = []
-                # for i in range(max_length):
-                #     for vec in vectors_to_interleave:
-                #         if i < len(vec):  # Ensure we don't go out of bounds
-                #             wells_initial_composition.append(vec[i])
             start_w_idx = self.reservoir.mesh.n_res_blocks
             end_w_idx = start_w_idx
+            start_ms_w_idx = 0
             for well in self.reservoir.wells:
                 if well.model_type == "basic_well":
                     end_w_idx += 2
                 elif well.model_type == "ms_well":
                     end_w_idx += well.num_segments
+                    end_ms_w_idx = start_ms_w_idx + well.num_segments
                 if well.model_type == "ms_well":
                     if variable == 'pressure':
-                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
-                        values[start_w_idx:end_w_idx:] = wells_initial_pressure_profile[::-1]
+                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"][::-1]
+                        values[start_w_idx:end_w_idx] = wells_initial_pressure_profile[start_ms_w_idx:end_ms_w_idx]
                     elif variable == 'temperature':
-                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"]
-                        values[start_w_idx:end_w_idx:] = wells_initial_temperature_profile[::-1]
+                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"][::-1]
+                        values[start_w_idx:end_w_idx] = wells_initial_temperature_profile[start_ms_w_idx:end_ms_w_idx]
                     elif variable not in ['pressure', 'temperature']:
-                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
-                        values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(
-                                    self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[::-1]
+                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction'][::-1]
+                        values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[start_ms_w_idx:end_ms_w_idx]
 
                 start_w_idx = end_w_idx
+                start_ms_w_idx += well.num_segments
 
         return
 
