@@ -146,33 +146,35 @@ class Output:
 
         return 0
 
-    def load_restart_data(self, reservoir_filename: str, well_filename: str, timestep: int = -1):
-        """
-        Loads data from a previous simulation and sets it for the current simulation.
-
-        :param filename (str): Path to the restart file (default: 'restart/reservoir_solution.h5').
-        :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
-        """
-
-        if not os.path.exists(reservoir_filename) or not os.path.exists(well_filename):
-            raise FileNotFoundError(f"The restart file does not exist: {filename}")
-
-        # Read data from the file
-        time, reservoir_cell_id, Xres, var_names = self.read_specific_data(reservoir_filename, timestep)
-        time, well_cell_id, Xwell, var_names = self.read_specific_data(well_filename, timestep)
-
-        X = np.concatenate([Xres, Xwell[:, len(self.reservoir.wells):, :]], axis=1)
-        cell_id = np.concatenate([reservoir_cell_id, well_cell_id[len(self.reservoir.wells):]])
-
-        print(f"Restarting from {reservoir_filename, well_filename} at time = {time[0]:.6f} days")
-
-        # Update the simulation engine with the loaded data
-        self.physics.engine.t = time[0]
-        self.physics.engine.X = value_vector(X.flatten())
-        self.physics.engine.Xn = value_vector(X.flatten())
-
-        # Save the data
-        self.save_data_to_h5(kind='reservoir')
+    # def load_restart_data(self, reservoir_filename: str, well_filename: str, timestep: int = -1):
+    #     """
+    #     Loads data from a previous simulation and sets it for the current simulation.
+    #
+    #     :param filename (str): Path to the restart file (default: 'restart/reservoir_solution.h5').
+    #     :param timestep (int): The timestep to load from the file (default: -1 for the last timestep).
+    #     """
+    #
+    #     if not os.path.exists(reservoir_filename) or not os.path.exists(well_filename):
+    #         raise FileNotFoundError(f"The restart file does not exist: {filename}")
+    #
+    #     # Read data from the file
+    #     time, reservoir_cell_id, Xres, var_names = self.read_specific_data(reservoir_filename, timestep)
+    #     time, well_cell_id, Xwell, var_names = self.read_specific_data(well_filename, timestep)
+    #
+    #     X = np.concatenate([Xres, Xwell[:, len(self.reservoir.wells):, :]], axis=1)
+    #     cell_id = np.concatenate([reservoir_cell_id, well_cell_id[len(self.reservoir.wells):]])
+    #
+    #     restart_data = np.copy(X)
+    #
+    #     print(f"Restarting from {reservoir_filename, well_filename} at time = {time[0]:.6f} days")
+    #
+    #     # Update the simulation engine with the loaded data
+    #     self.physics.engine.t = time[0]
+    #     self.physics.engine.X = value_vector(restart_data.flatten())
+    #     self.physics.engine.Xn = value_vector(restart_data.flatten())
+    #
+    #     # Save the data
+    #     self.save_data_to_h5(kind='reservoir')
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
         """
