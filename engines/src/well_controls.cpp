@@ -3,6 +3,131 @@
 #include <cstring>
 #include <cmath>
 
+int InjControls::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+                                 index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
+{
+  value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
+  value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
+
+  // fill the jacobian
+  const uint16_t n_block_size_sq = n_block_size * n_block_size;
+  memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
+
+  // Evaluate well control operators
+  state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
+  well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+
+  // Loop over vector of well controls (defined in operators)
+  if (this->is_rate_control)
+  {
+	int temp_idx = 0;
+	value_t *X_well_body = X_well_head + n_block_size;
+	value_t p_diff = X_well_head[0] - X_well_body[0];
+
+	// RHS
+	RHS_well_head[0] = well_control_ops[0] * p_diff * segment_trans - well_control_spec[0];	
+		
+	//jacobian_row[0] = rate_temp_ops_derivs[target_phase_idx * n_state_size] * p_diff * segment_trans + rate_temp_ops[target_phase_idx] * segment_trans;
+	//jacobian_row[n_block_size_sq] = -rate_temp_ops[target_phase_idx] * segment_trans;
+
+	for (int idx = 0; idx < n_state_size; idx++)
+	{
+	  jacobian_row[n_block_size * P_VAR + P_VAR + idx] = well_control_ops_derivs[target_phase_idx * n_state_size + idx] * p_diff * segment_trans;
+	}
+	jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[target_phase_idx] * segment_trans;
+	jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[target_phase_idx] * segment_trans;
+
+	for (int idx = 0; idx < n_state_size; idx++)
+	{
+	  jacobian_row[n_block_size * (P_VAR + 1) + P_VAR + idx] = well_control_ops_derivs[(temp_idx)* n_variables + idx];
+	}
+  }
+  else
+  {
+    // first equation - pressure constraint
+  	RHS_well_head[0] = well_control_ops[0] - well_control_spec[0];
+  }
+  // Loop over vector of well controls (defined in operators)
+  for (index_t ii = 1; ii < n_variables; ii++)
+  {
+    RHS_well_head[ii] = well_control_ops[ii] - well_control_spec[ii];
+  }
+  
+  // fill diagonal H block - it`s always the first
+  for (int idx = 0; idx < n_state_size; idx++)
+  {
+    jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx] = 1;
+  }
+
+  return 0;
+}
+
+int InjControls::add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+									 index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
+{
+	value_t *X_well_head = &X[n_state_size * well_head_idx];
+	value_t *RHS_well_head = &RHS[n_state_size * well_head_idx];
+
+	int n_block_size_sq = n_state_size * n_state_size;
+	memset(jacobian_row, 0, (2 * n_block_size_sq + n_state_size) * sizeof(value_t));
+
+	// first equation - pressure constraint
+	RHS_well_head[0] = X_well_head[0] - target_pressure;
+	// all the rest
+	int idx = 1;
+	for (value_t is : injection_stream)
+	{
+		RHS_well_head[idx] = X_well_head[idx] - is;
+		idx++;
+	}
+
+	// fill diagonal H block - it`s always the first
+
+	for (int idx = 0; idx < n_state_size; idx++)
+	{
+		jacobian_row[2 * (idx + idx * n_state_size)] = 1;
+	}
+
+	return 0;
+}
+
+int InjControls::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+ 										    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+{
+  if (this->is_rate_control)
+  {
+	value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
+    value_t *X_well_body = X_well_head + n_block_size;
+  	value_t p_diff = X_well_head[0] - X_well_body[0];
+
+  	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
+  	well_controls_etor->evaluate(state, rates);
+
+  	return rates[FLUX_OP] * p_diff * segment_trans > well_control_spec[0];
+  }
+  else
+  {
+	return X[well_head_idx * n_block_size + P_VAR] > well_control_spec[P_VAR];
+  }
+}
+
+int InjControls::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
+{
+  if (this->is_rate_control)
+  {
+	state_block[0] = state_neighbour[0] * 1.01;
+  }
+  else
+  {
+	state_block[0] = well_control_spec[0];
+  }
+
+  for (size_t i = 1; i < state_block.size(); i++)
+  {
+    state_block[i] = well_control_spec[i];
+  }
+  return 0;
+}
 
 int bhp_inj_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
                                        index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)

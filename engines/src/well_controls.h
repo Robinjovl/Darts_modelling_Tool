@@ -25,6 +25,75 @@
 
 #define WELL_CONTROL_FILL
 
+class WellControls
+{
+public:
+  WellControls(operator_set_gradient_evaluator_iface* well_controls_etor_) : well_controls_etor(well_controls_etor_) 
+  {
+    block_idx.resize(1);
+    block_idx[0] = 0;
+  }
+
+  virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) = 0;
+
+  virtual int add_to_csr_jacobian(value_t /*dt*/, index_t /*well_head_idx*/, value_t /*segment_trans*/,
+	  index_t /*n_state_size*/, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
+	  return 0;
+  };
+  
+  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) = 0;
+
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
+
+  std::string name;
+  std::vector<index_t> block_idx;
+  std::vector<value_t> state;
+  std::vector<value_t> well_control_spec;
+  std::vector<value_t> well_control_ops;
+	std::vector<value_t> well_control_ops_derivs;
+  operator_set_gradient_evaluator_iface *well_controls_etor;
+  
+  bool is_rate_control{ false };
+  void is_rate_controlled(bool is_rate_control_) { this->is_rate_control = is_rate_control_; return; }
+  void set_well_control_spec(std::vector<value_t>& well_control_spec_) { this->well_control_spec = well_control_spec_; }
+};
+
+class InjControls : public WellControls
+{
+public:
+  InjControls(operator_set_gradient_evaluator_iface* well_controls_etor_) : WellControls(well_controls_etor_) {}
+
+  virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
+
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) override;
+};
+
+class ProdControls : public WellControls
+{
+public:
+  ProdControls(operator_set_gradient_evaluator_iface* well_controls_etor_) : WellControls(well_controls_etor_) {}
+
+  virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
+
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) override;
+};
+
 /// Base class work well control/constraint
 class well_control_iface
 {
