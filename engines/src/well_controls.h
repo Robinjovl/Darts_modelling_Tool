@@ -56,8 +56,8 @@ public:
   operator_set_gradient_evaluator_iface *well_controls_etor;
   
   bool is_rate_control{ false };
-  void is_rate_controlled(bool is_rate_control_) { this->is_rate_control = is_rate_control_; return; }
-  void set_well_control_spec(std::vector<value_t>& well_control_spec_) { this->well_control_spec = well_control_spec_; }
+  void set_bhp_control(std::vector<value_t>& well_control_spec_) { this->is_rate_control = false; this->well_control_spec = well_control_spec_; return; }
+  void set_rate_control(std::vector<value_t>& well_control_spec_) { this->is_rate_control = true; this->well_control_spec = well_control_spec_; return; }
 };
 
 class InjControls : public WellControls
