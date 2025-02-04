@@ -17,46 +17,46 @@ int InjControls::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segm
   state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
   well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 
-  // Loop over vector of well controls (defined in operators)
+  // Set first specification from well controls (defined in operators)
   if (this->is_rate_control)
   {
-	int temp_idx = 0;
+	// If rate controlled, find the pressure difference and calculate rate
 	value_t *X_well_body = X_well_head + n_block_size;
 	value_t p_diff = X_well_head[0] - X_well_body[0];
 
 	// RHS
 	RHS_well_head[0] = well_control_ops[0] * p_diff * segment_trans - well_control_spec[0];	
-		
-	//jacobian_row[0] = rate_temp_ops_derivs[target_phase_idx * n_state_size] * p_diff * segment_trans + rate_temp_ops[target_phase_idx] * segment_trans;
-	//jacobian_row[n_block_size_sq] = -rate_temp_ops[target_phase_idx] * segment_trans;
 
-	for (int idx = 0; idx < n_state_size; idx++)
+	// Rate operator derivatives
+	for (int jj = 0; jj < n_state_size; jj++)
 	{
-	  jacobian_row[n_block_size * P_VAR + P_VAR + idx] = well_control_ops_derivs[target_phase_idx * n_state_size + idx] * p_diff * segment_trans;
+	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[0 * n_state_size + jj] * p_diff * segment_trans;
 	}
-	jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[target_phase_idx] * segment_trans;
-	jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[target_phase_idx] * segment_trans;
-
-	for (int idx = 0; idx < n_state_size; idx++)
-	{
-	  jacobian_row[n_block_size * (P_VAR + 1) + P_VAR + idx] = well_control_ops_derivs[(temp_idx)* n_variables + idx];
-	}
+	// Product rule for pressure variable
+	jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[0] * segment_trans;
+	jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[0] * segment_trans;
   }
   else
   {
     // first equation - pressure constraint
   	RHS_well_head[0] = well_control_ops[0] - well_control_spec[0];
+
+	// BHP operator derivatives
+	for (int jj = 0; jj < n_state_size; jj++)
+	{
+	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[0 * n_state_size + jj];
+	}
   }
-  // Loop over vector of well controls (defined in operators)
-  for (index_t ii = 1; ii < n_variables; ii++)
+
+  // Loop over rest of vector of well controls (defined in operators)
+  for (index_t ii = 1; ii < n_state_size; ii++)
   {
     RHS_well_head[ii] = well_control_ops[ii] - well_control_spec[ii];
-  }
-  
-  // fill diagonal H block - it`s always the first
-  for (int idx = 0; idx < n_state_size; idx++)
-  {
-    jacobian_row[n_block_size * (P_VAR + idx) + P_VAR + idx] = 1;
+
+	for (int jj = 0; jj < n_state_size; jj++)
+	{
+	  jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_control_ops_derivs[ii * n_state_size + jj];
+	}
   }
 
   return 0;
