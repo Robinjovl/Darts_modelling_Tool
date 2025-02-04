@@ -116,7 +116,6 @@ class PhysicsBase:
         self.set_operators()
         self.engine = self.set_engine(discr_type, platform)
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
-        self.define_well_controls()
         return
 
     def add_property_region(self, property_container, region: int = 0):
@@ -199,15 +198,46 @@ class PhysicsBase:
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
                                                         precision=itor_precision, region='-1')
 
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.nph,
+        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.n_ops,
                                                   timer_name='well controls interpolation',
                                                   platform=platform, algorithm=itor_type, mode=itor_mode,
                                                   precision=itor_precision)
         return
 
-    @abc.abstractmethod
-    def define_well_controls(self):
-        pass
+    def define_well_controls(self, name: str, control_type: well_control_iface.WellControlType,
+                             target: float, inj_stream: list = None, phase_idx: int = None, inj_temp: float = None):
+        """
+        Method to define well controls.
+
+        :param name: Name of the well control
+        :param control_type: Well control type 0) BHP, 1) MOLAR, 2) MASS, 3) VOLUME, default is BHP
+        :param target: Target BHP or rate, consistent with well control type
+        :param inj_stream: Composition of injected phase
+        :param phase_idx: Phase index of injected phase
+        :param inj_temp: Temperature of injected phase
+        """
+        control = well_control_iface(name, self.rate_itor)
+
+        # Define well controls specification: BHP/rate, composition and injection temperature
+        inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables
+        inj_temp = inj_temp if inj_temp is not None else 0.
+        phase_idx = phase_idx if phase_idx is not None else 0
+
+        well_control_spec = value_vector(np.concatenate([[target], inj_stream, [inj_temp]])) if self.thermal \
+            else value_vector(value_vector(np.concatenate([[target], inj_stream])))
+
+        # Pass controls specification to well controls object
+        if control_type == well_control_iface.BHP:
+            control.set_bhp_control(well_control_spec)
+        else:
+            if target > 0.:
+                # Injection
+                control.set_rate_control(control_type, phase_idx, well_control_spec)
+            else:
+                # Production
+                control.set_rate_control(control_type, phase_idx, well_control_spec)
+
+        return control
 
     def init_wells(self, wells):
         """

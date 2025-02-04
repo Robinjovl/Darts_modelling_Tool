@@ -3,7 +3,8 @@ from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
 from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, CtrlRateOperators, MassFluxOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, CtrlRateOperators, MassFluxOperators, WellControlOperators
+
 
 class Compositional(PhysicsBase):
     """
@@ -126,7 +127,7 @@ class Compositional(PhysicsBase):
         else:
             self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
-        self.rate_operators = CtrlRateOperators(self.property_containers[self.regions[0]])
+        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
@@ -179,19 +180,19 @@ class Compositional(PhysicsBase):
                                                   precision=itor_precision)
         return
 
-    def define_well_controls(self):
-        # define well control factories
-        # Injection wells (upwind method requires both bhp and target_stream for bhp controlled injection wells):
-        self.new_bhp_inj = lambda bhp, injection_stream: bhp_inj_well_control(bhp, value_vector(injection_stream))
-        self.new_rate_inj = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name, injection_stream: (
-            rate_inj_well_control(self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars,
-                                  self.n_vars, target_rate_value, value_vector(injection_stream), self.rate_itor))
-        # Production wells:
-        self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_prod = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name: rate_prod_well_control(
-            self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars, self.n_vars,
-            target_rate_value, self.rate_itor)
-        return
+    # def define_well_controls(self):
+    #     # define well control factories
+    #     # Injection wells (upwind method requires both bhp and target_stream for bhp controlled injection wells):
+    #     self.new_bhp_inj = lambda bhp, injection_stream: bhp_inj_well_control(bhp, value_vector(injection_stream))
+    #     self.new_rate_inj = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name, injection_stream: (
+    #         rate_inj_well_control(self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars,
+    #                               self.n_vars, target_rate_value, value_vector(injection_stream), self.rate_itor))
+    #     # Production wells:
+    #     self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
+    #     self.new_rate_prod = lambda target_rate_value, ctrl_rate_type, ctrl_phase_name: rate_prod_well_control(
+    #         self.phases, ctrl_rate_type, self.phases.index(ctrl_phase_name), self.n_vars, self.n_vars,
+    #         target_rate_value, self.rate_itor)
+    #     return
 
     def set_uniform_initial_conditions(self, mesh: conn_mesh,
                                        uniform_pressure: float, uniform_composition: list, uniform_temp: float = None):
