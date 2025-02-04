@@ -291,17 +291,16 @@ class UnstructDiscretizer:
                     elif tag in self.physical_tags['fracture']:
                         for key in nodes_to_cell:
                             self.frac_cells_to_node.setdefault(key, [])
-                            self.frac_cells_to_node[key].append(frac_count)
+                            self.frac_cells_to_node[key].append(cell_count)
 
                         if geometry == 'quad':
-                            self.frac_cell_info_dict[frac_count] = \
+                            self.frac_cell_info_dict[cell_count] = \
                                 Quadrangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                            self.fracture_aperture[frac_count], tag)
                         elif geometry == 'triangle':
-                            self.frac_cell_info_dict[frac_count] = \
+                            self.frac_cell_info_dict[cell_count] = \
                                 Triangle(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry,
                                          self.fracture_aperture[frac_count], tag)
-
                         frac_count += 1
                         cell_count += 1
                     # boundary cells
@@ -333,7 +332,7 @@ class UnstructDiscretizer:
                                 Line(nodes_to_cell, self.mesh_data.points[nodes_to_cell, :], geometry, 0.0, tag)
                             self.boundary_conditions[tag]['cells'].append(face_count)
                         face_count += 1
-                        bound_count += 1
+                        frac_bound_count += 1
                     # output faces
                     elif tag in self.physical_tags['output']:
                         if geometry == 'quad':
@@ -530,18 +529,24 @@ class UnstructDiscretizer:
         Class method which loops over all the cells and stores the depth in single array (first frac, then mat)
         :return:
         """
-        self.depth_all_cells = np.zeros(self.mat_cells_tot + self.frac_cells_tot + self.bound_faces_tot)
+        self.depth_all_cells = np.zeros(self.mat_cells_tot + self.frac_cells_tot + \
+                                        self.bound_faces_tot + self.frac_bound_faces_tot)
         tot_cell_count = 0
-        for ith_cell in self.frac_cell_info_dict:
-            self.depth_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].depth
-            tot_cell_count += 1
-
+        # matrix cells
         for ith_cell in self.mat_cell_info_dict:
             self.depth_all_cells[tot_cell_count] = self.mat_cell_info_dict[ith_cell].depth
             tot_cell_count += 1
-
+        # fracture cells
+        for ith_cell in self.frac_cell_info_dict:
+            self.depth_all_cells[tot_cell_count] = self.frac_cell_info_dict[ith_cell].depth
+            tot_cell_count += 1
+        # boundary faces
         for ith_cell in self.bound_face_info_dict:
             self.depth_all_cells[tot_cell_count] = self.bound_face_info_dict[ith_cell].depth
+            tot_cell_count += 1
+        # fracture boundary elements
+        for ith_cell in self.frac_bound_face_info_dict:
+            self.depth_all_cells[tot_cell_count] = self.frac_bound_face_info_dict[ith_cell].depth
             tot_cell_count += 1
 
         return 0
@@ -966,12 +971,13 @@ class UnstructDiscretizer:
                 if id[1] not in self.faces[id[0]]:
                     for id1, pts1 in frac_cell_faces.items():
                         if id != id1 and np.all(np.in1d(pts, pts1)):
+                            fap_av = (fap[id[0] - self.mat_cells_tot] + fap[id1[0] - self.mat_cells_tot]) / 2
                             n = self.frac_cell_info_dict[id[0]].centroid - self.frac_cell_info_dict[id1[0]].centroid
                             self.faces[id[0]][id[1]] = Face(id[0], id[1], id1[0], id1[1], pts, self.mesh_data.points[pts],
-                                                            0, FType.FRAC, fap, n)
+                                                            0, FType.FRAC, fap_av, n)
                             if id1[0] not in self.faces: self.faces[id1[0]] = {}
                             self.faces[id1[0]][id1[1]] = Face(id1[0], id1[1], id[0], id[1], pts, self.mesh_data.points[pts],
-                                                              0, FType.FRAC, fap, n)
+                                                              0, FType.FRAC, fap_av, n)
                     # frac-frac boundary
                     if id[1] not in self.faces[id[0]]:
                         b_cells = [self.frac_bound_cells_to_node[pt] for pt in pts]

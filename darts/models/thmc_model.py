@@ -30,8 +30,9 @@ class THMCModel(DartsModel):
         self.set_reservoir()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
-        if self.idata.type_mech == 'thermoporoelasticity':
-            self.reservoir.T_VAR = self.physics.engine.T_VAR
+        if hasattr(self, 'idata'):
+            if self.idata.type_mech == 'thermoporoelasticity':
+                self.reservoir.T_VAR = self.physics.engine.T_VAR
         self.set_solver_params()
         self.timer.node["initialization"].stop()
 
@@ -142,6 +143,17 @@ class THMCModel(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.physics.engine.set_discretizer(self.reservoir.discr)
             self.physics.engine.gravity = self.reservoir.discr.grav_vec.values
+        elif self.discretizer_name == 'pm_discretizer' and hasattr(self.reservoir, 'contacts'):
+            for contact in self.reservoir.contacts:
+                contact.N_VARS = self.physics.engine.N_VARS
+                contact.U_VAR = self.physics.engine.U_VAR
+                contact.P_VAR = self.physics.engine.P_VAR
+                contact.NT = self.physics.engine.N_VARS
+                contact.U_VAR_T = self.physics.engine.U_VAR
+                contact.P_VAR_T = self.physics.engine.P_VAR
+                contact.init_friction(self.reservoir.pm, self.reservoir.mesh)
+                contact.init_fault()
+            self.physics.engine.contacts = self.reservoir.contacts
 
     def set_wells(self):
         pass
