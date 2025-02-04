@@ -95,8 +95,6 @@ public:
   // X and RHS vector are passed in full (yet)
   int add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
 
-  int add_to_csr_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
-
   int check_constraints(double dt, std::vector<value_t> &X);
 
   int calc_rates(std::vector<value_t> &X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data);

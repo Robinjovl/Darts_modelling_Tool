@@ -35,14 +35,6 @@ int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_we
   return 0;
 }
 
-int ms_well::add_to_csr_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
-{
-
-  control->add_to_csr_jacobian(dt, well_head_idx, segment_transmissibility, n_vars, X, jac_well_head, RHS);
-
-  return 0;
-}
-
 int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_arr, std::unordered_map<std::string, std::vector<value_t>> &time_data)
 {
   index_t upstream_idx;

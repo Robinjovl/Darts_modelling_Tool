@@ -36,11 +36,6 @@ public:
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) = 0;
-
-  virtual int add_to_csr_jacobian(value_t /*dt*/, index_t /*well_head_idx*/, value_t /*segment_trans*/,
-	  index_t /*n_state_size*/, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
-	  return 0;
-  };
   
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) = 0;
@@ -68,9 +63,6 @@ public:
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
-
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
 
@@ -84,9 +76,6 @@ public:
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
 
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
@@ -110,11 +99,6 @@ public:
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
 
-  virtual int add_to_csr_jacobian(value_t /*dt*/, index_t /*well_head_idx*/, value_t /*segment_trans*/,
-	  index_t /*n_state_size*/, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
-	  return 0;
-  };
-
   std::string name;
   std::vector<index_t> block_idx;
 };
@@ -137,9 +121,6 @@ public:
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
@@ -160,8 +141,6 @@ public:
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
@@ -196,9 +175,6 @@ public:
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
@@ -283,9 +259,6 @@ public:
 	virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 		index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-    index_t n_block_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
 	virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
 	virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
@@ -311,9 +284,6 @@ public:
 	};
 	virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 		index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-    index_t n_block_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
 	virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
