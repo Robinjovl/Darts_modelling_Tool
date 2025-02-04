@@ -67,11 +67,20 @@ void pybind_well_controls(py::module &m)
 
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
-    .def(py::init<>())
+    .def(py::init<operator_set_gradient_evaluator_iface*>())
     .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
-    .def("check_constraint_violation", &well_control_iface::check_constraint_violation);
+    .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
+    .def("set_bhp_control", &well_control_iface::set_bhp_control)
+    .def("set_rate_control", &well_control_iface::set_rate_control)
+  ;
+
 #endif
 
+  py::class_<WellControls>(m, "WellControls", well_control_iface)
+    .def(py::init<std::string, operator_set_gradient_evaluator_iface*>())
+    ;
+
+#if 0
   //  py::class_<bhp_inj_well_control>(m, "bhp_inj_well_control", well_control_iface)
   py::class_<bhp_inj_well_control>(m, "bhp_inj_well_control", well_control_iface)
     .def(py::init<value_t, std::vector<value_t> &>())
@@ -142,6 +151,7 @@ void pybind_well_controls(py::module &m)
 		  operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 6>())
 	  .def_readwrite("target_rate", &gt_mass_rate_prod_well_control::target_rate);
 
+#endif
 }
 
 #endif //PYBIND11_ENABLED
