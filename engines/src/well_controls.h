@@ -27,7 +27,13 @@
 
 class well_control_iface
 {
+public:
+  enum WellControlType : int { BHP = 0, MOLAR, MASS, VOLUME };
+  std::string name;
+
 protected:
+  WellControlType control_type = BHP;
+  index_t phase_idx{ 0 }, n_phases;
   std::vector<index_t> block_idx {0};
   std::vector<value_t> state;
   std::vector<value_t> well_control_spec;
@@ -35,32 +41,32 @@ protected:
 	std::vector<value_t> well_control_ops_derivs;
   operator_set_gradient_evaluator_iface *well_controls_etor;
   
-  bool is_rate_control{ false };
-  
 public:
-  well_control_iface(operator_set_gradient_evaluator_iface* well_controls_etor_) : well_controls_etor(well_controls_etor_) {}
+  well_control_iface(std::string name_, operator_set_gradient_evaluator_iface* well_controls_etor_) : name(name_), well_controls_etor(well_controls_etor_) {}
+
+  virtual int set_bhp_control(std::vector<value_t>& well_control_spec_);
+  virtual int set_rate_control(well_control_iface::WellControlType control_type_, index_t phase_idx_, std::vector<value_t>& well_control_spec_);
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) = 0;
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
   
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
-    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) = 0;
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
-  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
-
-  void set_bhp_control(std::vector<value_t>& well_control_spec_) { this->is_rate_control = false; this->well_control_spec = well_control_spec_; return; }
-  void set_rate_control(std::vector<value_t>& well_control_spec_) { this->is_rate_control = true; this->well_control_spec = well_control_spec_; return; }
-
-  std::string name;
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 };
 
-class WellControls : public well_control_iface
+#if 0
+class well_controls : public well_control_iface
 {
 public:
-  WellControls(std::string name_, operator_set_gradient_evaluator_iface* well_controls_etor_) : well_control_iface(well_controls_etor_) 
+  well_controls(std::string name_, operator_set_gradient_evaluator_iface* well_controls_etor_) : well_control_iface(well_controls_etor_) 
   {
     name = name_;
   }
+
+  virtual int set_bhp_control(std::vector<value_t>& well_control_spec_) override;
+  virtual int set_rate_control(well_control_iface::WellControlType control_type_, index_t phase_idx, std::vector<value_t>& well_control_spec_) override;
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
@@ -70,6 +76,7 @@ public:
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) override;
 };
+#endif
 
 // class ProdControls : public WellControls
 // {
