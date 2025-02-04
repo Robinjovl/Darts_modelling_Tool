@@ -3,9 +3,11 @@
 #include <cstring>
 #include <cmath>
 
-int InjControls::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-                                 index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
+int WellControls::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+                                  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
+  // n_state_size is number of flow variables
+  // n_block_size is size of block which includes flow and mechanics variables
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
 
@@ -62,8 +64,8 @@ int InjControls::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segm
   return 0;
 }
 
-int InjControls::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
- 										    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+int WellControls::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+ 										     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
   if (this->is_rate_control)
   {
@@ -72,9 +74,9 @@ int InjControls::check_constraint_violation(value_t dt, index_t well_head_idx, v
   	value_t p_diff = X_well_head[0] - X_well_body[0];
 
   	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
-  	well_controls_etor->evaluate(state, rates);
+  	well_controls_etor->evaluate(state, well_control_ops);
 
-  	return rates[FLUX_OP] * p_diff * segment_trans > well_control_spec[0];
+  	return (well_control_spec[0] > 0.) ? well_control_ops[0] * p_diff * segment_trans > well_control_spec[0] : well_control_ops[0] * p_diff * segment_trans < well_control_spec[0];
   }
   else
   {
@@ -82,11 +84,11 @@ int InjControls::check_constraint_violation(value_t dt, index_t well_head_idx, v
   }
 }
 
-int InjControls::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
+int WellControls::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
 {
   if (this->is_rate_control)
   {
-	state_block[0] = state_neighbour[0] * 1.01;
+	state_block[0] = (well_control_spec[0] > 0.) ? state_neighbour[0] * 1.01 : state_neighbour[0] * 0.99;
   }
   else
   {
@@ -100,6 +102,7 @@ int InjControls::initialize_well_block(std::vector<value_t>& state_block, const 
   return 0;
 }
 
+#if 0
 int bhp_inj_well_control::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
                                        index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
@@ -192,7 +195,7 @@ int bhp_prod_well_control::initialize_well_block(std::vector<value_t>& state_blo
   }
   return 0;
 }
-
+#endif
 
 #if 0
 int volume_rate_well_control::add_to_jacobian(value_t dt, std::vector<value_t> &X_well_head, std::vector<value_t> &X_well_body,
@@ -212,6 +215,7 @@ value_t volume_rate_well_control::check_constraint_violation, (value_t dt, std::
 
 #endif
 
+#if 0
 int rate_inj_well_control::add_to_jacobian(value_t /*dt*/, index_t well_head_idx, value_t segment_trans,
 	index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X, value_t * jacobian_row, std::vector<value_t>& RHS)
 {
@@ -778,3 +782,4 @@ int gt_mass_rate_prod_well_control::initialize_well_block(std::vector<value_t>& 
 	return 0;
 
 }
+#endif
