@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, well_control_iface
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -82,8 +82,12 @@ class Model(CICDModel):
                 "phase_molar_rate", "phase_mass_rate", "phase_volumetric_rate", or "phase_advective_heat_rate".
                 The third input argument is the name of the phase the rate of which is controlled.
                 """
-                w.control = self.physics.new_rate_inj(200, "phase_molar_rate", "gas", inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                              target=200., phase_idx=0, inj_stream=inj_stream)
+                # w.control = self.physics.new_rate_inj(200, "phase_molar_rate", "gas", inj_stream)
                 # w.control = self.physics.new_rate_inj(200, inj_stream)
                 # w.control = self.physics.new_bhp_inj(140, inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=50.)
+                # w.control = self.physics.new_bhp_prod(50)
