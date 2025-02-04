@@ -2915,8 +2915,9 @@ class UnstructDiscretizer:
             return None
 
         act_frac_sys = np.zeros((num_frac, 4))  # create an array to store the fracture system
-        for ii in range(num_frac):  # loop over the fractures
-            ith_line = self.frac_cell_info_dict[ii].coord_nodes_to_cell
+        for cell_id, cell in self.frac_cell_info_dict.items():  # loop over the fractures
+            ith_line = cell.coord_nodes_to_cell
+            ii = cell_id - self.mat_cells_tot
             act_frac_sys[ii, :2] = ith_line[0, :2]
             act_frac_sys[ii, 2:] = ith_line[1, :2]
 
