@@ -127,8 +127,9 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
   // Other state specifications
   if (this->control_type == WellControlType::BHP && state_block[0] < state_neighbour[0] ||  // if BHP-controlled production well
       this->control_type > WellControlType::BHP && well_control_spec[0] < 0. ||			// or if rate-controlled production well
-  	  std::all_of(well_control_spec.begin() + 1, well_control_spec.end() - 1, [](value_t i) { return i == 0.; }))  // or composition has not been defined
+  	  std::all_of(well_control_spec.begin() + 1, well_control_spec.end() - thermal, [](value_t i) { return i == 0.; }))  // or composition has not been defined
   {
+	// PRODUCTION WELL
 	// Initialize production well with state of neighbouring cell
 	for (size_t i = 1; i < state_block.size(); i++)
   	{
@@ -137,14 +138,19 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
   }
   else
   {
+	// INJECTION WELL
 	// Initialize injection well with injection stream
-	index_t i;
-	for (i = 1; i < state_block.size() - 1; i++)
+	for (index_t i = 1; i < state_block.size() - thermal; i++)
     {
       state_block[i] = well_control_spec[i];
     }
+
 	// For temperature/enthalpy, use neighbouring cell
-	state_block[i+1] = state_neighbour[i+1];
+	if (this->thermal)
+	{
+	  index_t i = state_block.size()-1;
+	  state_block[i] = state_neighbour[i];
+	}
   }
   return 0;
 }

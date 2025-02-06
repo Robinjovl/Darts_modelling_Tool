@@ -90,7 +90,7 @@ void pybind_well_controls(py::module &m)
 
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
-    .def(py::init<std::string, operator_set_gradient_evaluator_iface*>())
+    .def(py::init<std::string, bool, operator_set_gradient_evaluator_iface*>())
     .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
     .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
     .def("set_bhp_control", &well_control_iface::set_bhp_control)

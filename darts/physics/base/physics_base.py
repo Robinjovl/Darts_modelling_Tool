@@ -216,7 +216,7 @@ class PhysicsBase:
         :param phase_idx: Phase index of injected phase
         :param inj_temp: Temperature of injected phase
         """
-        control = well_control_iface(name, self.rate_itor)
+        control = well_control_iface(name, self.thermal, self.rate_itor)
 
         # Define well controls specification: BHP/rate, composition and injection temperature
         inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables

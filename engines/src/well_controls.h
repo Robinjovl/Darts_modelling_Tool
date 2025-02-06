@@ -33,7 +33,7 @@ public:
 
 protected:
   WellControlType control_type = BHP;
-  index_t phase_idx{ 0 }, n_phases;
+  index_t phase_idx{ 0 }, n_phases, thermal;
   std::vector<index_t> block_idx {0};
   std::vector<value_t> state;
   std::vector<value_t> well_control_spec;
@@ -42,7 +42,8 @@ protected:
   operator_set_gradient_evaluator_iface *well_controls_etor;
   
 public:
-  well_control_iface(std::string name_, operator_set_gradient_evaluator_iface* well_controls_etor_) : name(name_), well_controls_etor(well_controls_etor_) {}
+  well_control_iface(std::string name_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
+  : name(name_), thermal(thermal_), well_controls_etor(well_controls_etor_) {}
 
   virtual int set_bhp_control(std::vector<value_t>& well_control_spec_);
   virtual int set_rate_control(well_control_iface::WellControlType control_type_, index_t phase_idx_, std::vector<value_t>& well_control_spec_);
