@@ -104,12 +104,11 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
-	
+rm -rf dist
+rm -rf darts/*.so
 if [[ "$clean_mode" == true ]]; then
     # Cleaning build to prepare a fresh build
-    echo '\n   Cleaning build folder, dist folder and generated python modules'
-    rm -rf darts/*.so
-    rm -rf dist
+    echo '\n   Cleaning build folder'
     rm -rf build
 fi
 
