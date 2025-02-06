@@ -341,7 +341,7 @@ class WellControlOperators(OperatorsSuper):
 
         # Store P, T and composition of current state
         vec_values_as_np[0] = state[0]
-        vec_values_as_np[1:self.nc] = state[1:]
+        vec_values_as_np[1:self.nc] = state[1:self.nc]
         if self.thermal:
             vec_values_as_np[self.nc] = self.property.temperature
 
