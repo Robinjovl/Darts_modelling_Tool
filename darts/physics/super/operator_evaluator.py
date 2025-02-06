@@ -342,13 +342,14 @@ class WellControlOperators(OperatorsSuper):
         # Store P, T and composition of current state
         vec_values_as_np[0] = state[0]
         vec_values_as_np[1:self.nc] = state[1:]
-        vec_values_as_np[self.nc] = self.property.temperature
+        if self.thermal:
+            vec_values_as_np[self.nc] = self.property.temperature
 
         # Store rate controls
         mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
 
         # Molar rate
-        idx = self.nc+1
+        idx = self.nc+self.thermal
         vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
 
         # Mass rate
@@ -360,11 +361,12 @@ class WellControlOperators(OperatorsSuper):
         vec_values_as_np[idx + self.property.ph] = mobility
 
         # Enthalpy rate
-        idx += self.nph
-        vec_values_as_np[idx + self.property.ph] = (
-                self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility)
+        if self.thermal:
+            idx += self.nph
+            vec_values_as_np[idx + self.property.ph] = \
+                    self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
 
-        return
+        return 0
 
 
 class CtrlRateOperators(operator_set_evaluator_iface):
