@@ -33,6 +33,9 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 
   // Evaluate well control operators
   // WellControlOperators are defined as follows: P, composition, T, NP MOLAR, NP MASS and NP VOLUME operators
+  int n_ops = n_state_size + 4 * n_phases;
+  well_control_ops.resize(n_ops);
+  well_control_ops_derivs.resize(n_ops * n_block_size);
   state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
   well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 
@@ -100,6 +103,8 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   {
 	// Check if rate constraint is violated
 	index_t rate_op_idx = n_state_size + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
+	int n_ops = n_state_size + 4 * n_phases;
+    well_control_ops.resize(n_ops);
 
   	state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
   	well_controls_etor->evaluate(state, well_control_ops);
