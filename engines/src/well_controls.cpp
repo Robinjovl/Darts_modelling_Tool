@@ -20,7 +20,7 @@ int well_control_iface::set_rate_control(well_control_iface::WellControlType con
 }
 
 int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-                                  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
+                                  	    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
   // n_state_size is number of flow variables
   // n_block_size is size of block which includes flow and mechanics variables
@@ -35,7 +35,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   // WellControlOperators are defined as follows: P, composition, T, NP MOLAR, NP MASS and NP VOLUME operators
   int n_ops = n_state_size + 4 * n_phases;
   well_control_ops.resize(n_ops);
-  well_control_ops_derivs.resize(n_ops * n_block_size);
+  well_control_ops_derivs.resize(n_ops * n_state_size);
   state.assign(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_state_size);
   well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 
@@ -86,7 +86,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 }
 
 int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
- 										     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+ 										     	   index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *X_well_body = X_well_head + n_block_size;
