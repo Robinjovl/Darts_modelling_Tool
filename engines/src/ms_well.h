@@ -63,7 +63,7 @@ public:
     rate_evaluator = rate_evaluator_;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(n_phases);
+    rates.resize(n_vars + 4 * n_phases);
     thermal = thermal_;
 
 
@@ -81,7 +81,7 @@ public:
     rate_evaluator = rate_evaluator_;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(n_phases);
+    rates.resize(n_vars + 4 * n_phases);
     thermal = thermal_;
 
 	rate_etor_ad = rate_evaluator_;  //adjoint method
