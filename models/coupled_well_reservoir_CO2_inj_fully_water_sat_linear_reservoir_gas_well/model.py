@@ -96,7 +96,7 @@ class Model(CICDModel):
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
-        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
+        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
         reservoir_middle_cell_index = int(self.reservoir.nx / 2)
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=20, well_geometry=well_1_geometry)
 

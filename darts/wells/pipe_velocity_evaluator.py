@@ -295,7 +295,6 @@ class PipeVelocityEvaluator:
         pg = self.pipe_geometry
 
         if iter_counter == 0 and flag == 1:
-            # delta_segment = (pg.pipe_internal_A * delta_interface / pg.D + pg.pipe_internal_A * delta_interface / pg.D) / (pg.pipe_internal_A / pg.D + pg.pipe_internal_A / pg.D)
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
             # in the paper "A transient gothermal wellbore simulator (2023)
             delta_interface0 = pg.pipe_internal_A * (rhoG0_face * sG0_face * vG0 ** 2 +
@@ -348,7 +347,7 @@ class PipeVelocityEvaluator:
             delta_interface0 = np.insert(delta_interface0, 0, momentum_at_first_last_exterfaces[0])
             delta_interface0 = np.insert(delta_interface0, num_segments, momentum_at_first_last_exterfaces[1])
 
-            delta_segment0 = (delta_interface0[0:-1:1] + delta_interface0[1::1]) / 2
+            delta_segment0 = (pg.pipe_internal_A * delta_interface0[0:-1] / pg.D[0:-1] + pg.pipe_internal_A * delta_interface0[1:] / pg.D[1:]) / (pg.pipe_internal_A / pg.D[0:-1] + pg.pipe_internal_A / pg.D[1:])
             self.delta_m0 = delta_segment0[0:-1:1]
             self.delta_p0 = delta_segment0[1::1]
 
