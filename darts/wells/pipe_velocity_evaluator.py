@@ -5,10 +5,11 @@ from darts.engines import value_vector
 # from darts.models.darts_model import DartsModel
 
 from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.wells.units import *
 
 
 class PipeVelocityEvaluator:
-    g = 9.80665   # * meter() / second()**2  # Gravitational acceleration
+    g = 9.80665 * meter() / second()**2   # Gravitational acceleration
     Cku = 142
     Cw = 0.008
 
@@ -26,9 +27,9 @@ class PipeVelocityEvaluator:
         :param Fv: A multiplier on the flooding velocity fraction, set to be 1 by default, and its value can be tuned
         to fit the observations.
         :type Fv: float
-        :param eps_p: A very small number used for numerically differentiating residual equations with respect to pressure.
+        :param eps_p: A very small number used for numerically differentiating residual equations with respect to pressure
         :type eps_p: float
-        :param eps_temp: A very small number used for numerically differentiating residual equations with respect to temperature.
+        :param eps_temp: A very small number used for numerically differentiating residual equations with respect to temperature
         :type eps_temp: float
         :param eps_z: A very small number used for numerically differentiating residual equations with respect to composition
         :type eps_z: float
