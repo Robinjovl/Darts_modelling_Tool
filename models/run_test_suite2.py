@@ -76,7 +76,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_dfn = [test_args_dfn]
 
     # for adjoint test
-    accepted_dirs_adjoint = ['Adjoint_super_engine']
+    accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
