@@ -154,9 +154,6 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
-        assert well_index >= 0
-        assert well_indexD >= 0
-
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
             well_block = len(well.perforations)
@@ -196,6 +193,11 @@ class StructReservoir(ReservoirBase):
         else:
             if verbose:
                 print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+            return
+
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         return
 
     def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:

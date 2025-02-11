@@ -278,17 +278,23 @@ class CPG_Reservoir(ReservoirBase):
         # local index
         local_block = self.discr_mesh.global_to_local[res_block]
 
+        well_index = -1
+        well_indexD = -1
+
         # check if target grid block is active
         if local_block > -1:
             dx, dy, dz = self.discr_mesh.calc_cell_sizes(i, j, k)
+
+            well_diam = 2 * well_radius
 
             eps = 1e-6  # to avoid divizion by zero
             kx = self.permx[res_block] + eps
             ky = self.permy[res_block] + eps
             kz = self.permz[res_block] + eps
 
-            well_index = 0
             if segment_direction == 'z_axis':
+                assert well_diam < dx and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i+1},{j+1},{k+1})'
+
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
                                ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -296,6 +302,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
                 if kx == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'x_axis':
+                assert well_diam < dz and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kz) * dz ** 2 + np.sqrt(kz / ky) * dy ** 2) / \
                                ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -303,6 +310,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
                 if kz == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'y_axis':
+                assert well_diam < dx and well_diam < dz, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(kz / kx) * dx ** 2 + np.sqrt(kx / kz) * dz ** 2) / \
                                ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
@@ -311,9 +319,6 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or kz == 0: well_index = 0.0
 
             well_index = well_index * StructDiscretizer.darcy_constant
-        else:
-            well_index = 0
-            well_indexD = 0
 
         return local_block, well_index, well_indexD
 
@@ -422,8 +427,13 @@ class CPG_Reservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wiD
 
-        assert well_index >= 0
-        assert well_indexD >= 0
+        if res_block_local < 0:
+            if verbose:
+                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+            return
+        
+        assert well_index >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        assert well_indexD >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -451,9 +461,7 @@ class CPG_Reservoir(ReservoirBase):
                 c = self.centroids_all_cells[res_block_local].values
                 print('Added perforation for well %s to block %d IJK=[%d, %d, %d] XYZ=(%f, %f, %f) with WI=%f WID=%f' % (
                     well.name, res_block_local, i, j, k, c[0], c[1], c[2], well_index, well_indexD))
-        else:
-            if verbose:
-                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+
         return
 
     def write_mpfa_conn_to_file(self, path='mpfa_conn.dat'):
