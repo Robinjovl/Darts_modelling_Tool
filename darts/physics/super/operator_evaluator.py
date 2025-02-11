@@ -331,7 +331,17 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         return 0
 
 
-class WellControlOperators(OperatorsSuper):
+class WellControlOperators(operator_set_evaluator_iface):
+    def __init__(self, property_container):
+        super().__init__()
+        self.property = property_container
+        self.nph = property_container.nph
+        self.thermal = property_container.thermal
+
+        n_vars = len(property_container.components_name) + int(self.thermal)
+
+        self.n_ops = n_vars + property_container.nph * 4
+
     def evaluate(self, state, values):
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
@@ -341,7 +351,7 @@ class WellControlOperators(OperatorsSuper):
 
         # Store P, T and composition of current state
         vec_values_as_np[0] = state[0]
-        vec_values_as_np[1:self.nc] = state[1:self.nc]
+        vec_values_as_np[1:self.property.nc] = state[1:self.property.nc]
         if self.thermal:
             vec_values_as_np[self.nc] = self.property.temperature
 
@@ -349,7 +359,7 @@ class WellControlOperators(OperatorsSuper):
         mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
 
         # Molar rate
-        idx = self.nc+self.thermal
+        idx = self.property.nc + self.thermal
         vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
 
         # Mass rate

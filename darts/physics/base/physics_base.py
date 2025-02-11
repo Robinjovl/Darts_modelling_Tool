@@ -198,7 +198,7 @@ class PhysicsBase:
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
                                                         precision=itor_precision, region='-1')
 
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.n_ops,
+        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.rate_operators.n_ops,
                                                   timer_name='well controls interpolation',
                                                   platform=platform, algorithm=itor_type, mode=itor_mode,
                                                   precision=itor_precision)

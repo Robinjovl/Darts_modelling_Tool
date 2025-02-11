@@ -127,7 +127,7 @@ class Compositional(PhysicsBase):
         else:
             self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
-        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]])
 
         return
 
