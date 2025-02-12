@@ -10,7 +10,7 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
-
+from model_co2 import ModelCCS
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
@@ -31,6 +31,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m = ModelGeothermal(iapws_physics=True)
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
+    elif physics_type == 'ccs':
+        m = ModelCCS()
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
@@ -231,8 +233,9 @@ if __name__ == '__main__':
             platform = 'gpu'
 
     physics_list = []
-    physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    #physics_list += ['geothermal']
+    #physics_list += ['deadoil']
+    physics_list += ['ccs']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
@@ -243,8 +246,8 @@ if __name__ == '__main__':
 
     well_controls = []
     well_controls += ['wrate']
-    well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wbhp']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

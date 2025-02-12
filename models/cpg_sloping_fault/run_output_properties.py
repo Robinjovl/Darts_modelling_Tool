@@ -58,7 +58,8 @@ if __name__ == '__main__':
             platform = 'gpu'
 
     physics_list = []
-    physics_list += ['geothermal']
+    #physics_list += ['geothermal']
+    physics_list += ['ccs']
     #physics_list += ['deadoil']
 
     cases_list = []

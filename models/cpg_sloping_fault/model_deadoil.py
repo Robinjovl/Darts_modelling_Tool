@@ -10,7 +10,7 @@ from model_cpg import Model_CPG, fmt
 from set_case import set_input_data
 
 class ModelDeadOil(Model_CPG):
-    def __init__(self, case='generate', grid_out_dir=None):
+    def __init__(self):
         self.zero = 1e-13
         super().__init__()
 
