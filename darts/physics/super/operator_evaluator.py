@@ -331,16 +331,15 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         return 0
 
 
-class WellControlOperators(operator_set_evaluator_iface):
-    def __init__(self, property_container):
-        super().__init__()
-        self.property = property_container
-        self.nph = property_container.nph
-        self.thermal = property_container.thermal
+class WellControlOperators(OperatorsBase):
+    """
+    Set of operators for well controls. It contains the pressure, composition and temperature of the well head,
+    plus a set of rate-control operators for different types of rates: mass-, molar-, volume- or heat-rate controls
+    """
+    def __init__(self, property_container: PropertyContainer, thermal: bool):
+        super().__init__(property_container, thermal)
 
-        n_vars = len(property_container.components_name) + int(self.thermal)
-
-        self.n_ops = n_vars + property_container.nph * 4
+        self.n_ops = self.nc + self.thermal + self.nph * 4
 
     def evaluate(self, state, values):
         vec_state_as_np = state.to_numpy()
@@ -351,7 +350,7 @@ class WellControlOperators(operator_set_evaluator_iface):
 
         # Store P, T and composition of current state
         vec_values_as_np[0] = state[0]
-        vec_values_as_np[1:self.property.nc] = state[1:self.property.nc]
+        vec_values_as_np[1:self.nc] = state[1:self.nc]
         if self.thermal:
             vec_values_as_np[self.nc] = self.property.temperature
 
@@ -375,39 +374,5 @@ class WellControlOperators(operator_set_evaluator_iface):
             idx += self.nph
             vec_values_as_np[idx + self.property.ph] = \
                     self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
-
-        return 0
-
-
-class CtrlRateOperators(operator_set_evaluator_iface):
-    """
-    If the well is rate-controlled, this class is used to evaluate the flux operator.
-    """
-    def __init__(self, property_container):
-        super().__init__()
-
-        self.property = property_container
-        self.nph = property_container.nph
-        self.thermal = property_container.thermal
-
-        self.n_ops = property_container.nph * 4
-
-    def evaluate(self, state: value_vector, values: value_vector):
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
-
-        self.property.evaluate(vec_state_as_np)
-
-        for ph_idx in self.property.ph:
-            # Flux operator for "phase_molar_rate":
-            vec_values_as_np[ph_idx] = self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            # Flux operator for "phase_mass_rate":
-            vec_values_as_np[self.nph + ph_idx] = self.property.dens[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            # Flux operator for "phase_volumetric_rate":
-            vec_values_as_np[self.nph * 2 + ph_idx] = self.property.kr[ph_idx] / self.property.mu[ph_idx]
-            if self.thermal:
-                # Flux operator for "phase_advective_heat_rate":
-                vec_values_as_np[self.nph * 3 + ph_idx] = (self.property.enthalpy[ph_idx] * self.property.dens_m[ph_idx] * self.property.kr[ph_idx] / self.property.mu[ph_idx])
 
         return 0
