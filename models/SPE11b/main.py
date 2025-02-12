@@ -10,7 +10,7 @@ import os
 import pickle
 import h5py
 from darts.reservoirs.mesh.geometry.map_mesh import MapMesh, _translate_curvature
-from model_b import Model, PorPerm, Corey, layer_props
+from model import Model, PorPerm, Corey, layer_props
 from darts.engines import redirect_darts_output, sim_params
 from fluidflower_str_b import FluidFlowerStruct
 
