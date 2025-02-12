@@ -4,7 +4,6 @@ from darts.models.darts_model import DartsModel
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.operators_base import PropertyOperators
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -62,6 +61,7 @@ class Model(DartsModel):
         # EoS-related parameters
         flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["AQ", "PR"]
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3

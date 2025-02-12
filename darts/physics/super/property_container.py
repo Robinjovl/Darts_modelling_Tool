@@ -2,7 +2,7 @@ import numpy as np
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.flash import Flash
-from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator, RockEnergyEvaluator
+from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 
 
 class PropertyContainer(PropertyBase):
@@ -51,7 +51,6 @@ class PropertyContainer(PropertyBase):
 
         self.rel_perm_ev = []
         self.rel_well_perm_ev = []
-        self.rock_energy_ev = RockEnergyEvaluator()
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
         self.rock_density_ev = ConstFunc(2650.0)
         self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
@@ -134,12 +133,8 @@ class PropertyContainer(PropertyBase):
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
-        Vtot = 0
-        for j in ph:
-            Vtot += self.nu[j] / self.dens_m[j]
-
-        for j in ph:
-            self.sat[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+        vol = [self.nu[j] / self.dens_m[j] for j in ph]
+        self.sat[ph] = vol / np.sum(vol)
 
         return
         
@@ -161,11 +156,21 @@ class PropertyContainer(PropertyBase):
         zc_norm = zc if not self.ns else zc[:self.nc_fl] / (1. - np.sum(zc[self.nc_fl:]))
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        _ = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+        error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
-        self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+        try:
+            self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+        except ValueError as e:
+            print(e.args[0], pressure, temperature, zc)
+            error_output += 1
 
+        # If any error has occurred inside the flash routine, try to run flash at slightly different conditions
+        if error_output > 0:
+            pressure += 0.01
+            return self.run_flash(pressure, temperature, zc)
+
+        # Set present phase idxs
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
         if ph.size == 1:

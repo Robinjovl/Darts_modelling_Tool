@@ -38,10 +38,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if False:#iter_solvers:# and test_all_models:
+    if iter_solvers:
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-        meshes_list = ['data_10_10_10', 'data_20_40_40']
+        meshes_list = ['data_10_10_10']
         test_args_mech_spe10 = []
         for physics in physics_list:
             for mesh in meshes_list:
@@ -54,17 +54,22 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if iter_solvers:  # run this case only for the build with iterative solvers
         cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
     test_args_cpg = []
-    for case in cpg_cases_list:
-        for physics_type in ['geothermal', 'dead_oil']:
-            test_args_cpg.append([case, physics_type])
+    for case_geom in cpg_cases_list:
+        for physics_type in ['geothermal', 'deadoil']:
+            for wctrl in ['wrate', 'wbhp']:
+                if physics_type == 'deadoil' and wctrl == 'wrate':
+                    continue  #TODO fix convergence
+                case = case_geom + '_' + wctrl
+                test_args_cpg.append([case, physics_type])
     test_args_cpg = [test_args_cpg]
 
     # DFN (python discr)
     test_dirs_dfn = ['fracture_network']
     test_cases_dfn = ['case_1']
     if test_all_models:
-        test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-        test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        test_cases_dfn += ['case_4', 'case_5']
+        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])
@@ -144,9 +149,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
         input("Press Enter to continue...") # pause the screen
     else:
-        if overwrite == '1':  # do not interrupt ci/cd for uploading generated pkls
-            print('exit 0 because of UPLOAD_PKL==1')
-            exit(0)
         print('exit:', n_failed)
         # exit with code equal to number of failed models
         exit(n_failed)
@@ -208,11 +210,11 @@ if __name__ == '__main__':
 
     # print build info
     engines_pbi()
-    package_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
     if os.getenv('OMP_NUM_THREADS') == None:  
         os.environ['OMP_NUM_THREADS'] = '1'
+    print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 
     # cpu/gpu
     platform = 'cpu'

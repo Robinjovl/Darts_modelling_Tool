@@ -307,16 +307,18 @@ class UnstructReservoir(ReservoirBase):
             ith_geometry += 1
 
         for ts, t in enumerate(time_steps):
-            if len(time_steps) == 1:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+            if ith_step is not None:
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtk"
+                vtk_idx = ith_step
             else:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
+                vtk_file_name = output_directory + '/solution_ts{}'.format(ts) + ".vtk"
+                vtk_idx = ts
 
             # Loop over output properties
             for prop in prop_names:
                 # Loop over fracture and matrix cells (in that order)
                 for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
-                    cell_data[prop][ith_geometry] += data[prop][ts][cell_idxs].tolist()
+                    cell_data[prop][ith_geometry] = data[prop][ts][cell_idxs].tolist()
 
             # Temporarily store mesh_data in copy:
             mesh = meshio.Mesh(
@@ -326,5 +328,5 @@ class UnstructReservoir(ReservoirBase):
                 cell_data=cell_data
             )
 
-            print('Writing data to VTK file for {:d}-th reporting step'.format(ts))
-            meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ts), mesh)
+            print('Writing data to VTK file for {:d}-th reporting step'.format(vtk_idx))
+            meshio.write(vtk_file_name, mesh)

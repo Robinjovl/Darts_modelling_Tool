@@ -5,6 +5,7 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, CtrlRateOperators, MassFluxOperators
 
+
 class Compositional(PhysicsBase):
     """
     This is the Physics class for Compositional simulation.
@@ -60,7 +61,10 @@ class Compositional(PhysicsBase):
             variables += ['temperature']
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1 + nph
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/
+        # = NE * (2 * nph + 2) + 4 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 4 * nph + 3
 
         # axes_min
         if axes_min is None:
@@ -130,55 +134,6 @@ class Compositional(PhysicsBase):
 
         return
 
-    def set_interpolators(self, platform='cpu', itor_type='multilinear', itor_mode='adaptive',
-                          itor_precision='d', is_barycentric: bool = False):
-        """
-        Function to initialize set interpolator objects based on the set of operators.
-        It creates timers for each of the interpolators.
-
-        :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
-        :type platform: str
-        :param itor_type: Type of interpolation method, 'multilinear' (default) or 'linear'
-        :type itor_type: str
-        :param itor_mode: Mode of interpolation, 'adaptive' (default) or 'static'
-        :type itor_mode: str
-        :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
-        :type itor_precision: str
-        :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
-        :type is_barycentric: bool
-        """
-        self.acc_flux_itor = {}
-        self.property_itor = {}
-        self.mass_flux_itor = {}
-        for region in self.regions:
-            self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
-                                                                  platform=platform, algorithm=itor_type,
-                                                                  mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='reservoir %d interpolation' % region, region=str(region),
-                                                                  is_barycentric=is_barycentric)
-
-            self.property_itor[region] = self.create_interpolator(self.property_operators[region], n_ops=self.n_ops,
-                                                                  platform=platform, algorithm=itor_type,
-                                                                  mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='property %d interpolation' % region, region=str(region))
-
-            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
-                                                                   platform=platform, algorithm=itor_type,
-                                                                   mode=itor_mode, precision=itor_precision,
-                                                                   timer_name='Mass flux %d interpolation' % region,
-                                                                   region=str(region))
-
-        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
-                                                        timer_name='wellbore interpolation',
-                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                        precision=itor_precision, region='-1')
-
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.rate_operators.n_ops,
-                                                  timer_name='well controls interpolation',
-                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                  precision=itor_precision)
-        return
-
     def define_well_controls(self):
         # define well control factories
         # Injection wells (upwind method requires both bhp and target_stream for bhp controlled injection wells):
@@ -220,7 +175,7 @@ class Compositional(PhysicsBase):
             temperature = np.array(mesh.temperature, copy=False)
             temperature.fill(uniform_temp)
 
-         # set initial composition
+        # set initial composition
         mesh.composition.resize(nb * (self.nc - 1))
         composition = np.array(mesh.composition, copy=False)
         # composition[:] = np.array(uniform_composition)

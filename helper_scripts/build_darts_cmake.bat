@@ -64,7 +64,7 @@ rmdir /s /q dist 2> NUL
 if %clean_mode%==true (
   echo - Cleaning up
   rmdir /s /q build 2> NUL
-  goto :eof
+  REM goto :eof
 )
 
 if %skip_req%==false (
@@ -73,9 +73,11 @@ if %skip_req%==false (
   git submodule update --recursive --init || goto :error
   echo - Update submodules: DONE!
 
-  echo - Install requirements: START
-  echo -- Install Eigen 3
   cd thirdparty
+
+  echo - Install requirements: START
+  
+  echo -- Install Eigen 3
   mkdir build
   cd build
   mkdir eigen
@@ -86,6 +88,7 @@ if %skip_req%==false (
 
   rem -- Install Hypre
   cd hypre\src\cmbuild
+  rem For debugging: -DHYPRE_ENABLE_PRINT
   cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. > ../../../../make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ../../../../make_hypre.log || goto :error
   cd ..\..\..\

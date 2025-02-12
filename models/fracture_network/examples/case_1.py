@@ -37,9 +37,10 @@ def input_data_case_1():
 
     idata.geom['frac_aper'] = 1e-3  # (initial) fracture aperture [m]
 
-    idata.wells.controls.delta_temp = 40  # inj_temp = initial_temp - delta_temp
-    idata.wells.controls.delta_p_inj  = 30  # inj_bhp = initial_pressure + delta_p_inj
-    idata.wells.controls.delta_p_prod = 30  # inj_prod = initial_pressure - delta_p_prod
+    wctrl = idata.well_data.controls
+    wctrl.delta_temp = 40  # inj_temp = initial_temp - delta_temp
+    wctrl.delta_p_inj  = 30  # inj_bhp = initial_pressure + delta_p_inj
+    wctrl.delta_p_prod = 30  # inj_prod = initial_pressure - delta_p_prod
 
     #idata.geom['box_data'] = np.array([[0, 0], [0, 1000], [1000, 0], [1000, 1000]])
 
