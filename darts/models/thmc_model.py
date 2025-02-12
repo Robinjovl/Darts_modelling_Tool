@@ -2,6 +2,7 @@ from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, mech_operators, rsf_props, friction, contact_state, state_law, contact_solver, critical_stress, linear_solver_params
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 import numpy as np
+import os
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.super.property_container import PropertyContainer
@@ -13,6 +14,16 @@ from darts.input.input_data import InputData
 
 class THMCModel(DartsModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer'):
+
+        try:
+            from darts.engines import get_num_threads
+            nt = get_num_threads()
+        except:
+            nt = 1
+        if nt != 1:
+            print('Geomechanical model does not support OpenMP yet. Please run with OMP_NUM_THREADS=1 or use darts.engines.set_num_threads(1).')
+            exit()
+            
         super().__init__()
         self.set_input_data()
         self.set_physics()
@@ -215,6 +226,7 @@ class THMCModel(DartsModel):
         :param file_name:
         :return:
         """
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
@@ -228,6 +240,8 @@ class THMCModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        else:
+            print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
     
     # it doesn't use model object, put inside the class just for the convenience of import 

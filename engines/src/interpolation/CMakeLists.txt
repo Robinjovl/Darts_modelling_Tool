@@ -26,9 +26,25 @@ set(OD_ENGINES_INTERPOLATOR_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.h    
 )
 
+
+
+
 # Define the engines_interpolator library
 # This is always a static library since we wish to use it internally only
 add_library(engines_interpolator OBJECT "")
+
+if (CUDA)
+  set(CUDA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/evaluator_iface.cpp 
+  )
+  set_source_files_properties(
+    ${CUDA_SOURCES}
+    PROPERTIES LANGUAGE CUDA)
+  
+  target_sources(engines_interpolator PRIVATE
+    ${CUDA_SOURCES}
+  )
+endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers

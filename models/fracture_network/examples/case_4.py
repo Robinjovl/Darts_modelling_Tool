@@ -40,7 +40,7 @@ def input_data_case_4():
     idata.geom['frac_aper'] = 1e-9  # (initial) fracture aperture [m]
 
     # well controls
-    wctrl = idata.wells.controls
+    wctrl = idata.well_data.controls
     wctrl.rate_prod = 0  # m3/day
     wctrl.rate_inj = 1000  # m3/day
     wctrl.delta_temp = 40 # inj_temp = initial_temp - delta_temp

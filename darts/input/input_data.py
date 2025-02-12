@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union, List, Dict
 
 class RockProps():
     '''
@@ -78,31 +79,228 @@ class MeshData():
         self.matrix_tags = None
         self.mesh_filename = None
         
-class WellControlsConst():
+class WellControl():
     '''
     constant well controls during the simulation
     '''
     def __init__(self):
-        self.type = None  #  'rate' or 'bhp'
-        # bhp
-        self.inj_bhp = None # bars
-        self.prod_bhp = None # bars
-        # rate
-        self.inj_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        self.inj_bhp_constraint = None # upper limit for bhp, bars
-        self.prod_rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        self.prod_bhp_constraint = None # lower limit for bhp, bars
+        self.reset()
+
+    def reset(self):
+        self.type = None  # 'prod' or 'inj'
+        self.mode = None  # 'rate' or 'bhp'
+        # bhp control
+        self.bhp = None # bars
+        # rate control
+        self.rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        self.bhp_constraint = None # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K
         # if Compositional
-        self.inj_comp_index = None # injection composition index, [int]
+        self.comp_index = None # composition index, [int]
 
-class Wells():
+    def prod_rate_control(self, rate, bhp_constraint, comp_index=None):
+        self.reset()
+        self.type = 'prod'
+        self.mode = 'rate'
+        self.rate = rate
+        self.bhp_constraint = bhp_constraint
+        # if Compositional
+        self.comp_index = comp_index # production composition index, [int]
+
+    def prod_bhp_control(self, bhp):
+        self.reset()
+        self.type = 'prod'
+        self.mode = 'bhp'
+        self.bhp = bhp
+
+    def inj_rate_control(self, rate, bhp_constraint, temperature=None, comp_index=None):
+        self.reset()
+        self.type = 'inj'
+        self.mode = 'rate'
+        self.rate = rate
+        self.bhp_constraint = bhp_constraint
+        # if thermal
+        self.inj_bht = temperature  # K
+        # if Compositional
+        self.comp_index = comp_index # injection composition index, [int]
+
+    def inj_bhp_control(self, bhp, temperature=None, comp_index=None):
+        self.reset()
+        self.type = 'inj'
+        self.mode = 'bhp'
+        self.bhp = bhp
+        # if thermal
+        self.inj_bht = temperature  # K
+        # if Compositional
+        self.comp_index = comp_index # injection composition index, [int]
+        
+class WellLocIJK():
+    '''
+    well location for structured grid, 1-based integer grid cell indices I,J,K
+    '''
+    def __init__(self):
+        self.I = None
+        self.J = None
+        self.K = None
+
+class WellLocXYZ():
+    '''
+    well location for any kind of grid, real coordinates X, Y, Z
+    '''
+    def __init__(self):
+        self.X = None
+        self.Y = None
+        self.Z = None
+
+class Well():
+    '''
+    well definition
+    '''
+    def __init__(self, loc_type : str):
+        self.controls = [] # List[WellControl]
+        self.perforations = []
+        if loc_type == 'ijk':
+            self.location = WellLocIJK()
+        elif loc_type == 'xyz':
+            self.location = WellLocXYZ()
+        else:
+            print('Unknown loc_type', loc_type)
+            exit(1)
+
+class WellPerforation():
+    def __init__(self, loc_ijk: Union[int, tuple], status : str, well_radius : float, well_index : float,
+                 well_indexD : float, multi_segment: bool):
+        self.loc_ijk = loc_ijk
+        self.status = status
+        self.well_radius = well_radius
+        self.well_index = well_index
+        self.well_indexD = well_indexD
+        self.multi_segment = multi_segment
+
+class WellData():
     '''
     well definition
     '''
     def __init__(self):
-        self.controls = WellControlsConst()
+        self.wells = dict()
+
+    def add_well(self, name : str, loc_type : str, loc_ijk: Union[int, tuple] = None, loc_xyz: Union[float, tuple] = None):
+        assert name not in self.wells, 'The well ' + name + ' has been already added!'
+        w = Well(loc_type=loc_type)
+        if loc_ijk is not None and loc_type == 'ijk':
+            w.location.I, w.location.J, w.location.K = loc_ijk
+        elif loc_xyz is not None and loc_type == 'xyz':
+            w.location.X, w.location.Y, w.location.Z = loc_xyz
+        else:
+            print('Unknown loc_type', loc_type)
+            exit(1)
+        self.wells[name] = w
+
+    def add_perforation(self, name : str, time : float, loc_ijk: Union[int, tuple], status: str, well_radius : float,
+                        well_index : float, well_indexD : float, multi_segment : bool):
+        '''
+        :param name: well name
+        :param time: simulation timestep, [days]
+        '''
+        if name not in self.wells:
+            self.add_well(name=name, loc_type='ijk', loc_ijk=loc_ijk)
+        eps = 1e-5
+        if status == 'close':
+            # well connections in DARTS cannot be changed during the simulation, so they can be only closed
+            # and re-opened throughout timesteps. well_index and well_indexD can be changed as well.
+            # multi_segment option can't be changed and should be the same for all perforations
+            well_index_ = well_indexD_ = eps
+        else:
+            well_index_  = well_index
+            well_indexD_ = well_indexD
+        perf = WellPerforation(loc_ijk=loc_ijk, status=status, well_radius=well_radius, well_index=well_index_,
+                               well_indexD=well_indexD_, multi_segment=multi_segment)
+        self.wells[name].perforations.append((time, perf))
+
+    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
+        '''
+        read COMPDAT from SCH file in Eclipse format, add wells and perforations
+        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
+        :param: sch_fname - path to file
+        '''
+        if sch_fname is None:
+            return
+        print('reading wells (COMPDAT) from', sch_fname)
+        well_diam = 0.152  # m.  #TODO read from the keyword parameters
+        well_radius = well_diam / 2.
+
+        keep_reading = True
+        prev_well_name = ''
+        with open(sch_fname) as f:
+            while keep_reading:
+                buff = f.readline()
+                if 'COMPDAT' in buff:
+                    while True:  # be careful here
+                        buff = f.readline()
+                        if len(buff) != 0:
+                            CompDat = buff.split()
+                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
+                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                                # define perforation
+                                i1 = int(CompDat[1])
+                                j1 = int(CompDat[2])
+                                k1 = int(CompDat[3])
+                                k2 = int(CompDat[4])
+
+                                well_index = None
+                                if len(CompDat) > 7:
+                                    if CompDat[7] != '*':
+                                        well_index = float(CompDat[7])
+
+                                for k in range(k1, k2 + 1):
+                                    #TODO support time>0
+                                    self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k), 
+                                                         status='open', well_radius=well_radius,
+                                                         well_index=well_index, well_indexD=None, 
+                                                         multi_segment=False)
+                            if len(CompDat) != 0 and '/' == CompDat[0]:
+                                keep_reading = False
+                                break
+        print('WELLS read from SCH file:', len(self.wells))
+
+    def add_control(self, name : str, time : float, type : str, mode : str, rate : float, bhp : float,
+                    bhp_constraint : float, inj_temp : float, comp_index : float):
+        '''
+        :param name: well name
+        :param time: simulation timestep, [days]
+        :param type: 'inj' or 'prod'
+        :param mode: 'rate' or 'bhp'
+        :param rate: well rate, unit depends on physics, can be None if bhp-controlled
+        :param bhp: bottom hole pressure, can be None if rate-controlled
+        :param bhp_constraint: bottom hole pressure constraint (min for prod and max for inj wells)
+        :param inj_temp: injection temperature, [K]
+        :param comp_index # injection composition index, [int], for Compositional physics
+        :return:
+        '''
+        self.wells[name].controls.append((time, WellControl(type=type, mode=mode, rate=rate, bhp=bhp,
+                                                            bhp_constraint=bhp_constraint, inj_temp=inj_temp,
+                                                            comp_index=comp_index)))
+
+    def add_prd_rate_control(self, name, rate, bhp_constraint, comp_index=None, time=0):
+        wctrl = WellControl()
+        wctrl.prod_rate_control(rate=rate, bhp_constraint=bhp_constraint, comp_index=comp_index)
+        self.wells[name].controls.append((time, wctrl))
+
+    def add_prd_bhp_control(self, name, bhp, time=0):
+        wctrl = WellControl()
+        wctrl.prod_bhp_control(bhp=bhp)
+        self.wells[name].controls.append((time, wctrl))
+
+    def add_inj_rate_control(self, name, rate, bhp_constraint, temperature=None, comp_index=None, time=0):
+        wctrl = WellControl()
+        wctrl.inj_rate_control(rate=rate, bhp_constraint=bhp_constraint, temperature=temperature, comp_index=comp_index)
+        self.wells[name].controls.append((time, wctrl))
+
+    def add_inj_bhp_control(self, name, bhp, temperature=None, comp_index=None, time=0):
+        wctrl = WellControl()
+        wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, comp_index=comp_index)
+        self.wells[name].controls.append((time, wctrl))
 
 class OBLParams():
     '''
@@ -143,7 +341,7 @@ class InputData():
         self.fluid = FluidProps()
         self.obl = OBLParams()
         self.initial = InitialSolution(init_type)
-        self.wells = Wells()
+        self.well_data = WellData()
         self.mesh = MeshData()
         self.boundary = None
         self.sim = Simulation()
@@ -184,11 +382,11 @@ class InputData():
         can be later used in operations. If some of props are not initialized (i.e. =None) they will be skipped.
         :return:
         '''
-        no_array_obj = ['fluid', 'obl', 'mesh', 'initial', 'wells', 'other']
+        array_obj = ['rock']  # list of items which can be defined by regons
         # count number of regions (one value per region)
         max_n_regions = 1
         for k in self.__dict__.keys():  #  loop over the attributes (self.rock, ..)
-            if k in no_array_obj:
+            if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
@@ -201,7 +399,7 @@ class InputData():
                     max_n_regions = value.size
         # make arrays from scalar fields
         for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
-            if k in no_array_obj:
+            if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):

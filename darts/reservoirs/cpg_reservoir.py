@@ -18,6 +18,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 import datetime, time
 import darts
 from pyevtk import hl, vtk
+from pyevtk.hl import pointsToVTK
 import warnings
 
 try:
@@ -277,17 +278,23 @@ class CPG_Reservoir(ReservoirBase):
         # local index
         local_block = self.discr_mesh.global_to_local[res_block]
 
+        well_index = -1
+        well_indexD = -1
+
         # check if target grid block is active
         if local_block > -1:
             dx, dy, dz = self.discr_mesh.calc_cell_sizes(i, j, k)
+
+            well_diam = 2 * well_radius
 
             eps = 1e-6  # to avoid divizion by zero
             kx = self.permx[res_block] + eps
             ky = self.permy[res_block] + eps
             kz = self.permz[res_block] + eps
 
-            well_index = 0
             if segment_direction == 'z_axis':
+                assert well_diam < dx and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i+1},{j+1},{k+1})'
+
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
                                ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -295,6 +302,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
                 if kx == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'x_axis':
+                assert well_diam < dz and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kz) * dz ** 2 + np.sqrt(kz / ky) * dy ** 2) / \
                                ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -302,6 +310,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
                 if kz == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'y_axis':
+                assert well_diam < dx and well_diam < dz, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(kz / kx) * dx ** 2 + np.sqrt(kx / kz) * dz ** 2) / \
                                ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
@@ -310,9 +319,6 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or kz == 0: well_index = 0.0
 
             well_index = well_index * StructDiscretizer.darcy_constant
-        else:
-            well_index = 0
-            well_indexD = 0
 
         return local_block, well_index, well_indexD
 
@@ -421,8 +427,13 @@ class CPG_Reservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wiD
 
-        assert well_index >= 0
-        assert well_indexD >= 0
+        if res_block_local < 0:
+            if verbose:
+                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+            return
+        
+        assert well_index >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        assert well_indexD >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -450,9 +461,7 @@ class CPG_Reservoir(ReservoirBase):
                 c = self.centroids_all_cells[res_block_local].values
                 print('Added perforation for well %s to block %d IJK=[%d, %d, %d] XYZ=(%f, %f, %f) with WI=%f WID=%f' % (
                     well.name, res_block_local, i, j, k, c[0], c[1], c[2], well_index, well_indexD))
-        else:
-            if verbose:
-                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+
         return
 
     def write_mpfa_conn_to_file(self, path='mpfa_conn.dat'):
@@ -688,58 +697,12 @@ class CPG_Reservoir(ReservoirBase):
         self.depth[:] = self.depth_all_cells
         self.volume[:] = self.volume_all_cells
 
-    def read_and_add_perforations(self, sch_fname, verbose: bool = False):
-        '''
-        read COMPDAT from SCH file in Eclipse format, add wells and perforations
-        note: uses only I,J,K1,K2 and optionally WellIndex parameters from the COMPDAT keyword
-        :param: sch_fname - path to file
-        '''
-        if sch_fname is None:
-            return
-        print('reading wells (COMPDAT) from', sch_fname)
-        well_dia = 0.152
-        well_rad = well_dia / 2
-
-        keep_reading = True
-        prev_well_name = ''
-        with open(sch_fname) as f:
-            while keep_reading:
-                buff = f.readline()
-                if 'COMPDAT' in buff:
-                    while True:  # be careful here
-                        buff = f.readline()
-                        if len(buff) != 0:
-                            CompDat = buff.split()
-                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
-                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
-                                # define well
-                                if wname == prev_well_name:
-                                    pass
-                                else:
-                                    reservoir.add_well(wname)
-                                    prev_well_name = wname
-                                # define perforation
-                                i1 = int(CompDat[1])
-                                j1 = int(CompDat[2])
-                                k1 = int(CompDat[3])
-                                k2 = int(CompDat[4])
-
-                                well_index = None
-                                if len(CompDat) > 7:
-                                    if CompDat[7] != '*':
-                                        well_index = float(CompDat[7])
-
-                                for k in range(k1, k2 + 1):
-                                    reservoir.add_perforation(wname, cell_index=(i1, j1, k), well_radius=well_rad,
-                                                              well_index=well_index, well_indexD=well_indexD,
-                                                              multi_segment=False, verbose=verbose)
-
-                            if len(CompDat) != 0 and '/' == CompDat[0]:
-                                keep_reading = False
-                                break
-        print('WELLS read from SCH file:', len(reservoir.wells))
-
     def create_vtk_wells(self, output_directory: str):
+        '''
+        creates a file wells.vtk with a tube per well based on its first perforation
+        :param output_directory: 
+        :return: 
+        '''
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
@@ -748,8 +711,8 @@ class CPG_Reservoir(ReservoirBase):
         def create_tube(center, prolongation=1000):
             # Create points for the polyline
             points = vtk.vtkPoints()
-            points.InsertNextPoint(center[0], center[1], center[2] - prolongation)  # Point 1
-            points.InsertNextPoint(center[0], center[1], center[2] + prolongation)  # Point 2
+            points.InsertNextPoint(center[0], center[1], -center[2] + prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], -center[2])  # Point 2
 
             # Create a polyline that connects the points
             lines = vtk.vtkCellArray()
@@ -774,11 +737,13 @@ class CPG_Reservoir(ReservoirBase):
             return tubeFilter.GetOutput()
 
         for w in self.wells:
+            prolongation = 1000
             for p in w.perforations:
                 well_block, res_block_local, well_index, well_indexD = p
                 c = self.centroids_all_cells[res_block_local].values
-                cyl = create_tube(c)
+                cyl = create_tube(c, prolongation=prolongation)
                 appendFilter.AddInputData(cyl)
+                prolongation = 0
                 break  # use only the first perf
 
         # Update the append filter to combine the polydata
@@ -813,6 +778,61 @@ class CPG_Reservoir(ReservoirBase):
         idx = find_cell_index(centers, np.array([x, y, z]))
         ijk = get_ijk(idx, self.nx, self.ny, self.nz)
         return ijk
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
+        c = np.zeros((self.discr_mesh.n_cells, 3))
+        for i in range(self.discr_mesh.n_cells):
+            cv = c_cpg[i].values
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        if c is not None:
+            pointsToVTK(fname, x, y, z)
+
+    def save_grdecl(self, arrays_save, fname):
+        '''
+        saves cubes into a text file (grdecl format), nx*ny*nz values, I is the fastest index
+        arrays - dictionary of numpy arrays, dimension of n active cells
+        fname - file name to output
+        '''
+
+        actnum = self.global_data['actnum']
+        fname_suf = fname + '.grdecl'
+
+        local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
+        global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
+
+        save_array(actnum, fname_suf, 'ACTNUM', local_to_global, global_to_local, 'w')
+        for arr_name in arrays_save.keys():
+            make_full = True
+            if arr_name in ['SPECGRID', 'COORD', 'ZCORN']:
+                make_full = False
+            save_array(arrays_save[arr_name], fname_suf, arr_name, local_to_global, global_to_local, 'a', make_full)
+
+    def update_perm(self, permx, permy, permz):
+        '''
+        recompute the transmissiblity without re-initializing the reservoir since there are no changes in the geometry
+        '''
+        # make 1D, also convert the type to be able to convert to value_vector_discr
+        # store to self to save in vtk
+        assert self.reservoir.permx.size == permx.flatten().size, f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        self.reservoir.permx = np.array(permx, dtype=np.float64).flatten()
+        self.reservoir.permy = np.array(permy, dtype=np.float64).flatten()
+        self.reservoir.permz = np.array(permz, dtype=np.float64).flatten()
+        permx = value_vector_discr(self.reservoir.permx)
+        permy = value_vector_discr(self.reservoir.permy)
+        permz = value_vector_discr(self.reservoir.permz)
+        self.reservoir.discretizer.set_permeability(permx, permy, permz)
+        # calculate transmissibilities
+        displaced_tags = dict()
+        displaced_tags[elem_loc.MATRIX] = set()
+        displaced_tags[elem_loc.FRACTURE] = set()
+        displaced_tags[elem_loc.BOUNDARY] = set()
+        displaced_tags[elem_loc.FRACTURE_BOUNDARY] = set()
+        self.reservoir.discretizer.calc_tpfa_transmissibilities(displaced_tags)
+
 
 #####################################################################
 

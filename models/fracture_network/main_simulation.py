@@ -26,7 +26,7 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
 
     os.makedirs(output_directory)
 
-    redirect_darts_output(os.path.join(output_directory, 'out.log'))
+    redirect_darts_output(os.path.join(output_directory, 'simulation.log'))
 
     m = Model(idata)
 

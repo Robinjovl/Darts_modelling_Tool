@@ -1,3 +1,14 @@
+# 1.2.2 [26-01-2024]
+- Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
+- Temperature and pressure operators are added
+- Add enthalpy operators to elastic super engine
+- Fix in operator indexing in mechanical models
+- GPU-version tests added in CI/CD
+- Keep only rates, super, pze_gra and pz_cap_gra interpolators
+- Breaking changes (only if InputData was used in a model):
+	- The well class is modified and renamed to WellData which now contains a dictionary of Well objects
+	- WellControlsConst is replaced by more generic 'WellControl's list from InputData
+
 # 1.2.1 [25-11-2024]
 - Remove "IAPWS" suffix from Geothermal PropertyContainer and predefined GeothermalIAPWS physics for backward compatibility.
 - Few small changes:

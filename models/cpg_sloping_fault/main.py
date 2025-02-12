@@ -1,26 +1,25 @@
-from darts.engines import redirect_darts_output
-from darts.tools.plot_darts import *
-from darts.tools.logging import redirect_all_output, abort_redirection
-from model_geothermal import ModelGeothermal
-from model_deadoil import ModelDeadOil
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import time
 import os, sys
 
-def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : int, export_vtk=True, redirect_log=False, platform='cpu'):
+from darts.engines import redirect_darts_output
+from darts.tools.plot_darts import *
+from darts.tools.logging import redirect_all_output, abort_redirection
+
+from model_geothermal import ModelGeothermal
+from model_deadoil import ModelDeadOil
+
+
+def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
     :param out_dir: directory name for outpult files
-    :param dt: timestep length, [days]
-    :param n_time_steps: number of timestep
     :param export_vtk:
     :return:
     '''
-    print('Test started', 'physics_type:', physics_type, 'case:', case)
+    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
@@ -28,49 +27,40 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(case=case, grid_out_dir=out_dir, iapws_physics=True)
-    elif physics_type == 'dead_oil':
-        m = ModelDeadOil(case=case, grid_out_dir=out_dir)
+        m = ModelGeothermal(iapws_physics=True)
+    elif physics_type == 'deadoil':
+        m = ModelDeadOil()
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
+    m.physics_type = physics_type
+
+    m.set_input_data(case=case)
+
+    m.init_reservoir()
 
     m.init(output_folder=out_dir, platform=platform)
+    #m.reservoir.mesh.init_grav_coef(0)
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
-    m.save_grdecl(os.path.join(out_dir, 'res_init'))
+    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
-    t = 0
-    for ti in range(n_time_steps):
-        m.run(dt)
-        t += dt
-        # save to grdecl file after each time step
-        #m.save_grdecl(os.path.join(out_dir, 'res_' + str(ti+1)))
-        m.physics.engine.report()
-        m.print_well_rate()
+    ret = m.run_simulation()
+    if ret != 0:
+        exit(1)
 
-    # output center points to VTK
-    from pyevtk.hl import pointsToVTK
-    fname = os.path.join(out_dir, 'centers')
-    c_cpg = m.reservoir.centroids_all_cells[:m.reservoir.discr_mesh.n_cells]
-    c = np.zeros((m.reservoir.discr_mesh.n_cells, 3))
-    for i in range(m.reservoir.discr_mesh.n_cells):
-        cv = c_cpg[i].values
-        c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
-    x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-    if c is not None:
-        pointsToVTK(fname, x, y, z)
+    m.reservoir.centers_to_vtk(out_dir)
 
-    m.save_grdecl(os.path.join(out_dir, 'res_last'))
+    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     
     m.print_timers()
-    m.print_stat()
+    #m.print_stat()
 
     if export_vtk:
         # read h5 file and write vtk
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(n_time_steps):
+        for ith_step in range(len(m.idata.sim.time_steps)):
             m.output_to_vtk(ith_step=ith_step)
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25
@@ -112,61 +102,75 @@ def run(physics_type : str, case: str, out_dir: str, dt : float, n_time_steps : 
         abort_redirection(log_stream)
     print('Failed' if failed else 'Ok')
 
-    return failed, sim_time, time_data, time_data_report
+    return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
 ##########################################################################################################
-def plot_results(time_data, time_data_report, physics_type, out_dir):
-    well_name = 'PRD'
+def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
     plt.rc('font', size=12)
 
-    if physics_type == 'geothermal':
-        ax1 = plot_temp_darts(well_name, time_data_report)
-        ax1.set(xlabel="Days", ylabel="temperature [degrees]")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'well_temperature_' + case + '.png'))
-        plt.close()
-
-        # use time_data here as we are going to compute a cumulative plot
-        ax1 = plot_extracted_energy_darts(time_data)
-        ax1.set(xlabel="Days", ylabel="energy [PJ]")
-        plt.tight_layout()
-        plt.savefig(os.path.join(out_dir, 'energy_extracted_' + case + '.png'))
-        plt.close()
-    else:
-        # rate plotting
-        ax1 = plot_total_prod_oil_rate_darts(time_data_report)
-        ax1.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
-        plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + case + '.png'), )
-        plt.close()
-
-        if False:
-            #TODO need to get proper volumetric rates to compute the watercut
-            wcut = f'{well_name}' + ' watercut'
-            results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
-            ax3 = results.plot(x='time', y=wcut, label=wcut)
-            ax3.set_ylim(0, 1)
-            ax3.set(xlabel="Days", ylabel="Water cut [-]")
+    for well_name in wells:
+        if well_is_inj(well_name):
+            continue
+        if physics_type == 'geothermal':
+            ax = None
+            for time_data_report, label in zip(time_data_report_list, label_list):
+                ax = plot_temp_darts(well_name, time_data_report, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="temperature [degrees]")
             plt.tight_layout()
-            plt.savefig(os.path.join(out_dir, 'water_cut_' + case + '.png'))
+            plt.savefig(os.path.join(out_dir, 'well_temperature_' + well_name + '_' + case + '.png'))
             plt.close()
+
+            # use time_data here as we are going to compute a cumulative plot
+            ax = None
+            for time_data, label in zip(time_data_list, label_list):
+                ax = plot_extracted_energy_darts(time_data, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="energy [PJ]")
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir, 'energy_extracted_' + well_name + '_' + case + '.png'))
+            plt.close()
+        else:
+            # rate plotting
+            ax = None
+            for time_data_report, label in zip(time_data_report_list, label_list):
+                ax = plot_total_prod_oil_rate_darts(time_data_report, ax=ax)#, label=label)
+            ax.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
+            plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + well_name + '_' + case + '.png'), )
+            plt.close()
+
+            if False:
+                #TODO need to get proper volumetric rates to compute the watercut
+                wcut = f'{well_name}' + ' watercut'
+                results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+                ax3 = results.plot(x='time', y=wcut, label=wcut)
+                ax3.set_ylim(0, 1)
+                ax3.set(xlabel="Days", ylabel="Water cut [-]")
+                plt.tight_layout()
+                plt.savefig(os.path.join(out_dir, 'water_cut_' + well_name + '_' + case + '.png'))
+                plt.close()
 
     rate_units = 'm3/day' if physics_type == 'geothermal' else 'kmol/day'
 
     # common plots for both physics
-    ax = plot_total_inj_water_rate_darts(time_data_report)
+    ax = None
+    for time_data_report, label in zip(time_data_report_list, label_list):
+        ax = plot_total_inj_water_rate_darts(time_data_report, ax=ax)#, label=label)
     ax.set(xlabel="Days", ylabel="Total injected water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'injection_water_rate_' + case + '.png'))
     plt.close()
 
-    ax = plot_total_prod_water_rate_darts(time_data_report)
+    ax = None
+    for time_data_report, label in zip(time_data_report_list, label_list):
+        ax = plot_total_prod_water_rate_darts(time_data_report, ax=ax)#, label=label)
     ax.set(xlabel="Days", ylabel="Total produced water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
     plt.close()
 
-    for well_name in ['PRD', 'INJ']:
-        ax = plot_bhp_darts(well_name, time_data_report)
+    for well_name in wells:
+        ax = None
+        for time_data_report, label in zip(time_data_report_list, label_list):
+            ax = plot_bhp_darts(well_name, time_data_report, ax=ax)#, label=label)
         ax.set(xlabel="Days", ylabel="BHP [bar]")
         plt.savefig(os.path.join(out_dir, 'well_' + well_name + '_bhp_' + case + '.png'))
         plt.tight_layout()
@@ -212,11 +216,8 @@ def run_test(args: list = [], platform='cpu'):
         case = args[0]
         physics_type = args[1]
 
-        dt = 365.25  # one report timestep length, [days]
-        n_time_steps = 20
-
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
+        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
@@ -225,34 +226,53 @@ def run_test(args: list = [], platform='cpu'):
 
 if __name__ == '__main__':
     platform = 'cpu'
-    if len(sys.argv) > 1:
-        platform = sys.argv[1]
-    if platform not in ['cpu', 'gpu']:
-        print('unknown platform specified', platform)
-        exit(1)
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+            platform = 'gpu'
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['dead_oil']
+    physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
-    cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
-    cases_list += ['case_40x40x10']
+    #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
-    dt = 365.25  # one report timestep length, [days]
-    n_time_steps = 20
+    well_controls = []
+    well_controls += ['wrate']
+    well_controls += ['wbhp']
+    well_controls += ['wperiodic']
 
     for physics_type in physics_list:
-        for case in cases_list:
-            out_dir = 'results_' + physics_type + '_' + case
+        for case_geom in cases_list:
+            for wctrl in well_controls:
+                if physics_type == 'deadoil' and wctrl == 'wrate':
+                    continue
+                case = case_geom + '_' + wctrl
+                out_dir = 'results_' + physics_type + '_' + case
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
+                                                                                        case=case, out_dir=out_dir,
+                                                                                        redirect_log=False,
+                                                                                        platform=platform)
 
-            failed, sim_time, time_data, time_data_report = run(physics_type=physics_type, case=case, out_dir=out_dir, dt=dt, n_time_steps=n_time_steps, platform=platform)
+                # one can read well results from pkl file to add/change well plots without re-running the model
+                pkl1_dir = '.'
+                pkl_fname = 'time_data.pkl'
+                pkl_report_fname = 'time_data_report.pkl'
+                time_data_list = [time_data]
+                time_data_report_list = [time_data_report]
+                label_list = [None]
 
-            # one can read well results from pkl file to add/change well plots without re-running the model
-            #time_data_report = pd.read_pickle(os.path.join(out_dir, 'time_data.pkl'))
+                # compare the current results with another run
+                #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom
+                #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
+                #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
+                #time_data_list = [time_data_1, time_data]
+                #time_data_report_list = [time_data_report_1, time_data_report]
+                #label_list = ['1', 'current']
 
-            plot_results(time_data, time_data_report, physics_type, out_dir)
-
+                plot_results(wells=wells, well_is_inj=well_is_inj,
+                             time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
+                             physics_type=physics_type, out_dir=out_dir)

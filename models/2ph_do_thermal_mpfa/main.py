@@ -6,6 +6,13 @@ import meshio
 from darts.engines import redirect_darts_output
 
 def run(discr_type, mesh_file, test=False):
+    try:
+        # if compiled with OpenMP, set to run with 1 thread, as MPFA tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
     redirect_darts_output('run.log')
 
     m = Model(discr_type=discr_type, mesh_file=mesh_file)

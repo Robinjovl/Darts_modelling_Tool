@@ -2386,7 +2386,8 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	  ref_pressure.resize(ref_pressure.size() + dofs_num);
 	if (ref_temperature.size())
 	  ref_temperature.resize(ref_temperature.size() + dofs_num);
-
+	if (th_poro.size())
+	  th_poro.resize(th_poro.size() + dofs_num);
 	heat_capacity.resize(heat_capacity.size() + dofs_num);
 	//rock_cond.resize(well_head_idx + n_bounds);
 
@@ -2427,6 +2428,8 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		{
 			volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
 			poro[wells[iw]->well_head_idx + p] = 1;
+			if (th_poro.size())
+			  th_poro[wells[iw]->well_head_idx + p] = 0;
 			op_num[wells[iw]->well_head_idx + p] = 0;
 			heat_capacity[wells[iw]->well_head_idx + p] = 0;
 			rock_cond[wells[iw]->well_head_idx + p] = 0;
