@@ -20,13 +20,13 @@ class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
+        values[1] = np.sum(pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[2] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
                                           - 100 * pressure)
         # energy flux
-        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
         # fluid conduction
         values[4] = np.sum(pc.conduction[pc.ph] * pc.saturation[pc.ph])
         # temperature
@@ -48,13 +48,13 @@ class acc_flux_custom_iapws_evaluator_python_well(OperatorsGeothermal):
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
+        values[1] = np.sum(pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[2] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
                                           - 100 * pressure)
         # energy flux
-        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
+        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
         # fluid conduction
         values[4] = 0.0
         # temperature
@@ -76,15 +76,15 @@ class acc_flux_gravity_evaluator_python(OperatorsGeothermal):
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
-        values[2] = pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
+        values[1] = pc.dens_m[0] * pc.kr[0] / pc.mu[0] if 0 in pc.ph else 0.
+        values[2] = pc.dens_m[1] * pc.kr[1] / pc.mu[1] if 1 in pc.ph else 0.
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[3] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
                                           - 100 * pressure)
         # energy flux
-        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
-        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
+        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.kr[0] / pc.mu[0] if 0 in pc.ph else 0.
+        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.kr[1] / pc.mu[1] if 1 in pc.ph else 0.
         # fluid conduction
         values[6] = np.sum(pc.conduction[pc.ph] * pc.saturation[pc.ph])
         # water density
@@ -110,15 +110,15 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
         # mass accumulation
         values[0] = pore_volume_factor * np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph])
         # mass flux
-        values[1] = pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
-        values[2] = pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
+        values[1] = pc.dens_m[0] * pc.kr[0] / pc.mu[0] if 0 in pc.ph else 0.
+        values[2] = pc.dens_m[1] * pc.kr[1] / pc.mu[1] if 1 in pc.ph else 0.
         # fluid internal energy = water_enthalpy + steam_enthalpy - work
         # (in the following expression, 100 denotes the conversion factor from bars to kJ/m3)
         values[3] = pore_volume_factor * (np.sum(pc.dens_m[pc.ph] * pc.saturation[pc.ph] * pc.enthalpy[pc.ph])
                                           - 100 * pressure)
         # energy flux
-        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0] if 0 in pc.ph else 0.
-        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.relperm[1] / pc.viscosity[1] if 1 in pc.ph else 0.
+        values[4] = pc.enthalpy[0] * pc.dens_m[0] * pc.kr[0] / pc.mu[0] if 0 in pc.ph else 0.
+        values[5] = pc.enthalpy[1] * pc.dens_m[1] * pc.kr[1] / pc.mu[1] if 1 in pc.ph else 0.
         # fluid conduction
         values[6] = 0.0
         # water density
@@ -139,6 +139,6 @@ class MassFluxOperators(OperatorsGeothermal):
         pc.evaluate(state)
 
         """ Beta operator here represents mass flux term: """
-        values[0] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
+        values[0] = np.sum(pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
 
         return 0
