@@ -176,7 +176,7 @@ class Model(DartsModel, OptModuleSettings):
 
             temperature_itor = self.physics.create_interpolator(temperature_etor,
                                                                 timer_name="customized operator interpolation",
-                                                                n_ops=1, platform='cpu', algorithm='multilinear',
+                                                                n_ops=7, platform='cpu', algorithm='multilinear',
                                                                 mode='adaptive', precision='d')
             self.physics.create_itor_timers(temperature_itor, "customized operator interpolation")
 
@@ -215,14 +215,14 @@ class Model(DartsModel, OptModuleSettings):
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
         for ts in time_step_arr:
+            from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if i == 0:
-                    w.control = self.physics.new_bhp_prod(self.p_init - 10)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  is_inj=False, target=self.p_init-10.)
                 else:
-                    # w.control = self.physics.new_rate_inj(200, "phase_molar_rate", 'oil', self.inj)
-                    w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                    # w.control = self.physics.new_rate_inj(5, "phase_molar_rate", 'wat', self.inj)
-                    # w.control = self.physics.new_bhp_inj(450, self.inj)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  is_inj=True, target=self.p_init+10., inj_stream=self.inj)
 
             DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
