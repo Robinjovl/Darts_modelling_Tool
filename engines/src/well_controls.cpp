@@ -39,14 +39,15 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   int n_ops = n_state_size + 4 * n_phases;
   well_control_ops.resize(n_ops);
   well_control_ops_derivs.resize(n_ops * n_state_size);
-  state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_state_size);
-  well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 
   // Set first specification from well controls (defined in operators)
   if (this->control_type == WellControlType::BHP)
   {
     // If BHP controlled - pressure constraint
-  	RHS_well_head[0] = well_control_ops[0] - well_control_spec[0];
+	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_state_size);
+    well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
+  	
+	RHS_well_head[0] = well_control_ops[0] - well_control_spec[0];
 
 	// BHP operator derivatives
 	for (int jj = 0; jj < n_state_size; jj++)
@@ -57,11 +58,13 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   else
   {
 	// If rate controlled, find the pressure difference and calculate rate
+	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_state_size);
+    well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 	value_t p_diff = X_well_head[0] - X_well_body[0];
 	index_t rate_op_idx = n_state_size + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 
 	// RHS
-	RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * segment_trans - well_control_spec[0];	
+	RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * segment_trans - well_control_spec[0];
 
 	// Rate operator derivatives
 	for (int jj = 0; jj < n_state_size; jj++)
@@ -71,6 +74,13 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	// Product rule for pressure variable
 	jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[rate_op_idx] * segment_trans;
 	jacobian_row[n_block_size * P_VAR + P_VAR + n_block_size_sq] = -well_control_ops[rate_op_idx] * segment_trans;
+
+	// if target phase does not exist, set a constant small value to pressure derivative
+    // it will let the pressure drop and eventually pressure constraint might work
+	if (this->well_state_offset && std::fabs(jacobian_row[n_block_size * P_VAR + P_VAR]) < 1e-3)
+	{
+	  jacobian_row[n_block_size * P_VAR + P_VAR] = 1.;
+	}
   }
 
   // Loop over rest of vector of well controls (defined in operators)
@@ -111,9 +121,12 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   if (this->control_type == WellControlType::BHP)
   {
 	// Check if BHP constraint is violated
+	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_state_size);
+  	well_controls_etor->evaluate(state, well_control_ops);
+
 	return (p_diff > 0.) ?
-			X[well_head_idx * n_block_size + P_VAR] > well_control_spec[P_VAR] : // injection well
-			X[well_head_idx * n_block_size + P_VAR] < well_control_spec[P_VAR];  // production well
+			well_control_ops[0] > well_control_spec[P_VAR] : // injection well
+			well_control_ops[0] < well_control_spec[P_VAR];  // production well
   }
   else
   {
