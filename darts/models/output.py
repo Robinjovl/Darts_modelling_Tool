@@ -18,7 +18,8 @@ class Output:
     Base class for all output related functionality
     """
     def __init__(self, timer: timer_node, reservoir, physics, op_list, params,
-                 output_folder, sol_filename, well_filename, save_initial, all_phase_props, precision, compression, verbose):
+                 output_folder : str, sol_filename : str, well_filename : str, save_initial : bool,
+                 all_phase_props : bool, precision : str, compression : str, verbose : bool):
         """
         Class constructor method for output related functionalities including saving primary variables (state variables),
         evaulating secondary variables (properties) and creating visualizations.
@@ -44,7 +45,6 @@ class Output:
         self.params = params
         self.verbose = verbose
 
-        # self.timerr = timer
         self.timer = timer.node['output']
         self.timer.node["output_reservoir"] = timer_node()
         self.timer.node["output_well"] = timer_node()
@@ -76,9 +76,7 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j, phase_name in enumerate(self.physics.phases):
-                    # for j in range(self.physics.property_containers[region].nph):
                         temp_dict[f"{name}_{phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
-                        # print(name, phase_name, temp_dict[f"{name}_{phase_name}"]())
 
                 for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
                     for j, phase_name in enumerate(self.physics.phases):  # loop over phases
@@ -175,17 +173,10 @@ class Output:
                 cell_ids_dataset = dynamic_group.create_dataset('cell_id', shape=(nb,), dtype=np.int32)
                 cell_ids_dataset[:] = cell_ids
 
-            if self.compression:
-                dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
-                                             maxshape=(None, nb, self.physics.n_vars),
-                                             dtype=self.precision_map[self.precision],
-                                             compression='gzip')
-            else:
-                dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
-                                             maxshape=(None, nb, self.physics.n_vars),
-                                             dtype=self.precision_map[self.precision])
-            # print('specified_precision', self.precision_map[self.precision])
-            # print('actual_precision', dynamic_group['X'].dtype)
+            dynamic_group.create_dataset('X', shape=(0, nb, self.physics.n_vars),
+                                         maxshape=(None, nb, self.physics.n_vars),
+                                         dtype=self.precision_map[self.precision],
+                                         compression=self.compression)
 
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
@@ -206,10 +197,9 @@ class Output:
         :type restart: bool
         """
 
-        # Ensure the directory exists
-        if not os.path.exists(self.output_folder):
-            os.makedirs(self.output_folder)
-            os.makedirs(os.path.join(self.output_folder, 'figures'))
+        # Ensure the directory and subdirectory exist
+        os.makedirs(self.output_folder, exist_ok=True)
+        os.makedirs(os.path.join(self.output_folder, 'figures'), exist_ok=True)
 
         # solution ouput
         if kind == 'reservoir':
@@ -294,7 +284,7 @@ class Output:
             print("Please use either kind='well' or kind='solution' in save_data_to_h5")
             return
 
-    def read_specific_data(self, filename: str, timestep: int = None):
+    def read_specific_data(self, filename: str, timestep: int = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Extracts time and data from an HDF5 file for a given timestep.
 
@@ -340,7 +330,7 @@ class Output:
 
         return time, cell_id, X, var_names
 
-    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple:
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[nd.array, dictionary]:
         """
         Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
 
@@ -433,7 +423,7 @@ class Output:
 
         return timesteps, property_array
 
-    def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False):
+    def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False) -> xr.Dataset:
         """
         Generates an xarray Dataset of properties and saves it as a NetCDF file.
         State variables area obtained from the engine or *.h5 file.
@@ -448,6 +438,9 @@ class Output:
         :returns: xarray Dataset containing the property data.
         :rtype: xarray.Dataset
         """
+
+        if type(self.reservoir) is not StructReservoir:
+            raise AttributeError("Reservoir class must be exactly of type StructReservoir.")
 
         # Interpolate properties
         time, data = self.output_properties(filepath, output_properties, timestep, engine)
@@ -470,9 +463,7 @@ class Output:
             encoding = {prop: {'dtype': 'float64'} for prop in data.keys()}
         else:
             encoding = {prop: {'dtype': 'float32'} for prop in data.keys()}
-        # encoding = {prop: {'dtype': self.precision_map[self.precision][3:]} for prop in data.keys()}
 
-        # dataset.to_netcdf(os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'))
         # Save to NetCDF with specified encoding
         dataset.to_netcdf(os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'), engine='netcdf4', encoding=encoding)
 
@@ -538,18 +529,6 @@ class Output:
         main_dir = os.path.join(output_directory, 'vtk_files')
         if not os.path.exists(main_dir):
             os.makedirs(main_dir, exist_ok = True)
-
-        # # Find index of properties to output
-        # ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
-        # tot_props = self.physics.vars + ev_props
-        #
-        # if output_properties is None:
-        #     # If None, all variables and properties from property_operators will be passed
-        #     # prop_idxs = {prop: i for i, prop in enumerate(tot_props)}
-        #     prop_idxs = {prop: i for i, prop in enumerate(ev_props)}
-        # else:
-        #     # Else, it finds the indices of output_properties in the output data
-        #     prop_idxs = {prop: tot_props.index(prop) for prop in output_properties}
 
         # timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
         timesteps, property_array = self.output_properties(filepath, output_properties, ith_step, engine)
