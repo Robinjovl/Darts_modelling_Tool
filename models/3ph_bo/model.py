@@ -57,13 +57,15 @@ class Model(CICDModel):
         self.ini_stream = [0.001225901537, 0.7711341309]
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_inj(400, self.inj_stream)
-                # w.control = self.physics.new_bhp_inj(100, self.inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                              target=400., inj_stream=self.inj_stream)
             else:
-                # w.control = self.physics.new_rate_oil_prod(3000)
-                w.control = self.physics.new_bhp_prod(70)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=70.)
+
 
     def set_input_data(self, case):
         idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')

@@ -101,9 +101,12 @@ class Model(DartsModel):
         return
 
     def set_well_controls(self):
-        # define all wells as closed
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.new_bhp_inj(self.p_inj, self.inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=self.p_inj, inj_stream=self.inj_stream[:-1],
+                                                              inj_temp=self.inj_stream[-1])
             else:
-                w.control = self.physics.new_bhp_prod(self.p_prod)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=self.p_prod)

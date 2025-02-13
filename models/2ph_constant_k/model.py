@@ -277,26 +277,25 @@ class Model(DartsModel):
                                                          initial_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
 
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
-            injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
+            injector.control = self.physics.define_well_controls(name="I1", control_type=well_control_iface.MOLAR,
+                                                                 target=1., phase_idx=0, inj_stream=self.inj_stream)
+            producer.control = self.physics.define_well_controls(name="P1", control_type=well_control_iface.BHP,
+                                                                 target=50.)
         elif self.reservoir_type == '2D':
-            injector.control = self.physics.new_rate_inj(300., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
+            injector.control = self.physics.define_well_controls(name="I1", control_type=well_control_iface.MOLAR,
+                                                                 target=300., phase_idx=0, inj_stream=self.inj_stream)
+            producer.control = self.physics.define_well_controls(name="P1", control_type=well_control_iface.BHP,
+                                                                 target=50.)
         # else:
         #     injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
         #     p_ref = np.asarray(self.reservoir.mesh.pressure).min()
         #     producer.control = self.physics.new_bhp_prod(p_ref - 50.)
-
-    def set_spe10_well_controls_initialized(self):
-        injector = self.reservoir.get_well('I1')
-        producer = self.reservoir.get_well('P1')
-        injector.control = self.physics.new_rate_inj(20., "phase_molar_rate", 'gas', self.inj_stream)
-        producer.control = self.physics.new_bhp_prod(np.min(self.p_init) - 50.)
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars

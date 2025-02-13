@@ -132,11 +132,14 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.new_bhp_inj(180, self.inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=180., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(150)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=150.)
 
     def run_custom(self, export_to_vtk=False):
         if export_to_vtk:

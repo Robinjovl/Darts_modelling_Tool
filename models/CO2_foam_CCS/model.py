@@ -92,11 +92,14 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(1, "phase_molar_rate", 'gas', self.inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                              phase_idx=0, target=1., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(85)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=85.)
 
 
 class CustomPhysics(Compositional):

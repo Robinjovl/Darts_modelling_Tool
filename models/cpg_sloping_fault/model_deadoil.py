@@ -69,6 +69,7 @@ class ModelDeadOil(Model_CPG):
         :param time: simulation time, [days]
         :return:
         '''
+        from darts.engines import well_control_iface
         inj_stream_base = [self.physics.zero * 100]
         eps_time = 1e-15
         for w in self.reservoir.wells:
@@ -82,22 +83,29 @@ class ModelDeadOil(Model_CPG):
                 continue
             if wctrl.type == 'inj':  # INJ well
                 inj_stream = inj_stream_base
-                if self.physics.thermal:
-                    inj_stream += [wctrl.inj_bht]
+                inj_temp = wctrl.inj_bht if self.physics.thermal else None
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_inj(wctrl.rate, inj_stream, wctrl.comp_index)
-                    w.constraint = self.physics.new_bhp_inj(wctrl.bhp_constraint, inj_stream)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                                  target=wctrl.rate, phase_idx=wctrl.comp_index,
+                                                                  inj_stream=inj_stream, inj_temp=inj_temp)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.bhp_constraint,
+                                                                     inj_stream=inj_stream, inj_temp=inj_temp)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_inj(wctrl.bhp, inj_stream)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=wctrl.bhp, inj_stream=inj_stream, inj_temp=inj_temp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_prod(wctrl.rate, wctrl.comp_index)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                                  target=-np.abs(wctrl.rate), phase_idx=wctrl.comp_index)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=wctrl.bhp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)

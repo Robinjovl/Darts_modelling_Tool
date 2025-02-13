@@ -13,7 +13,7 @@ from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators, RateOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellControlOperators
 
 import matplotlib.pyplot as plt
 
@@ -251,15 +251,20 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_gas_rate, "phase_molar_rate", 'gas', self.inj_stream_gas)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_gas)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                              phase_idx=0, target=self.inj_gas_rate,
+                                                              inj_stream=self.inj_stream_gas)
             elif "INJ_WAT" in w.name:
-                w.control = self.physics.new_rate_inj(self.inj_wat_rate, "phase_molar_rate", 'wat', self.inj_stream_wat)
-                # w.control = self.physics.new_bhp_inj(125, self.inj_stream_wat)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                                                              phase_idx=1, target=self.inj_wat_rate,
+                                                              inj_stream=self.inj_stream_wat,
+                                                              )
             else:
-                w.control = self.physics.new_bhp_prod(95)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=95.)
 
     def set_op_list(self):
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
@@ -480,7 +485,7 @@ class CustomPhysics(Compositional):
                                                                    num_well_blocks=self.num_well_blocks)
         self.property_operators[2] = PropertyOperators(self.property_containers[0], self.thermal)
 
-        self.rate_operators = RateOperators(self.property_containers[0])
+        self.rate_operators = WellControlOperators(self.property_containers[0], self.thermal)
 
         return
 

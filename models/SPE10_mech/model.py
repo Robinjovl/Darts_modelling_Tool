@@ -239,16 +239,25 @@ class Model(THMCModel):
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
 
     def set_boundary_conditions(self):
-        self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
+        from darts.engines import well_control_iface
+        self.reservoir.wells[0].control = self.physics.define_well_controls(name=self.reservoir.wells[0].name,
+                                                                            control_type=well_control_iface.MOLAR,
+                                                                            target=0., phase_idx=0)
         if len(self.reservoir.wells) > 1:
             inj = []
             if self.physics_type == 'single_phase_thermal':
-                inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+                inj = []
+                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
             elif self.physics_type == 'dead_oil':
                 inj = [1.0 - self.idata.obl.zero]
+                inj_temp = None
             elif self.physics_type == 'dead_oil_thermal':
-                inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
-            self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, inj, 0)
+                inj = [1.0 - self.idata.obl.zero]
+                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
+            self.reservoir.wells[1].control = self.physics.define_well_controls(name=self.reservoir.wells[1].name,
+                                                                                control_type=well_control_iface.MOLAR,
+                                                                                target=0., phase_idx=0, inj_stream=inj,
+                                                                                inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         """
@@ -257,20 +266,25 @@ class Model(THMCModel):
         """
         # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
         # rate) water/oil rate:
-
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
             if i == 0:
-                w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=np.min(p_cell) - 50)
             else:
                 inj = []
                 if self.physics_type == 'single_phase_thermal':
-                    inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+                    inj = []
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
+                    inj_temp = None
                 elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25]
-                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, inj)
+                    inj = [1.0 - self.idata.obl.zero]
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=np.max(p_cell) + 50., inj_stream=inj, inj_temp=inj_temp)
         return 0
 
     def set_initial_conditions(self):
