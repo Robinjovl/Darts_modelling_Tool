@@ -67,6 +67,7 @@ class PhysicsBase:
         self.n_vars = len(variables)
 
         self.nc = nc
+        self.thermal = self.n_vars - self.nc
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops

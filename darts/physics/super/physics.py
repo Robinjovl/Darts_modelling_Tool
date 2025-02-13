@@ -2,8 +2,8 @@ import numpy as np
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, MassFluxOperators, WellControlOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, MassFluxOperators
 
 
 

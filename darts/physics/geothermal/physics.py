@@ -1,7 +1,7 @@
 import numpy as np
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 from darts.physics.geothermal.operator_evaluator import *
 
 
@@ -74,10 +74,7 @@ class Geothermal(PhysicsBase):
         self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
 
         # create rate operators evaluator
-        if self.mass_rate:
-            self.rate_operators = geothermal_mass_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
-        else:
-            self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
+        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
@@ -102,35 +99,6 @@ class Geothermal(PhysicsBase):
         self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
         self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
 
-        return
-
-    def define_well_controls(self):
-        # create well controls
-        # water stream
-        # pure water injection at constant temperature
-
-        self.water_inj_stream = value_vector([1.0])
-        # water injection at constant temperature with bhp control
-        self.new_bhp_water_inj = lambda bhp, temp: gt_bhp_temp_inj_well_control(self.phases, self.n_vars, bhp, temp,
-                                                                                self.water_inj_stream, self.rate_itor)
-        # water injection at constant temperature with volumetric rate control
-        self.new_rate_water_inj = lambda rate, temp: gt_rate_temp_inj_well_control(self.phases, 0, self.n_vars, rate,
-                                                                                   temp, self.water_inj_stream,
-                                                                                   self.rate_itor)
-        # water production with bhp control
-        self.new_bhp_prod = lambda bhp: gt_bhp_prod_well_control(bhp)
-        # water production with volumetric rate control
-        self.new_rate_water_prod = lambda rate: gt_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                          rate, self.rate_itor)
-        # water injection of constant enthalpy with mass rate control
-        self.new_mass_rate_water_inj = lambda rate, enth: \
-            gt_mass_rate_enthalpy_inj_well_control(self.phases, 0, self.n_vars,
-                                                   self.water_inj_stream,
-                                                   rate, enth,
-                                                   self.rate_itor)
-        # water production with mass rate control
-        self.new_mass_rate_water_prod = lambda rate: gt_mass_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                                    rate, self.rate_itor)
         return
 
     def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_temperature):

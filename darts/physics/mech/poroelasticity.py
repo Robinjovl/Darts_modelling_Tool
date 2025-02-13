@@ -1,7 +1,7 @@
 from darts.engines import *
 from darts.physics.super.physics import Compositional
 from darts.physics.super.operator_evaluator import *
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 import numpy as np
 
 

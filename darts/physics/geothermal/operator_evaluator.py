@@ -1,5 +1,4 @@
 import numpy as np
-from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.base.operators_base import OperatorsBase
 
 
@@ -131,49 +130,6 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
 
         return 0
 
-
-class geothermal_rate_custom_evaluator_python(OperatorsGeothermal):
-    n_ops = 4
-
-    def evaluate(self, state, values):
-        pc = self.property
-        pc.evaluate(state)
-
-        total_density = np.sum(pc.saturation[pc.ph] * pc.dens_m[pc.ph])
-        total_flux = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph]) / total_density
-
-        # water volumetric rate
-        values[0] = pc.saturation[0] * total_flux if 0 in pc.ph else 0.
-        # steam volumetric rate
-        values[1] = pc.saturation[1] * total_flux if 1 in pc.ph else 0.
-        # temperature
-        values[2] = pc.temperature
-        # energy rate
-        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
-
-        return 0
-
-
-class geothermal_mass_rate_custom_evaluator_python(OperatorsGeothermal):
-    n_ops = 4
-
-    def evaluate(self, state, values):
-        pc = self.property
-        pc.evaluate(state)
-
-        total_density = np.sum(pc.saturation[pc.ph] * pc.dens_m[pc.ph])
-
-        # water mass rate
-        values[0] = np.sum(pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
-        # steam mass rate
-        values[1] = pc.saturation[1] * (pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0]
-                                        + pc.dens_m[0] * pc.relperm[0] / pc.viscosity[0]) / total_density
-        # temperature
-        values[2] = pc.temperature
-        # energy rate
-        values[3] = np.sum(pc.enthalpy[pc.ph] * pc.dens_m[pc.ph] * pc.relperm[pc.ph] / pc.viscosity[pc.ph])
-        
-        return 0
 
 class MassFluxOperators(OperatorsGeothermal):
     n_ops = 1
