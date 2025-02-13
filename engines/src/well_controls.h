@@ -33,7 +33,7 @@ public:
 
 protected:
   WellControlType control_type = BHP;
-  index_t phase_idx{ 0 }, n_phases, thermal;
+  index_t phase_idx{ 0 }, n_phases, thermal, well_state_offset;
   std::vector<index_t> block_idx {0};
   std::vector<value_t> state;
   std::vector<value_t> well_control_spec;
@@ -45,8 +45,8 @@ public:
   well_control_iface(std::string name_, index_t n_phases_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
   : name(name_), n_phases(n_phases_), thermal(thermal_), well_controls_etor(well_controls_etor_) {}
 
-  virtual int set_bhp_control(std::vector<value_t>& well_control_spec_);
-  virtual int set_rate_control(well_control_iface::WellControlType control_type_, index_t phase_idx_, std::vector<value_t>& well_control_spec_);
+  virtual int set_bhp_control(bool is_inj, std::vector<value_t>& well_control_spec_);
+  virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, std::vector<value_t>& well_control_spec_);
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
