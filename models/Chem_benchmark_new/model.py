@@ -6,14 +6,14 @@ from copy import deepcopy
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellControlOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators
 
 import matplotlib.pyplot as plt
 
