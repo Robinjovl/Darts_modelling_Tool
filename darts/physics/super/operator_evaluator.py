@@ -176,31 +176,6 @@ class ReservoirOperators(OperatorsSuper):
         return 0
 
 
-class MassFluxOperators(OperatorsSuper):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
-
-        self.n_ops = self.nph * self.nc_fl
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
-
-        self.property.evaluate(vec_state_as_np)
-
-        """ Beta operator here represents mass flux term: """
-        for j in self.property.ph:
-            vec_values_as_np[self.nc_fl * j:self.nc_fl * j + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens[j] * self.property.kr[j] / self.property.mu[j]
-
-
 class GeomechanicsReservoirOperators(ReservoirOperators):
     def __init__(self, property_container: PropertyContainer, thermal: bool):
         super().__init__(property_container, thermal)  # Initialize base-class

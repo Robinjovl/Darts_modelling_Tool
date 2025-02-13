@@ -37,7 +37,6 @@ class PhysicsBase:
     engine: engine_base
     wellbore_operators: operator_set_evaluator_iface
     rate_operators: operator_set_evaluator_iface
-    mass_flux_operators: operator_set_evaluator_iface
 
     def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
@@ -175,7 +174,6 @@ class PhysicsBase:
         """
         self.acc_flux_itor = {}
         self.property_itor = {}
-        self.mass_flux_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
                                                                   platform=platform, algorithm=itor_type,
@@ -187,12 +185,6 @@ class PhysicsBase:
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
                                                                   timer_name='property %d interpolation' % region, region=str(region))
-
-            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
-                                                                   platform=platform, algorithm=itor_type,
-                                                                   mode=itor_mode, precision=itor_precision,
-                                                                   timer_name='Mass flux %d interpolation' % region,
-                                                                   region=str(region))
 
         self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
                                                         timer_name='wellbore interpolation',

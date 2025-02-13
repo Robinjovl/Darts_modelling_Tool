@@ -149,22 +149,3 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
         vec_values_as_np[9] = pc.temperature
 
         return 0
-
-
-class MassFluxOperators(OperatorsGeothermal):
-    n_ops = 1
-
-    def evaluate(self, state, values):
-        # State and Values vectors to numpy:
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
-
-        pressure = vec_state_as_np[0]
-        pc = self.property
-        pc.evaluate(vec_state_as_np)
-
-        """ Beta operator here represents mass flux term: """
-        vec_values_as_np[0] = np.sum(pc.dens_m[pc.ph] * pc.kr[pc.ph] / pc.mu[pc.ph])
-
-        return 0
