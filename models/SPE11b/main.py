@@ -6,28 +6,28 @@ Coarse-scale, isothermal, SPE11b
 
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-import pickle
-import h5py
-from darts.reservoirs.mesh.geometry.map_mesh import MapMesh, _translate_curvature
-from model import Model, PorPerm, Corey, layer_props
-from darts.engines import redirect_darts_output, sim_params
-from fluidflower_str_b import FluidFlowerStruct
+# import os
+# import pickle
+# import h5py
+# from darts.reservoirs.mesh.geometry.map_mesh import MapMesh, _translate_curvature
+from model import Model#, PorPerm, Corey, layer_props
+from darts.engines import redirect_darts_output#, sim_params
+# from fluidflower_str_b import FluidFlowerStruct
 
-# For each of the facies within the SPE11b model we define a set of operators in the physics.
-property_regions  = [0, 1, 2, 3, 4, 5, 6]
-layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
+# # For each of the facies within the SPE11b model we define a set of operators in the physics.
+# property_regions  = [0, 1, 2, 3, 4, 5, 6]
+# layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 
-# define the Corey parameters for each layer (rock type) according to the technical description of the CSP
-corey = {
-    0: Corey(nw=1.5, ng=1.5, swc=0.32, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1.935314, pcmax=300, c2=1.5),
-    1: Corey(nw=1.5, ng=1.5, swc=0.14, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.08655, pcmax=300, c2=1.5),
-    2: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0612, pcmax=300, c2=1.5),
-    3: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.038706, pcmax=300, c2=1.5),
-    4: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0306, pcmax=300, c2=1.5),
-    5: Corey(nw=1.5, ng=1.5, swc=0.10, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.025602, pcmax=300, c2=1.5),
-    6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
-}
+# # define the Corey parameters for each layer (rock type) according to the technical description of the CSP
+# corey = {
+#     0: Corey(nw=1.5, ng=1.5, swc=0.32, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1.935314, pcmax=300, c2=1.5),
+#     1: Corey(nw=1.5, ng=1.5, swc=0.14, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.08655, pcmax=300, c2=1.5),
+#     2: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0612, pcmax=300, c2=1.5),
+#     3: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.038706, pcmax=300, c2=1.5),
+#     4: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0306, pcmax=300, c2=1.5),
+#     5: Corey(nw=1.5, ng=1.5, swc=0.10, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.025602, pcmax=300, c2=1.5),
+#     6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
+# }
 
 redirect_darts_output('model.log') # redirects run.log to your directory of choice instead of prininting everything off
 
@@ -38,34 +38,34 @@ model_specs = [
      'curvature': False,
      'tpfa': True,
      'capillary': True,
-     'nx': 170,
-     'nz': 60,
+     'nx': 170, # horizontal resolution
+     'nz': 60, # vertical resolution
      'output_dir': 'SPE11_output'},
 ]
 
 j = 0
 specs = model_specs[j]
-m = Model()
+m = Model(specs)
 
-"""Define physics"""
-zero = 1e-10
-m.set_physics(corey=corey, zero=zero, temperature=323.15, n_points=1001, diff=1e-9)
+# """Define physics"""
+# zero = 1e-10
+# m.set_physics(corey=corey, zero=zero, temperature=323.15, n_points=1001, diff=1e-9)
 
-# solver paramters
-m.set_sim_params(first_ts=1e-2, mult_ts=2, max_ts=365, tol_linear=1e-3, tol_newton=1e-3,
-                 it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
-m.params.newton_params[0] = 0.05
-m.params.nonlinear_norm_type = m.params.L1
+# # solver paramters
+# m.set_sim_params(first_ts=1e-2, mult_ts=2, max_ts=365, tol_linear=1e-3, tol_newton=1e-3,
+#                  it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
+# m.params.newton_params[0] = 0.05
+# m.params.nonlinear_norm_type = m.params.L1
 
-"""Define the reservoir and wells """
-well_centers = {
-    "I1": [2700.0, 0.0, 300.0],
-    "I2": [5100.0, 0.0, 700.0]
-}
-
-structured = specs['structured']
-m.reservoir = FluidFlowerStruct(timer=m.timer, layer_properties=layer_props, layers_to_regions=layers_to_regions,
-                                model_specs=specs, well_centers=well_centers) # structured reservoir
+# """Define the reservoir and wells """
+# well_centers = {
+#     "I1": [2700.0, 0.0, 300.0],
+#     "I2": [5100.0, 0.0, 700.0]
+# }
+#
+# structured = specs['structured']
+# m.reservoir = FluidFlowerStruct(timer=m.timer, layer_properties=layer_props, layers_to_regions=layers_to_regions,
+#                                 model_specs=specs, well_centers=well_centers) # structured reservoir
 
 if 0:
     grid = np.meshgrid(np.linspace(0, 8400, m.reservoir.nx), np.linspace(0, 1200, m.reservoir.nz))
@@ -81,17 +81,15 @@ if 0:
 # define initial pressure, composition and temperature of the reservoir
 pres_in = 212
 m.initial_values = {"pressure": pres_in,
-                    "H2O": 1. - zero,
+                    "H2O": 1. - m.zero,
                     "temperature": 323.15}
 m.gradient = {"pressure": 0.09775, "temperature": 0.0}
 
 # define injection stream of the wells
-m.inj_stream = [zero]
+m.inj_stream = [m.zero]
 
 inj_rate = 3024 # mass rate per well, kg/day
 m.inj_rate = [0, 0] # per well
-
-m.set_str_boundary_volume_multiplier()  # right and left boundary volume multiplier
 
 # now that your reservoir and physics is defined, you can init your DartsModel()
 output_dir = specs['output_dir']
