@@ -84,13 +84,14 @@ class Model(CICDModel):
                                               state_max=[self.idata.obl.max_p, 373.15])
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_water_inj(8000, 300)
-                # w.control = self.physics.new_bhp_water_inj(230, 308.15)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                              target=8000., phase_idx=0, inj_stream=[], inj_temp=300.)
             else:
-                w.control = self.physics.new_rate_water_prod(8000)
-                # w.control = self.physics.new_bhp_prod(180)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                              target=-8000., phase_idx=0)
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_res_blocks

@@ -39,6 +39,7 @@ class ModelGeothermal(Model_CPG):
         :param time: simulation time, [days]
         :return:
         '''
+        from darts.engines import well_control_iface
         eps_time = 1e-15  # threshold between the current time and the time for the well control
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
@@ -51,19 +52,27 @@ class ModelGeothermal(Model_CPG):
                 continue
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.bhp_constraint, wctrl.inj_bht)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                                  target=wctrl.rate, phase_idx=0, inj_stream=[],
+                                                                  inj_temp=wctrl.inj_bht)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.bhp_constraint, inj_stream=[],
+                                                                     inj_temp=wctrl.inj_bht)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_water_inj(wctrl.bhp, wctrl.inj_bht)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=wctrl.bhp, inj_stream=[], inj_temp=wctrl.inj_bht)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_prod(wctrl.rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                                  target=-np.abs(wctrl.rate), phase_idx=0)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.prod_bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=wctrl.bhp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)

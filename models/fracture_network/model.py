@@ -1,4 +1,4 @@
-from darts.engines import value_vector, sim_params
+from darts.engines import value_vector, sim_params, well_control_iface
 from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
@@ -179,16 +179,23 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):
                 if inj_rate is None:
-                    w.control = self.physics.new_bhp_water_inj(inj_bhp, inj_temp)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
                 else:
-                    w.control = self.physics.new_rate_water_inj(inj_rate, inj_temp)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.inj_bhp_constraint, inj_temp)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                                  target=inj_rate, phase_idx=0, inj_stream=[], inj_temp=inj_temp)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.inj_bhp_constraint, inj_stream=[],
+                                                                     inj_temp=inj_temp)
             else:
                 if prod_rate is None:
-                    w.control = self.physics.new_bhp_prod(prod_bhp)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  target=prod_bhp)
                 else:
-                    w.control = self.physics.new_rate_water_prod(prod_rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
+                                                                  target=-np.abs(prod_rate), phase_idx=0)
+                    w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                     target=wctrl.prod_bhp_constraint)
 
             print(w.name,
                   w.well_head_depth,

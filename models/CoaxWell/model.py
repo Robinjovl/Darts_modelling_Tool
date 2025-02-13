@@ -95,11 +95,14 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_water_inj(205, 300)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=205, phase_idx=0, inj_stream=[], inj_temp=300.)
             else:
-                w.control = self.physics.new_bhp_prod(195)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              target=195., phase_idx=0)
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_blocks
