@@ -79,10 +79,10 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
-                                                              target=5., phase_idx=0, inj_stream=self.inj[:-1], inj_temp=self.inj[-1])
+                                                              is_inj=True, target=5., phase_idx=0, inj_stream=self.inj[:-1], inj_temp=self.inj[-1])
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=180.)
+                                                              is_inj=False, target=180.)
 
 
 class ModelProperties(PropertyContainer):

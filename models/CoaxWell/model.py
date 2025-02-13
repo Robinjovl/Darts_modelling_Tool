@@ -99,10 +99,11 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=205, phase_idx=0, inj_stream=[], inj_temp=300.)
+                                                              is_inj=True, target=205, phase_idx=0,
+                                                              inj_stream=[], inj_temp=300.)
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=195., phase_idx=0)
+                                                              is_inj=False, target=195., phase_idx=0)
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_blocks

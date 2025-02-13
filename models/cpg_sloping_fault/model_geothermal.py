@@ -53,26 +53,26 @@ class ModelGeothermal(Model_CPG):
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
-                                                                  target=wctrl.rate, phase_idx=0, inj_stream=[],
+                                                                  is_inj=True, target=wctrl.rate, phase_idx=0, inj_stream=[],
                                                                   inj_temp=wctrl.inj_bht)
                     w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                     target=wctrl.bhp_constraint, inj_stream=[],
+                                                                     is_inj=True, target=wctrl.bhp_constraint, inj_stream=[],
                                                                      inj_temp=wctrl.inj_bht)
                 elif wctrl.mode == 'bhp': # BHP control
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                  target=wctrl.bhp, inj_stream=[], inj_temp=wctrl.inj_bht)
+                                                                  is_inj=True, target=wctrl.bhp, inj_stream=[], inj_temp=wctrl.inj_bht)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
-                                                                  target=-np.abs(wctrl.rate), phase_idx=0)
+                                                                  is_inj=False, target=-np.abs(wctrl.rate), phase_idx=0)
                     w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                     target=wctrl.prod_bhp_constraint)
+                                                                     is_inj=False, target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                  target=wctrl.bhp)
+                                                                  is_inj=False, target=wctrl.bhp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)

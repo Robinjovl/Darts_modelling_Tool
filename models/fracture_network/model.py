@@ -180,22 +180,22 @@ class Model(CICDModel):
             if self.well_is_inj(w.name):
                 if inj_rate is None:
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                  target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
+                                                                  is_inj=True, target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
                 else:
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
-                                                                  target=inj_rate, phase_idx=0, inj_stream=[], inj_temp=inj_temp)
+                                                                  is_inj=True, target=inj_rate, phase_idx=0, inj_stream=[], inj_temp=inj_temp)
                     w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                     target=wctrl.inj_bhp_constraint, inj_stream=[],
+                                                                     is_inj=True, target=wctrl.inj_bhp_constraint, inj_stream=[],
                                                                      inj_temp=inj_temp)
             else:
                 if prod_rate is None:
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                  target=prod_bhp)
+                                                                  is_inj=False, target=prod_bhp)
                 else:
                     w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.VOLUME,
-                                                                  target=-np.abs(prod_rate), phase_idx=0)
+                                                                  is_inj=False, target=-np.abs(prod_rate), phase_idx=0)
                     w.constraint = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                                     target=wctrl.prod_bhp_constraint)
+                                                                     is_inj=False, target=wctrl.prod_bhp_constraint)
 
             print(w.name,
                   w.well_head_depth,

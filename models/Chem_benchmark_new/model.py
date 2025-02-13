@@ -255,16 +255,16 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
-                                                              phase_idx=0, target=self.inj_gas_rate,
+                                                              is_inj=True, phase_idx=0, target=self.inj_gas_rate,
                                                               inj_stream=self.inj_stream_gas)
             elif "INJ_WAT" in w.name:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
-                                                              phase_idx=1, target=self.inj_wat_rate,
+                                                              is_inj=True, phase_idx=1, target=self.inj_wat_rate,
                                                               inj_stream=self.inj_stream_wat,
                                                               )
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=95.)
+                                                              is_inj=False, target=95.)
 
     def set_op_list(self):
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)

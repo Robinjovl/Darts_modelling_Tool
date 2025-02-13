@@ -82,8 +82,8 @@ class Model(CICDModel):
                 "phase_molar_rate", "phase_mass_rate", "phase_volumetric_rate", or "phase_advective_heat_rate".
                 The third input argument is the name of the phase the rate of which is controlled.
                 """
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
-                                                              target=140., phase_idx=0, inj_stream=inj_stream)
+                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                              is_inj=True, target=140., inj_stream=inj_stream)
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=50.)
+                                                              is_inj=False, target=50.)

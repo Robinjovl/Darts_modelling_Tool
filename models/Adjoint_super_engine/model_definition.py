@@ -121,10 +121,10 @@ class Model(CICDModel, OptModuleSettings):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=140., inj_stream=self.inj_stream)
+                                                              is_inj=True, target=140., inj_stream=self.inj_stream)
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=50.)
+                                                              is_inj=False, target=50.)
 
     def set_op_list(self):
         if self.customize_new_operator:

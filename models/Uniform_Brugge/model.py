@@ -136,10 +136,10 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=180., inj_stream=self.inj_stream)
+                                                              is_inj=True, target=180., inj_stream=self.inj_stream)
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=150.)
+                                                              is_inj=False, target=150.)
 
     def run_custom(self, export_to_vtk=False):
         if export_to_vtk:
@@ -153,14 +153,16 @@ class Model(CICDModel):
         if self.T - even_end > 0:
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
+        from darts.engines import well_control_iface
         for ith_step, ts in enumerate(time_step_arr):
             # print("Running time: %d days" % ts)
             for i, w in enumerate(self.reservoir.wells):
                 if 'I' in w.name:
-                    w.control = self.physics.new_bhp_water_inj(175, 308.15)
-                    # w.control = self.physics.new_rate_water_inj(self.inj_prod_rate, 298.15)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  is_inj=True, target=175., inj_stream=self.inj_stream)
                 else:
-                    w.control = self.physics.new_bhp_prod(125)
+                    w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                                                                  is_inj=False, target=125.)
                     # w.control = self.physics.new_rate_water_prod(self.inj_prod_rate)
 
             self.engine.run(ts)

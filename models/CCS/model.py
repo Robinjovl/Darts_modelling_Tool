@@ -105,8 +105,8 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=self.p_inj, inj_stream=self.inj_stream[:-1],
+                                                              is_inj=True, target=self.p_inj, inj_stream=self.inj_stream[:-1],
                                                               inj_temp=self.inj_stream[-1])
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=self.p_prod)
+                                                              is_inj=False, target=self.p_prod)

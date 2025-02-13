@@ -154,10 +154,10 @@ class Model(DartsModel, OptModuleSettings):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=self.p_init - 10.)
+                                                              is_inj=False, target=self.p_init-10.)
             else:
                 w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
-                                                              target=self.p_init + 10., inj_stream=self.inj[:-1],
+                                                              is_inj=True, target=self.p_init+10., inj_stream=self.inj[:-1],
                                                               inj_temp=self.inj[-1])
 
     def set_op_list(self):
