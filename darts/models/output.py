@@ -101,12 +101,8 @@ class Output:
                                      params,
                                      timer.node["simulation"])
 
-            # Update the properties list
-            self.properties = list(self.physics.property_containers[0].output_props.keys())
-
-        else:
-            # If all_phase_props is False, update properties list based on output_props
-            self.properties = list(self.physics.property_containers[0].output_props.keys())
+        # Update the properties list
+        self.properties = list(self.physics.property_containers[0].output_props.keys())
 
     def filter_phase_props(self, new_prop_keys):
         """
@@ -141,8 +137,6 @@ class Output:
             self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells),
                                      op_vector(self.op_list), self.params, self.timerr.node["simulation"])
             self.properties = list(new_output_dictionary.keys())
-
-        return 0
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
         """
@@ -282,7 +276,6 @@ class Output:
 
         else:
             print("Please use either kind='well' or kind='solution' in save_data_to_h5")
-            return
 
     def read_specific_data(self, filename: str, timestep: int = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -330,7 +323,7 @@ class Output:
 
         return time, cell_id, X, var_names
 
-    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[nd.array, dictionary]:
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.array, dict]:
         """
         Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
 
@@ -439,6 +432,7 @@ class Output:
         :rtype: xarray.Dataset
         """
 
+        from darts.reservoirs.struct_reservoir import StructReservoir
         if type(self.reservoir) is not StructReservoir:
             raise AttributeError("Reservoir class must be exactly of type StructReservoir.")
 
@@ -547,7 +541,7 @@ class Output:
 
         self.timer.node["vtk_output"].stop(); self.timer.stop()
 
-    def plot_well_rates(self, types_of_well_rates: list, save_figs : bool = True):
+    def plot_well_rates(self, types_of_well_rates: list, save_figs : bool = True) -> dict:
         """
         Plots the following types of rates for each perforation and each well:
         'phases_molar_rates'

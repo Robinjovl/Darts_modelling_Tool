@@ -45,10 +45,10 @@ from model import Model
 n = Model()
 n.init()
 n.set_output(
-    output_folder='data\case_0',
-    sol_filename='solution.h5',
-    save_initial=True, all_phase_props=False, precision='d', compression = False, verbose=False
+    output_folder='data\case_0', sol_filename='solution.h5',
+    save_initial=True, all_phase_props=False, precision='d', compression = None, verbose=False
              )
+print(type(n.reservoir))
 # print(n.sol_filename)
 # print(n.sol_filepath)
 redirect_darts_output(n.output_folder + '/run_n.log')
