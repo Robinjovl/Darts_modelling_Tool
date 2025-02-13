@@ -33,8 +33,8 @@ class Model(CICDModel):
                                }
 
     def set_reservoir(self):
-        nz, ny, nx = 100, 1, 100
-        dz, dy, dx = 2, 1, 4
+        nz, ny, nx = 50, 1, 50
+        dz, dy, dx = 2, 1, 2
         depth = np.ones((nx, ny, nz)) * np.linspace(1000, 1000+nz*dz, nz)
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
                                          permx=100, permy=100, permz=100, poro=0.3, depth=depth)

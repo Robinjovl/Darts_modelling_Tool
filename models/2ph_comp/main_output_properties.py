@@ -45,8 +45,8 @@ from model import Model
 n = Model()
 n.init()
 n.set_output(
-    output_folder='2ph_comp\data\case_0',
-    sol_filename='solution_double_precision.h5',
+    output_folder='data\case_0',
+    sol_filename='solution.h5',
     save_initial=True, all_phase_props=False, precision='d', compression = False, verbose=False
              )
 # print(n.sol_filename)
@@ -54,33 +54,32 @@ n.set_output(
 redirect_darts_output(n.output_folder + '/run_n.log')
 Nt = 5
 for i in range(Nt):
-    n.run(1, verbose = False, save_well_data = True, save_reservoir_data = True)
+    n.run(7, verbose = False, save_well_data = True, save_reservoir_data = True)
 n.print_timers()
 
 # read_data(n.sol_filepath, n.well_filepath)
 # read_data(sol_filepath='2ph_comp\data\case_0\solution_double_precision.h5',
 #           well_filepath='2ph_comp\data\case_0\well_data.h5')
 
-time, cell_id, X1, var_names = n.output.read_specific_data(n.sol_filepath, timestep = None)
-time, cell_id, X2, var_names = n.output.read_specific_data('2ph_comp\data\case_0\solution_double_precision.h5', timestep = None)
-print(np.sum(np.sqrt(np.square(X1 - X2))))
+# time, cell_id, X1, var_names = n.output.read_specific_data(n.sol_filepath, timestep = None)
+# time, cell_id, X2, var_names = n.output.read_specific_data('2ph_comp\data\case_0\solution_double_precision.h5', timestep = None)
 
 #%% evaluate properties
 
 # evaluate all available properties and timesteps from *.h5
-time, property_array1 = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
+# time, property_array1 = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
 #prop_plot(n.output_folder, property_array1)
 
 # evaluate all available properties from last saved timestep
-time, property_array2 = n.output.output_properties(filepath = None, output_properties = None, timestep = -1, engine = False)
+# time, property_array2 = n.output.output_properties(filepath = None, output_properties = None, timestep = -1, engine = False)
 # prop_plot(n.output_folder, property_array2)
 
 # evaluate specific properties from last saved timestep
-time, property_array3 = n.output.output_properties(filepath = None, output_properties = ['dens0'], timestep = -1, engine = False)
+# time, property_array3 = n.output.output_properties(filepath = None, output_properties = ['dens0'], timestep = -1, engine = False)
 # prop_plot(n.output_folder, property_array3)
 
 # evaluate all available properties and timesteps from engine
-time, property_array4 = n.output.output_properties(filepath = None, output_properties = None, engine = True)
+# time, property_array4 = n.output.output_properties(filepath = None, output_properties = None, engine = True)
 # prop_plot(n.output_folder, property_array4)
 
 #%% plot results
@@ -89,32 +88,32 @@ xarray_data = n.output.output_to_xarray() # evaluate properties from *.h5 and sa
 for i in range(Nt + 1):
     n.output.plot_xarray(xarray_data, timestep=i, y=0)
 
-print('hello world')
-
 # evaluate all properties, at every time step and output to .vtk
 n.output.output_to_vtk()
 
 # evaluate density at the last time step from *.h5 file
-n.output.output_to_vtk(ith_step = 4, output_directory = n.output_folder + '/vtk_files1', output_properties = ['dens0'], engine = False)
+# n.output.output_to_vtk(ith_step = 4, output_directory = n.output_folder + '/vtk_files1', output_properties = ['dens0'], engine = False)
 
 # evaluate density at the last time step from engine
-n.output.output_to_vtk(ith_step = 4, output_directory = n.output_folder + '/vtk_files2', output_properties = ['dens0'], engine = True)
+# n.output.output_to_vtk(ith_step = 4, output_directory = n.output_folder + '/vtk_files2', output_properties = ['dens0'], engine = True)
 
-types_of_well_rates = [
-    'phases_molar_rates',
+#%%
+
+# types_of_well_rates = [
+#     'phases_molar_rates',
     # 'phases_mass_rates',
     # 'phases_volumetric_rates',
     # 'components_molar_rates',
     # 'components_mass_rates'
     # 'heat_rate'
-    ]
+    # ]
 
-well_rates_dict = n.output.plot_well_rates(types_of_well_rates)
-td = pd.DataFrame.from_dict(well_rates_dict)
-td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
-writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
-td.to_excel(writer, sheet_name='Sheet1')
-writer.close()
+# well_rates_dict = n.output.plot_well_rates(types_of_well_rates)
+# td = pd.DataFrame.from_dict(well_rates_dict)
+# td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
+# writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
+# td.to_excel(writer, sheet_name='Sheet1')
+# writer.close()
 
 # plt.figure()
 # plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
@@ -122,23 +121,22 @@ writer.close()
 
 #%% restart a model
 
-# from model import Model
-# m = Model()
-# m.init()
-# m.set_output(output_folder = 'data/restarted_from_case0', sol_filename = 'reservoir_solution.h5', save_initial = False,
-#              all_phase_props = True, precision = 'd', verbose = False)
-# redirect_darts_output(m.output_folder + '/run_restarted_model.log')
-#
-# # load point from which to restart
-# m.output.load_restart_data(reservoir_filename = os.path.join(n.output_folder, 'reservoir_solution.h5'),
-#                            well_filename = os.path.join(n.output_folder, 'well_data.h5'),
-#                            timestep = -1)
-# m.params.first_ts = 1e-9
-# m.params.max_ts = 1.0
-# Nt = 3
-#
-# for i in range(Nt):
-#     m.run(1, verbose = True, save_well_data = True, save_reservoir_data = True)
+from model import Model
+m = Model()
+m.init()
+m.set_output(output_folder = 'data/restarted_from_case0',
+             sol_filename = 'solution.h5', save_initial = False, all_phase_props = True, precision = 'd', verbose = False)
+redirect_darts_output(m.output_folder + '/run_restarted_model.log')
+
+# load point from which to restart
+m.load_restart_data(reservoir_filename = 'data\case_0\solution.h5',
+                    well_filename = 'data\case_0\well_data.h5',
+                    timestep = -1)
+m.params.first_ts = 1e-9
+m.params.max_ts = 1.0
+Nt = 5
+for i in range(Nt):
+    m.run(7, verbose = True, save_well_data = True, save_reservoir_data = True)
 # m.print_timers()
 # read_data(m.sol_filepath, m.well_filepath)
 #
@@ -146,9 +144,11 @@ writer.close()
 # for i in range(Nt):
 #     time, property_array = m.output.output_properties(timestep = i)
 #
-# xarray_data = m.output.output_to_xarray() # evaluate properties from *.h5 and save as *.nc file
-# m.output.plot_xarray(xarray_data, timestep=Nt)
-# m.output.output_to_vtk()
+
+xarray_data = m.output.output_to_xarray() # evaluate properties from *.h5 and save as *.nc file
+for i in range(Nt + 1):
+    m.output.plot_xarray(xarray_data, timestep=i, y=0)
+m.output.output_to_vtk()
 #
 # # filter properties to only evaluate the properties of interest
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
