@@ -536,7 +536,6 @@ test-windows-3.9-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
         # test interpolators
         - cd tests/engines/src/interpolation
@@ -548,6 +547,10 @@ test-windows-3.9-ODLS:
         - cd ../../..
         #
         - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - './models/_logs/*.log'
@@ -578,7 +581,6 @@ test-windows-3.9-ODLS:
         # passing additional argument LOG to trigger verbose check performance
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -586,6 +588,10 @@ test-windows-3.9-ODLS:
         - cd ../../..
         #
         - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - './models/_logs/*.log'
@@ -618,7 +624,6 @@ test-windows-3.9-ODLS:
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
         - cd ..
         # test interpolators
         - cd tests\engines\src\interpolation
@@ -628,6 +633,10 @@ test-windows-3.9-ODLS:
         - cd discretizer\tests\compare_discretizers
         - python main.py
         - cd ..\..\..
+    after_script:
+        - cd models
+        - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - '.\models\_logs\*.log'

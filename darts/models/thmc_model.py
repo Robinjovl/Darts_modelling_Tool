@@ -226,6 +226,7 @@ class THMCModel(DartsModel):
         :param file_name:
         :return:
         """
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
@@ -239,6 +240,8 @@ class THMCModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        else:
+            print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
     
     # it doesn't use model object, put inside the class just for the convenience of import 
