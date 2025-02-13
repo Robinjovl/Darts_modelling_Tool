@@ -70,7 +70,7 @@ class PropertyContainer(PropertyBase):
         self.saturation = np.zeros(2)
         self.viscosity = np.zeros(2)
         self.conduction = np.zeros(2)
-        self.relperm = np.zeros(2)
+        self.kr = np.zeros(2)
 
         self.output_props = {'temperature': lambda: self.temperature}
 
@@ -84,7 +84,7 @@ class PropertyContainer(PropertyBase):
             self.saturation[j] = self.saturation_ev[phase].evaluate(state)
             self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
-            self.relperm[j] = self.relperm_ev[phase].evaluate(state)
+            self.kr[j] = self.relperm_ev[phase].evaluate(state)
 
         self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
@@ -150,7 +150,7 @@ class PropertyContainerPH(PropertyBase):
         self.dens_m = np.zeros(self.nph)
         self.saturation = np.zeros(self.nph)
         self.viscosity = np.zeros(self.np_fl)
-        self.relperm = np.zeros(self.np_fl)
+        self.kr = np.zeros(self.np_fl)
         self.pc = np.zeros(self.np_fl)
         self.enthalpy = np.zeros(self.nph)
         self.conduction = np.zeros(self.nph)
@@ -159,7 +159,7 @@ class PropertyContainerPH(PropertyBase):
         self.energy_source = 0.
         self.temperature = 0.
 
-        self.phase_props = [self.density, self.dens_m, self.saturation, self.nu, self.viscosity, self.relperm, self.pc,
+        self.phase_props = [self.density, self.dens_m, self.saturation, self.nu, self.viscosity, self.kr, self.pc,
                             self.enthalpy, self.conduction, self.mass_source]
 
         self.output_props = {'temperature': lambda: self.temperature}
@@ -223,6 +223,6 @@ class PropertyContainerPH(PropertyBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
+            self.kr[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
 
         return
