@@ -104,7 +104,7 @@ class Poroelasticity(Compositional):
                 self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region], self.thermal)
             self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[self.regions[0]], False)
 
-        self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
+        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
