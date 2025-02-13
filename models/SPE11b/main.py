@@ -2,6 +2,12 @@
 
 Coarse-scale, isothermal, SPE11b
 
+For Version 11B, the 2D geometry and operational conditions from 11A are rescaled to field conditions characteristic of the Norwegian Continental Shelf.
+
+Nordbotten, Jan M., Fernø, Martin A., Flemisch, Bernd, Kovscek, Anthony R., and
+Knut-Andreas Lie. "The 11th Society of Petroleum Engineers Comparative Solution
+Project: Problem Definition" SPE J. (2024). https://doi.org/10.2118/218015-PA
+
 """
 
 import numpy as np
