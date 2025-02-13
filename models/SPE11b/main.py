@@ -37,21 +37,7 @@ from darts.engines import redirect_darts_output#, sim_params
 
 redirect_darts_output('model.log') # redirects run.log to your directory of choice instead of prininting everything off
 
-"""Define realization ID"""
-model_specs = [
-    {'structured': True,
-     'thickness': False,
-     'curvature': False,
-     'tpfa': True,
-     'capillary': True,
-     'nx': 170, # horizontal resolution
-     'nz': 60, # vertical resolution
-     'output_dir': 'SPE11_output'},
-]
-
-j = 0
-specs = model_specs[j]
-m = Model(specs)
+m = Model()
 
 # """Define physics"""
 # zero = 1e-10
@@ -98,7 +84,7 @@ inj_rate = 3024 # mass rate per well, kg/day
 m.inj_rate = [0, 0] # per well
 
 # now that your reservoir and physics is defined, you can init your DartsModel()
-output_dir = specs['output_dir']
+output_dir = m.specs['output_dir']
 m.platform = 'cpu'
 m.init(discr_type='tpfa', platform=m.platform, output_folder=output_dir, restart = True)
 

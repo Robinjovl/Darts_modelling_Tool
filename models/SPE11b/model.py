@@ -81,10 +81,22 @@ corey = {
 property_regions  = [0, 1, 2, 3, 4, 5, 6]
 layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 
-class Model(CICDModel):
-    def __init__(self, specs):
-        super().__init__()
+"""Define realization ID"""
+model_specs = [
+    {'structured': True,
+     'thickness': False,
+     'curvature': False,
+     'tpfa': True,
+     'capillary': True,
+     'nx': 170, # horizontal resolution
+     'nz': 60, # vertical resolution
+     'output_dir': 'SPE11_output'},
+]
 
+class Model(CICDModel):
+    def __init__(self):
+        super().__init__()
+        self.specs = model_specs[0]
         # Define physics
         self.zero = 1e-10
         self.set_physics(corey=corey, zero=self.zero, temperature=323.15, n_points=1001, diff=1e-9)
@@ -102,7 +114,7 @@ class Model(CICDModel):
             }
 
         self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props, layers_to_regions=layers_to_regions,
-                                           model_specs=specs, well_centers=well_centers) # structured reservoir
+                                           model_specs=self.specs, well_centers=well_centers) # structured reservoir
         self.set_str_boundary_volume_multiplier()  # right and left boundary volume multiplier
 
     def set_physics(self, corey: dict = {}, zero: float = 1e-12, temperature: float = None, n_points: int = 10001,
