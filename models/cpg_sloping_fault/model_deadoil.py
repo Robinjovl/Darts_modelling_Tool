@@ -103,7 +103,7 @@ class ModelDeadOil(Model_CPG):
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
                                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name=wctrl.phase_name)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                     target=wctrl.bhp_constraint)
+                                                                     is_inj=False, target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                   is_inj=False, target=wctrl.bhp)
