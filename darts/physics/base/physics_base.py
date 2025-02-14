@@ -200,19 +200,20 @@ class PhysicsBase:
                              is_inj: bool, target: float, phase_name: str = None,
                              inj_stream: list = None, inj_temp: float = None):
         """
-        Method to define well controls.
+        Method to define well controls
 
-        :param well_name: Name of the well
+        :param well_name: Name of the well on which the control is defined
         :param control_type: Well control type 0) BHP, 1) MOLAR, 2) MASS, 3) VOLUME, 4) ENTHALPY, default is BHP
-        :param is_inj: Is injection or production
+        :param is_inj: Is injection well or production well
         :param target: Target BHP or rate, consistent with well control type
-        :param phase_name: Name of the phase rate of which is controlled
-        :param inj_stream: Composition of injected phase
-        :param inj_temp: Temperature of injected phase
+        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control
+        is of the rate type.
+        :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
+        :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
         """
         control = well_control_iface(well_name, self.nph, self.thermal, self.well_ctrl_itor)
 
-        # Define well controls specification: BHP/rate, composition and injection temperature
+        # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
         inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables
         inj_temp = inj_temp if inj_temp is not None else 0.
         phase_idx = self.phases.index(phase_name) if phase_name is not None else 0
