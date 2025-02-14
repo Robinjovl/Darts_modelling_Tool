@@ -7,7 +7,6 @@
 int well_control_iface::set_bhp_control(bool is_inj, std::vector<value_t>& well_control_spec_) 
 {
 	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
-	this->control_type = WellControlType::BHP;
 	this->well_control_spec = well_control_spec_;
 	return 0;
 }
