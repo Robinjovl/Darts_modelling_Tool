@@ -117,7 +117,7 @@ class Compositional(PhysicsBase):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
+        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
@@ -125,11 +125,11 @@ class Compositional(PhysicsBase):
             self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
 
         if self.thermal:
-            self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
         else:
-            self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
-        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
@@ -214,4 +214,4 @@ class Compositional(PhysicsBase):
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor, self.thermal)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)

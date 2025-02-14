@@ -64,16 +64,16 @@ class Geothermal(PhysicsBase):
     def set_operators(self):
         """
         Function to set operator objects: :class:`acc_flux_gravity_evaluator` for each of the reservoir regions,
-        :class:`acc_flux_gravity_evaluator_python_well` for the well cells
+        :class:`acc_flux_gravity_evaluator_python_well` for the well segments
         and :class:`geothermal_rate_custom_evaluator_python` for evaluation of rates.
         """
         for region in self.regions:
             self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
-        self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
+        self.well_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
 
-        # create rate operators evaluator
-        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        # create well control operators evaluator
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 

@@ -27,16 +27,16 @@ class PhysicsBase:
     :type reservoir_operators: dict
     :ivar property_operators: :class:`PropertyOperators` object for evaluation and interpolation of properties
     :type property_operators: dict
-    :ivar wellbore_operators: :class:`WellOperators` object for evaluation of well cell states
-    :type wellbore_operators: dict
-    :ivar rate_operators: :class:`RateOperators` object for evaluation of fluxes
-    :type rate_operators: dict
+    :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
+    :type well_operators: dict
+    :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
+    :type well_ctrl_operators: dict
     :ivar regions: List of property regions
     :type regions: list
     """
     engine: engine_base
-    wellbore_operators: operator_set_evaluator_iface
-    rate_operators: operator_set_evaluator_iface
+    well_operators: operator_set_evaluator_iface
+    well_ctrl_operators: operator_set_evaluator_iface
 
     def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
@@ -185,15 +185,15 @@ class PhysicsBase:
                                                                   mode=itor_mode, precision=itor_precision,
                                                                   timer_name='property %d interpolation' % region, region=str(region))
 
-        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
-                                                        timer_name='wellbore interpolation',
+        self.acc_flux_w_itor = self.create_interpolator(self.well_operators, n_ops=self.n_ops,
+                                                        timer_name='well interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
                                                         precision=itor_precision, region='-1')
 
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.rate_operators.n_ops,
-                                                  timer_name='well controls interpolation',
-                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                  precision=itor_precision)
+        self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
+                                                       timer_name='well controls interpolation',
+                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                       precision=itor_precision)
         return
 
     def define_well_controls(self, name: str, control_type: well_control_iface.WellControlType,
@@ -210,7 +210,7 @@ class PhysicsBase:
         :param inj_stream: Composition of injected phase
         :param inj_temp: Temperature of injected phase
         """
-        control = well_control_iface(name, self.nph, self.thermal, self.rate_itor)
+        control = well_control_iface(name, self.nph, self.thermal, self.well_ctrl_itor)
 
         # Define well controls specification: BHP/rate, composition and injection temperature
         inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables
@@ -268,7 +268,7 @@ class PhysicsBase:
         :type precision: str
         :type region: str
         :param region: str(region index) for reservoir operator, str(-1) for well operator, '' for others
-        needed to make different filenames for cache as self.wellbore_operators has the same type ReservoirOperators
+        needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
