@@ -242,7 +242,7 @@ class Model(THMCModel):
         from darts.engines import well_control_iface
         self.reservoir.wells[0].control = self.physics.define_well_controls(well_name=self.reservoir.wells[0].name,
                                                                             control_type=well_control_iface.MOLAR,
-                                                                            is_inj=False, target=0., phase_idx=0)
+                                                                            is_inj=False, target=0., phase_name='wat')
         if len(self.reservoir.wells) > 1:
             inj = []
             if self.physics_type == 'single_phase_thermal':
@@ -256,7 +256,7 @@ class Model(THMCModel):
                 inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
             self.reservoir.wells[1].control = self.physics.define_well_controls(well_name=self.reservoir.wells[1].name,
                                                                                 control_type=well_control_iface.MOLAR,
-                                                                                is_inj=True, target=0., phase_idx=0,
+                                                                                is_inj=True, target=0., phase_name='wat',
                                                                                 inj_stream=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):

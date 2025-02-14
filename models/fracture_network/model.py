@@ -183,7 +183,7 @@ class Model(CICDModel):
                                                                   is_inj=True, target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
                 else:
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
-                                                                  is_inj=True, target=inj_rate, phase_idx=0, inj_stream=[], inj_temp=inj_temp)
+                                                                  is_inj=True, target=inj_rate, phase_name='water', inj_stream=[], inj_temp=inj_temp)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      is_inj=True, target=wctrl.inj_bhp_constraint, inj_stream=[],
                                                                      inj_temp=inj_temp)
@@ -193,7 +193,7 @@ class Model(CICDModel):
                                                                   is_inj=False, target=prod_bhp)
                 else:
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
-                                                                  is_inj=False, target=-np.abs(prod_rate), phase_idx=0)
+                                                                  is_inj=False, target=-np.abs(prod_rate), phase_name='water')
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      is_inj=False, target=wctrl.prod_bhp_constraint)
 
