@@ -88,21 +88,21 @@ class Poroelasticity(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
+        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         if self.discretizer_name == "pm_discretizer":
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(prop_container, self.thermal)
                 self.property_operators[region] = PropertyOperators(prop_container, self.thermal)
-            self.wellbore_operators = SinglePhaseGeomechanicsOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = SinglePhaseGeomechanicsOperators(self.property_containers[self.regions[0]], self.thermal)
         else:
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container, self.thermal)
                 self.property_operators[region] = PropertyOperators(prop_container, self.thermal)
-            self.wellbore_operators = GeomechanicsReservoirOperators(self.property_containers[self.regions[0]], False)
+            self.well_operators = GeomechanicsReservoirOperators(self.property_containers[self.regions[0]], False)
 
-        self.rate_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
@@ -115,7 +115,7 @@ class Poroelasticity(Compositional):
         for w in wells:
             assert isinstance(w, ms_well)
             w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars,
-                                        self.n_ops, self.phases, self.rate_itor, self.thermal)
+                                        self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
 
     def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list,
                                        uniform_composition: list = None, uniform_temperature: float = None):
