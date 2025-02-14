@@ -34,7 +34,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
 
   // Evaluate well control operators
-  // WellControlOperators are defined as follows: P, composition, T, NP MOLAR, NP MASS, NP VOLUME and NP ENTHALPY operators
+  // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
   int n_ops = n_state_size + 4 * n_phases;
   well_control_ops.resize(n_ops);
   well_control_ops_derivs.resize(n_ops * n_state_size);

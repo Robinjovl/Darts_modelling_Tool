@@ -254,11 +254,11 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "INJ_GAS" in w.name:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
                                                               is_inj=True, phase_name='gas', target=self.inj_gas_rate,
                                                               inj_stream=self.inj_stream_gas)
             elif "INJ_WAT" in w.name:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
                                                               is_inj=True, phase_name='wat', target=self.inj_wat_rate,
                                                               inj_stream=self.inj_stream_wat,
                                                               )

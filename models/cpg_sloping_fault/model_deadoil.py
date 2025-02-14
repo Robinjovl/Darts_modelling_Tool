@@ -85,7 +85,7 @@ class ModelDeadOil(Model_CPG):
                 inj_stream = inj_stream_base
                 inj_temp = wctrl.inj_bht if self.physics.thermal else None
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
+                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
                                                                   is_inj=True, target=wctrl.rate, phase_name=wctrl.phase_name,
                                                                   inj_stream=inj_stream, inj_temp=inj_temp)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
@@ -100,7 +100,7 @@ class ModelDeadOil(Model_CPG):
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
+                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
                                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name=wctrl.phase_name)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      target=wctrl.bhp_constraint)

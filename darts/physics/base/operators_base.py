@@ -20,8 +20,9 @@ class OperatorsBase(operator_set_evaluator_iface):
 
 class WellControlOperators(OperatorsBase):
     """
-    Set of operators for well controls. It contains the pressure, composition and temperature of the well head,
-    plus a set of rate-control operators for different types of rates: mass-, molar-, volume- or heat-rate controls
+    Set of operators for well controls. It contains the pressure, composition and temperature of the wellhead,
+    plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
+    heat rate controls
     """
     def __init__(self, property_container: PropertyBase, thermal: bool):
         super().__init__(property_container, thermal)
@@ -56,7 +57,7 @@ class WellControlOperators(OperatorsBase):
         idx += self.nph
         vec_values_as_np[idx + self.property.ph] = mobility
 
-        # Enthalpy rate
+        # Advective heat rate
         if self.thermal:
             idx += self.nph
             vec_values_as_np[idx + self.property.ph] = \

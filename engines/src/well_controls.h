@@ -28,7 +28,7 @@
 class well_control_iface
 {
 public:
-  enum WellControlType : int { BHP = 0, MOLAR, MASS, VOLUME };
+  enum WellControlType : int { BHP = 0, MOLAR_RATE, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE };
   std::string name;
 
 protected:
@@ -38,7 +38,7 @@ protected:
   std::vector<value_t> state;
   std::vector<value_t> well_control_spec;
   std::vector<value_t> well_control_ops;
-	std::vector<value_t> well_control_ops_derivs;
+  std::vector<value_t> well_control_ops_derivs;
   operator_set_gradient_evaluator_iface *well_controls_etor;
   
 public:

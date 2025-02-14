@@ -203,7 +203,8 @@ class PhysicsBase:
         Method to define well controls
 
         :param well_name: Name of the well on which the control is defined
-        :param control_type: Well control type 0) BHP, 1) MOLAR, 2) MASS, 3) VOLUME, 4) ENTHALPY, default is BHP
+        :param control_type: Well control type 0) BHP, 1) MOLAR_RATE, 2) MASS_RATE, 3) VOLUMETRIC_RATE,
+        4) ADVECTIVE_HEAT_RATE, default is BHP
         :param is_inj: Is injection well or production well
         :param target: Target BHP or rate, consistent with well control type
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control
@@ -224,7 +225,8 @@ class PhysicsBase:
         # Pass controls specification to well controls object
         if control_type == well_control_iface.BHP:
             control.set_bhp_control(is_inj, well_control_spec)
-        else:
+        elif control_type in (well_control_iface.MOLAR_RATE, well_control_iface.MASS_RATE,
+                              well_control_iface.VOLUMETRIC_RATE, well_control_iface.ADVECTIVE_HEAT_RATE):
             # Injection/production rate
             control.set_rate_control(is_inj, control_type, phase_idx, well_control_spec)
 
