@@ -77,13 +77,8 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                """
-                If the injector is rate-controlled, the 2nd input argument is the type of the rate, which could be 
-                "phase_molar_rate", "phase_mass_rate", "phase_volumetric_rate", or "phase_advective_heat_rate".
-                The third input argument is the name of the phase the rate of which is controlled.
-                """
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                               is_inj=True, target=140., inj_stream=inj_stream)
             else:
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                               is_inj=False, target=50.)

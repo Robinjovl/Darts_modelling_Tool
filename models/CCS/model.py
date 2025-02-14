@@ -104,9 +104,9 @@ class Model(DartsModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                               is_inj=True, target=self.p_inj, inj_stream=self.inj_stream[:-1],
                                                               inj_temp=self.inj_stream[-1])
             else:
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                               is_inj=False, target=self.p_prod)

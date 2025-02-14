@@ -95,10 +95,10 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.MOLAR,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
                                                               is_inj=True, phase_idx=0, target=1., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.define_well_controls(name=w.name, control_type=well_control_iface.BHP,
+                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                               is_inj=False, target=85.)
 
 

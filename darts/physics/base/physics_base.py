@@ -196,13 +196,13 @@ class PhysicsBase:
                                                        precision=itor_precision)
         return
 
-    def define_well_controls(self, name: str, control_type: well_control_iface.WellControlType,
+    def define_well_controls(self, well_name: str, control_type: well_control_iface.WellControlType,
                              is_inj: bool, target: float, phase_idx: int = None,
                              inj_stream: list = None, inj_temp: float = None):
         """
         Method to define well controls.
 
-        :param name: Name of the well control
+        :param well_name: Name of the well
         :param control_type: Well control type 0) BHP, 1) MOLAR, 2) MASS, 3) VOLUME, 4) ENTHALPY, default is BHP
         :param is_inj: Is injection or production
         :param target: Target BHP or rate, consistent with well control type
@@ -210,7 +210,7 @@ class PhysicsBase:
         :param inj_stream: Composition of injected phase
         :param inj_temp: Temperature of injected phase
         """
-        control = well_control_iface(name, self.nph, self.thermal, self.well_ctrl_itor)
+        control = well_control_iface(well_name, self.nph, self.thermal, self.well_ctrl_itor)
 
         # Define well controls specification: BHP/rate, composition and injection temperature
         inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables

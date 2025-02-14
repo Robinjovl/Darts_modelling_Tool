@@ -283,14 +283,14 @@ class Model(DartsModel):
 
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
-            injector.control = self.physics.define_well_controls(name="I1", control_type=well_control_iface.MOLAR,
+            injector.control = self.physics.define_well_controls(well_name="I1", control_type=well_control_iface.MOLAR,
                                                                  is_inj=True, target=1., phase_idx=0, inj_stream=self.inj_stream)
-            producer.control = self.physics.define_well_controls(name="P1", control_type=well_control_iface.BHP,
+            producer.control = self.physics.define_well_controls(well_name="P1", control_type=well_control_iface.BHP,
                                                                  is_inj=False, target=50.)
         elif self.reservoir_type == '2D':
-            injector.control = self.physics.define_well_controls(name="I1", control_type=well_control_iface.MOLAR,
+            injector.control = self.physics.define_well_controls(well_name="I1", control_type=well_control_iface.MOLAR,
                                                                  is_inj=True, target=300., phase_idx=0, inj_stream=self.inj_stream)
-            producer.control = self.physics.define_well_controls(name="P1", control_type=well_control_iface.BHP,
+            producer.control = self.physics.define_well_controls(well_name="P1", control_type=well_control_iface.BHP,
                                                                  is_inj=False, target=50.)
         # else:
         #     injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
