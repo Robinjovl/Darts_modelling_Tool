@@ -86,7 +86,7 @@ class ModelDeadOil(Model_CPG):
                 inj_temp = wctrl.inj_bht if self.physics.thermal else None
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
-                                                                  is_inj=True, target=wctrl.rate, phase_idx=wctrl.comp_index,
+                                                                  is_inj=True, target=wctrl.rate, phase_idx=wctrl.phase_idx,
                                                                   inj_stream=inj_stream, inj_temp=inj_temp)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      is_inj=True, target=wctrl.bhp_constraint,
@@ -100,7 +100,7 @@ class ModelDeadOil(Model_CPG):
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
                     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR,
-                                                                  is_inj=False, target=-np.abs(wctrl.rate), phase_idx=wctrl.comp_index)
+                                                                  is_inj=False, target=-np.abs(wctrl.rate), phase_idx=wctrl.phase_idx)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
@@ -180,24 +180,24 @@ class ModelDeadOil(Model_CPG):
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_bhp_control(name=w, bhp=250, comp_index=1, temperature=300)  # kmol/day | bars | K
+                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_idx=1, temperature=300)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=1e6, comp_index=1, bhp_constraint=250)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=1e6, phase_idx=1, bhp_constraint=250)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=1e6, comp_index=0, bhp_constraint=100)  # kmol/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=1e6, phase_idx=0, bhp_constraint=100)  # kmol/day | bars
         elif 'wperiodic' in case:
             y2d = 365.25
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, comp_index=1, bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, comp_index=1, bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, phase_idx=1, bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, phase_idx=1, bhp_constraint=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, comp_index=0, bhp_constraint=70)  # kmol/day | bars
-                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, comp_index=0, bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, phase_idx=0, bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, phase_idx=0, bhp_constraint=70)  # kmol/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
