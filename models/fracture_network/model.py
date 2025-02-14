@@ -45,11 +45,11 @@ class Model(CICDModel):
 
         # initialize reservoir
         self.reservoir = UnstructReservoir(timer=self.timer, mesh_file=mesh_file,
-                                      permx=permx, permy=permy, permz=permz,
-                                      poro=poro,
-                                      rcond=idata.rock.conductivity,
-                                      hcap=idata.rock.heat_capacity,
-                                      frac_aper=frac_aper)
+                                           permx=permx, permy=permy, permz=permz,
+                                           poro=poro,
+                                           rcond=idata.rock.conductivity,
+                                           hcap=idata.rock.heat_capacity,
+                                           frac_aper=frac_aper)
 
         # parameters for fracture aperture computation depending on principal stresses
         if 'Sh_max' in idata.stress:
