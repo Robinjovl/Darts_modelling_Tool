@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import os
+import platform
 
 class CICDModel(DartsModel):
     def __init__(self):
@@ -133,7 +134,6 @@ class CICDModel(DartsModel):
         if file_name == '':
             file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl')
         data = self.get_performance_data()
-        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
@@ -186,3 +186,33 @@ class CICDModel(DartsModel):
         else:
             print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
+
+def compare_solution_with_reference(m, pkl_custom_suffix=''):
+    os.makedirs('ref', exist_ok=True)
+
+    pkl_suffix = ''
+    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
+        pkl_suffix = '_gpu'
+    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+        pkl_suffix = '_iter'
+    else:
+        pkl_suffix = '_odls'
+    print('pkl_suffix=', pkl_suffix)
+
+    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + pkl_custom_suffix + '.pkl')
+    overwrite = 0
+    if os.getenv('UPLOAD_PKL') == '1':
+        overwrite = 1
+
+    is_plk_exist = os.path.isfile(file_name)
+
+    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
+
+    if not is_plk_exist or overwrite == '1':
+        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
+        return False, 0.0
+
+    if is_plk_exist:
+        return (failed > 0), -1.0 #data[-1]['simulation time']
+    else:
+        return False, -1.0

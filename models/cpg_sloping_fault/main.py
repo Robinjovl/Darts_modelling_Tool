@@ -9,6 +9,7 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
+from darts.models.cicd_model import compare_solution_with_reference
 
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
@@ -96,7 +97,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix = '_' + case + '_' + physics_type)
 
     if redirect_log:
         abort_redirection(log_stream)
@@ -178,39 +180,6 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
 
 ##########################################################################################################
 # for CI/CD
-def check_performance_local(m, case, physics_type):
-    import platform
-
-    os.makedirs('ref', exist_ok=True)
-
-    pkl_suffix = ''
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        pkl_suffix = '_gpu'
-    elif os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
-    else:
-        pkl_suffix = '_odls'
-    print('pkl_suffix=', pkl_suffix)
-
-    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
-                             '_' + case + '_' + physics_type + '.pkl')
-    overwrite = 0
-    if os.getenv('UPLOAD_PKL') == '1':
-        overwrite = 1
-
-    is_plk_exist = os.path.isfile(file_name)
-
-    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
-
-    if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
-        return False, 0.0
-
-    if is_plk_exist:
-        return (failed > 0), -1.0 #data[-1]['simulation time']
-    else:
-        return False, -1.0
-
 def run_test(args: list = [], platform='cpu'):
     if len(args) > 1:
         case = args[0]

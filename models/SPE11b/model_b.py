@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass, field
 
-# from darts.models.darts_model import DartsModel
+from darts.models.darts_model import DartsModel
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, index_vector, sim_params, conn_mesh
 
@@ -24,8 +24,6 @@ from dartsflash.libflash import CubicEoS, AQEoS
 from dartsflash.components import CompData
 
 from scipy.special import erf
-
-from fluidflower_str_b import FluidFlowerStruct
 
 # region Dataclasses
 @dataclass
@@ -66,57 +64,10 @@ class PorPerm:
     hcap: float = 2125
     rcond: float = 181.44
 
-# define the Corey parameters for each layer (rock type) according to the technical description of the CSP
-corey = {
-    0: Corey(nw=1.5, ng=1.5, swc=0.32, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1.935314, pcmax=300, c2=1.5),
-    1: Corey(nw=1.5, ng=1.5, swc=0.14, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.08655, pcmax=300, c2=1.5),
-    2: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0612, pcmax=300, c2=1.5),
-    3: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.038706, pcmax=300, c2=1.5),
-    4: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0306, pcmax=300, c2=1.5),
-    5: Corey(nw=1.5, ng=1.5, swc=0.10, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.025602, pcmax=300, c2=1.5),
-    6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
-}
+# endregion
 
-# For each of the facies within the SPE11b model we define a set of operators in the physics.
-property_regions  = [0, 1, 2, 3, 4, 5, 6]
-layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
-
-"""Define realization ID"""
-model_specs = [
-    {'structured': True,
-     'thickness': False,
-     'curvature': False,
-     'tpfa': True,
-     'capillary': True,
-     'nx': 170, # horizontal resolution
-     'nz': 60, # vertical resolution
-     'output_dir': 'SPE11_output'},
-]
 
 class Model(CICDModel):
-    def __init__(self):
-        super().__init__()
-        self.specs = model_specs[0]
-        # Define physics
-        self.zero = 1e-10
-        self.set_physics(corey=corey, zero=self.zero, temperature=323.15, n_points=1001, diff=1e-9)
-
-        # solver paramters
-        self.set_sim_params(first_ts=1e-2, mult_ts=2, max_ts=365, tol_linear=1e-3, tol_newton=1e-3,
-                         it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
-        self.params.newton_params[0] = 0.05
-        self.params.nonlinear_norm_type = self.params.L1
-
-        # Define the reservoir and wells
-        well_centers = {
-            "I1": [2700.0, 0.0, 300.0],
-            "I2": [5100.0, 0.0, 700.0]
-            }
-
-        self.reservoir = FluidFlowerStruct(timer=self.timer, layer_properties=layer_props, layers_to_regions=layers_to_regions,
-                                           model_specs=self.specs, well_centers=well_centers) # structured reservoir
-        self.set_str_boundary_volume_multiplier()  # right and left boundary volume multiplier
-
     def set_physics(self, corey: dict = {}, zero: float = 1e-12, temperature: float = None, n_points: int = 10001,
                     diff = 1e-9):
         """Physical properties"""
@@ -141,7 +92,8 @@ class Model(CICDModel):
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
-        if temperature is None: # if None, then thermal=True
+
+        if temperature is None:  # if None, then thermal=True
             thermal = True
         else:
             thermal = False
