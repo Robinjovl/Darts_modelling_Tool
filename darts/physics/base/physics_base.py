@@ -237,7 +237,7 @@ class PhysicsBase:
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor)
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, timer_name: str, n_ops: int,
                             algorithm: str = 'multilinear', mode: str = 'adaptive',
