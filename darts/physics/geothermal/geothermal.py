@@ -15,22 +15,11 @@ class Geothermal(GeothermalBase):
     def __init__(self, idata: InputData, timer):
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
+        idata.rock.compr_ev = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
+        idata.rock.compaction_ev = custom_rock_compaction_evaluator(idata.rock)
+        idata.rock.energy_ev = custom_rock_energy_evaluator(idata.rock)  # Create rock_energy object
 
-        property_container = GeothermalIAPWSProperties()
-
-        property_container.Mw = [18.015]
-
-        property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
-        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
-        property_container.rock_energy_ev = custom_rock_energy_evaluator(property_container.rock)  # Create rock_energy object
-
-        property_container.temperature_ev = idata.fluid.temperature_ev
-        property_container.density_ev = idata.fluid.density_ev
-        property_container.viscosity_ev = idata.fluid.viscosity_ev
-        property_container.relperm_ev = idata.fluid.relperm_ev
-        property_container.enthalpy_ev = idata.fluid.enthalpy_ev
-        property_container.saturation_ev = idata.fluid.saturation_ev
-        property_container.conduction_ev = idata.fluid.conduction_ev
+        property_container = PropertiesIAPWS(idata)
 
         self.add_property_region(property_container)
 
@@ -40,49 +29,20 @@ class GeothermalPH(GeothermalBase):
         # Call base class constructor
         super().__init__(timer, idata.obl.n_points, idata.obl.min_p, idata.obl.max_p,
                          idata.obl.min_e, idata.obl.max_e)
-        self.idata = idata
-        property_container = GeothermalPHProperties()
+        idata.rock.compr_ev = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
+        idata.rock.compaction_ev = custom_rock_compaction_evaluator(idata.rock)
+        idata.rock.energy_ev = custom_rock_energy_evaluator(idata.rock)  # Create rock_energy object
 
-        property_container.flash_ev = idata.fluid.flash_ev
-        property_container.Mw = idata.fluid.Mw
-
-        property_container.rock = [value_vector([idata.rock.compressibility_ref_p, idata.rock.compressibility, idata.rock.compressibility_ref_T])]
-        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(property_container.rock)
-        property_container.rock_energy_ev = custom_rock_energy_evaluator(property_container.rock)  # Create rock_energy object
-
-        property_container.density_ev = idata.fluid.density_ev
-        property_container.viscosity_ev = idata.fluid.viscosity_ev
-        property_container.relperm_ev = idata.fluid.relperm_ev
-        property_container.enthalpy_ev = idata.fluid.enthalpy_ev
-        property_container.conduction_ev = idata.fluid.conduction_ev
-
+        property_container = PropertiesPH(idata)
         self.add_property_region(property_container)
 
 
-class GeothermalPropertiesBase(PropertyBase):
-    nc = 1
-    nph = 2
+class PropertiesIAPWS(PropertyBase):
+    def __init__(self, idata: InputData):
+        super().__init__(idata)
 
-    def __init__(self):
-        self.Mw = np.zeros(self.nc)
-        self.nu = np.zeros(self.nph)
-        self.x = np.zeros((self.nph, self.nc))
-        self.density = np.zeros(self.nph)
-        self.dens_m = np.zeros(self.nph)
-        self.saturation = np.zeros(self.nph)
-        self.viscosity = np.zeros(self.nph)
-        self.relperm = np.zeros(self.nph)
-        self.pc = np.zeros(self.nph)
-        self.enthalpy = np.zeros(self.nph)
-        self.conduction = np.zeros(self.nph)
-        self.dX = []
-        self.mass_source = np.zeros(self.nc)
-        self.energy_source = 0.
-        self.temperature = 0.
-
-        self.phase_props = [self.density, self.dens_m, self.saturation, self.nu, self.viscosity, self.relperm, self.pc,
-                            self.enthalpy, self.conduction, self.mass_source]
-
+        self.temperature_ev = idata.fluid.temperature_ev
+        self.saturation_ev = idata.fluid.saturation_ev
         self.output_props = {'temperature': lambda: self.temperature}
 
     @abc.abstractmethod
@@ -97,14 +57,12 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
         for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
-            self.density[j] = self.density_ev[phase].evaluate(state)
-            self.dens_m[j] = self.density[j] / self.Mw[0]
-            self.saturation[j] = self.saturation_ev[phase].evaluate(state)
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
-            self.conduction[j] = self.conduction_ev[phase].evaluate(state)
-            self.relperm[j] = self.relperm_ev[phase].evaluate(state)
-
-        self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
+            self.dens[j] = self.density_ev[phase].evaluate(state)
+            self.dens_m[j] = self.dens[j] / self.Mw[0]
+            self.sat[j] = self.saturation_ev[phase].evaluate(state)
+            self.mu[j] = self.viscosity_ev[phase].evaluate(state)
+            self.cond[j] = self.conductivity_ev[phase].evaluate(state)
+            self.kr[j] = self.rel_perm_ev[phase].evaluate(state)
         return
 
     def compute_total_enthalpy(self, state, temperature):
@@ -113,10 +71,8 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
 class GeothermalIAPWSFluidProps(FluidProps):
     def __init__(self):
-        super().__init__()
+        super().__init__(components_name=['water'], phases_name=['water', 'steam'], Mw=[18.015])
 
-        self.components = ['water']
-        self.phases = ["water", "steam"]
         self.temperature_ev = iapws_temperature_evaluator()  # Create temperature object
         self.enthalpy_ev = {'water': iapws_water_enthalpy_evaluator(),
                             'steam': iapws_steam_enthalpy_evaluator(),
@@ -133,13 +89,13 @@ class GeothermalIAPWSFluidProps(FluidProps):
                            'steam': iapws_steam_relperm_evaluator()}
 
 
-class GeothermalPHProperties(GeothermalPropertiesBase):
-    def __init__(self):
+class PropertiesPH(PropertyBase):
+    def __init__(self, idata: InputData):
+        super().__init__(idata=idata)
 
-        super().__init__()
-        self.phases = ["water", "steam"]
+        self.output_props = {'temperature': lambda: self.temperature}
 
-    def run_flash(self, pressure, enthalpy):
+    def run_flash(self, pressure, enthalpy, composition):
         _ = self.flash_ev.evaluate(pressure, enthalpy)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
@@ -153,7 +109,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
         if len(ph) == 1:
-            self.saturation[ph] = 1.
+            self.sat[ph] = 1.
         else:
             vol = [self.nu[j] / self.dens_m[j] for j in ph]
             self.saturation[ph] = vol / np.sum(vol)
@@ -180,33 +136,30 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
             a[:] = 0
 
         # Evaluate flash
-        self.ph = self.run_flash(state[0], state[1])
+        self.ph = self.run_flash(state[0], state[1], state[2:])
 
         # Evaluate phase properties
         for j in self.ph:
-            phase = self.phases[j]
             Mw = np.sum(self.Mw * self.x[j, :])
-            self.density[j] = self.density_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
-            self.dens_m[j] = self.density[j] / Mw
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :], self.density[j])
-            self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
-            self.conduction[j] = self.conduction_ev[phase].evaluate(state)
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(state[0], self.temperature, self.x[j, :])
+            self.dens_m[j] = self.dens[j] / Mw
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(state[0], self.temperature, self.x[j, :], self.dens[j])
+            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(state[0], self.temperature, self.x[j, :])
+            self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(state)
 
         # Compute saturation and saturation-based properties
         self.compute_saturation(self.ph)
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
+            self.relperm[j] = self.rel_perm_ev[self.phases[j]].evaluate(state)
 
         return
 
 
 class GeothermalPHFluidProps(FluidProps):
-    def __init__(self, ):
-        super().__init__()
-        self.components = ["H2O"]
-        self.phases = ['water', 'steam']
+    def __init__(self):
+        super().__init__(components_name=["H2O"], phases_name=["water", "steam"])
 
         from dartsflash.libflash import PHFlash, FlashParams, EoSParams, EoS
         from dartsflash.libflash import CubicEoS, AQEoS
@@ -225,11 +178,13 @@ class GeothermalPHFluidProps(FluidProps):
         flash_params.add_eos("AQ", aq)
         flash_params.eos_order = ["AQ", "CEOS"]
 
+        # Flash-related parameters
         flash_params.T_min = 250.
         flash_params.T_max = 575.
         flash_params.phflash_Htol = 1e-3
         flash_params.phflash_Ttol = 1e-8
 
+        # Create instance of PHFlash object
         self.flash_ev = PHFlash(flash_params)
 
         # properties implemented in python
@@ -244,5 +199,5 @@ class GeothermalPHFluidProps(FluidProps):
                              'steam': ConstFunc(0.01)}
         self.conduction_ev = {'water': ConstFunc(172.8),
                               'steam': ConstFunc(0.)}
-        self.relperm_ev = dict([('water', PhaseRelPerm("water")),
-                                ('steam', PhaseRelPerm("gas"))])
+        self.rel_perm_ev = {'water', PhaseRelPerm("water"),
+                            'steam', PhaseRelPerm("gas")}

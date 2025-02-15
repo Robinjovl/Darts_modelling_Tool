@@ -1,7 +1,9 @@
 import numpy as np
 from typing import Union, List, Dict
+from darts.physics.properties.basic import ConstFunc
 
-class RockProps():
+
+class RockProps:
     '''
     Rock hydrodynamic properties
     '''
@@ -15,7 +17,10 @@ class RockProps():
         self.permx = self.permy = self.permz = None  # Permeability [mD]
         self.compressibility = None
         self.density = None
-        
+        self.energy_ev = None  # TODO comment on the definition of rock evaluators here
+        self.compr_ev = None
+        self.density_ev = None
+
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
             self.conductivity = None   # thermal conductivity [kJ/m/day/K]
@@ -41,17 +46,46 @@ class RockProps():
                 return self.perm
                 
 
-class FluidProps():
+class FluidProps:
     '''
     Fluid properties
     '''
-    def __init__(self):
-        self.compressibility = None  #TODO units
-        self.density = None  # Density at reference conditions, #TODO units
-        self.viscosity = None  #TODO units
-        self.Mw = None  # molar weight, [g/mol]
-        
-class InitialSolution():
+    def __init__(self, phases_name: list, components_name: list, Mw: list, nc_sol: int = 0, np_sol: int = 0,
+                 min_z: float = 1e-11, rate_ann_mat: np.ndarray = None):
+        """
+        This is the constructor of the FluidProps class. An instance of this class contains all the properties
+        that are required for simulation.
+        """
+        # Fluid/solid phases and components, rate annihilation matrix for equilibrium chemistry (optional)
+        self.phases_name: list = phases_name
+        self.components_name: list = components_name
+
+        self.nph = len(phases_name)
+        self.nc = len(components_name)
+        self.np_fl = self.nph - np_sol  # number of fluid phases
+        self.np_sol = np_sol  # number of solid phases
+        self.nc_fl = self.nc - nc_sol  # number of fluid components
+        self.nc_sol = nc_sol  # number of solid components
+
+        self.rate_ann_mat: np.ndarray = rate_ann_mat  # rate annihilation matrix (or Element Reduction Matrix)
+        self.Mw: list = Mw  # molar weight, [g/mol]
+
+        # Evaluators for properties
+        self.flash_ev = None
+        self.density_ev: dict = None  # [kg/m3]
+        self.viscosity_ev: dict = None  # [cP]
+        self.enthalpy_ev: dict = None  # [kJ/m3]
+        self.conductivity_ev: dict = None  # [kJ/m.K.day]
+
+        self.rel_perm_ev: dict = None
+        self.rel_well_perm_ev: dict = None
+        self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
+        self.diffusion_ev: dict = {ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[:self.np_fl]}
+        self.kinetic_rate_ev: list = []
+        self.energy_source_ev = None
+
+
+class InitialSolution:
     '''
     Class for initial values
     '''
@@ -70,7 +104,8 @@ class InitialSolution():
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
-class MeshData():
+
+class MeshData:
     '''
     tags
     '''
@@ -78,8 +113,9 @@ class MeshData():
         self.bnd_tags = None
         self.matrix_tags = None
         self.mesh_filename = None
-        
-class WellControl():
+
+
+class WellControl:
     '''
     constant well controls during the simulation
     '''
@@ -134,7 +170,7 @@ class WellControl():
         self.inj_bht = temperature  # K
         # if Compositional
         self.comp_index = comp_index # injection composition index, [int]
-        
+
 class WellLocIJK():
     '''
     well location for structured grid, 1-based integer grid cell indices I,J,K
@@ -178,7 +214,7 @@ class WellPerforation():
         self.well_indexD = well_indexD
         self.multi_segment = multi_segment
 
-class WellData():
+class WellData:
     '''
     well definition
     '''
@@ -255,9 +291,9 @@ class WellData():
 
                                 for k in range(k1, k2 + 1):
                                     #TODO support time>0
-                                    self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k), 
+                                    self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k),
                                                          status='open', well_radius=well_radius,
-                                                         well_index=well_index, well_indexD=None, 
+                                                         well_index=well_index, well_indexD=None,
                                                          multi_segment=False)
                             if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
@@ -302,7 +338,8 @@ class WellData():
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, comp_index=comp_index)
         self.wells[name].controls.append((time, wctrl))
 
-class OBLParams():
+
+class OBLParams:
     '''
     OBL range, number of points
     '''
@@ -316,21 +353,24 @@ class OBLParams():
         self.min_z = None
         self.max_z = None
 
-class Simulation():
+
+class Simulation:
     '''
 
     '''
     def __init__(self):
         self.time_steps = None
 
-class OtherProps():
+
+class OtherProps:
     '''
     Other user defined properties
     '''
     def __init__(self):
         pass
 
-class InputData():
+
+class InputData:
     '''
     Class for initial values
     '''
