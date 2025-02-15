@@ -127,6 +127,28 @@ __forceinline__ __host__ __device__ int get_axis_interval_index_low_mult(double 
   return axis_interval_index;
 }
 
+template <typename index_t, uint16_t N_DIMS>
+__forceinline__ __host__ __device__ void decode_hypercube_idx(index_t hypercube_idx, 
+                                                              index_t* axis_idx,
+                                                              const index_t* axis_hypercube_mult) 
+{
+  index_t remaining_hypercube_idx = hypercube_idx;
+
+  // Decode hypercube_idx to find each dimension's index
+  for (uint16_t i = 0; i < N_DIMS; i++)
+  {
+    if (i < N_DIMS - 1)
+    {
+      axis_idx[i] = remaining_hypercube_idx / axis_hypercube_mult[i];
+      remaining_hypercube_idx %= axis_hypercube_mult[i];
+    }
+    else 
+    {
+      axis_idx[i] = remaining_hypercube_idx;  // The last dimension index
+    }
+  }
+}
+
 template <typename service_value_t, typename interp_value_t, uint16_t N_DIMS, uint16_t N_OPS>
 __forceinline__ __host__ __device__ void interpolate_with_derivatives(const value_t *axis_values,
                                                                       const interp_value_t *body_data,

@@ -3,8 +3,11 @@
 #include "py_globals.h"
 #include <pybind11/stl.h>
 
+#include <type_traits>
+
 #include "multilinear_static_cpu_interpolator.hpp"
 #include "multilinear_adaptive_cpu_interpolator.hpp"
+#include "multilinear_static_nested_cpu_interpolator.hpp"
 
 #include "linear_static_cpu_interpolator.hpp"
 #include "linear_adaptive_cpu_interpolator.hpp"
@@ -97,6 +100,22 @@ struct interpolator_exposer
           .def_readwrite("point_data", &interpolator_class::point_data)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
+      else if constexpr (std::is_same<interpolator_class, multilinear_static_nested_cpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>::value)
+      {       // Conditionally expose additional methods if the class is multilinear_static_nested_cpu_interpolator
+        py::class_<interpolator_class,
+          operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>()) /*.def("benchmark", &interpolator_class::benchmark, "Init by nc and rate operators") \*/
+          .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
+            "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
+          .def("init_timer_node", &interpolator_class::init_timer_node,
+            "Initialize timer", "timer_node"_a)
+          .def("init", &interpolator_class::init, "Initialize interpolator")
+          .def("init_nested", &interpolator_class::init_nested, "Initialize nested interpolators")
+          .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
+          .def("evaluate", &interpolator_class::evaluate, "Evaluate operators", "state"_a, "values"_a)
+          .def_readwrite("point_data", &interpolator_class::point_data)
+          .def_readwrite("active_hypercube_counter", &interpolator_class::active_hypercube_counter);
+      }
       else {
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
@@ -130,6 +149,12 @@ struct interpolator_exposer
       expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
       expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
     }
+    
+    if constexpr (N_DIMS <= 4)
+    {
+      expose_class<uint64_t, double, multilinear_static_nested_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_nested_cpu_interpolator");
+    }
+
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
     // linear adaptive with 64/128 bit index and 64 bit data

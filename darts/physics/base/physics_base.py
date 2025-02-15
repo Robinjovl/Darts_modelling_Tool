@@ -205,6 +205,29 @@ class PhysicsBase:
                                                   precision=itor_precision)
         return
 
+    def update_nested_interpolators(self, nested_lvl: int, axes_points: list):
+        """
+        Function to init additional level of nested interpolators.
+
+        :param nested_lvl: Create nested interpolators at the given level
+        :type nested_lvl: int
+        :param axes_points: Number of points
+        :type axes_points: list
+        """
+        for region in self.regions:
+            if self.acc_flux_itor[region].__class__.__name__.split('_')[2] == 'nested':
+                self.acc_flux_itor[region].init_nested(nested_lvl, axes_points)
+            if self.property_itor[region].__class__.__name__.split('_')[2] == 'nested':
+                self.property_itor[region].init_nested(nested_lvl, axes_points)
+
+        if self.acc_flux_w_itor.__class__.__name__.split('_')[2] == 'nested':
+            self.acc_flux_w_itor.init_nested(nested_lvl, axes_points)
+
+        if self.rate_itor.__class__.__name__.split('_')[2] == 'nested':
+            self.rate_itor.init_nested(nested_lvl, axes_points)
+
+        return
+
     @abc.abstractmethod
     def define_well_controls(self):
         pass
@@ -236,6 +259,7 @@ class PhysicsBase:
         :type algorithm: str
         :param mode: interpolator mode:
             'adaptive' (default) - only supporting points required to perform interpolation are evaluated on-the-fly;
+            'static_nested' - static nested interpolators;
             'static' - all supporting points are evaluated during itor object construction
         :type mode: str
         :param platform: platform used for interpolation calculations :

@@ -30,10 +30,10 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   // evaluate supporting point data unless it was already assigned via Python
   if (point_data.size() == 0)
   {
-    cout << "Computing " << this->n_points_total << " supporting points for static storage..." << std::endl;
+    cout << "Computing " << to_string(this->n_points_total) << " supporting points for static storage..." << std::endl;
     point_data.resize(this->n_points_total);
 
-    for (auto i = 0; i < this->n_points_total; i++)
+    for (uint64_t i = 0; i < this->n_points_total_fp; i++)
     {
       // let generator fill the vector
       this->get_point_coordinates(i, this->new_point_coords);
