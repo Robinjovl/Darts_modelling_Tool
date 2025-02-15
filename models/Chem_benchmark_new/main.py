@@ -26,7 +26,7 @@ def run(platform='cpu'):
 
     # for CI/CD
     failed, sim_time = compare_solution_with_reference(m=m)
-    return failed, sim_time
+    return failed
 
 if __name__ == '__main__':
     exit(run(platform=get_platform()))

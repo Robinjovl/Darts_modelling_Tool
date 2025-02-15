@@ -90,9 +90,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             print('OK')
         else:
             print('FAIL')
+            # duplicate 10 last lines to screen from the error log file
             with open('../_logs/' + mdir + '_err.log', 'r') as f:
                 s = f.readlines()
-                print(s if len(s) < 3 else s[-2:])
+                print(s if len(s) <= 10 else s[-10:])
         os.chdir('..')
     n_failed += n_failed_mainpy
     n_total += n_total_mainpy
