@@ -82,7 +82,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         print('running main.py for model', mdir)
         n_total_mainpy += 1
         os.chdir(mdir)
-        import subprocess
         mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '.log', 'w'), stderr=open('../_logs/' + mdir + '_err.log', 'w'))
         rcode = mrun.returncode
         n_failed_mainpy += rcode
@@ -93,7 +92,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             # duplicate 10 last lines to screen from the error log file
             with open('../_logs/' + mdir + '_err.log', 'r') as f:
                 s = f.readlines()
-                print(s if len(s) <= 10 else s[-10:])
+                s = s if len(s) <= 10 else s[-10:]
+                print('\t' + '\t'.join(s))
         os.chdir('..')
     n_failed += n_failed_mainpy
     n_total += n_total_mainpy
