@@ -13,18 +13,7 @@ from darts.reservoirs.mesh.geometry.map_mesh import MapMesh, _translate_curvatur
 from model_b import Model, PorPerm, Corey, layer_props
 from darts.engines import redirect_darts_output, sim_params
 from fluidflower_str_b import FluidFlowerStruct
-from darts.models.cicd_model import compare_solution_with_reference
-
-##########################################################################################################
-# for CI/CD
-def run_test(args: list = [], platform='cpu'):
-    if len(args) > 1:
-        ret = run(platform=platform)
-        return ret[0], ret[1] #failed_flag, sim_time
-    else:
-        print('Not enough arguments provided')
-        return True, 0.0
-##########################################################################################################
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
 def run(platform='cpu'):
     # For each of the facies within the SPE11b model we define a set of operators in the physics.
@@ -184,11 +173,7 @@ def run(platform='cpu'):
 
     # for CI/CD
     failed, sim_time = compare_solution_with_reference(m=m)
-
-    print('Failed' if failed else 'Ok')
+    return failed
 
 if __name__ == '__main__':
-    platform = 'cpu'
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        platform = 'gpu'
-    run(platform=platform)
+    exit(run(platform=get_platform()))

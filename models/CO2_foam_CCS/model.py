@@ -1,5 +1,5 @@
 from darts.engines import *
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.super.physics import Compositional
@@ -13,7 +13,7 @@ from darts.physics.properties.flash import ConstantK
 import numpy as np
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -24,7 +24,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_newton=1e-3, tol_linear=1e-4,
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
         self.params.newton_params[0] = 0.25
 

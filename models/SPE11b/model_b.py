@@ -2,7 +2,6 @@ import numpy as np
 from dataclasses import dataclass, field
 
 from darts.models.darts_model import DartsModel
-from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, index_vector, sim_params, conn_mesh
 
 try:
@@ -67,7 +66,7 @@ class PorPerm:
 # endregion
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def set_physics(self, corey: dict = {}, zero: float = 1e-12, temperature: float = None, n_points: int = 10001,
                     diff = 1e-9):
         """Physical properties"""

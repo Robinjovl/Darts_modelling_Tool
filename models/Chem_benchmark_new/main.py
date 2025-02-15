@@ -1,22 +1,32 @@
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
-GRAV = '_grav'
-grid_1D = 0
-for res in [1]:
-    redirect_darts_output('run' + str(res) + '.log')
-    n = Model(grid_1D=grid_1D, res=res, custom_physics=0)
-    n.init()
-    n.params.max_ts = 1e-0
+def run(platform='cpu'):
 
-    n.run(50)
-    # n.save_restart_data()
-    n.save_data_to_h5('solution')
-    n.print_timers()
-    n.print_stat()
+    GRAV = '_grav'
+    grid_1D = True
+    for res in [1]:
+        redirect_darts_output('run' + str(res) + '.log')
+        m = Model(grid_1D=grid_1D, res=res, custom_physics=0)
+        m.init(platform=platform)
+        m.params.max_ts = 1e-0
 
-    # do not plot in pipelines. Do it only when debug it locally 
-    if grid_1D:
-       n.print_and_plot_1D()
-    else:
-       n.print_and_plot_2D()
+        m.run(1000)
+        # m.save_restart_data()
+        m.save_data_to_h5('solution')
+        m.print_timers()
+        m.print_stat()
+
+        # do not plot in pipelines. Do it only when debug it locally
+        if grid_1D:
+           m.print_and_plot_1D()
+        else:
+           m.print_and_plot_2D()
+
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m)
+    return failed, sim_time
+
+if __name__ == '__main__':
+    exit(run(platform=get_platform()))

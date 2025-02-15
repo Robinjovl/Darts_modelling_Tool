@@ -4,8 +4,9 @@ from model import Model
 import numpy as np
 import meshio
 from darts.engines import redirect_darts_output
+from darts.models.cicd_model import compare_solution_with_reference, get_platform
 
-def run(discr_type, mesh_file, test=False):
+def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cpu'):
     try:
         # if compiled with OpenMP, set to run with 1 thread, as MPFA tests are not working in the multithread version yet
         from darts.engines import set_num_threads
@@ -21,7 +22,7 @@ def run(discr_type, mesh_file, test=False):
     # inherited (https://www.python-course.eu/python3_inheritance.php) from the parent class DartsModel (found in
     # darts/models/darts_model.py (NOTE: This is not the same as the__init__(self, **) method which each class (should)
     # have).
-    m.init()
+    m.init(platform=platform)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
     eps = 1e-6
@@ -47,7 +48,7 @@ def run(discr_type, mesh_file, test=False):
     # Run over all reporting time-steps:
     ith_step = 0
     #for ith_step in range(num_report_steps):
-    while m.physics.engine.t < 2000:
+    while m.physics.engine.t <= 1000:
 
         m.run(days=size_report_step)
 
@@ -64,10 +65,13 @@ def run(discr_type, mesh_file, test=False):
     m.print_timers()
     m.print_stat()
 
+    # for CI/CD
+    failed, sim_time = compare_solution_with_reference(m=m)
+    return failed
 
 if __name__ == '__main__':
     # 'tpfa' - Python discretizer + tpfa super engine
     # 'mpfa' - C++ (new) discretizer + mpfa super engine
     # permeabilitties and heat conductivities are different between 'tpfa' and 'mpfa'
     # run(discr_type='tpfa', mesh_file='meshes/wedge.msh')
-    run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True)
+    exit(run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform=get_platform()))
