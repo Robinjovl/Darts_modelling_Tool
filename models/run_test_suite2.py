@@ -5,7 +5,7 @@ import subprocess
 from darts.engines import sim_params
 
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
-    model_dir = r'.'
+    model_dir = os.getcwd()
 
     # define a model list to run
     accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
