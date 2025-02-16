@@ -206,12 +206,11 @@ def compare_solution_with_reference(m : DartsModel, pkl_custom_suffix=''):
 
     if not is_plk_exist or overwrite == '1':
         save_performance_data(m, file_name=file_name, pkl_suffix=pkl_suffix)
-        return False, 0.0
 
     if is_plk_exist:
         return (failed > 0), -1.0 #data[-1]['simulation time']
     else:
-        return False, -1.0
+        return False, -1.0  #TODO change to True if want to fail test if there is no PKL file
 
 def get_platform():
     platform = 'cpu'

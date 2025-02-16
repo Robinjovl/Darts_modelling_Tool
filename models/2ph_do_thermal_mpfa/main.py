@@ -25,14 +25,14 @@ def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cp
     m.init(platform=platform)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
-    eps = 1e-6
-    size_report_step = 100.0  # Half Size of the reporting step (when output is writen to .vtk format)
+    #eps = 1e-6
+    #size_report_step = 100.0  # Half Size of the reporting step (when output is writen to .vtk format)
     # num_report_steps = int(5.0 / size_report_step)
-    max_dt = 2.0
-    m.max_dt = max_dt
-    m.params.max_ts = max_dt
-    first_ts = 1.e-3
-    m.params.first_ts = first_ts
+    #max_dt = 2.0
+    #m.max_dt = max_dt
+    #m.params.max_ts = max_dt
+    #first_ts = 1.e-3
+    #m.params.first_ts = first_ts
 
     # Properties for writing to vtk format:
     # output_directory = 'trial_dir'  # Specify output directory here
@@ -46,19 +46,18 @@ def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cp
             m.reservoir.write_to_vtk_old_discretizer(output_directory, m.cell_property, 0, m.physics)
 
     # Run over all reporting time-steps:
-    ith_step = 0
+    #ith_step = 0
     #for ith_step in range(num_report_steps):
-    while m.physics.engine.t <= 1000:
+    #while m.physics.engine.t <= 1000:
+    #    m.run(days=size_report_step)
+    #    if not test:
+    #        if discr_type == 'mpfa':
+    #            m.reservoir.write_to_vtk(output_directory, m.cell_property, ith_step + 1, m.physics)
+    #        else:
+    #            m.reservoir.write_to_vtk_old_discretizer(output_directory, m.cell_property, ith_step + 1, m.physics)
+    #    ith_step += 1
 
-        m.run(days=size_report_step)
-
-        if not test:
-            if discr_type == 'mpfa':
-                m.reservoir.write_to_vtk(output_directory, m.cell_property, ith_step + 1, m.physics)
-            else:
-                m.reservoir.write_to_vtk_old_discretizer(output_directory, m.cell_property, ith_step + 1, m.physics)
-
-        ith_step += 1
+    m.run(days=1000)
 
     # After the simulation, print some of the simulation timers and statistics,
     # newton iters, etc., how much time spent where:

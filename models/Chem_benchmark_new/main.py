@@ -12,7 +12,7 @@ def run(platform='cpu'):
         m.init(platform=platform)
         m.params.max_ts = 1e-0
 
-        m.run(1000)
+        m.run(50)
         # m.save_restart_data()
         m.save_data_to_h5('solution')
         m.print_timers()
