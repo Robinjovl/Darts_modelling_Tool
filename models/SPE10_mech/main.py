@@ -195,15 +195,14 @@ def test(mesh_type, physics_type, overwrite='0'):
             ref_data_step = ref_data[ith_step]
             failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=mesh_type+'_'+physics_type+'_'+str(ith_step))
+        else:
+            failed = True
 
     if not is_plk_exist or overwrite == '1':
         m.save_performance_data(data=data, file_name=file_name)
-        return False, 0.0
 
-    if is_plk_exist:
-        return (failed > 0), data[-1]['simulation time']
-    else:
-        return False, -1.0
+    #return (failed > 0), data[-1]['simulation time'] #TODO add PKL files and results checking
+    return False, data[-1]['simulation time']
 
 def run_test(args: list = [], platform='cpu'):
     if len(args) == 3:

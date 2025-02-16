@@ -210,7 +210,7 @@ def compare_solution_with_reference(m : DartsModel, pkl_custom_suffix=''):
     if is_plk_exist:
         return (failed > 0), -1.0 #data[-1]['simulation time']
     else:
-        return False, -1.0  #TODO change to True if want to fail test if there is no PKL file
+        return True, -1.0
 
 def get_platform():
     platform = 'cpu'

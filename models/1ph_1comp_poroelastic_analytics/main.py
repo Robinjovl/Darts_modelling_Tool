@@ -189,16 +189,15 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
                 ref_data_step = ref_data[ith_step]
             failed += m.check_performance_data(ref_data_step, sol_data_step, failed, plot=False,
                                              png_suffix=case+'_'+discr_name+'_'+mesh+'_'+str(ith_step))
+        else:
+            failed = True
 
     if not is_plk_exist or overwrite == '1':
         m.save_performance_data(data=data, file_name=file_name)
-        return False, 0.0
     # m.print_timers()
 
-    if is_plk_exist:
-        return (failed > 0), data[-1]['simulation time']
-    else:
-        return False, -1.0
+    return (failed > 0), data[-1]['simulation time']
+
 def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # GeosX
     # t = np.empty(shape=(0,), dtype=np.float64)
