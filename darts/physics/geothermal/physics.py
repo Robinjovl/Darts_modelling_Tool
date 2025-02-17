@@ -137,9 +137,9 @@ class Geothermal(PhysicsBase):
         # Assertions of consistent depth table specification
         assert 'pressure' in input_distribution.keys() and ('temperature' in input_distribution.keys() or
                                                             'enthalpy' in input_distribution.keys())
-        input_depth = input_depth if hasattr(input_depth, "__len__") else np.array([input_depth])
+        input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
         for key, input_values in input_distribution.values():
-            input_values = input_values if hasattr(input_values, "__len__") else np.ones(len(input_depth)) * input_values
+            input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
             assert len(input_values) == len(input_depth)
 
         # Get depths and primary variable arrays from mesh object
@@ -189,11 +189,11 @@ class Geothermal(PhysicsBase):
 
         # interpolate pressure and temperature to compute enthalpies
         enthalpy = np.empty(mesh.n_blocks)
-        if hasattr(pressure_input, '__len__'):
+        if not np.isscalar(pressure_input):
             # Pressure specified as an array
             for j in range(mesh.n_blocks):
                 state = value_vector([pressure_input[j], 0])
-                temp = temperature_input[j] if hasattr(temperature_input, "__len__") else temperature_input
+                temp = temperature_input[j] if not np.isscalar(temperature_input) else temperature_input
                 enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
         else:
             state = value_vector([pressure_input, 0])
