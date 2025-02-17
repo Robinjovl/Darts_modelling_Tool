@@ -7,6 +7,7 @@
 int well_control_iface::set_bhp_control(bool is_inj, std::vector<value_t>& well_control_spec_) 
 {
 	this->well_state_offset = (is_inj) ? 0 : 1; // If injection well, evaluates operators with state of well head; for production, it uses well body
+	this->control_type = well_control_iface::WellControlType::BHP;
 	this->well_control_spec = well_control_spec_;
 	return 0;
 }
@@ -37,15 +38,15 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   if (this->control_type == WellControlType::BHP)
   {
     // If BHP controlled - pressure constraint
-	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_state_size);
+	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
     well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
   	
 	RHS_well_head[0] = well_control_ops[0] - well_control_spec[0];
 
 	// BHP operator derivatives
-	for (int jj = 0; jj < n_state_size; jj++)
+	for (int jj = 0; jj < n_vars; jj++)
 	{
-	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[0 * n_state_size + jj];
+	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[0 * n_vars + jj];
 	}
   }
   else
@@ -54,15 +55,15 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_state_size);
     well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 	value_t p_diff = X_well_head[0] - X_well_body[0];
-	index_t rate_op_idx = n_state_size + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
+	index_t rate_op_idx = 2 + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 
 	// RHS
 	RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * segment_trans - well_control_spec[0];
 
 	// Rate operator derivatives
-	for (int jj = 0; jj < n_state_size; jj++)
+	for (int jj = 0; jj < n_vars; jj++)
 	{
-	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_state_size + jj] * p_diff * segment_trans;
+	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[rate_op_idx * n_vars + jj] * p_diff * segment_trans;
 	}
 	// Product rule for pressure variable
 	jacobian_row[n_block_size * P_VAR + P_VAR] += well_control_ops[rate_op_idx] * segment_trans;
@@ -80,23 +81,30 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
   if (this->well_state_offset)
   {
 	// PRODUCTION WELL: specify equal state to well body
-	for (index_t ii = 1; ii < n_state_size; ii++)
+	for (index_t ii = 1; ii < n_vars; ii++)
 	{
 	  RHS_well_head[ii] = X_well_head[ii] - X_well_body[ii];
 	  jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + ii] = 1.;
-	  jacobian_row[n_block_size_sq + n_block_size * (P_VAR + ii) + P_VAR + ii] = -1.;
+	  jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + ii + n_block_size_sq] = -1.;
 	}
   }
   else
   {
 	// INJECTION WELL: specify injection stream
-	for (index_t ii = 1; ii < n_state_size; ii++)
+	for (index_t ii = 1; ii < n_comps; ii++)
+	{
+	  RHS_well_head[ii] = X_well_head[ii] - well_control_spec[ii];
+	  jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + ii] = 1.;
+	}
+	
+	// If thermal, specify 
+	for (index_t ii = n_comps; ii < n_vars; ii++)
 	{
 	  RHS_well_head[ii] = well_control_ops[ii] - well_control_spec[ii];
 
-	  for (int jj = 0; jj < n_state_size; jj++)
+	  for (int jj = 0; jj < n_vars; jj++)
 	  {
-		jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_control_ops_derivs[ii * n_state_size + jj];
+		jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_control_ops_derivs[ii * n_vars + jj];
 	  }
 	}
   }
@@ -114,7 +122,7 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   if (this->control_type == WellControlType::BHP)
   {
 	// Check if BHP constraint is violated
-	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_state_size);
+	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
   	well_controls_etor->evaluate(state, well_control_ops);
 
 	return (p_diff > 0.) ?
@@ -124,11 +132,9 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   else
   {
 	// Check if rate constraint is violated
-	index_t rate_op_idx = n_state_size + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
-	int n_ops = n_state_size + 4 * n_phases;
-    well_control_ops.resize(n_ops);
+	index_t rate_op_idx = 2 + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
 
-  	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_state_size);
+  	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
   	well_controls_etor->evaluate(state, well_control_ops);
 
   	return (well_control_spec[0] > 0.) ? 

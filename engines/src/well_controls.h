@@ -33,24 +33,24 @@ public:
 
 protected:
   WellControlType control_type = BHP;
-  index_t phase_idx{ 0 }, n_phases, n_state_size, thermal, well_state_offset;
+  index_t phase_idx{ 0 }, n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;
   std::vector<index_t> block_idx {0};
   std::vector<value_t> state;
   std::vector<value_t> well_control_spec;
-  index_t n_ops;
   std::vector<value_t> well_control_ops;
   std::vector<value_t> well_control_ops_derivs;
   operator_set_gradient_evaluator_iface *well_controls_etor;
   
 public:
-  well_control_iface(std::string name_, index_t n_phases_, index_t n_vars_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
-  : name(name_), n_phases(n_phases_), n_state_size(n_vars_), thermal(thermal_), well_controls_etor(well_controls_etor_) 
+  well_control_iface(std::string name_, index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
+  : name(name_), n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_) 
   {
-	// Evaluate well control operators
+	  // Evaluate well control operators
     // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
-	n_ops = n_state_size + 4 * n_phases;
-	well_control_ops.resize(n_ops);
-	well_control_ops_derivs.resize(n_ops* n_state_size);
+	  n_vars = n_comps + thermal;
+    n_ops = 2 + 4 * n_phases;
+	  well_control_ops.resize(n_ops);
+	  well_control_ops_derivs.resize(n_ops * n_vars);
   }
 
   virtual int set_bhp_control(bool is_inj, std::vector<value_t>& well_control_spec_);

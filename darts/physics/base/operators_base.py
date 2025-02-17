@@ -27,7 +27,7 @@ class WellControlOperators(OperatorsBase):
     def __init__(self, property_container: PropertyBase, thermal: bool):
         super().__init__(property_container, thermal)
 
-        self.n_ops = self.nc + self.thermal + self.nph * 4
+        self.n_ops = 2 + self.nph * 4
 
     def evaluate(self, state, values):
         vec_state_as_np = state.to_numpy()
@@ -38,15 +38,13 @@ class WellControlOperators(OperatorsBase):
 
         # Store P, T and composition of current state
         vec_values_as_np[0] = state[0]
-        vec_values_as_np[1:self.nc] = state[1:self.nc]
-        if self.thermal:
-            vec_values_as_np[self.nc] = self.property.temperature
+        vec_values_as_np[1] = self.property.temperature
 
         # Store rate controls
         mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
 
         # Molar rate
-        idx = self.property.nc + self.thermal
+        idx = 2
         vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
 
         # Mass rate

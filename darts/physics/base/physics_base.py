@@ -212,7 +212,7 @@ class PhysicsBase:
         :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
         """
-        control = well_control_iface(well_name, self.nph, self.n_vars, self.thermal, self.well_ctrl_itor)
+        control = well_control_iface(well_name, self.nph, self.nc, self.thermal, self.well_ctrl_itor)
 
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
         inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables
