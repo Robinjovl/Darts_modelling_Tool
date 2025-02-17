@@ -10,7 +10,7 @@ def run(platform='cpu'):
         redirect_darts_output('run' + str(res) + '.log')
         m = Model(grid_1D=grid_1D, res=res, custom_physics=0)
         m.init(platform=platform)
-        m.params.max_ts = 1e-0
+        #m.params.max_ts = 1e-0
 
         m.run(50)
         # m.save_restart_data()
