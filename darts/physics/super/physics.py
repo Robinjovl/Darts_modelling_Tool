@@ -20,7 +20,7 @@ class Compositional(PhysicsBase):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.ISOTHERMAL,
+                 state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
                  cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
@@ -42,7 +42,7 @@ class Compositional(PhysicsBase):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param state_spec: State specification - 0) ISOTHERMAL (default), 1) PT, 2) PH
+        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
         :type state_spec: StateSpecification
         :param cache: Switch to cache operator values
         :type cache: bool
@@ -56,7 +56,7 @@ class Compositional(PhysicsBase):
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
-        self.thermal = (state_spec > PhysicsBase.StateSpecification.ISOTHERMAL)
+        self.thermal = (state_spec > PhysicsBase.StateSpecification.P)
 
         # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
         variables = ['pressure'] + components[:-1]

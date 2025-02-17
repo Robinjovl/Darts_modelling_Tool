@@ -18,7 +18,7 @@ class Poroelasticity(Compositional):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 state_spec: Compositional.StateSpecification = Compositional.StateSpecification.ISOTHERMAL,
+                 state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
                  cache: bool = False, discretizer: str = 'mech_discretizer', axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
@@ -39,7 +39,7 @@ class Poroelasticity(Compositional):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param state_spec: State specification - 0) ISOTHERMAL (default), 1) PT, 2) PH
+        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
         :type state_spec: bool
         :param cache: Switch to cache operator values
         :type cache: bool

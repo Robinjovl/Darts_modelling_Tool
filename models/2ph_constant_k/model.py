@@ -230,7 +230,7 @@ class Model(DartsModel):
             axes_max[0] = max_p
 
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
                                      min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
                                      axes_max=axes_max)

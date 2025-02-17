@@ -44,7 +44,7 @@ class PhysicsBase:
 
     @total_ordering
     class StateSpecification(Enum):
-        ISOTHERMAL = 0
+        P = 0
         PT = 1
         PH = 2
         def __lt__(self, other):
@@ -58,7 +58,7 @@ class PhysicsBase:
         """
         This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
 
-        :param state_spec: State specification - 0) ISOTHERMAL, 1) PT, 2) PH
+        :param state_spec: State specification - 0) P, 1) PT, 2) PH
         :type state_spec: StateSpecification
         :param variables: List of independent variables
         :type variables: list

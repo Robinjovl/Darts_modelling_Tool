@@ -18,7 +18,7 @@ class BlackOilBase(Compositional):
 
 class BlackOil(Compositional):
     def __init__(self, idata: InputData, timer, thermal):
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         super().__init__(components=idata.fluid.components, phases=idata.fluid.phases, timer=timer,
                          n_points=idata.obl.n_points, min_p=idata.obl.min_p, max_p=idata.obl.max_p,
                          min_z=idata.obl.min_z, max_z=idata.obl.max_z, min_t=idata.obl.min_t, max_t=idata.obl.max_t,

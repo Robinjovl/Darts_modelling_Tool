@@ -169,7 +169,7 @@ class Model(CICDModel):
 
         thermal = 0
         ne = nc + thermal
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
 
         """ properties correlations """
         if self.combined_ions:
@@ -459,7 +459,7 @@ class MassSource:
 
 class CustomPhysics(Compositional):
     def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1,
-                 state_spec = Compositional.StateSpecification.ISOTHERMAL, cache=False, volume=0, num_wells=0):
+                 state_spec = Compositional.StateSpecification.P, cache=False, volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells

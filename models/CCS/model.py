@@ -71,7 +71,7 @@ class Model(DartsModel):
             state_spec = Compositional.StateSpecification.PT
         else:
             thermal = False
-            state_spec = Compositional.StateSpecification.ISOTHERMAL
+            state_spec = Compositional.StateSpecification.P
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
