@@ -62,6 +62,7 @@ def check_performance(m : DartsModel, overwrite=0, diff_norm_normalized_tol_=1e-
                 plt.figure()
                 plt.plot(sol_et, label='ref')
                 plt.plot(sol, label='cur')
+                plt.legend()
                 plt.savefig('sol_' + m.physics.vars[v] + '.png')
                 plt.close()
 
