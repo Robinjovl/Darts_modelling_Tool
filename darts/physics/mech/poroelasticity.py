@@ -122,7 +122,7 @@ class Poroelasticity(Compositional):
                                         self.n_ops, self.phases, self.rate_itor, self.thermal)
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray], displacement_input: list):
+                                                input_depth: Union[list, np.ndarray], input_displacement: list):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
@@ -130,25 +130,25 @@ class Poroelasticity(Compositional):
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
         :param input_depth: Array of depths over which depth table has been specified
-        :param displacement_input: Displacement [], array
+        :param input_displacement: Displacement [], array
         """
         super().set_initial_conditions_from_depth_table(mesh, input_depth=input_depth, input_distribution=input_distribution)
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = displacement_input[i]
+            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]
 
-    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, displacement_input: list):
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, input_displacement: list):
         """
         Method to set initial conditions by arrays or uniformly for all cells
 
         :param mesh: conn_mesh object
         :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to number of cells
-        :param displacement_input: Displacement [], array
+        :param input_displacement: Displacement [], array
         """
         super().set_initial_conditions_from_array(mesh, input_distribution=input_distribution)
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = displacement_input[i]
+            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]

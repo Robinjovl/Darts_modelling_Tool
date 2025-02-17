@@ -177,7 +177,7 @@ class THMCModel(DartsModel):
 
         self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                        input_distribution=input_distribution,
-                                                       displacement_input=self.reservoir.u_init)
+                                                       input_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):
