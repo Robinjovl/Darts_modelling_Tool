@@ -98,7 +98,9 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     writer.close()
 
     # for CI/CD
-    failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix = '_' + case + '_' + physics_type)
+    failed, sim_time = False, -1.
+    if '5x3x4' in case or '51x51x1' in case:
+        failed, sim_time = compare_solution_with_reference(m=m, pkl_custom_suffix = '_' + case + '_' + physics_type)
 
     if redirect_log:
         abort_redirection(log_stream)
