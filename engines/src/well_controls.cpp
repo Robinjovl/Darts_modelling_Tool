@@ -55,7 +55,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_state_size);
     well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
 	value_t p_diff = X_well_head[0] - X_well_body[0];
-	index_t rate_op_idx = 2 + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
+	index_t rate_op_idx = 2 + (this->control_type - 1) * n_phases + phase_idx;  // find correct index in WellControlOperators
 
 	// RHS
 	RHS_well_head[0] = well_control_ops[rate_op_idx] * p_diff * segment_trans - well_control_spec[0];
@@ -96,8 +96,8 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	  RHS_well_head[ii] = X_well_head[ii] - well_control_spec[ii];
 	  jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + ii] = 1.;
 	}
-	
-	// If thermal, specify 
+
+	// If thermal, specify
 	for (index_t ii = n_comps; ii < n_vars; ii++)
 	{
 	  RHS_well_head[ii] = well_control_ops[ii] - well_control_spec[ii];
@@ -132,7 +132,7 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   else
   {
 	// Check if rate constraint is violated
-	index_t rate_op_idx = 2 + this->control_type * n_phases + phase_idx;  // find correct index in WellControlOperators
+	index_t rate_op_idx = 2 + (this->control_type - 1) * n_phases + phase_idx;  // find correct index in WellControlOperators
 
   	state.assign(X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR, X.begin() + (well_head_idx + well_state_offset) * n_block_size + P_VAR + n_vars);
   	well_controls_etor->evaluate(state, well_control_ops);
