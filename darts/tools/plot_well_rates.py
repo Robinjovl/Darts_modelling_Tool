@@ -4,14 +4,8 @@ import numpy as np
 import shutil
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-<<<<<<< .mine
 from darts.physics.super.property_container import PropertyContainer
 # from darts.models.darts_model import DartsModel
-=======
-
-
->>>>>>> .theirs
-
 
 #%% Main function
 def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, geometric_WI: np.ndarray,
