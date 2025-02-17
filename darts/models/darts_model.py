@@ -129,7 +129,9 @@ class DartsModel:
         # Read data from the file
         time, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(reservoir_filename, timestep)
         time, well_cell_id, Xwell, var_names = self.output.read_specific_data(well_filename, timestep)
-        X = np.concatenate([Xres, Xwell[:, len(self.reservoir.wells):, :]], axis=1)
+
+        # self.output.id_well_data
+        X = np.concatenate([Xres, Xwell[:, ~np.isin(well_cell_id, reservoir_cell_id), :]], axis=1)
 
         # load data as initial conditions
         initial_values = {}
@@ -166,7 +168,7 @@ class DartsModel:
 
         self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
                              self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
-
+        # self.reset()
         return
 
     def set_wells(self, verbose: bool = False):
