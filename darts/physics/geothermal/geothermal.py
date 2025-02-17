@@ -80,7 +80,7 @@ class GeothermalPropertiesBase(PropertyBase):
         self.energy_source = 0.
         self.temperature = 0.
 
-        self.phase_props = [self.density, self.dens_m, self.saturation, self.nu, self.viscosity, self.relperm, self.pc,
+        self.phase_props = [self.density, self.dens_m, self.saturation, self.viscosity, self.relperm, self.pc,
                             self.enthalpy, self.conduction, self.mass_source]
 
         self.output_props = {'temperature': lambda: self.temperature}

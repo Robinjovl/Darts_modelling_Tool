@@ -50,37 +50,53 @@ for mdir in accepted_dirs:
     model = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(model)
 
+    # init model
     n = model.Model()
     n.init()
-    output_folder = os.path.join(os.getcwd(), 'testing')
+    output_folder = os.path.join(os.getcwd(), 'data/n')
     n.set_output(output_folder=output_folder, sol_filename='reservoir_solution.h5', save_initial=True,
-                 all_phase_props=True, precision='d', verbose=False)
+                 all_phase_props=True, precision='d', verbose=True)
+    n.reset()
     redirect_darts_output(os.path.join(n.output_folder, 'run_n.log'))
 
-    Nt = 5
+    # run model
+    Nt = 1
     for i in range(Nt):
         n.run(5, verbose=False, save_well_data=True, save_reservoir_data=True)
     # read_data(n.sol_filepath, n.well_filepath)
 
-    xarray_data = n.output.output_to_xarray() # evaluate properties from *.h5 and save as *.nc file
+    # evaluate properties
+    output_props = n.physics.vars + n.output.properties
+    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = output_props, timestep = -1, engine = True)
+    xarray_data = n.output.output_to_xarray(output_properties = output_props)
     for i in range(Nt + 1):
         n.output.plot_xarray(xarray_data, timestep=i, z = 1)
 
+    # export to .vtk
     n.output.output_to_vtk()
 
-    well_rates_dict = n.output.plot_well_rates(['phases_molar_rates'])
-    td = pd.DataFrame.from_dict(well_rates_dict)
-    td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
-    writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
-    td.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
+    # restart model
+    m = model.Model()
+    m.init()
+    restarted_output_folder = os.path.join(os.getcwd(), 'data/m_restarted')
+    m.set_output(output_folder = restarted_output_folder, sol_filename = 'reservoir_solution.h5', save_initial = False,
+                 all_phase_props = False, precision = 'd', verbose=True)
+    m.load_restart_data(reservoir_filename = n.sol_filepath,
+                        well_filename = n.well_filepath,
+                        timestep=-1)
+    redirect_darts_output(os.path.join(m.output_folder, 'run_m.log'))
+    m.run(5)
+    m.output.output_to_vtk()
+
+    # evaluate well time-series
+    # well_rates_dict = n.output.plot_well_rates(['phases_molar_rates'])
+    # td = pd.DataFrame.from_dict(well_rates_dict)
+    # td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
+    # writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
+    # td.to_excel(writer, sheet_name='Sheet1')
+    # writer.close()
 
     n.print_timers()
 
     os.chdir(initial_dir)
-
     print("------------------------------------------------------------------------------------------")
-
-
-
-

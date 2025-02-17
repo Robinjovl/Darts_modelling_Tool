@@ -67,39 +67,86 @@ class Output:
             self.save_data_to_h5(kind='reservoir')
 
         if all_phase_props:
-            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
-            self.physics.property_itor = {}
+            from darts.physics.super.physics import Compositional
+            from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
 
-            for region in self.physics.regions:  # loop over the different sets of operators
-                temp_dict = {}
+            if type(self.physics) is Compositional:
 
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j, phase_name in enumerate(self.physics.phases):
-                        temp_dict[f"{name}_{phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+                phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
+                # self.phase_props_units  = ['kmol/m3', 'kg/m3', '', 'cP', '', 'Bar', '', '']
 
-                for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
-                    for j, phase_name in enumerate(self.physics.phases):  # loop over phases
-                        temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j, i]
+                self.physics.property_itor = {}
 
-                self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], self.physics.thermal, temp_dict)
+                for region in self.physics.regions:  # loop over the different sets of operators
+                    temp_dict = {}
 
-                self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region], n_ops=self.physics.n_ops,
-                                                                                      platform='cpu', algorithm='multilinear',
-                                                                                      mode='adaptive', precision='d',
-                                                                                      timer_name='property %d interpolation' % region,
-                                                                                      region=str(region))
+                    # Loop through each property label and phase name
+                    for i, name in enumerate(phase_props_labels):
+                        for j, phase_name in enumerate(self.physics.phases):
+                            temp_dict[f"{name}_{phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
 
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
+                    for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
+                        for j, phase_name in enumerate(self.physics.phases):  # loop over phases
+                            temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j, i]
 
-            # Initialize physics and engine settings
-            self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh,
-                                     ms_well_vector(self.reservoir.wells),
-                                     op_vector(op_list),
-                                     params,
-                                     timer.node["simulation"])
+                    self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], self.physics.thermal, temp_dict)
+
+                    self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
+                                                                                          n_ops=self.physics.property_operators[region].n_ops,
+                                                                                          platform='cpu', algorithm='multilinear',
+                                                                                          mode='adaptive', precision='d',
+                                                                                          timer_name='property %d interpolation' % region,
+                                                                                          region=str(region))
+
+                    # Assign the temporary dictionary to output_props for the region
+                    self.physics.property_containers[region].output_props = temp_dict
+
+                # Initialize physics and engine settings
+                self.physics.init_physics()
+                self.physics.engine.init(self.reservoir.mesh,
+                                         ms_well_vector(self.reservoir.wells),
+                                         op_vector(op_list),
+                                         params,
+                                         timer.node["simulation"])
+
+            elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
+
+                phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond'] #, 'temperature']
+
+                self.physics.property_itor = {}
+
+                for region in self.physics.regions:  # loop over the different sets of operators
+                    temp_dict = {}
+
+                    # Loop through each property label and phase name
+                    for i, name in enumerate(phase_props_labels):
+                        # for j, phase_name in enumerate(self.physics.property_containers[region].nph):
+                        for j in range(self.physics.property_containers[region].nph):
+                            temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+
+                    # add temperature
+                    # temp_dict[phase_props_labels[-1]] = lambda: self.physics.property_containers[region].temperature
+
+                    self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], thermal = True, props = temp_dict)
+
+                    self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
+                                                                                          n_ops=self.physics.property_operators[region].n_ops,
+                                                                                          platform='cpu', algorithm='multilinear',
+                                                                                          mode='adaptive', precision='d',
+                                                                                          timer_name='property %d interpolation' % region,
+                                                                                          region=str(region))
+
+                    # Assign the temporary dictionary to output_props for the region
+                    self.physics.property_containers[region].output_props = temp_dict
+
+                # Initialize physics and engine settings
+                self.physics.init_physics()
+                self.physics.engine.init(self.reservoir.mesh,
+                                         ms_well_vector(self.reservoir.wells),
+                                         op_vector(op_list),
+                                         params,
+                                         timer.node["simulation"])
+            # self.reset()
 
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
@@ -215,7 +262,7 @@ class Output:
             if os.path.exists(well_output_path):
                 os.remove(well_output_path)
             self.configure_h5_output(filename=well_output_path, cell_ids=self.id_well_data,
-                                add_static_data=True, description='Well data')
+                                     add_static_data=True, description='Well data')
 
         if hasattr(self, 'output_configured'):
             self.output_configured.append(kind)
@@ -245,7 +292,7 @@ class Output:
             x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape((self.reservoir.mesh.n_blocks, self.physics.n_vars))[cell_id]
 
         if self.verbose:
-            print(f'Saving data to {filename} at {self.physics.engine.t}')
+            print(f'Saving data to {filename} at time = {self.physics.engine.t}')
 
     def save_data_to_h5(self, kind):
         """
@@ -362,7 +409,7 @@ class Output:
 
         # Initialize property_array
         n_vars = len(var_names)
-        n_ops = self.physics.n_ops
+
         nb = len(cell_id)
 
         output_properties = output_properties if output_properties is not None else list(self.physics.vars)
@@ -403,12 +450,15 @@ class Output:
                 else:
                     state = value_vector(np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten())
 
+                i = 0
+                n_ops = self.physics.property_operators[i].n_ops
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
-                i = 0
+
                 for region, prop_itor in self.physics.property_itor.items():
                     prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
+                    # prop_itor.evaluate(state, values)
                     i += 1
 
                 for prop_name, prop_idx in secondary_prop_idxs.items():
@@ -431,10 +481,6 @@ class Output:
         :returns: xarray Dataset containing the property data.
         :rtype: xarray.Dataset
         """
-
-        from darts.reservoirs.struct_reservoir import StructReservoir
-        if type(self.reservoir) is not StructReservoir:
-            raise AttributeError("Reservoir class must be exactly of type StructReservoir.")
 
         # Interpolate properties
         time, data = self.output_properties(filepath, output_properties, timestep, engine)
@@ -472,6 +518,10 @@ class Output:
         :param z: index in z-dimension
         """
 
+        from darts.reservoirs.struct_reservoir import StructReservoir
+        if type(self.reservoir) is not StructReservoir:
+            raise AttributeError("Reservoir class must be exactly of type StructReservoir.")
+
         output_directory = os.path.join(self.output_folder, 'figures')
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
@@ -501,7 +551,7 @@ class Output:
                 # model is a 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
                 plt.savefig(output_directory + '/%s_ts%d.png' % (var, timestep))
-            plt.close()
+            # plt.close()
 
     def output_to_vtk(self, filepath: str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
