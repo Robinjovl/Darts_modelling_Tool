@@ -228,6 +228,140 @@ class Model(DartsModel):
 
         return mass_CO2
 
+    def run_python_my(self, days=0, restart_dt=0, verbose=1, max_res=1e20):
+        runtime = days
+
+        mult_dt = self.params.mult_ts
+        max_dt = self.params.max_ts
+
+        # get current engine time
+        t = self.physics.engine.t
+        # same logic as in engine.run
+        if np.fabs(t) < 1e-15:
+            dt = self.params.first_ts
+        elif restart_dt > 0:
+            dt = restart_dt
+        else:
+            dt = self.params.max_ts
+
+        # evaluate end time
+        runtime += t
+        ts = 0
+        omega = 0.8  # tuning factor between 0 and 1
+        if t < 50:
+            eta = np.array([0.7, 0.03, 0.7])
+            # eta = np.array([0.1, 0.001, 1])
+        else:
+            eta = np.array([1., 0.05, 1.])
+
+        nc = self.physics.n_vars
+        nb = self.reservoir.mesh.n_res_blocks
+        max_x = np.zeros(nc)
+
+        while t < runtime:
+            xn = np.array(self.physics.engine.Xn[:nb * nc])
+            converged = self.run_timestep_python(dt, t, verbose=0, max_res=max_res)
+
+            if converged:
+                t += dt
+                ts = ts + 1
+                x = np.array(self.physics.engine.X[:nb * nc])
+
+                dt_mult_new = mult_dt
+                for i in range(nc):
+                    max_x[i] = np.max(abs(xn[i::nc] - x[i::nc]))
+                    mult = ((1 + omega) * eta[i]) / (max_x[i] + omega * eta[i])
+                    # if mult < dt_mult_new:
+                    #   dt_mult_new = mult
+
+                if verbose:
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tdX=%s\tmt=%2g"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+                             max_x, dt_mult_new))
+
+                # if self.physics.engine.n_newton_last_dt < 5:
+                dt *= dt_mult_new  # new dt multiplier
+                # else:
+                #     dt /= mult_dt
+
+                if dt > self.params.max_ts:
+                    dt = self.params.max_ts
+
+                if t + dt > runtime:
+                    dt = runtime - t
+            else:
+                dt /= mult_dt
+                if verbose:
+                    print("Cut timestep to %g" % dt)
+
+                if dt < 1e-10:
+                    break
+        # update current engine time
+        self.physics.engine.t = runtime
+
+        print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (
+        self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
+        self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
+        self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+        self.max_dt = max_dt
+
+    def run_timestep_python(self, dt, t, verbose=0, max_res=1e20):
+        max_newt = self.params.max_i_newton
+        max_residual = np.zeros(max_newt + 1)
+        self.physics.engine.n_linear_last_dt = 0
+        well_tolerance_coefficient = 1e1
+        self.timer.node['simulation'].start()
+        # self.set_top_bot_temp()
+        for i in range(max_newt + 1):
+
+            if self.platform == 'gpu':
+                copy_data_to_host(self.physics.engine.X, self.physics.engine.get_X_d())
+
+            if self.physics.thermal:
+                self.set_top_bot_temp()
+
+            if self.platform == 'gpu':
+                copy_data_to_device(self.physics.engine.X, self.physics.engine.get_X_d())
+
+            self.physics.engine.assemble_linear_system(dt)
+
+            self.apply_rhs_flux(dt, t)
+            if self.platform == 'gpu':
+                copy_data_to_device(self.physics.engine.RHS, self.physics.engine.get_RHS_d())
+
+            self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()
+
+            max_residual[i] = self.physics.engine.newton_residual_last_dt
+            counter = 0
+            for j in range(i):
+                if abs(max_residual[i] - max_residual[j]) / max_residual[i] < 1e-3:
+                    counter += 1
+            if counter > 2:
+                if verbose:
+                    print("Stationary point detected!")
+                break
+
+            if max_residual[i] / max_residual[0] > max_res:
+                if verbose:
+                    print("Residual growing over the limit!")
+                break
+
+            self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
+            self.physics.engine.n_newton_last_dt = i
+            #  check tolerance if it converges
+            if ((self.physics.engine.newton_residual_last_dt < self.params.tolerance_newton and
+                 self.physics.engine.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton)
+                    or self.physics.engine.n_newton_last_dt == self.params.max_i_newton):
+                if (i > 0):  # min_i_newton
+                    break
+            r_code = self.physics.engine.solve_linear_equation()
+            self.timer.node["newton update"].start()
+            self.physics.engine.apply_newton_update(dt)
+            self.timer.node["newton update"].stop()
+        # End of newton loop
+        converged = self.physics.engine.post_newtonloop(dt, t)
+        self.timer.node['simulation'].stop()
+        return converged
 
     def set_top_bot_temp(self):
         nv = self.physics.n_vars

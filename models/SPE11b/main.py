@@ -48,7 +48,7 @@ def run(platform='cpu'):
     j = 0
     specs = model_specs[j]
     m = Model()
-
+    m.platform = platform
     """Define physics"""
     zero = 1e-10
     m.set_physics(corey=corey, zero=zero, temperature=323.15, n_points=1001, diff=1e-9)
@@ -101,7 +101,7 @@ def run(platform='cpu'):
     m.init(discr_type='tpfa', platform=platform, output_folder=output_dir, restart = True)
 
     # equillibration step
-    m.run(365, verbose = False)
+    m.run_python_my(365)
     m.physics.engine.t = 0 # return engine time to zero
 
     m.inj_rate = [inj_rate, 0]  # [well 1, well 2]
@@ -110,7 +110,7 @@ def run(platform='cpu'):
 
     start = time.time()
     for i in range(Nt):
-        m.run(5 * 365, verbose=True)  # run model for 1 year
+        m.run_python_my(5 * 365)
 
         if m.physics.engine.t >= 25 * 365 and m.physics.engine.t < 50 * 365:
             # At 25 years, start injecting in the second well
