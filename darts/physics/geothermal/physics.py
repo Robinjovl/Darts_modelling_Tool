@@ -39,7 +39,7 @@ class Geothermal(PhysicsBase):
         :type cache: bool
         """
         # Set nc=1, thermal=True
-        nc = 1
+        components = ["H2O"]
 
         # Define phases and variables
         self.mass_rate = mass_rate
@@ -61,7 +61,7 @@ class Geothermal(PhysicsBase):
         n_ops = 10
 
         # Call PhysicsBase constructor
-        super().__init__(state_spec=state_spec, variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+        super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_operators(self):

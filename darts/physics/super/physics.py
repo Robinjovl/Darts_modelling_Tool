@@ -94,7 +94,7 @@ class Compositional(PhysicsBase):
             n_axes_points = index_vector(n_axes_points)
 
         # Call PhysicsBase constructor
-        super().__init__(state_spec=state_spec, variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+        super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):

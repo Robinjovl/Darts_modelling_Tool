@@ -52,7 +52,7 @@ class PhysicsBase:
                 return self.value < other.value
             return NotImplemented
 
-    def __init__(self, state_spec: StateSpecification, variables: list, nc: int, phases: list, n_ops: int,
+    def __init__(self, state_spec: StateSpecification, variables: list, components: list, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
                  timer: timer_node, cache: bool = False):
         """
@@ -62,8 +62,8 @@ class PhysicsBase:
         :type state_spec: StateSpecification
         :param variables: List of independent variables
         :type variables: list
-        :param nc: Number of components
-        :type nc: int
+        :param components: Components
+        :type components: list
         :param phases: List of phases
         :type phases: list
         :param n_ops: Number of operators
@@ -82,7 +82,8 @@ class PhysicsBase:
         self.vars = variables
         self.n_vars = len(variables)
 
-        self.nc = nc
+        self.components = components
+        self.nc = len(components)
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops
