@@ -55,11 +55,6 @@ class DartsModel:
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
-        # Initial values for depth initialization table
-        self.input_depth: list = None
-        self.initial_values = {}
-        self.gradients = {}
-
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,
