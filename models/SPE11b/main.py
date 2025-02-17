@@ -102,6 +102,7 @@ def run(platform='cpu'):
 
     # equillibration step
     m.run_python_my(365)
+    m.save_data_to_h5('solution')
     m.physics.engine.t = 0 # return engine time to zero
 
     m.inj_rate = [inj_rate, 0]  # [well 1, well 2]
@@ -110,7 +111,8 @@ def run(platform='cpu'):
 
     start = time.time()
     for i in range(Nt):
-        m.run_python_my(5 * 365)
+        m.run_python_my(5*365)
+        m.save_data_to_h5('solution')
 
         if m.physics.engine.t >= 25 * 365 and m.physics.engine.t < 50 * 365:
             # At 25 years, start injecting in the second well
