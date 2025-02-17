@@ -121,38 +121,33 @@ class Poroelasticity(Compositional):
             w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars,
                                         self.n_ops, self.phases, self.rate_itor, self.thermal)
 
-    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict,
-                               displacement_input: list):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray], displacement_input: list):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
         :param mesh: conn_mesh object
-        :param input_depth: Array of depths over which depth table has been specified
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
-        :type input_distribution: dict
+        :param input_depth: Array of depths over which depth table has been specified
         :param displacement_input: Displacement [], array
         """
-        super().set_initial_conditions(mesh, input_depth=input_depth, input_distribution=input_distribution)
+        super().set_initial_conditions_from_depth_table(mesh, input_depth=input_depth, input_distribution=input_distribution)
 
         # set initial displacements
         for i in range(self.n_dim):
             np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = displacement_input[i]
 
-    def set_uniform_initial_conditions(self, mesh: conn_mesh, pressure_input, displacement_input: list,
-                                       composition_input: list = None, temperature_input: float = None):
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, displacement_input: list):
         """
         Method to set initial conditions by arrays or uniformly for all cells
 
         :param mesh: conn_mesh object
-        :param pressure_input: Pressure [bar], uniform or array
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
         :param displacement_input: Displacement [], array
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
-        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
         """
-        super().set_uniform_initial_conditions(mesh, pressure_input=pressure_input,
-                                               composition_input=composition_input,
-                                               temperature_input=temperature_input)
+        super().set_initial_conditions_from_array(mesh, input_distribution=input_distribution)
 
         # set initial displacements
         for i in range(self.n_dim):

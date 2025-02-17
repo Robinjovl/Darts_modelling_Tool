@@ -237,30 +237,26 @@ class PhysicsBase:
         return
 
     @abc.abstractmethod
-    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
         :param mesh: conn_mesh object
-        :param input_depth: Array of depths over which depth table has been specified
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
-        :type input_distribution: dict
+        :param input_depth: Array of depths over which depth table has been specified
         """
         pass
 
     @abc.abstractmethod
-    def set_uniform_initial_conditions(self, mesh: conn_mesh,
-                                       pressure_input: Union[float, list, np.ndarray],
-                                       composition_input: Union[list, np.ndarray] = None,
-                                       temperature_input: Union[float, list, np.ndarray] = None):
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
         """
         Method to set initial conditions by arrays or uniformly for all cells
 
         :param mesh: conn_mesh object
-        :param pressure_input: Pressure [bar], uniform or array
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
-        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
         """
         pass
 

@@ -124,15 +124,15 @@ class Geothermal(PhysicsBase):
                                                                                     rate, self.rate_itor)
         return
 
-    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
         :param mesh: conn_mesh object
-        :param input_depth: Array of depths over which depth table has been specified
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
-        :type input_distribution: dict
+        :param input_depth: Array of depths over which depth table has been specified
         """
         # Assertions of consistent depth table specification
         assert 'pressure' in input_distribution.keys() and ('temperature' in input_distribution.keys() or
@@ -169,35 +169,34 @@ class Geothermal(PhysicsBase):
 
             np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
 
-    def set_uniform_initial_conditions(self, mesh: conn_mesh,
-                                       pressure_input: Union[float, list, np.ndarray],
-                                       composition_input: Union[list, np.ndarray] = None,
-                                       temperature_input: Union[float, list, np.ndarray] = None):
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
         """""
         Function to set uniform initial reservoir condition
 
         :param mesh: conn_mesh object
-        :param pressure_input: Pressure [bar], uniform or array
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays, not used in Geothermal physics
-        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
         """
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
 
         # set initial pressure
-        np.asarray(mesh.initial_state)[0::self.n_vars] = pressure_input
+        np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
 
         # interpolate pressure and temperature to compute enthalpies
         enthalpy = np.empty(mesh.n_blocks)
-        if not np.isscalar(pressure_input):
+        if 'enthalpy' in input_distribution.keys():
+            enth = np.ones(mesh.n_blocks) * input_distribution['enthalpy'] if not np.isscalar(input_distribution['enthalpy']) else input_distribution['enthalpy']
+            enthalpy[:] = enth
+        elif not np.isscalar(input_distribution['pressure']):
             # Pressure specified as an array
             for j in range(mesh.n_blocks):
-                state = value_vector([pressure_input[j], 0])
-                temp = temperature_input[j] if not np.isscalar(temperature_input) else temperature_input
+                state = value_vector([input_distribution['pressure'][j], 0])
+                temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
                 enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
         else:
-            state = value_vector([pressure_input, 0])
-            enth = self.property_containers[0].compute_total_enthalpy(state, temperature_input)
+            state = value_vector([input_distribution['pressure'], 0])  # enthalpy is dummy variable
+            enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
             enthalpy[:] = enth
 
-        np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
+        np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
