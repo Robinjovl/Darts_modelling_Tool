@@ -239,7 +239,9 @@ class Model(CICDModel):
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):
         """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.init_pres, self.ini_comp)
+        input_distribution = {'pressure': self.init_pres}
+        input_distribution.update({comp: self.ini_comp[i] for i, comp in enumerate(self.physics.components[:-1])})
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh, input_distribution=input_distribution)
 
         if len(self.map) > 0:
             nc = self.physics.nc

@@ -275,17 +275,14 @@ class Model(THMCModel):
         return 0
 
     def set_initial_conditions(self):
+        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in self.physics.components[:-1]})
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_composition=self.reservoir.z_init,
-                                                           initial_temperature=self.reservoir.t_init,
-                                                           initial_displacement=[0.0, 0.0, 0.0])
-        else:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_composition=self.reservoir.z_init,
-                                                           initial_displacement=self.reservoir.u_init)
+            input_distribution['temperature'] = self.reservoir.t_init
+
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                       input_distribution=input_distribution,
+                                                       displacement_input=[0.0, 0.0, 0.0])
         return 0
 
 class ModelProperties(PropertyContainer):

@@ -46,6 +46,8 @@ class Model(DartsModel):
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
+        self.zero = zero
+
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         phases = ["Aq", "V"]
@@ -101,6 +103,31 @@ class Model(DartsModel):
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_initial_conditions(self):
+        if 1:
+            dz = self.reservoir.global_data['dz'][0, 0, :]
+
+            # zH2O = 1
+            from darts.physics.super.initialize import Initialize
+            # depth corresponding to boundary_idx = 10
+            b_depth = self.reservoir.global_data['depth'].min() + (self.reservoir.global_data['depth'].max() - self.reservoir.global_data['depth'].min()) / 4.
+            boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350.}
+            init = Initialize(physics=self.physics)
+            X = init.solve(depth_bottom=self.reservoir.global_data['depth'].max(),
+                           depth_top=self.reservoir.global_data['depth'].min(),
+                           depth_known=b_depth, boundary_state=boundary_state,
+                           primary_specs={'H2O': 1 - self.zero}, secondary_specs={})
+            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
+                                                                 input_distribution={var: X[i::self.physics.n_vars] for i, var in
+                                                                                     enumerate(self.physics.vars)})
+        else:
+            input_distribution = {self.physics.vars[0]: 100.,
+                                  self.physics.vars[1]: 0.99995,
+                                  self.physics.vars[2]: 350.,
+                                  }
+            return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def set_well_controls(self):
         # define all wells as closed

@@ -27,10 +27,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {'pressure': 200.,
-                               'temperature': 350.,
-                               }
-
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)
         nb = nx * ny * nz
@@ -140,6 +136,14 @@ class Model(CICDModel):
                 self.physics = GeothermalPH(self.idata, self.timer)
                 self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 273.15],
                                                   state_max=[self.idata.obl.max_p, 373.15])
+
+    def set_initial_conditions(self):
+        input_distribution = {'pressure': 200.,
+                              'temperature': 350.
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):

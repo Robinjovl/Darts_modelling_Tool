@@ -26,10 +26,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {'pressure': 200.,
-                               'temperature': 450.
-                               }
-
     def set_reservoir(self, resolution):
         y_scale = 3
         (nx, ny, nz) = (resolution, y_scale * resolution, resolution)
@@ -90,6 +86,13 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_initial_conditions(self):
+        input_distribution = {'pressure': 200.,
+                              'temperature': 450.
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):

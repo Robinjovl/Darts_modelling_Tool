@@ -142,8 +142,13 @@ class Model(CICDModel):
         return
 
     def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, pressure_input=self.p_init,
-                                                    composition_input=self.ini, temperature_input=self.init_temp)
+        input_distribution = {'pressure': self.p_init}
+        input_distribution.update({comp: self.ini[i] for i, comp in self.physics.components[:-1]})
+        if self.physics.thermal:
+            input_distribution['temperature'] = self.init_temp
+
+        return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
         for i, w in enumerate(self.reservoir.wells):
