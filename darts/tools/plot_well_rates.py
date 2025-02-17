@@ -4,6 +4,7 @@ import numpy as np
 import shutil
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.physics.super.property_container import PropertyContainer
 # from darts.models.darts_model import DartsModel
 
 # def plot_well_rates(types_of_well_rates: list, m: DartsModel):
@@ -244,15 +245,32 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 #                 perf_counter += len(well.perforations)
 
 #%% Main function
-def calc_rates_at_perforations(data, perfs_conn_ids, geometric_WI, rate_type, thermal, pc):
+def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, geometric_WI: np.ndarray,
+                               rate_type: str, thermal: bool, pc: PropertyContainer):
+    """
+    Calculates different types of rates at perforations of wells
+
+    :param h5_well_data: Well data stored in the HDF5 file
+    :type h5_well_data: dict
+    :param perfs_conn_ids: IDs of perforations of wells
+    :type perfs_conn_ids: numpy.ndarray
+    :param geometric_WI: Geometric part of well indices
+    :type geometric_WI: numpy.ndarray
+    :param rate_type: Types of rates to calculate
+    :type rate_type: str
+    :param thermal: If the model is thermal or not
+    :type thermal: bool
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
+    """
     # Evaluate position of block_m, block_p in stored data, for every connection
-    block_m = data['static']['block_m']
-    block_p = data['static']['block_p']
-    cell_m = find_one_array_in_another_indices(block_m[perfs_conn_ids], data['dynamic']['cell_id'])   # well cells
-    cell_p = find_one_array_in_another_indices(block_p[perfs_conn_ids], data['dynamic']['cell_id'])   # reservoir cells
+    block_m = h5_well_data['static']['block_m']
+    block_p = h5_well_data['static']['block_p']
+    cell_m = find_one_array_in_another_indices(block_m[perfs_conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
+    cell_p = find_one_array_in_another_indices(block_p[perfs_conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
     assert (cell_m.size == len(perfs_conn_ids) and cell_p.size == len(perfs_conn_ids))
 
-    nt = data['dynamic']['time'].size
+    nt = h5_well_data['dynamic']['time'].size
 
     # Pre-allocate data
     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
@@ -268,11 +286,11 @@ def calc_rates_at_perforations(data, perfs_conn_ids, geometric_WI, rate_type, th
         raise Exception("The rate type is not entered correctly or is not supported!")
     id_state_cell = np.zeros(len(perfs_conn_ids), dtype=np.intp)
 
-    id_pres = data['dynamic']['variable_names'].index('pressure')
+    id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
     # Looping over time steps
     for i in range(nt):
 
-        p = data['dynamic']['X'][i,:,id_pres]
+        p = h5_well_data['dynamic']['X'][i,:,id_pres]
         # Determine upwind cell indices for all connections
         dp = p[cell_p] - p[cell_m]
         downstream = (dp < 0)
@@ -282,7 +300,7 @@ def calc_rates_at_perforations(data, perfs_conn_ids, geometric_WI, rate_type, th
 
         # Looping over perforations
         for j in range(len(perfs_conn_ids)):
-            state = data['dynamic']['X'][i, id_state_cell[j]]
+            state = h5_well_data['dynamic']['X'][i, id_state_cell[j]]
 
             if rate_type == 'phases_molar_rates':
                 values = phase_molar_rate_operators(state, pc)
@@ -297,12 +315,17 @@ def calc_rates_at_perforations(data, perfs_conn_ids, geometric_WI, rate_type, th
 
             rates[i, j] = values * geometric_WI[j] * dp[j]
 
-    return data['dynamic']['time'], rates
+    return h5_well_data['dynamic']['time'], rates
 
 #%% Operator functions
 def phase_molar_rate_operators(state, pc):
     """
     This function is used for calculating molar rates of phases [kmole/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
     """
     pc.evaluate(state)
 
@@ -315,6 +338,11 @@ def phase_molar_rate_operators(state, pc):
 def phase_mass_rate_operators(state, pc):
     """
     This function is used for calculating mass rates of phases [kg/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
     """
     pc.evaluate(state)
 
@@ -326,7 +354,12 @@ def phase_mass_rate_operators(state, pc):
 
 def phase_volumetric_rate_operators(state, pc):
     """
-    This function is used for calculating volumetric rates of phases [m3/day]
+    This function is used for calculating volumetric rates of phases under perforation conditions [m3/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
     """
     pc.evaluate(state)
 
@@ -339,6 +372,11 @@ def phase_volumetric_rate_operators(state, pc):
 def components_molar_rates_operators(state, pc):
     """
     This function is used for calculating advective molar rates of components in each phase [kmole/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
     """
     pc.evaluate(state)
 
@@ -352,6 +390,11 @@ def components_molar_rates_operators(state, pc):
 def heat_rate_operators(state, pc):
     """
     This function is used for calculating advective heat rate [kJ/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
     """
     pc.evaluate(state)
     pc.evaluate_thermal(state)
@@ -365,6 +408,18 @@ def heat_rate_operators(state, pc):
 
 #%% Auxiliary functions
 def find_conn_ids_for_perfs(perfs, block_m, block_p, n_res_blocks):
+    """
+    This function finds the connection IDs of perforations
+
+    :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
+    :type perfs: List
+    :param block_m: block_m of the connection list
+    :type block_m: numpy.ndarray
+    :param block_p: block_p of the connection list
+    :type block_p: numpy.ndarray
+    :param n_res_blocks: Number of reservoir blocks
+    :type n_res_blocks: int
+    """
     res_cell_ids = [perf[1] for perf in perfs]
 
     perfs_conn_ids = np.nonzero(np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks))[0]
