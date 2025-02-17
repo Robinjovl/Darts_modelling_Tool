@@ -148,7 +148,7 @@ class Model(DartsModel, OptModuleSettings):
 
     def set_initial_conditions(self):
         input_distribution = {'pressure': self.p_init}
-        input_distribution.update({comp: self.ini[i] for i, comp in self.physics.components[:-1]})
+        input_distribution.update({comp: self.ini[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.physics.thermal:
             input_distribution['temperature'] = self.init_temp
 
