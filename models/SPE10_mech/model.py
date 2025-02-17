@@ -276,7 +276,7 @@ class Model(THMCModel):
 
     def set_initial_conditions(self):
         input_distribution = {'pressure': self.reservoir.p_init}
-        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in self.physics.components[:-1]})
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
             input_distribution['temperature'] = self.reservoir.t_init
 
