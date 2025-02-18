@@ -182,7 +182,7 @@ class Model(DartsModel, OptModuleSettings):
 
             temperature_itor = self.physics.create_interpolator(temperature_etor,
                                                                 timer_name="customized operator interpolation",
-                                                                n_ops=7, platform='cpu', algorithm='multilinear',
+                                                                n_ops=6, platform='cpu', algorithm='multilinear',
                                                                 mode='adaptive', precision='d')
             self.physics.create_itor_timers(temperature_itor, "customized operator interpolation")
 
