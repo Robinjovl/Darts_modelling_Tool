@@ -245,6 +245,7 @@ class PhysicsBase:
             control.set_bhp_control(is_inj, well_control_spec)
         else:
             # Injection/production rate
+            well_control_spec[0] = np.abs(well_control_spec[0]) if is_inj else -np.abs(well_control_spec[0])  # + for inj, - for prod
             control.set_rate_control(is_inj, control_type, phase_idx, well_control_spec)
 
         return control
