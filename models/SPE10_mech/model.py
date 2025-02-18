@@ -282,7 +282,7 @@ class Model(THMCModel):
 
         self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                        input_distribution=input_distribution,
-                                                       displacement_input=[0.0, 0.0, 0.0])
+                                                       input_displacement=[0.0, 0.0, 0.0])
         return 0
 
 class ModelProperties(PropertyContainer):
