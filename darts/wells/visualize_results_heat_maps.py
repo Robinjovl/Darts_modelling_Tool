@@ -657,7 +657,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Fill the liquid density matrix
     for ts_counter in range(num_ts):
         miuG = data_frame["miuG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        miuG_matrix[:, ts_counter] = miuG * 1e3
+        miuG_matrix[:, ts_counter] = miuG
 
     # Apply a mask to hide values equal to or below a certain threshold
     threshold = 0  # Set your threshold here
@@ -725,7 +725,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Fill the liquid density matrix
     for ts_counter in range(num_ts):
         miuL = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        miuL_matrix[:, ts_counter] = miuL * 1e3
+        miuL_matrix[:, ts_counter] = miuL
 
     # Apply a mask to hide values equal to or below a certain threshold
     threshold = 0  # Set your threshold here
