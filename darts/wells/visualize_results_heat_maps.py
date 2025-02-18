@@ -59,69 +59,6 @@ primary_variables_df = pd.read_pickle('stored_primary_variables.pkl')
 num_segments = pipe_geom.num_segments
 time_steps = primary_variables_df.columns
 
-#%% Pressure profile
-
-# Initialize the pressure matrix
-pressure_matrix = np.zeros((num_segments, len(time_steps)))
-
-# Fill the pressure matrix
-for i, time_step in enumerate(time_steps):
-    pressure_profile = primary_variables_df[time_step][0:num_segments] / bar()
-    pressure_matrix[:, i] = pressure_profile
-
-# Initialize the plot
-fig, ax = plt.subplots(figsize=(12, 6))
-
-# Create the heatmap
-cmap = plt.get_cmap('jet')
-if x_axis == "time_step_index" and y_axis == "segment_index":
-    cax = ax.pcolormesh(range(len(time_steps)), range(num_segments), pressure_matrix, cmap=cmap, shading='auto')
-
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(1))
-
-    # Add axes labels
-    ax.set_xlabel('Time step [-]', fontsize=14)
-    ax.set_ylabel('Segment index [-]', fontsize=14)
-
-elif x_axis == "simulation_time" and y_axis == "segment_index":
-    cax = ax.pcolormesh(simulation_time, range(num_segments), pressure_matrix, cmap=cmap, shading='auto')
-
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(1))
-
-    # Add axes labels
-    ax.set_xlabel('Simulation time [second]', fontsize=14)
-    ax.set_ylabel('Segment index [-]', fontsize=14)
-
-elif x_axis == "time_step_index" and y_axis == "segment_depth":
-    cax = ax.pcolormesh(range(len(time_steps)), true_vertical_depths_segments, pressure_matrix, cmap=cmap, shading='auto')
-
-    # Add axes labels
-    ax.set_xlabel('Time step [-]', fontsize=14)
-    ax.set_ylabel('TVD [meter]', fontsize=14)
-
-elif x_axis == "simulation_time" and y_axis == "segment_depth":
-    cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, pressure_matrix, cmap=cmap, shading='auto')
-
-    # Add axes labels
-    ax.set_xlabel('Simulation time [second]', fontsize=14)
-    ax.set_ylabel('TVD [meter]', fontsize=14)
-
-# Add title
-ax.set_title('Pressure profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-# Add a colorbar
-cbar = fig.colorbar(cax, ax=ax)
-cbar.set_label('Pressure [bar]', fontsize=14)
-
-if y_axis_convention == "standard":
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
-plt.tight_layout()
-plt.show()
-
 
 #%% Component/components overall mole fraction profiles
 
@@ -187,17 +124,154 @@ for c, comp_name in enumerate(components_names[:-1]):
     plt.tight_layout()
     plt.show()
 
+# Load phase props
+phase_props_df = pd.read_pickle('stored_phase_props.pkl')
+
+num_segments = max(phase_props_df.index) + 1
+num_ts = int(len(phase_props_df["sG"]) / num_segments)   # Initial conditions of sG is not stored.
+simulation_time = np.delete(simulation_time, 0)
+
+#%% Pressure profile
+
+# Initialize the pressure matrix
+p_matrix = np.zeros((num_segments, num_ts))
+
+# Fill the pressure matrix
+for ts_counter in range(num_ts):
+    p = phase_props_df["Pressure"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+    p_matrix[:, ts_counter] = p
+
+# Initialize the plot
+fig, ax = plt.subplots(figsize=(12, 6))
+
+
+# Create the heatmap
+cmap = plt.get_cmap('jet')
+if x_axis == "time_step_index" and y_axis == "segment_index":
+    cax = ax.pcolormesh(range(num_ts), range(num_segments), p_matrix, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel('Time step [-]', fontsize=14)
+    ax.set_ylabel('Segment index [-]', fontsize=14)
+
+elif x_axis == "simulation_time" and y_axis == "segment_index":
+    cax = ax.pcolormesh(simulation_time, range(num_segments), p_matrix, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel('Simulation time [second]', fontsize=14)
+    ax.set_ylabel('Segment index [-]', fontsize=14)
+
+elif x_axis == "time_step_index" and y_axis == "segment_depth":
+    cax = ax.pcolormesh(range(num_ts), true_vertical_depths_segments, p_matrix, cmap=cmap, shading='auto')
+
+    # Add axes labels
+    ax.set_xlabel('Time step [-]', fontsize=14)
+    ax.set_ylabel('TVD [meter]', fontsize=14)
+
+elif x_axis == "simulation_time" and y_axis == "segment_depth":
+    cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, p_matrix, cmap=cmap, shading='auto')
+
+    # Add axes labels
+    ax.set_xlabel('Simulation time [second]', fontsize=14)
+    ax.set_ylabel('TVD [meter]', fontsize=14)
+
+if y_axis_convention == "standard":
+    # Reverse the y-axis
+    ax.invert_yaxis()
+
+
+# Add title
+ax.set_title('Pressure profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+# Add a colorbar to show the pressure values
+cbar = fig.colorbar(cax, ax=ax)
+cbar.set_label('Pressure [bar]', fontsize=14)
+
+plt.tight_layout()
+plt.show()
+
+
+#%% Overall mole fraction profiles
+
+# Initialize the composition matrix
+z_matrix = np.zeros((num_segments, num_ts, num_components))
+
+# Fill the composition matrix
+for ts_counter in range(num_ts):
+    z = phase_props_df["Overall mole fractions"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+    z_matrix[:, ts_counter] = z
+
+# Initialize the plot
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Create the heatmap
+cmap = plt.get_cmap('jet')
+if x_axis == "time_step_index" and y_axis == "segment_index":
+    cax = ax.pcolormesh(range(num_ts), range(num_segments), z_matrix, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel('Time step [-]', fontsize=14)
+    ax.set_ylabel('Segment index [-]', fontsize=14)
+
+elif x_axis == "simulation_time" and y_axis == "segment_index":
+    cax = ax.pcolormesh(simulation_time, range(num_segments), z_matrix, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel('Simulation time [second]', fontsize=14)
+    ax.set_ylabel('Segment index [-]', fontsize=14)
+
+elif x_axis == "time_step_index" and y_axis == "segment_depth":
+    cax = ax.pcolormesh(range(num_ts), true_vertical_depths_segments, z_matrix, cmap=cmap, shading='auto')
+
+    # Add axes labels
+    ax.set_xlabel('Time step [-]', fontsize=14)
+    ax.set_ylabel('TVD [meter]', fontsize=14)
+
+elif x_axis == "simulation_time" and y_axis == "segment_depth":
+    cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, z_matrix, cmap=cmap, shading='auto')
+
+    # Add axes labels
+    ax.set_xlabel('Simulation time [second]', fontsize=14)
+    ax.set_ylabel('TVD [meter]', fontsize=14)
+
+if y_axis_convention == "standard":
+    # Reverse the y-axis
+    ax.invert_yaxis()
+
+
+# Add title
+ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+# Add a colorbar to show the temperature values
+cbar = fig.colorbar(cax, ax=ax)
+cbar.set_label('Temperature [\u00B0C]', fontsize=14)
+
+plt.tight_layout()
+plt.show()
+
+
 #%% Temperature profile
 
-# Temperature profile is plotted if the system is non-isothermal.
-if len(primary_variables_df['Initial conditions'])/num_segments > len(components_names):
+if thermal is True:
     # Initialize the temperature matrix
-    temperature_matrix = np.zeros((num_segments, len(time_steps)))
+    T_matrix = np.zeros((num_segments, num_ts))
 
     # Fill the temperature matrix
-    for i, time_step in enumerate(time_steps):
-        temperature_profile = primary_variables_df[time_step][num_segments * len(components_names):] - 273.15
-        temperature_matrix[:, i] = temperature_profile
+    for ts_counter in range(num_ts):
+        T = phase_props_df["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        T_matrix[:, ts_counter] = T
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -205,7 +279,7 @@ if len(primary_variables_df['Initial conditions'])/num_segments > len(components
     # Create the heatmap
     cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(range(len(time_steps)), range(num_segments), temperature_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(range(num_ts), range(num_segments), T_matrix, cmap=cmap, shading='auto')
 
         # Set the y-axis ticks
         ax.yaxis.set_major_locator(MultipleLocator(1))
@@ -215,7 +289,7 @@ if len(primary_variables_df['Initial conditions'])/num_segments > len(components
         ax.set_ylabel('Segment index [-]', fontsize=14)
 
     elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), temperature_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(simulation_time, range(num_segments), T_matrix, cmap=cmap, shading='auto')
 
         # Set the y-axis ticks
         ax.yaxis.set_major_locator(MultipleLocator(1))
@@ -225,42 +299,35 @@ if len(primary_variables_df['Initial conditions'])/num_segments > len(components
         ax.set_ylabel('Segment index [-]', fontsize=14)
 
     elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(range(len(time_steps)), true_vertical_depths_segments, temperature_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(range(num_ts), true_vertical_depths_segments, T_matrix, cmap=cmap, shading='auto')
 
         # Add axes labels
         ax.set_xlabel('Time step [-]', fontsize=14)
         ax.set_ylabel('TVD [meter]', fontsize=14)
 
     elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, temperature_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, T_matrix, cmap=cmap, shading='auto')
 
         # Add axes labels
         ax.set_xlabel('Simulation time [second]', fontsize=14)
         ax.set_ylabel('TVD [meter]', fontsize=14)
 
-    # Add title
-    ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Temperature [\u00B0C]', fontsize=14)
-
     if y_axis_convention == "standard":
         # Reverse the y-axis
         ax.invert_yaxis()
 
+
+    # Add title
+    ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+    # Add a colorbar to show the temperature values
+    cbar = fig.colorbar(cax, ax=ax)
+    cbar.set_label('Temperature [\u00B0C]', fontsize=14)
+
     plt.tight_layout()
     plt.show()
 
-
 #%% Gas saturation profile
-
-# Load phase props
-phase_props_df = pd.read_pickle('stored_phase_props.pkl')
-
-num_segments = max(phase_props_df.index) + 1
-num_ts = int(len(phase_props_df["sG"]) / num_segments)   # Initial conditions of sG is not stored.
-simulation_time = np.delete(simulation_time, 0)
 
 # Initialize the gas saturation matrix
 sG_matrix = np.zeros((num_segments, num_ts))
