@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Union
+import warnings
 from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
@@ -207,7 +208,9 @@ class Compositional(PhysicsBase):
                                    and each entry is scalar or array of length equal to number of cells
         """
         for variable, values in input_distribution.items():
-            if not np.isscalar(values):
+            if not np.isscalar(values) and not len(values) == mesh.n_blocks:
+                warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
+                              format(variable, len(values), mesh.n_blocks))
                 input_distribution[variable] = np.resize(np.asarray(values), mesh.n_blocks)
 
         # adjust the size of initial_state array in c++
