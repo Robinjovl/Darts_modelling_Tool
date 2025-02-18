@@ -279,10 +279,13 @@ class Model(THMCModel):
         input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
             input_distribution['temperature'] = self.reservoir.t_init
+            input_displacement = [0.0, 0.0, 0.0]
+        else:
+            input_displacement = self.reservoir.u_init
 
         self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                        input_distribution=input_distribution,
-                                                       input_displacement=[0.0, 0.0, 0.0])
+                                                       input_displacement=input_displacement)
         return 0
 
 class ModelProperties(PropertyContainer):
