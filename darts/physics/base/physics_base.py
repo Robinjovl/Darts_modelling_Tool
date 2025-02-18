@@ -243,8 +243,7 @@ class PhysicsBase:
         # Pass controls specification to well controls object
         if control_type == well_control_iface.BHP:
             control.set_bhp_control(is_inj, well_control_spec)
-        elif control_type in (well_control_iface.MOLAR_RATE, well_control_iface.MASS_RATE,
-                              well_control_iface.VOLUMETRIC_RATE, well_control_iface.ADVECTIVE_HEAT_RATE):
+        else:
             # Injection/production rate
             control.set_rate_control(is_inj, control_type, phase_idx, well_control_spec)
 

@@ -6,6 +6,10 @@
   - PhysicsBase.set_initial_conditions_from_array() to set initial conditions uniformly/with array
   - PhysicsBase.set_initial_conditions_from_depth_table() to interpolate/calculate properties based on depth table
   - On the C++ level, there is an array initial_state that lives in the conn_mesh class, which is to be filled with the initial state of all the primary variables in PhysicsBase.set_initial_conditions_from_*()
+- PhysicsBase class constructor contains StateSpecification enum to define state variables
+  - Unifies P (isothermal), PT (pressure-temperature) and PH (pressure-enthalpy)
+  - Compositional constructor contains state_spec variable rather than thermal (bool)
+  - Geothermal is PH by default
 
 # 1.2.2 [26-01-2025]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
