@@ -46,8 +46,7 @@ n = Model()
 n.init()
 n.set_output(
     output_folder='data\case_0', sol_filename='solution.h5',
-    save_initial=True, all_phase_props=False, precision='d', compression = None, verbose=False
-             )
+    save_initial=True, all_phase_props=False, precision='d', compression = None, verbose=False)
 print(type(n.reservoir))
 # print(n.sol_filename)
 # print(n.sol_filepath)
@@ -100,7 +99,7 @@ n.output.output_to_vtk()
 #%%
 
 # types_of_well_rates = [
-#     'phases_molar_rates',
+    # 'phases_molar_rates',
     # 'phases_mass_rates',
     # 'phases_volumetric_rates',
     # 'components_molar_rates',

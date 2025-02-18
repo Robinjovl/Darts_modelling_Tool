@@ -92,7 +92,7 @@ class Output:
                     self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], self.physics.thermal, temp_dict)
 
                     self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
-                                                                                          n_ops=self.physics.property_operators[region].n_ops,
+                                                                                          n_ops=self.physics.n_ops,
                                                                                           platform='cpu', algorithm='multilinear',
                                                                                           mode='adaptive', precision='d',
                                                                                           timer_name='property %d interpolation' % region,
