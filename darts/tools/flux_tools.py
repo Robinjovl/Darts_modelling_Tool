@@ -188,7 +188,7 @@ def get_phase_volumetric_well_rate(m, well: ms_well) -> np.ndarray:
 
     # calculate fluxes
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
-                                        flux_eval=[m.physics.rate_itor])
+                                        flux_eval=[m.physics.well_ctrl_itor])
     return rates[0]
 
 def get_phase_volumetric_well_rate_profile(m, well: ms_well) -> np.ndarray:
@@ -203,7 +203,7 @@ def get_phase_volumetric_well_rate_profile(m, well: ms_well) -> np.ndarray:
 
     # calculate fluxes
     rates = calc_connection_fluxes(m=m, conn_ids=m.well_perf_conn_ids[well.name],
-                                        flux_eval=[m.physics.rate_itor])
+                                        flux_eval=[m.physics.well_ctrl_itor])
     return rates
 
 def get_mass_well_rates(m) -> dict:
