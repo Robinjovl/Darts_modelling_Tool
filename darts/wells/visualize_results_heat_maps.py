@@ -26,11 +26,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         if y_axis_convention == "standard":
             true_vertical_depths_segments = true_vertical_depths_segments[::-1]
 
-        measured_depths_interfaces = sum(well_geom.segments_lengths) - well_geom.z_interfaces
-        true_vertical_depths_interfaces = measured_depths_interfaces * np.cos(well_geom.inclination_angle_radian)
-        if y_axis_convention == "standard":
-            true_vertical_depths_interfaces = true_vertical_depths_interfaces[::-1]
-
     if x_axis == "simulation_time":
         # Load dt from the pickle file
         with open('stored_dt_pipe_geometry_other_info.pkl', 'rb') as file:
@@ -181,19 +176,19 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # %% Overall mole fraction profiles
 
     for comp_idx in range(num_components):
-        # Initialize the composition matrix
+        # Initialize the overall mole fraction matrix
         z_c_matrix = np.zeros((num_segments, num_ts))
 
-        # Fill the composition matrix
+        # Fill the overall mole fraction matrix
         for ts_counter in range(num_ts):
             z = data_frame["Overall mole fractions"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
             z = z.tolist()
             z_c = np.zeros(num_segments)
-            for idx in range(num_segments):
+            for segment_idx in range(num_segments):
                 try:
-                    z_c[idx] = z[idx][comp_idx]
+                    z_c[segment_idx] = z[segment_idx][comp_idx]
                 except:
-                    z_c[idx] = 1 - sum(z[idx])
+                    z_c[segment_idx] = 1 - sum(z[segment_idx])
             z_c_matrix[:, ts_counter] = z_c
 
         # Initialize the plot
@@ -245,7 +240,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Add a colorbar to show the temperature values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Temperature [\u00B0C]', fontsize=14)
+        cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
         plt.tight_layout()
         plt.show()

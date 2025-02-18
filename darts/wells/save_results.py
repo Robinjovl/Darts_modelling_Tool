@@ -15,25 +15,25 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     property_container = coupled_model.physics.property_containers[0]
 
     num_perfs = len(coupled_model.reservoir.wells[0].perforations)
-    n_segments = len(h5_well_data["dynamic"]["X"][0,:,0]) - num_perfs
-    n_ts = len(h5_well_data["dynamic"]["X"][:,0,0])
+    num_segments = len(h5_well_data["dynamic"]["X"][0,:,0]) - num_perfs
+    num_time_steps = len(h5_well_data["dynamic"]["X"][:,0,0])
 
-    p = np.zeros(n_segments)
-    z = np.zeros((n_segments, property_container.nc - 1))
+    p = np.zeros(num_segments)
+    z = np.zeros((num_segments, property_container.nc - 1))
 
-    sG = np.zeros(n_segments)
-    sL = np.zeros(n_segments)
-    rhoG = np.zeros(n_segments)
-    rhoL = np.zeros(n_segments)
-    miuG = np.zeros(n_segments)
-    miuL = np.zeros(n_segments)
-    xG = np.zeros((n_segments, property_container.nc))
-    xL = np.zeros((n_segments, property_container.nc))
+    sG = np.zeros(num_segments)
+    sL = np.zeros(num_segments)
+    rhoG = np.zeros(num_segments)
+    rhoL = np.zeros(num_segments)
+    miuG = np.zeros(num_segments)
+    miuL = np.zeros(num_segments)
+    xG = np.zeros((num_segments, property_container.nc))
+    xL = np.zeros((num_segments, property_container.nc))
     # Initialize an empty DataFrame to store the primary variables and phase props
     data_frame = pd.DataFrame()
 
-    for i in range(n_ts):
-        for j in range(n_segments):
+    for i in range(num_time_steps):
+        for j in range(num_segments):
             state = h5_well_data["dynamic"]["X"][i,j + num_perfs,:]
             p[j] = state[0]
             z[j,:] = state[1:]
