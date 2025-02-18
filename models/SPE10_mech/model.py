@@ -246,12 +246,11 @@ class Model(THMCModel):
                                                                             is_inj=False, target=0., phase_name='wat')
         if len(self.reservoir.wells) > 1:
             inj = []
+            inj_temp = None
             if self.physics_type == 'single_phase_thermal':
-                inj = []
                 inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
             elif self.physics_type == 'dead_oil':
                 inj = [1.0 - self.idata.obl.zero]
-                inj_temp = None
             elif self.physics_type == 'dead_oil_thermal':
                 inj = [1.0 - self.idata.obl.zero]
                 inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
@@ -275,12 +274,11 @@ class Model(THMCModel):
                                                               is_inj=False, target=np.min(p_cell)-50)
             else:
                 inj = []
+                inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj = []
                     inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
-                    inj_temp = None
                 elif self.physics_type == 'dead_oil_thermal':
                     inj = [1.0 - self.idata.obl.zero]
                     inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25
