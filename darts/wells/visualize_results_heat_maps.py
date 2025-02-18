@@ -521,9 +521,9 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         rhoG = data_frame["rhoG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         rhoG_matrix[:, ts_counter] = rhoG
 
-    # Apply a mask to hide values equal to or below a certain threshold
+    # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    rhoG_matrix_masked = np.ma.masked_where(rhoG_matrix <= threshold, rhoG_matrix)
+    rhoG_matrix_masked = np.ma.masked_where(rhoG_matrix == threshold, rhoG_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -591,9 +591,9 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         rhoL = data_frame["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         rhoL_matrix[:, ts_counter] = rhoL
 
-    # Apply a mask to hide values equal to or below a certain threshold
+    # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    rhoL_matrix_masked = np.ma.masked_where(rhoL_matrix <= threshold, rhoL_matrix)
+    rhoL_matrix_masked = np.ma.masked_where(rhoL_matrix == threshold, rhoL_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -659,9 +659,9 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         miuG = data_frame["miuG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         miuG_matrix[:, ts_counter] = miuG
 
-    # Apply a mask to hide values equal to or below a certain threshold
+    # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    miuG_matrix_masked = np.ma.masked_where(miuG_matrix <= threshold, miuG_matrix)
+    miuG_matrix_masked = np.ma.masked_where(miuG_matrix == threshold, miuG_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -727,9 +727,9 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         miuL = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         miuL_matrix[:, ts_counter] = miuL
 
-    # Apply a mask to hide values equal to or below a certain threshold
+    # Apply a mask to hide values equal to zero
     threshold = 0  # Set your threshold here
-    miuL_matrix_masked = np.ma.masked_where(miuL_matrix <= threshold, miuL_matrix)
+    miuL_matrix_masked = np.ma.masked_where(miuL_matrix == threshold, miuL_matrix)
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
