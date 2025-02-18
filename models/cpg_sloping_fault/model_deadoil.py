@@ -21,9 +21,15 @@ class ModelDeadOil(Model_CPG):
     def set_initial_conditions(self):  # override origin set_initial_conditions function from darts_model
         if self.reservoir.nz == 1:
             # uniform initial conditions, # pressure in bars # composition
-            P_at_surface = 1.  # bars
-            self.initial_values = {self.physics.vars[0]: P_at_surface, self.physics.vars[1]: self.ini}
-            self.physics.gradient = {self.physics.vars[0]: 0.1}  # gradient 0.1 bars/m
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            input_depth = [0., np.amax(self.reservoir.mesh.depth)]
+            P_at_surface = 1.  # bar
+            input_distribution = {'pressure': [P_at_surface, P_at_surface + input_depth[1] * 0.1],  # gradient 0.1 bar/m
+                                  self.physics.vars[1]: [self.ini[0], self.ini[0]]
+                                  }
+            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
         else:
             depth_array = np.array(self.reservoir.mesh.depth, copy=False)
             water_table_depth = depth_array.mean()  # specify your value here
@@ -59,10 +65,12 @@ class ModelDeadOil(Model_CPG):
             P_initial = p_by_depth(depth_array)
 
             # set initial array for each variable: pressure and composition
-            self.initial_values = {self.physics.vars[0]: P_initial, self.physics.vars[1]: Z_initial}
+            input_distribution = {self.physics.vars[0]: P_initial,
+                                  self.physics.vars[1]: Z_initial
+                                  }
 
-        # call base-class function from dart to transfer self.initial_values to actual arrays used in computation
-        super().set_initial_conditions()
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def set_well_controls(self, time: float = 0., verbose=True):
         '''

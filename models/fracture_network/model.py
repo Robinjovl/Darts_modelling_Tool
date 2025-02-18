@@ -140,15 +140,20 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                       pressure_grad=self.idata.initial.pressure_gradient,
-                                                       temperature_grad=self.idata.initial.temperature_gradient)
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            input_depth = [0., np.amax(self.reservoir.mesh.depth)]
+            input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient / 1000],
+                                  'temperature': [293.15, 293.15 + input_depth[
+                                      1] * self.idata.initial.temperature_gradient / 1000]
+                                  }
+            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
-            state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
-            self.initial_values = {self.physics.vars[0]: state_init[0],
-                                   self.physics.vars[1]: enth_init}
-            super().set_initial_conditions()
+            input_distribution = {'pressure': self.idata.initial.initial_pressure,
+                                  'temperature': self.idata.initial.initial_temperature}
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "I" in wname

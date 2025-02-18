@@ -63,14 +63,11 @@ gpu_simulator::init (conn_mesh *_mesh, std::string table_base_name)
   RHS.resize (2 * mesh->n_blocks);
   dX.resize (2 * mesh->n_blocks);
   
-
+  X = mesh->initial_state;
   for (index_t i = 0; i < mesh->n_blocks; i++)
-    {
-      X[2 * i] = mesh->pressure[i];
-      X[2 * i + 1] = mesh->composition[i];
-      dX[i] = mesh->volume[i] * mesh->poro[i];
-    }
-
+  {
+    dX[i] = mesh->volume[i] * mesh->poro[i];
+  }
 
   // allocate Jacobian
   index_t nnz = mesh->n_conns + mesh->n_blocks;

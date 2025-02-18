@@ -36,18 +36,6 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             sim_params *params_, timer_node *timer_)
 {
-  X_init.resize(N_VARS * mesh_->n_blocks);
-
-  if (THERMAL)
-  {
-    for (index_t i = 0; i < mesh_->n_blocks; i++)
-    {
-      X_init[N_VARS * i + T_VAR] = mesh_->temperature[i];
-    }
-  }
-
-
-
   // prepare dg_dx_n_temp for adjoint method
   if (opt_history_matching)
   {

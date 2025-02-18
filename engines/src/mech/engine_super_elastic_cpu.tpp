@@ -321,10 +321,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-	  X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-	  for (uint8_t c = 0; c < nc - 1; c++)
+	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
-		  X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
+		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
 	  }
 	  for (uint8_t d = 0; d < ND; d++)
 	  {
@@ -340,8 +339,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  {
 		// reference
 		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
-		// initial
-		X_init[n_vars * i + T_VAR] = mesh->temperature[i];
 	  }
 	}
 
