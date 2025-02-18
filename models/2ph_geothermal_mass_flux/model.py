@@ -95,7 +95,7 @@ class Model(CICDModel):
                                                               inj_temp=self.inj[-1])
             else:
                 w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
-                                                              is_inj=False, target=-self.well_rate, phase_name='gas')
+                                                              is_inj=False, target=-self.well_rate, phase_name='wat')
 
 
     def set_rhs_flux(self, t: float = None):
