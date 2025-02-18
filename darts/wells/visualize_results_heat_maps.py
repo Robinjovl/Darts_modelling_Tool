@@ -61,68 +61,68 @@ time_steps = primary_variables_df.columns
 
 
 #%% Component/components overall mole fraction profiles
-
-for c, comp_name in enumerate(components_names[:-1]):
-    # Initialize component c mole fraction matrix
-    component_c_mole_fraction_matrix = np.zeros((num_segments, len(time_steps)))
-
-    # Fill component c mole fraction matrix
-    for i, time_step in enumerate(time_steps):
-        component_c_mole_fraction_profile = primary_variables_df[time_step][num_segments * (c + 1):num_segments * (c + 2)]
-        component_c_mole_fraction_matrix[:, i] = component_c_mole_fraction_profile
-
-    # Initialize the plot
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(range(len(time_steps)), range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(range(len(time_steps)), true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
-    # Add title
-    ax.set_title(comp_name + " overall mole fraction profile along the wellbore over time", fontsize=14, fontweight='bold')
-
-    # Add a colorbar
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label(comp_name + ' overall mole fraction [-]', fontsize=14)
-
-    plt.tight_layout()
-    plt.show()
+#
+# for c, comp_name in enumerate(components_names[:-1]):
+#     # Initialize component c mole fraction matrix
+#     component_c_mole_fraction_matrix = np.zeros((num_segments, len(time_steps)))
+#
+#     # Fill component c mole fraction matrix
+#     for i, time_step in enumerate(time_steps):
+#         component_c_mole_fraction_profile = primary_variables_df[time_step][num_segments * (c + 1):num_segments * (c + 2)]
+#         component_c_mole_fraction_matrix[:, i] = component_c_mole_fraction_profile
+#
+#     # Initialize the plot
+#     fig, ax = plt.subplots(figsize=(12, 6))
+#
+#     # Create the heatmap
+#     cmap = plt.get_cmap('jet')
+#     if x_axis == "time_step_index" and y_axis == "segment_index":
+#         cax = ax.pcolormesh(range(len(time_steps)), range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+#
+#         # Set the y-axis ticks
+#         ax.yaxis.set_major_locator(MultipleLocator(1))
+#
+#         # Add axes labels
+#         ax.set_xlabel('Time step [-]', fontsize=14)
+#         ax.set_ylabel('Segment index [-]', fontsize=14)
+#
+#     elif x_axis == "simulation_time" and y_axis == "segment_index":
+#         cax = ax.pcolormesh(simulation_time, range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+#
+#         # Set the y-axis ticks
+#         ax.yaxis.set_major_locator(MultipleLocator(1))
+#
+#         # Add axes labels
+#         ax.set_xlabel('Simulation time [second]', fontsize=14)
+#         ax.set_ylabel('Segment index [-]', fontsize=14)
+#
+#     elif x_axis == "time_step_index" and y_axis == "segment_depth":
+#         cax = ax.pcolormesh(range(len(time_steps)), true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+#
+#         # Add axes labels
+#         ax.set_xlabel('Time step [-]', fontsize=14)
+#         ax.set_ylabel('TVD [meter]', fontsize=14)
+#
+#     elif x_axis == "simulation_time" and y_axis == "segment_depth":
+#         cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+#
+#         # Add axes labels
+#         ax.set_xlabel('Simulation time [second]', fontsize=14)
+#         ax.set_ylabel('TVD [meter]', fontsize=14)
+#
+#     if y_axis_convention == "standard":
+#         # Reverse the y-axis
+#         ax.invert_yaxis()
+#
+#     # Add title
+#     ax.set_title(comp_name + " overall mole fraction profile along the wellbore over time", fontsize=14, fontweight='bold')
+#
+#     # Add a colorbar
+#     cbar = fig.colorbar(cax, ax=ax)
+#     cbar.set_label(comp_name + ' overall mole fraction [-]', fontsize=14)
+#
+#     plt.tight_layout()
+#     plt.show()
 
 # Load phase props
 phase_props_df = pd.read_pickle('stored_phase_props.pkl')
@@ -205,61 +205,62 @@ z_matrix = np.zeros((num_segments, num_ts, num_components))
 # Fill the composition matrix
 for ts_counter in range(num_ts):
     z = phase_props_df["Overall mole fractions"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-    z_matrix[:, ts_counter] = z
+    z_matrix[:, ts_counter, :] = z
 
-# Initialize the plot
-fig, ax = plt.subplots(figsize=(12, 6))
+for component_idx in range(num_components):
+    # Initialize the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
 
-# Create the heatmap
-cmap = plt.get_cmap('jet')
-if x_axis == "time_step_index" and y_axis == "segment_index":
-    cax = ax.pcolormesh(range(num_ts), range(num_segments), z_matrix, cmap=cmap, shading='auto')
+    # Create the heatmap
+    cmap = plt.get_cmap('jet')
+    if x_axis == "time_step_index" and y_axis == "segment_index":
+        cax = ax.pcolormesh(range(num_ts), range(num_segments), z_matrix[:,:,component_idx], cmap=cmap, shading='auto')
 
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(1))
+        # Set the y-axis ticks
+        ax.yaxis.set_major_locator(MultipleLocator(1))
 
-    # Add axes labels
-    ax.set_xlabel('Time step [-]', fontsize=14)
-    ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel('Time step [-]', fontsize=14)
+        ax.set_ylabel('Segment index [-]', fontsize=14)
 
-elif x_axis == "simulation_time" and y_axis == "segment_index":
-    cax = ax.pcolormesh(simulation_time, range(num_segments), z_matrix, cmap=cmap, shading='auto')
+    elif x_axis == "simulation_time" and y_axis == "segment_index":
+        cax = ax.pcolormesh(simulation_time, range(num_segments), z_matrix[:,:,component_idx], cmap=cmap, shading='auto')
 
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(1))
+        # Set the y-axis ticks
+        ax.yaxis.set_major_locator(MultipleLocator(1))
 
-    # Add axes labels
-    ax.set_xlabel('Simulation time [second]', fontsize=14)
-    ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel('Simulation time [second]', fontsize=14)
+        ax.set_ylabel('Segment index [-]', fontsize=14)
 
-elif x_axis == "time_step_index" and y_axis == "segment_depth":
-    cax = ax.pcolormesh(range(num_ts), true_vertical_depths_segments, z_matrix, cmap=cmap, shading='auto')
+    elif x_axis == "time_step_index" and y_axis == "segment_depth":
+        cax = ax.pcolormesh(range(num_ts), true_vertical_depths_segments, z_matrix[:,:,component_idx], cmap=cmap, shading='auto')
 
-    # Add axes labels
-    ax.set_xlabel('Time step [-]', fontsize=14)
-    ax.set_ylabel('TVD [meter]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel('Time step [-]', fontsize=14)
+        ax.set_ylabel('TVD [meter]', fontsize=14)
 
-elif x_axis == "simulation_time" and y_axis == "segment_depth":
-    cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, z_matrix, cmap=cmap, shading='auto')
+    elif x_axis == "simulation_time" and y_axis == "segment_depth":
+        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, z_matrix[:,:,component_idx], cmap=cmap, shading='auto')
 
-    # Add axes labels
-    ax.set_xlabel('Simulation time [second]', fontsize=14)
-    ax.set_ylabel('TVD [meter]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel('Simulation time [second]', fontsize=14)
+        ax.set_ylabel('TVD [meter]', fontsize=14)
 
-if y_axis_convention == "standard":
-    # Reverse the y-axis
-    ax.invert_yaxis()
+    if y_axis_convention == "standard":
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
 
-# Add title
-ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
+    # Add title
+    ax.set_title('Profile of overall mole fraction of ' + components_names[component_idx] + ' along the wellbore over time', fontsize=14, fontweight='bold')
 
-# Add a colorbar to show the temperature values
-cbar = fig.colorbar(cax, ax=ax)
-cbar.set_label('Temperature [\u00B0C]', fontsize=14)
+    # Add a colorbar to show the temperature values
+    cbar = fig.colorbar(cax, ax=ax)
+    cbar.set_label('Temperature [\u00B0C]', fontsize=14)
 
-plt.tight_layout()
-plt.show()
+    plt.tight_layout()
+    plt.show()
 
 
 #%% Temperature profile
