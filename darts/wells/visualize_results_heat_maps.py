@@ -9,7 +9,7 @@ import pickle
 from units import *
 from library import components_molecular_weights
 
-def visualize_results_heat_maps():
+def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str):
     # y axis: standard direction and segment depths in meters
     y_axis_convention = "standard"
     y_axis = "segment_depth"
@@ -124,11 +124,11 @@ def visualize_results_heat_maps():
     #     plt.tight_layout()
     #     plt.show()
 
-    # Load phase props
-    phase_props_df = pd.read_pickle('stored_phase_props.pkl')
+    # Load primary vars and phase props
+    data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
-    num_segments = max(phase_props_df.index) + 1
-    num_ts = int(len(phase_props_df["sG"]) / num_segments)   # Initial conditions of sG is not stored.
+    num_segments = max(data_frame.index) + 1
+    num_ts = int(len(data_frame["sG"]) / num_segments)   # Initial conditions of sG is not stored.
     simulation_time = np.delete(simulation_time, 0)
 
     #%% Pressure profile
@@ -138,7 +138,7 @@ def visualize_results_heat_maps():
 
     # Fill the pressure matrix
     for ts_counter in range(num_ts):
-        p = phase_props_df["Pressure"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        p = data_frame["Pressure"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         p_matrix[:, ts_counter] = p
 
     # Initialize the plot
@@ -204,7 +204,7 @@ def visualize_results_heat_maps():
 
     # Fill the composition matrix
     for ts_counter in range(num_ts):
-        z = phase_props_df["Overall mole fractions"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        z = data_frame["Overall mole fractions"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         z_matrix[:, ts_counter, :] = z
 
     for component_idx in range(num_components):
@@ -271,7 +271,7 @@ def visualize_results_heat_maps():
 
         # Fill the temperature matrix
         for ts_counter in range(num_ts):
-            T = phase_props_df["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            T = data_frame["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
             T_matrix[:, ts_counter] = T
 
         # Initialize the plot
@@ -335,7 +335,7 @@ def visualize_results_heat_maps():
 
     # Fill the gas saturation matrix
     for ts_counter in range(num_ts):
-        sG = phase_props_df["sG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        sG = data_frame["sG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         sG_matrix[:, ts_counter] = sG
 
     # Initialize the plot
@@ -402,14 +402,9 @@ def visualize_results_heat_maps():
 
         # Fill the xG_mole_c matrix
         for ts_counter in range(num_ts):
-            xG_mass = phase_props_df["xG_mass"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-            xG_mass_c = np.array([x[c] for x in xG_mass])
-            total_moles_in_gas_per_segment = [sum(xG_mass[segment][comp_index] / components_molecular_weights[component_name]
-                                              for comp_index, component_name in enumerate(components_names))
-                                              for segment in range(num_segments)]
-            with np.errstate(invalid='ignore'):   # This suppresses the error for division by zeros in the following line
-                xG_mole_c = (xG_mass_c / components_molecular_weights[comp_name]) / total_moles_in_gas_per_segment
-            xG_mole_c_matrix[:, ts_counter] = xG_mole_c
+            xG = data_frame["xG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            xG_c = np.array([x[c] for x in xG])
+            xG_mole_c_matrix[:, ts_counter] = xG_c
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -474,14 +469,9 @@ def visualize_results_heat_maps():
 
         # Fill the xL_mole_c matrix
         for ts_counter in range(num_ts):
-            xL_mass = phase_props_df["xL_mass"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-            xL_mass_c = np.array([x[c] for x in xL_mass])
-            total_moles_in_liquid_per_segment = [sum(xL_mass[segment][comp_index] / components_molecular_weights[component_name]
-                                                 for comp_index, component_name in enumerate(components_names))
-                                                 for segment in range(num_segments)]
-            with np.errstate(invalid='ignore'):  # This suppresses the error for division by zeros in the following line
-                xL_mole_c = (xL_mass_c / components_molecular_weights[comp_name]) / total_moles_in_liquid_per_segment
-            xL_mole_c_matrix[:, ts_counter] = xL_mole_c
+            xL = data_frame["xL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            xL_c = np.array([x[c] for x in xL])
+            xL_mole_c_matrix[:, ts_counter] = xL_c
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -545,7 +535,7 @@ def visualize_results_heat_maps():
 
     # Fill the gas density matrix
     for ts_counter in range(num_ts):
-        rhoG = phase_props_df["rhoG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        rhoG = data_frame["rhoG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         rhoG_matrix[:, ts_counter] = rhoG
 
     # Apply a mask to hide values equal to or below a certain threshold
@@ -615,7 +605,7 @@ def visualize_results_heat_maps():
 
     # Fill the liquid density matrix
     for ts_counter in range(num_ts):
-        rhoL = phase_props_df["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        rhoL = data_frame["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         rhoL_matrix[:, ts_counter] = rhoL
 
     # Apply a mask to hide values equal to or below a certain threshold
@@ -683,7 +673,7 @@ def visualize_results_heat_maps():
 
     # Fill the liquid density matrix
     for ts_counter in range(num_ts):
-        miuG = phase_props_df["miuG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        miuG = data_frame["miuG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         miuG_matrix[:, ts_counter] = miuG * 1e3
 
     # Apply a mask to hide values equal to or below a certain threshold
@@ -751,7 +741,7 @@ def visualize_results_heat_maps():
 
     # Fill the liquid density matrix
     for ts_counter in range(num_ts):
-        miuL = phase_props_df["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        miuL = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         miuL_matrix[:, ts_counter] = miuL * 1e3
 
     # Apply a mask to hide values equal to or below a certain threshold
@@ -821,7 +811,7 @@ def visualize_results_heat_maps():
 
     # Fill the gas velocity matrix
     for ts_counter in range(num_ts):
-        vG = phase_props_df["vG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        vG = data_frame["vG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         vG_matrix[:, ts_counter] = vG[:-1]
 
     # Apply a mask to hide some values
@@ -891,7 +881,7 @@ def visualize_results_heat_maps():
 
     # Fill the liquid velocity matrix
     for ts_counter in range(num_ts):
-        vL = phase_props_df["vL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        vL = data_frame["vL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
         vL_matrix[:, ts_counter] = vL[:-1]
 
     # Apply a mask to hide some values
