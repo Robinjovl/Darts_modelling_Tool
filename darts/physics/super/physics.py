@@ -210,18 +210,19 @@ class Compositional(PhysicsBase):
         mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
 
         # set initial pressure
-        np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
+        np.asarray(mesh.initial_state)[0::self.n_vars][:mesh.n_res_blocks] = input_distribution['pressure']
 
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
-                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = input_distribution['temperature']
+                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars][:mesh.n_res_blocks] = (
+                    input_distribution)['temperature']
             else:
                 # interpolate pressure and temperature to compute enthalpies
-                enthalpy = np.empty(mesh.n_blocks)
+                enthalpy = np.empty(mesh.n_res_blocks)
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
-                    for j in range(mesh.n_blocks):
+                    for j in range(mesh.n_res_blocks):
                         state = value_vector([input_distribution['pressure'][j], 0])
                         temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
                         enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
@@ -230,11 +231,11 @@ class Compositional(PhysicsBase):
                     enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
                     enthalpy[:] = enth
 
-                np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
+                np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars][:mesh.n_res_blocks] = enthalpy
 
         # set initial composition
         for c in range(self.nc-1):
-            np.asarray(mesh.initial_state)[(c+1)::self.n_vars] = input_distribution[self.vars[c+1]] \
+            np.asarray(mesh.initial_state)[(c+1)::self.n_vars][:mesh.n_res_blocks] = input_distribution[self.vars[c+1]] \
                 if np.isscalar(input_distribution[self.vars[c+1]]) else input_distribution[self.vars[c+1]][:]
 
     def init_wells(self, wells):

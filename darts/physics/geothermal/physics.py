@@ -181,10 +181,10 @@ class Geothermal(PhysicsBase):
         mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
 
         # set initial pressure
-        np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
+        np.asarray(mesh.initial_state)[0::self.n_vars][:mesh.n_res_blocks] = input_distribution['pressure']
 
         # interpolate pressure and temperature to compute enthalpies
-        enthalpy = np.empty(mesh.n_blocks)
+        enthalpy = np.empty(mesh.n_res_blocks)
         if 'enthalpy' in input_distribution.keys():
             enth = np.ones(mesh.n_blocks) * input_distribution['enthalpy'] if not np.isscalar(input_distribution['enthalpy']) else input_distribution['enthalpy']
             enthalpy[:] = enth
@@ -199,4 +199,4 @@ class Geothermal(PhysicsBase):
             enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
             enthalpy[:] = enth
 
-        np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
+        np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars][:mesh.n_res_blocks] = enthalpy
