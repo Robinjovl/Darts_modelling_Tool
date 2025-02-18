@@ -100,11 +100,11 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	// If thermal, specify
 	for (index_t ii = n_comps; ii < n_vars; ii++)
 	{
-	  RHS_well_head[ii] = well_control_ops[ii] - well_control_spec[ii];
+	  RHS_well_head[ii] = well_control_ops[1] - well_control_spec[ii];  // well_control_ops[1] contains temperature
 
 	  for (int jj = 0; jj < n_vars; jj++)
 	  {
-		jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_control_ops_derivs[ii * n_vars + jj];
+		jacobian_row[n_block_size * (P_VAR + ii) + P_VAR + jj] = well_control_ops_derivs[1 * n_vars + jj];
 	  }
 	}
   }
