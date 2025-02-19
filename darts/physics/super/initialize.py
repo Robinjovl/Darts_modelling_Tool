@@ -20,7 +20,6 @@ class Initialize:
         self.nv = physics.n_vars
         self.var_idxs = {var: i for i, var in enumerate(physics.vars)}
         self.thermal = ('temperature' in physics.vars)
-        ns = self.nv - self.thermal
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
@@ -28,9 +27,9 @@ class Initialize:
         self.props.update({'rhoT': lambda: np.sum(pc.sat * pc.dens)})
         self.props.update({'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)})
         self.props.update({'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
-                           for i in range(ns) for j, ph in enumerate(physics.phases)})
+                           for i in range(pc.nc_fl) for j, ph in enumerate(physics.phases[:pc.np_fl])})
         if aq_idx is not None:
-            self.props.update({'m' + str(i): lambda i=i: 55.509 * pc.x[aq_idx, i] / pc.x[aq_idx, h2o_idx] for i in range(ns)})
+            self.props.update({'m' + str(i): lambda i=i: 55.509 * pc.x[aq_idx, i] / pc.x[aq_idx, h2o_idx] for i in range(pc.nc_fl)})
         self.props.update({'dX' + str(k): lambda k=k: pc.dX[k] for k, kr in enumerate(pc.kinetic_rate_ev)})
 
         self.props_idxs = {prop: i for i, prop in enumerate(self.props.keys())}
@@ -78,7 +77,12 @@ class Initialize:
         :param nb: Number of depth values
         :param dTdh: Temperature gradient
         """
-        # Check input and create depths
+        # If only one block has been specified, return the boundary state
+        if nb == 1:
+            self.depths = np.array([depth_known])
+            return np.array([boundary_state[variable] for variable in self.physics.vars])
+
+        # Else, check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
         assert depth_top <= depth_known <= depth_bottom, "Known depth is not in range [bottom, top]"
         self.depths = np.linspace(start=depth_top, stop=depth_bottom, num=nb)
@@ -96,7 +100,8 @@ class Initialize:
                 assert len(self.secondary_specs[spec]) == nb, "Length of " + spec + " not compatible"
         for i in range(nb):
             assert int(np.sum([not np.isnan(np.float64(spec[i])) for spec in self.primary_specs.values()]) +
-                       np.sum([not np.isnan(np.float64(spec[i])) for spec in self.secondary_specs.values()])) == self.nv - 1 - self.thermal, \
+                       np.sum([not np.isnan(np.float64(spec[i])) for spec in
+                               self.secondary_specs.values()])) == self.nv - 1 - self.thermal, \
                 "Not enough variables specified for well-defined system of equations in block {}".format(i)
 
         # Define thermal gradient

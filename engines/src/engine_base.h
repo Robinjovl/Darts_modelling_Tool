@@ -711,13 +711,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	old_z_fl.resize(nc_fl);
 	new_z_fl.resize(nc_fl);
 
+	X_init = mesh->initial_state;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
-		X_init[n_vars * i] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
-		}
 		PV[i] = mesh->volume[i] * mesh->poro[i];
 		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}

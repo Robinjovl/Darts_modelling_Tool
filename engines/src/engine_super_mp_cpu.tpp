@@ -279,23 +279,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
 	Xn = X = X_init;
+	X_init = mesh->initial_state;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
-		X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
-		}
-
 		PV[i] = mesh->volume[i] * mesh->poro[i];
 		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
-	if (THERMAL)
-	{
-		for (index_t i = 0; i < mesh_->n_blocks; i++)
-		{
-			X_init[N_VARS * i + T_VAR] = mesh->temperature[i];
-		}
 	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));

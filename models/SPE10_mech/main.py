@@ -3,6 +3,13 @@ import numpy as np
 import os
 from darts.engines import redirect_darts_output, timer_node
 
+try:
+    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+    from darts.engines import set_num_threads
+    set_num_threads(1)
+except:
+    pass
+
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
         runtime = days
@@ -111,8 +118,9 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type):
+def run(model_folder, physics_type, is_finalize=True):
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
+    m.params.finalize_mpi = is_finalize
     m.init()
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
@@ -217,10 +225,12 @@ if __name__ == '__main__':
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
     meshes_list = ['data_10_10_10', 'data_20_40_40']
     if test_all:
+        is_finalize = False
         for physics in physics_list:
             for mesh in meshes_list:
-                run(model_folder=mesh, physics_type=physics)
-
+                if physics == physics_list[-1] and mesh == meshes_list[-1]:
+                    is_finalize = True
+                run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
     #run(model_folder='data_10_10_10', physics_type='single_phase')
     #run(model_folder='data_10_10_10', physics_type='single_phase_thermal')

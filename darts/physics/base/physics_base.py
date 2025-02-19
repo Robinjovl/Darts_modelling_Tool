@@ -44,7 +44,7 @@ class PhysicsBase:
 
     @total_ordering
     class StateSpecification(Enum):
-        ISOTHERMAL = 0
+        P = 0
         PT = 1
         PH = 2
         def __lt__(self, other):
@@ -52,18 +52,18 @@ class PhysicsBase:
                 return self.value < other.value
             return NotImplemented
 
-    def __init__(self, state_spec: StateSpecification, variables: list, nc: int, phases: list, n_ops: int,
+    def __init__(self, state_spec: StateSpecification, variables: list, components: list, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
                  timer: timer_node, cache: bool = False):
         """
         This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
 
-        :param state_spec: State specification - 0) ISOTHERMAL, 1) PT, 2) PH
+        :param state_spec: State specification - 0) P, 1) PT, 2) PH
         :type state_spec: StateSpecification
         :param variables: List of independent variables
         :type variables: list
-        :param nc: Number of components
-        :type nc: int
+        :param components: Components
+        :type components: list
         :param phases: List of phases
         :type phases: list
         :param n_ops: Number of operators
@@ -82,7 +82,8 @@ class PhysicsBase:
         self.vars = variables
         self.n_vars = len(variables)
 
-        self.nc = nc
+        self.components = components
+        self.nc = len(components)
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops
@@ -237,30 +238,26 @@ class PhysicsBase:
         return
 
     @abc.abstractmethod
-    def set_initial_conditions(self, mesh: conn_mesh, input_depth: Union[list, np.ndarray], input_distribution: dict):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
         :param mesh: conn_mesh object
-        :param input_depth: Array of depths over which depth table has been specified
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
-        :type input_distribution: dict
+        :param input_depth: Array of depths over which depth table has been specified
         """
         pass
 
     @abc.abstractmethod
-    def set_uniform_initial_conditions(self, mesh: conn_mesh,
-                                       pressure_input: Union[float, list, np.ndarray],
-                                       composition_input: Union[list, np.ndarray] = None,
-                                       temperature_input: Union[float, list, np.ndarray] = None):
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
         """
         Method to set initial conditions by arrays or uniformly for all cells
 
         :param mesh: conn_mesh object
-        :param pressure_input: Pressure [bar], uniform or array
-        :param composition_input: List of compositions [z_0, ..., z_{nc-1}], set of scalars or arrays
-        :param temperature_input: Temperature [K], only required for thermal models, uniform or array
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
         """
         pass
 

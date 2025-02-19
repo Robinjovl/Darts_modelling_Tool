@@ -38,7 +38,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if False:#iter_solvers and test_all_models:
+    if iter_solvers:
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
         meshes_list = ['data_10_10_10']
@@ -149,9 +149,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
         input("Press Enter to continue...") # pause the screen
     else:
-        if overwrite == '1':  # do not interrupt ci/cd for uploading generated pkls
-            print('exit 0 because of UPLOAD_PKL==1')
-            exit(0)
         print('exit:', n_failed)
         # exit with code equal to number of failed models
         exit(n_failed)

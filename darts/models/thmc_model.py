@@ -97,7 +97,7 @@ class THMCModel(DartsModel):
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
 
             thermal = True
-            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.ISOTHERMAL
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
@@ -105,7 +105,7 @@ class THMCModel(DartsModel):
                                           discretizer=self.discretizer_name)
         else:
             thermal = False
-            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.ISOTHERMAL
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
@@ -170,17 +170,14 @@ class THMCModel(DartsModel):
                                            well_index=self.reservoir.well_index)
 
     def set_initial_conditions(self):
+        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_temperature=self.reservoir.t_init,
-                                                        uniform_displacement=self.reservoir.u_init)
-        else:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_displacement=self.reservoir.u_init)
+            input_distribution['temperature'] = self.reservoir.t_init
+
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                       input_distribution=input_distribution,
+                                                       input_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):
@@ -231,6 +228,7 @@ class THMCModel(DartsModel):
         :param file_name:
         :return:
         """
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
@@ -244,6 +242,8 @@ class THMCModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        else:
+            print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
     
     # it doesn't use model object, put inside the class just for the convenience of import 

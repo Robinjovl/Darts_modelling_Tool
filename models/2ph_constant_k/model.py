@@ -230,7 +230,7 @@ class Model(DartsModel):
             axes_max[0] = max_p
 
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
                                      min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
                                      axes_max=axes_max)
@@ -238,10 +238,15 @@ class Model(DartsModel):
         
         return
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+    def set_initial_conditions(self):
         if self.reservoir_type == '1D' or self.reservoir_type == '2D':
-            self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh, pressure_input=self.p_init,
-                                                        composition_input=self.ini_comp)
+            input_distribution = {'pressure': self.p_init}
+            input_distribution.update({comp: self.ini_comp[i] for i, comp in self.physics.components[:-1]})
+            # if self.physics.thermal:
+            #     input_distribution['temperature'] = self.init_temp
+
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
         else:
             # get depths
             depths = np.asarray(self.reservoir.mesh.depth)
@@ -276,8 +281,8 @@ class Model(DartsModel):
                            dTdh=0.).reshape((nb, self.physics.n_vars))
 
             # assign initial condition with evaluated initialized properties
-            self.physics.set_initial_conditions(mesh=self.reservoir.mesh, input_depth=init.depths,
-                                                input_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
+            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
+                                                                 input_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
 
     def set_well_controls(self):
         injector = self.reservoir.get_well('I1')

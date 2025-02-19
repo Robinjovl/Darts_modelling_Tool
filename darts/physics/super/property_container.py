@@ -218,6 +218,9 @@ class PropertyContainer(PropertyBase):
         # Run flash
         self.ph = self.run_flash(pressure, temperature, zc)
         self.temperature = self.flash_ev.get_flash_results().temperature if not isinstance(self.flash_ev, int) else self.temperature
+        assert self.temperature is not None, ("PropertyContainer does not specify self.temperature, should be set to "
+                                              "constant temperature in case of isothermal physics, "
+                                              "self.flash.temperature in case of thermal")
 
         for j in self.ph:
             M = np.sum(self.Mw[:self.nc_fl] * self.x[j][:self.nc_fl])

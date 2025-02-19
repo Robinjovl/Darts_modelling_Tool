@@ -1,11 +1,12 @@
 import numpy as np
 from multiprocessing import freeze_support
-
-from darts.input.input_data import InputData
-from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
 import os
 from datetime import datetime
 import shutil
+
+from darts.input.input_data import InputData
+from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
+from darts.engines import redirect_darts_output
 
 def rotate_input(input_data, frac_data_raw):
     rot_angle_degrees = 90 - input_data['SHmax_azimuth']
@@ -41,6 +42,7 @@ def generate_mesh(idata : InputData):
     case_name = idata.geom['case_name']
     print('case', case_name)
     output_dir = 'meshes_' + case_name
+
     if idata.geom['frac_format'] == 'simple':
         frac_data_raw = np.genfromtxt(idata.geom['frac_file'])
     else:
@@ -60,7 +62,11 @@ def generate_mesh(idata : InputData):
         ren_fname = output_dir + '_prev'
         if os.path.exists(ren_fname):
             shutil.rmtree(ren_fname)
-        os.renames(output_dir, ren_fname)
+        try:
+            os.renames(output_dir, ren_fname)
+        except:
+            print('Cannot rename the output folder. Thus, the results will be replaced.')
+            shutil.rmtree(output_dir)
     os.makedirs(output_dir)
 
     #rotate_input(input_data, frac_data_raw)

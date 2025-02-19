@@ -25,14 +25,18 @@ class ModelGeothermal(Model_CPG):
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
             # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
-            self.input_depth = [0.]
-            self.initial_values = {'pressure': 1., 'temperature': 293.15}
-            self.gradients = {'pressure': self.idata.initial.pressure_gradient/1000,
-                              'temperature': self.idata.initial.temperature_gradient/1000}
+            input_depth = [0., np.amax(self.reservoir.mesh.depth)]
+            input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient/1000],
+                                  'temperature': [293.15, 293.15 + input_depth[1] * self.idata.initial.temperature_gradient/1000]
+                                  }
+            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
-            self.initial_values = {'pressure': self.idata.initial.initial_pressure,
-                                   'temperature': self.idata.initial.initial_temperature}
-        super().set_initial_conditions()
+            input_distribution = {'pressure': self.idata.initial.initial_pressure,
+                                  'temperature': self.idata.initial.initial_temperature}
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def set_well_controls(self, time: float = 0., verbose=True):
         '''

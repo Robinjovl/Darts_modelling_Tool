@@ -132,7 +132,7 @@ class Model(DartsModel, OptModuleSettings):
 
         # create physics
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.ISOTHERMAL
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
                                      min_t=273.15 + 20, max_t=273.15 + 200)
@@ -147,8 +147,13 @@ class Model(DartsModel, OptModuleSettings):
         return
 
     def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, pressure_input=self.p_init,
-                                                    composition_input=self.ini, temperature_input=self.init_temp)
+        input_distribution = {'pressure': self.p_init}
+        input_distribution.update({comp: self.ini[i] for i, comp in enumerate(self.physics.components[:-1])})
+        if self.physics.thermal:
+            input_distribution['temperature'] = self.init_temp
+
+        return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
         for i, w in enumerate(self.reservoir.wells):

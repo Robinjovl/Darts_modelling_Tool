@@ -55,11 +55,6 @@ class DartsModel:
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
-        # Initial values for depth initialization table
-        self.input_depth: list = None
-        self.initial_values = {}
-        self.gradients = {}
-
         self.timer.node["initialization"].stop()  # Stop recording "initialization" time
 
     def init(self, discr_type: str = 'tpfa', platform: str = 'cpu', restart: bool = False,
@@ -171,6 +166,7 @@ class DartsModel:
     def configure_output(self, kind: str):
         """
         Configuration of output
+
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         :param restart: Boolean to check if existing file should be overwritten or appended
@@ -211,6 +207,7 @@ class DartsModel:
     def load_restart_data(self, filename: str = os.path.join('restart', 'solution.h5'), timestep = -1):
         """
         Function to load data from previous simulation and uses them for following simulation.
+
         :param output_folder: restart_data filename
         :type output_folder: str
         """
@@ -239,49 +236,11 @@ class DartsModel:
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
 
         Initial conditions can be specified in multiple ways:
-        1) Uniform or array -> specify constant or array of values for each variable self.initial_values
-        2) Reference value with gradients -> specify reference depth in self.input_depth,
-                                             reference value in self.initial_values,
-                                             gradient for variables in self.gradients (in unit/m)
-        3) Depth table -> specify depths in self.input_depth and initial distributions of unknowns over depth
-                          in self.initial_values; if single value has been specified it will be constant over depth
+        1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_by_array()
+        2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth
+                          to self.physics.set_initial_conditions_by_depth_table()
         """
-        # If full arrays have been specified, use self.physics.set_uniform_initial_conditions() method
-        if np.all([(hasattr(self.initial_values[variable], "__len__") and  # array
-                    len(self.initial_values[variable]) == self.reservoir.mesh.n_blocks)
-                   for variable in self.initial_values.keys()]):
-            temperature_input = self.initial_values['temperature'] if 'temperature' in self.initial_values.keys() else None
-            comp_input = np.array([self.initial_values[comp] for comp in self.physics.vars[1:self.physics.nc]])
-            return self.physics.set_uniform_initial_conditions(mesh=self.reservoir.mesh,
-                                                               pressure_input=self.initial_values['pressure'],
-                                                               temperature_input=temperature_input,
-                                                               composition_input=comp_input,
-                                                               )
-
-        # Else, create depth table for initial distribution, ensure depths are not identical for interpolation
-        if self.input_depth is None:
-            self.input_depth = np.array([np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth) + 1.])
-        elif len(self.input_depth) == 1:
-            self.input_depth = np.append(np.array(self.input_depth), np.array([np.amax(self.reservoir.mesh.depth) + 1.]))
-        else:
-            self.input_depth = np.array(self.input_depth)
-
-        for variable, input_array in self.initial_values.items():
-            # Ensure input_array is an array
-            input_array = input_array if hasattr(input_array, "__len__") else np.array([input_array])
-
-            # If input for variable is a single value, calculate distribution with first depth as reference depth
-            if len(input_array) == 1:
-                # Find whether gradient has been specified, else set to 0.
-                gradient = self.gradients[variable] if variable in self.gradients.keys() else 0.
-
-                # Calculate distribution with depths
-                input_array = np.append(input_array, (self.input_depth[1:]-self.input_depth[0]) * gradient + input_array[0])
-
-            self.initial_values[variable] = input_array
-
-        return self.physics.set_initial_conditions(mesh=self.reservoir.mesh, input_depth=self.input_depth,
-                                                   input_distribution=self.initial_values)
+        raise NotImplementedError('Model.set_initial_conditions() not implemented.')
 
     def set_boundary_conditions(self):
         """
@@ -489,9 +448,8 @@ class DartsModel:
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
-                if dt < self.params.min_ts:
-                    print('Stop simulation. Reason: reached min. timestep', self.params.min_ts, 'dt=', dt)
-                    return -1
+                assert dt > self.params.min_ts, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(self.params.min_ts) + ' dt=' + str(dt))
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -609,8 +567,10 @@ class DartsModel:
     def save_data_to_h5(self, kind):
         """
         Function to write output solution or well output to *.h5 file
+
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
+
         """
 
         if not hasattr(self, 'output_configured') or kind not in self.output_configured:
@@ -628,6 +588,7 @@ class DartsModel:
     def save_specific_data(self, filename):
         """
         Function to write output to *.h5 file
+
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
@@ -649,6 +610,7 @@ class DartsModel:
     def read_specific_data(self, filename: str, timestep: int = None):
         """
         Function to read *.h5 files contents.
+
         :param filename: path to *.h5 filename to append data to
         :param timestep:
         :return time: time of the saved data in days
@@ -683,12 +645,14 @@ class DartsModel:
 
     def output_properties(self, output_properties: list = None, timestep: int = None) -> tuple:
         """
-        Function to read *.h5 data and evaluate properties per grid block, per timestep
+        Function to read *.h5 data and evaluate properties per grid block, per timestep.
+
         :param output_properties: List of properties to evaluate for output
         :return property_array : dictionary containing the states and evaluated properties
         :return timesteps: np.ndarray containing the timesteps at which the properties were evaluated
         :rtype: tuple
         """
+
         # Read binary file
         path = os.path.join(self.output_folder, self.sol_filename)
         if timestep is None:

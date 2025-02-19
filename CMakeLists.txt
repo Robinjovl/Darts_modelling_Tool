@@ -2,6 +2,17 @@ cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(SET_CXX11_ABI_0 TRUE)
+set(CMAKE_INSTALL_PREFIX "../darts")
+set(CMAKE_INSTALL_RPATH $ORIGIN)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
+endif()
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -44,15 +55,24 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
-#   GPU: GPU support (not available yet)
-if((${OPENDARTS_CONFIG} STREQUAL "ST") OR (NOT DEFINED OPENDARTS_CONFIG))
+#   GPU: GPU support
+if (NOT DEFINED OPENDARTS_CONFIG)
+  set(OPENDARTS_CONFIG "ST")
+endif()
+
+if (${OPENDARTS_CONFIG} STREQUAL "GPU")
+  set(GPU_CONFIG 1)
+endif()
+
+if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(OPENDARTS_CONFIG "ST") 
-elseif(${OPENDARTS_CONFIG} STREQUAL "MT")
+elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if(NOT DEFINED BOS_SOLVERS_DIR)
-    message(FATAL_ERROR "openDARTS MT requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
+    message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
   endif()
-elseif(${OPENDARTS_CONFIG} STREQUAL "GPU")
-  message(FATAL_ERROR "openDARTS GPU compilation is not supported yet.")
+  if (GPU_CONFIG)
+    set(CUDA 1)
+  endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
 endif()
@@ -62,7 +82,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 # Determine the type of compiler we have and set compiler flags and other compiler 
 # specific flags
 
-if(DEFINED BOS_SOLVERS_DIR)
+if(DEFINED BOS_SOLVERS_DIR AND NOT GPU_CONFIG)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -155,6 +175,7 @@ add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
 
+
 # Report options for this build
 feature_summary(WHAT ENABLED_FEATURES DISABLED_FEATURES PACKAGES_FOUND)
 feature_summary(FILENAME ${CMAKE_CURRENT_BINARY_DIR}/features.log WHAT ALL)
@@ -204,12 +225,34 @@ message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------
 
 
+# Configure GPU build
+if(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    
+    if(CUDAToolkit_FOUND)
+        message(STATUS "CUDA found. Enabling CUDA support.")
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
+        set(CMAKE_CUDA_ARCHITECTURES native)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
+        add_compile_definitions(WITH_GPU)
+    else()
+        message(FATAL_ERROR "CUDA requested but not found!")
+    endif()
+else()
+    message(STATUS "CUDA support is disabled.")
+endif()
+
+
 # Build dummy library to contain compiler flags --------------------------------
 add_library(opendarts_compiler_flags INTERFACE)
 
 target_compile_features(opendarts_compiler_flags
   INTERFACE
-  cxx_std_11
+  cxx_std_20
 )
 
 target_compile_options(opendarts_compiler_flags 
@@ -250,3 +293,5 @@ if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
 # ------------------------------------------------------------------------------
+
+
