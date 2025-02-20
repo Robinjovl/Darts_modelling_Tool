@@ -75,6 +75,8 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
                 values = components_molar_rates_operators(state, pc)
             elif rate_type == 'heat_rate':
                 values = heat_rate_operators(state, pc)
+            else:
+                raise Exception("Rate type is entered incorrectly!")
 
             rates[i, j] = values * geometric_WI[j] * dp[j]
 
