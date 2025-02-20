@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
-from darts.tools.flux_tools import get_well_components_molar_rates, get_well_phases_molar_rates
+from darts.tools.flux_tools import get_wells_components_molar_rates, get_wells_phases_molar_rates
 
 import numpy as np
 import pandas as pd
@@ -147,10 +147,10 @@ class CICDModel(DartsModel):
         # Load time_data
         cpp_data = pd.read_pickle(time_data_filename)
 
-        # Calculate well components molar rates for all time steps
-        python_components_molar_rates = get_well_components_molar_rates(self)
-        # Calculate well phases molar rates for all time steps
-        python_phases_molar_rates = get_well_phases_molar_rates(self)
+        # Calculate well components molar rates for all time steps in Python
+        python_components_molar_rates = get_wells_components_molar_rates(self)
+        # Calculate well phases molar rates for all time steps in Python
+        python_phases_molar_rates = get_wells_phases_molar_rates(self)
 
         rtol = 1.e-2
         atol = 0.1
