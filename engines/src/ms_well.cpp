@@ -50,14 +50,16 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
   rate_evaluator->evaluate(state, rates);
 
+  index_t molar_rate_idx;
   for (int i = 0; i < n_phases; i++)
   {
+    molar_rate_idx = 2 + i;
     if (phase_names[i] == "temperature")
-      time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[i]);
+      time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[molar_rate_idx]);
     else if (phase_names[i] == "energy")
-      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[molar_rate_idx] * p_diff * segment_transmissibility);
     else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
+      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[molar_rate_idx] * p_diff * segment_transmissibility);
   }
 
   int nc = n_vars;

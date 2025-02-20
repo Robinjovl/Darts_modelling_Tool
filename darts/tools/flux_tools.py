@@ -187,8 +187,10 @@ def get_phase_volumetric_well_rate(m, well: ms_well) -> np.ndarray:
     """
 
     # calculate fluxes
+    molar_rate_starting_idx = 2
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
-                                        flux_eval=[m.physics.well_ctrl_itor])
+                                   flux_eval=[m.physics.well_ctrl_itor],
+                                   eval_ids=np.arange(molar_rate_starting_idx, molar_rate_starting_idx + m.physics.nph))
     return rates[0]
 
 def get_phase_volumetric_well_rate_profile(m, well: ms_well) -> np.ndarray:
