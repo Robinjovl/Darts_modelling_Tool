@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
-from darts.tools.flux_tools import get_wells_components_molar_rates, get_wells_phases_molar_rates
+from darts.tools.flux_tools import get_wells_components_molar_rates, get_wells_phases_volumetric_rates
 
 import numpy as np
 import pandas as pd
@@ -149,8 +149,8 @@ class CICDModel(DartsModel):
 
         # Calculate well components molar rates for all time steps in Python
         python_components_molar_rates = get_wells_components_molar_rates(self)
-        # Calculate well phases molar rates for all time steps in Python
-        python_phases_molar_rates = get_wells_phases_molar_rates(self)
+        # Calculate well phases volumetric rates for all time steps in Python
+        python_phases_volumetric_rates = get_wells_phases_volumetric_rates(self)
 
         rtol = 1.e-2
         atol = 0.1
@@ -166,7 +166,7 @@ class CICDModel(DartsModel):
             # Phase molar rates
             cpp_phase = np.array([cpp_data[well.name + p_pattern.format(self.physics.phases[p])].to_numpy() for p in
                               range(self.physics.nph)]).T
-            assert (np.isclose(python_phases_molar_rates[well.name], -cpp_phase, rtol=rtol, atol=atol).all())
+            assert (np.isclose(python_phases_volumetric_rates[well.name], -cpp_phase, rtol=rtol, atol=atol).all())
 
     @staticmethod
     def load_performance_data(file_name: str = '', pkl_suffix: str = ''):

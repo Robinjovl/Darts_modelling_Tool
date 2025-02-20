@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from darts.engines import value_vector, ms_well
+from darts.engines import value_vector, ms_well, well_control_iface
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 def calc_connection_fluxes(m, conn_ids, flux_eval = None, eval_ids = None) -> np.ndarray:
@@ -140,7 +140,7 @@ def get_well_components_molar_rate_profile(m, well: ms_well) -> np.ndarray:
     # sum fluxes over phases
     return np.sum(rates, axis=-1)
 
-def get_wells_phases_molar_rates(m) -> dict:
+def get_wells_phases_volumetric_rates(m) -> dict:
     """
     Calculate volumetric well rate for every fluid phase for every well
     for all the timesteps from the saved well data in *.h5
@@ -166,14 +166,14 @@ def get_wells_phases_molar_rates(m) -> dict:
             if well.name not in vol_rate:
                 vol_rate[well.name] = []
 
-            vol_rate[well.name].append(get_well_phases_molar_rates(m, well))
+            vol_rate[well.name].append(get_well_phases_volumetric_rates(m, well))
 
     for well in m.reservoir.wells:
         vol_rate[well.name] = np.array(vol_rate[well.name])
 
     return vol_rate
 
-def get_well_phases_molar_rates(m, well: ms_well) -> np.ndarray:
+def get_well_phases_volumetric_rates(m, well: ms_well) -> np.ndarray:
     """
     Calculate volumetric well rate for every fluid phase for a given well
     :param m: Darts model
@@ -184,8 +184,8 @@ def get_well_phases_molar_rates(m, well: ms_well) -> np.ndarray:
     """
 
     # calculate fluxes
-    molar_rate_starting_idx = 2
+    volumetric_rate_starting_idx = 2 + (int(well_control_iface.VOLUMETRIC_RATE) - 1) * m.physics.nph
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
                                    flux_eval=[m.physics.well_ctrl_itor],
-                                   eval_ids=np.arange(molar_rate_starting_idx, molar_rate_starting_idx + m.physics.nph))
+                                   eval_ids=np.arange(volumetric_rate_starting_idx, volumetric_rate_starting_idx + m.physics.nph))
     return rates[0]
