@@ -48,7 +48,9 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
             miuG[j] = property_container.mu[0]
             miuL[j] = property_container.mu[1]
 
-        ts_primary_vars_and_phases_props = [p, z, xG, xL, sG, sL, rhoG, rhoL, miuG, miuL]
+        ts_primary_vars_and_phases_props = [p.copy(), z.copy(), xG.copy(), xL.copy(),
+                                            sG.copy(), sL.copy(), rhoG.copy(), rhoL.copy(),
+                                            miuG.copy(), miuL.copy()]
         data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
                                                          columns=["Pressure", "Overall mole fractions", "xG", "xL",
                                                                   "sG", "sL", "rhoG", "rhoL", "miuG", "miuL"])])
