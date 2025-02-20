@@ -50,29 +50,18 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
   rate_evaluator->evaluate(state, rates);
 
-  index_t molar_rate_idx;
+  // Energy and volumetric rates
+  value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
-  {
-    molar_rate_idx = 2 + i;
-    if (phase_names[i] == "temperature")
-      time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[molar_rate_idx]);
-    else if (phase_names[i] == "energy")
-      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[molar_rate_idx] * p_diff * segment_transmissibility);
-    else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[molar_rate_idx] * p_diff * segment_transmissibility);
+  { 
+    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + well_control_iface::VOLUMETRIC_RATE + i] * p_diff * segment_transmissibility);
+    total_energy += rates[2 + well_control_iface::ADVECTIVE_HEAT_RATE + i] * p_diff * segment_transmissibility;
   }
-
-  int nc = n_vars;
-
-  // temperature-based thermal formulation
-  if (thermal == 1)
-  {
-    nc--;
-    time_data[name + " : temperature (K)"].push_back(state[n_vars - 1]);
-	/*time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[n_phases] * p_diff * segment_transmissibility);*/
-  }
+  time_data[name + " : energy (kJ/day)"].push_back(total_energy);
   
-  for (int c = 0; c < nc; c++)
+  // Component molar rates
+  index_t nc = n_vars - thermal;
+  for (index_t c = 0; c < nc; c++)
   {
       double c_rate_op = 0;
 
@@ -101,7 +90,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
     else
       upstream_idx = i_r; // production perforation
 
-    for (int c = 0; c < nc; c++)
+    for (index_t c = 0; c < nc; c++)
     {
         double c_rate_op = 0;
 
@@ -111,15 +100,15 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
             c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
         }
         time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
-  
     }
     time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_block_size + P_VAR]);
 
     i_p++;
   }
 
-
+  // BHP and temperature
   time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
+  time_data[name + " : temperature (K)"].push_back(rates[1]);
 
   return 0;
 }
@@ -145,35 +134,31 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
   rate_evaluator->evaluate(state, rates);
 
+  // Energy and volumetric rates
+  value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
+  { 
+    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + well_control_iface::VOLUMETRIC_RATE + i] * velocity);
+    total_energy += rates[2 + well_control_iface::ADVECTIVE_HEAT_RATE + i] * p_diff * segment_transmissibility;
+  }
+  time_data[name + " : energy (kJ/day)"].push_back(total_energy);
+  
+  // Component molar rates
+  index_t nc = n_vars - thermal;
+  for (index_t c = 0; c < nc; c++)
   {
-    if (phase_names[i] == "temperature")
-      time_data[name + " : " + phase_names[i] + " (K)"].push_back(rates[i]);
-    else if (phase_names[i] == "energy")
-      time_data[name + " : " + "energy" + " (kJ/day)"].push_back(rates[i] * p_diff * segment_transmissibility);
-    else
-      time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[i] * velocity);   // // V_phase =  * V_mix S_phase ;      rate_i= S_i
+      double c_rate_op = 0;
+
+      for (int j = 0; j < n_phases; j++)
+      {
+          index_t shift = n_block_size + n_block_size * j;
+          c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+      }
+
+    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * segment_transmissibility);
   }
 
-  int nc = n_vars;
-  int n_ops = 2 * nc;
-
-
-  // temperature-based thermal formulation
-  if (thermal == 1)
-  {
-    nc--;
-    n_ops = 2 * nc + 5;
-    time_data[name + " : T (K)"].push_back(state[n_vars - 1]);
-  }
-
-  for (int c = 0; c < nc; c++)
-  {
-    time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * segment_transmissibility);
-    //time_data[name + " : c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * velocity * segment_transmissibility);
-  }
-
-  int i_p = 0;
+  index_t i_p = 0;
 
   for (auto &p : perforations)
   {
@@ -189,16 +174,25 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
     else
       upstream_idx = i_r; // production perforation
 
-    for (int c = 0; c < nc; c++)
+    for (index_t c = 0; c < nc; c++)
     {
-      time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(op_vals_arr[upstream_idx * n_ops + nc + c] * p_diff * wi);
+        double c_rate_op = 0;
+
+        for (int j = 0; j < n_phases; j++)
+        {
+            index_t shift = nc + nc * j;
+            c_rate_op += op_vals_arr[upstream_idx * n_ops + shift + c];
+        }
+        time_data[name + " : p " + std::to_string(i_p) + " c " + std::to_string(c) + " rate (Kmol/day)"].push_back(c_rate_op * p_diff * wi);
     }
     time_data[name + " : p " + std::to_string(i_p) + " reservoir P (bar)"].push_back(X[i_r * n_vars]);
 
     i_p++;
   }
 
-  time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars]);
+  // BHP and temperature
+  time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
+  time_data[name + " : temperature (K)"].push_back(rates[1]);
 
   return 0;
 }
