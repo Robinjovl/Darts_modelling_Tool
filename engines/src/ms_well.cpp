@@ -54,8 +54,8 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
   { 
-    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + well_control_iface::VOLUMETRIC_RATE + i] * p_diff * segment_transmissibility);
-    total_energy += rates[2 + well_control_iface::ADVECTIVE_HEAT_RATE + i] * p_diff * segment_transmissibility;
+    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + (well_control_iface::VOLUMETRIC_RATE - 1) * n_phases + i] * p_diff * segment_transmissibility);
+    total_energy += rates[2 + (well_control_iface::ADVECTIVE_HEAT_RATE - 1) * n_phases + i] * p_diff * segment_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
   
@@ -138,8 +138,8 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
   value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
   { 
-    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + well_control_iface::VOLUMETRIC_RATE + i] * velocity);
-    total_energy += rates[2 + well_control_iface::ADVECTIVE_HEAT_RATE + i] * p_diff * segment_transmissibility;
+    time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[2 + (well_control_iface::VOLUMETRIC_RATE - 1) * n_phases + i] * velocity);
+    total_energy += rates[2 + (well_control_iface::ADVECTIVE_HEAT_RATE - 1) * n_phases + i] * p_diff * segment_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
   
