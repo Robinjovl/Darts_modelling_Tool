@@ -112,7 +112,7 @@ def get_well_components_molar_rates(m, well: ms_well) -> np.ndarray:
 
     # indices of flux mobility multipliers in op_list output
     eval_ids = np.vstack([np.arange(m.physics.n_vars + i, m.physics.n_vars * (m.physics.nph + 1),
-                                    m.physics.n_vars) for i in range(m.physics.nc + m.physics.thermal)])
+                                    m.physics.n_vars) for i in range(m.physics.nc)])
     # calculate fluxes
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
                                         flux_eval=m.op_list,
