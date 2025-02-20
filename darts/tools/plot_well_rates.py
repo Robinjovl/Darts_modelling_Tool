@@ -26,8 +26,6 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
     :param pc: An instance of the class PropertyContainer
     :type pc: PropertyContainer
     """
-
-def calc_rates_at_perforations(data, perfs_conn_ids, geometric_WI, rate_type, thermal, pc):
     # Evaluate position of block_m, block_p in stored data, for every connection
     block_m = h5_well_data['static']['block_m']
     block_p = h5_well_data['static']['block_p']
