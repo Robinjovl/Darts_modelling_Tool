@@ -117,7 +117,7 @@ class Poroelasticity(Compositional):
         for w in wells:
             assert isinstance(w, ms_well)
             w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars,
-                                        self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
+                                        self.well_ctrl_operators.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
                                                 input_depth: Union[list, np.ndarray], input_displacement: list):

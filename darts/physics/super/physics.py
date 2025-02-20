@@ -229,13 +229,3 @@ class Compositional(PhysicsBase):
         for c in range(self.nc-1):
             np.asarray(mesh.initial_state)[(c+1)::self.n_vars] = input_distribution[self.vars[c+1]] \
                 if np.isscalar(input_distribution[self.vars[c+1]]) else input_distribution[self.vars[c+1]][:]
-
-    def init_wells(self, wells):
-        """
-        Function to initialize the well rates for each well.
-
-        :param wells: List of :class:`ms_well` objects
-        """
-        for w in wells:
-            assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
