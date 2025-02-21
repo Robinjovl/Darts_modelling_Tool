@@ -135,7 +135,7 @@ class Model(CICDModel, OptModuleSettings):
     def set_op_list(self):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
-            customized_component_itor = self.physics.create_interpolator(customized_component_etor, n_ops=6,
+            customized_component_itor = self.physics.create_interpolator(customized_component_etor, n_ops=1,
                                                                          platform='cpu', algorithm='multilinear',
                                                                          mode='adaptive', precision='d',
                                                                          timer_name='customized component interpolation')
@@ -198,7 +198,7 @@ class Model(CICDModel, OptModuleSettings):
 
 
 class customized_etor_specific_component(operator_set_evaluator_iface):
-    n_ops = 1
+    n_ops = 6
 
     def evaluate(self, state, values):
         """
