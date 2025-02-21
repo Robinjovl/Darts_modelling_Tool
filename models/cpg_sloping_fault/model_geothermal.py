@@ -56,7 +56,7 @@ class ModelGeothermal(Model_CPG):
                 continue
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MASS_RATE,
+                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                                   is_inj=True, target=wctrl.rate, phase_name='water',
                                                                   inj_stream=[], inj_temp=wctrl.inj_bht)
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
@@ -71,7 +71,7 @@ class ModelGeothermal(Model_CPG):
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MASS_RATE,
+                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name='water')
                     w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
                                                                      is_inj=False, target=wctrl.bhp_constraint)
