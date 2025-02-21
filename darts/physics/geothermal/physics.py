@@ -20,7 +20,7 @@ class Geothermal(PhysicsBase):
     """
 
     def __init__(self, timer: timer_node, n_points: int, min_p: float, max_p: float, min_e: float, max_e: float,
-                 mass_rate: bool = False, cache: bool = False):
+                 cache: bool = False):
         """
         This is the constructor of the Geothermal Physics class.
 
@@ -34,8 +34,6 @@ class Geothermal(PhysicsBase):
         :type min_p, max_p: float
         :param min_e, max_e: Minimum, maximum enthalpy
         :type min_e, max_e: float
-        :param mass_rate: Switch for mass rate/volume rate?
-        :type mass_rate: bool
         :param cache: Switch to cache operator values
         :type cache: bool
         """
@@ -43,11 +41,7 @@ class Geothermal(PhysicsBase):
         components = ["H2O"]
 
         # Define phases and variables
-        self.mass_rate = mass_rate
-        if self.mass_rate:
-            phases = ['water_mass', 'steam_mass', 'temperature', 'energy']
-        else:
-            phases = ['water', 'steam', 'temperature', 'energy']
+        phases = ['water', 'steam']
         variables = ['pressure', 'enthalpy']
         state_spec = PhysicsBase.StateSpecification.PH
 
@@ -90,7 +84,7 @@ class Geothermal(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
+        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph))()
 
     def determine_obl_bounds(self, state_min, state_max):
         """
