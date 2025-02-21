@@ -97,11 +97,11 @@ void pybind_well_controls(py::module &m)
     .def("set_rate_control", &well_control_iface::set_rate_control);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
-	.value("BHP", well_control_iface::WellControlType::BHP)
     .value("MOLAR_RATE",	well_control_iface::WellControlType::MOLAR_RATE)
     .value("MASS_RATE", well_control_iface::WellControlType::MASS_RATE)
     .value("VOLUMETRIC_RATE", well_control_iface::WellControlType::VOLUMETRIC_RATE)
     .value("ADVECTIVE_HEAT_RATE", well_control_iface::WellControlType::ADVECTIVE_HEAT_RATE)
+    .value("BHP", well_control_iface::WellControlType::BHP)
 	.export_values();
 
 #endif

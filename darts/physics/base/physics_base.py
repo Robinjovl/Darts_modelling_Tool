@@ -221,12 +221,10 @@ class PhysicsBase:
         Method to define well controls
 
         :param well_name: Name of the well on which the control is defined
-        :param control_type: Well control type 0) BHP, 1) MOLAR_RATE, 2) MASS_RATE, 3) VOLUMETRIC_RATE,
-        4) ADVECTIVE_HEAT_RATE, default is BHP
+        :param control_type: Well control type 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE, 4) BHP, default is BHP
         :param is_inj: Is injection well or production well
         :param target: Target BHP or rate, consistent with well control type
-        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control
-        is of the rate type.
+        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
         :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
         """

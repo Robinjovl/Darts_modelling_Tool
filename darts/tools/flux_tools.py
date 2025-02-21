@@ -184,7 +184,7 @@ def get_well_phases_volumetric_rates(m, well: ms_well) -> np.ndarray:
     """
 
     # calculate fluxes
-    volumetric_rate_starting_idx = 2 + (int(well_control_iface.VOLUMETRIC_RATE) - 1) * m.physics.nph
+    volumetric_rate_starting_idx = int(well_control_iface.VOLUMETRIC_RATE) * m.physics.nph
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
                                    flux_eval=[m.physics.well_ctrl_itor],
                                    eval_ids=np.arange(volumetric_rate_starting_idx, volumetric_rate_starting_idx + m.physics.nph))

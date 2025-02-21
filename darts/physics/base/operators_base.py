@@ -36,15 +36,11 @@ class WellControlOperators(OperatorsBase):
 
         self.property.evaluate(vec_state_as_np)
 
-        # Store P, T and composition of current state
-        vec_values_as_np[0] = state[0]
-        vec_values_as_np[1] = self.property.temperature
-
         # Store rate controls
         mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
 
         # Molar rate
-        idx = 2
+        idx = 0
         vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
 
         # Mass rate
@@ -56,10 +52,15 @@ class WellControlOperators(OperatorsBase):
         vec_values_as_np[idx + self.property.ph] = mobility
 
         # Advective heat rate
+        idx += self.nph
         if self.thermal:
-            idx += self.nph
             vec_values_as_np[idx + self.property.ph] = \
                     self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
+
+        # Store P, T and composition of current state
+        idx += self.nph
+        vec_values_as_np[idx + 0] = state[0]
+        vec_values_as_np[idx + 1] = self.property.temperature
 
         return 0
 

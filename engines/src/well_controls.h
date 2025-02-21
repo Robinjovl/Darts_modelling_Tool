@@ -28,7 +28,8 @@
 class well_control_iface
 {
 public:
-  enum WellControlType : int { BHP = 0, MOLAR_RATE, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE };
+  enum WellControlType : int { MOLAR_RATE = 0, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, BHP };
+  static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
   std::string name;
 
 protected:
@@ -48,7 +49,7 @@ public:
 	  // Evaluate well control operators
     // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
 	  n_vars = n_comps + thermal;
-    n_ops = 2 + 4 * n_phases;
+    n_ops = WellControlType::BHP * n_phases + well_control_iface::n_state_ctrls;
 	  well_control_ops.resize(n_ops);
 	  well_control_ops_derivs.resize(n_ops * n_vars);
   }
