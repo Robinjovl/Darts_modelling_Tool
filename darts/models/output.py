@@ -896,3 +896,305 @@ class Output:
         plt.close()
 
         return well_rates_dict
+
+    def store_well_rates_bhp_and_bht_over_time_as_dict(self, plot_figs : bool = False):
+        """
+        Stores well rates (phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates,
+        components_mass_rates, and heat_rate), bottom-hole pressure (BHP), and bottom-hole temperature (BHT) over time.
+        """
+        h5_well_data = load_hdf5_to_dict(self.well_filepath)
+
+        # Calculate well rates
+        perfs = [p for well in self.reservoir.wells for p in well.perforations]
+        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
+        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+        perfs_conn_ids = find_conn_ids_for_perfs(perfs, block_m, block_p, self.reservoir.mesh.n_res_blocks)
+
+        # Get well indices for each perforation
+        geometric_WI = np.array([p[2] for well in self.reservoir.wells for p in well.perforations])
+
+        # Get property container for operators calculations
+        property_container = self.physics.property_containers
+        pc = property_container[0]
+
+        # Path of the folder in which figures will be saved
+        main_dir = os.path.join(self.output_folder, 'figures/output_well_rates')
+        if plot_figs:
+            # Create new folders in which well figures will be stored
+            if not os.path.exists(main_dir):
+                os.makedirs(main_dir, exist_ok=True)
+            elif os.path.exists(main_dir):
+                shutil.rmtree(main_dir)
+                os.makedirs(main_dir, exist_ok=True)
+
+            for well in self.reservoir.wells:
+                well_dir = os.path.join(main_dir, 'well_' + well.name)
+                os.makedirs(well_dir, exist_ok=True)
+                for perf in well.perforations:
+                    perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                    os.makedirs(perf_dir, exist_ok=True)
+        elif plot_figs is False:
+            # If plot_figs is False and the directory in which well figures were saved in the past exists,
+            # it removes that folder to avoid confusion.
+            if os.path.exists(main_dir):
+                shutil.rmtree(main_dir)
+
+        well_output_dict = {}
+        types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
+                               "components_molar_rates", "components_mass_rates""heat_rate"]
+        for rate_type in types_of_well_rates:
+            # if rate_type == 'heat_rate' and not self.physics.thermal:
+            if rate_type == 'heat_rate':
+                continue
+
+            time, rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, rate_type,
+                                                     self.physics.thermal, pc)
+            well_output_dict['time'] = time
+
+            """""""""  Plot well rates over time """""""""
+            """ Rates for each perforation """
+            perf_counter = 0
+            for well in self.reservoir.wells:
+                for perf in well.perforations:
+                    if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
+                        for phase in range(pc.nph):
+                            phase_rate_for_perf = - rates[:, perf_counter, phase]
+
+                            plt.figure()
+                            plt.plot(time, phase_rate_for_perf, color='r', marker='o', markersize=5)
+                            plt.xlabel('time [day]', fontsize=16)
+
+                            if rate_type == 'phases_molar_rates':
+                                plt.ylabel(f'{pc.phases_name[phase]} molar rate [kmol/day]', fontsize=16)
+                                perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
+                                os.makedirs(perf_dir, exist_ok=True)  # Ensure directory exists before saving
+                                if plot_figs:
+                                    plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.phases_name[phase]}.png'))
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+
+                                well_output_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' + pc.phases_name[phase]] = phase_rate_for_perf
+
+                            elif rate_type == 'phases_mass_rates':
+                                plt.ylabel(f'{pc.phases_name[phase]} mass rate [kg/day]', fontsize=16)
+                                perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
+                                os.makedirs(perf_dir, exist_ok=True)
+                                if plot_figs:
+                                    plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.phases_name[phase]}.png'))
+                                well_output_dict[ f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+
+                                well_output_dict['\well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' + pc.phases_name[phase]] = phase_rate_for_perf
+
+                            elif rate_type == 'phases_volumetric_rates':
+                                plt.ylabel(f'{pc.phases_name[phase]} volumetric rate [m3/day]', fontsize=16)
+                                perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
+                                os.makedirs(perf_dir, exist_ok=True)
+                                plt.tight_layout()
+                                if plot_figs:
+                                    plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{pc.phases_name[phase]}.png'))
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+                                well_output_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_volumetric_rate_' + pc.phases_name[phase]] = phase_rate_for_perf
+
+                    elif rate_type in ['components_molar_rates', 'components_mass_rates']:
+                        for component in range(pc.nc_fl):
+                            component_rate_for_perf = - np.sum(rates[:, perf_counter, component::pc.nc_fl], axis=1)
+
+                            plt.figure()
+                            plt.plot(time, component_rate_for_perf, color='r', marker='o', markersize=5)
+
+                            plt.xlabel('time [day]', fontsize=16)
+
+                            if rate_type == 'components_molar_rates':
+                                plt.ylabel(f'{pc.components_name[component]} molar rate [kmole/day]', fontsize=16)
+                                perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
+                                plt.tight_layout()
+                                os.makedirs(perf_dir, exist_ok=True)
+                                if plot_figs:
+                                    plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.components_name[component]}.png'))
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.components_name[component]}'] = component_rate_for_perf
+
+                                well_output_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_molar_rate_' + pc.components_name[component]] = component_rate_for_perf
+                            elif rate_type == 'components_mass_rates':
+                                plt.ylabel(f'{pc.components_name[component]} mass rate [kg/day]', fontsize=16)
+                                perf_dir = os.path.join(main_dir, 'well_' + well.name, f'perf_{str(perf[0])}')
+                                plt.tight_layout()
+                                os.makedirs(perf_dir, exist_ok=True)
+                                if plot_figs:
+                                    plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.components_name[component]}.png'))
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.components_name[component]}'] = component_rate_for_perf
+                                well_output_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_mass_rate_' + pc.components_name[component]] = component_rate_for_perf
+
+                    elif rate_type == 'heat_rate':
+                        heat_rate_of_all_phases_for_perf = - np.sum(rates[:, perf_counter, :], axis=1)
+
+                        plt.figure()
+                        plt.plot(time, heat_rate_of_all_phases_for_perf, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel('heat rate [kJ/day]', fontsize=16)
+                        perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
+                        plt.tight_layout()
+                        os.makedirs(perf_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(os.path.join(perf_dir, f'well_{well.name}_perf_{str(perf[0])}_heat_rate.png'))
+                        well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_heat_rate'] = heat_rate_of_all_phases_for_perf
+                        well_output_dict['well_' + well.name + '_perf_' + str(perf[0]) + '_heat_rate'] = heat_rate_of_all_phases_for_perf
+
+                    perf_counter += 1
+
+            """ Total rates for each well """
+            if rate_type == 'phases_molar_rates':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+                    for phase in range(pc.nph):
+                        phase_molar_rate_for_well = 0
+                        for perf in well.perforations:
+                            phase_molar_rate_for_well += - rates[:, perf_counter, phase]
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                        plt.figure()
+                        plt.plot(time, phase_molar_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' molar rate [kmol/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.phases_name[phase]}.png'))
+                        well_output_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_well
+                        well_output_dict['well_' + well.name + '_molar_rate_' + pc.phases_name[phase]] = phase_molar_rate_for_well
+
+                    perf_counter += len(well.perforations)
+
+            elif rate_type == 'phases_mass_rates':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+
+                    for phase in range(pc.nph):
+                        phase_mass_rate_for_well = 0
+                        for perf in well.perforations:
+                            phase_mass_rate_for_well += - rates[:, perf_counter, phase]
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                        plt.figure()
+                        plt.plot(time, phase_mass_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' mass rate [kg/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(
+                                os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.phases_name[phase]}.png'))
+                        well_output_dict[f'well_{well.name}_mass_rate_{pc.phases_name[phase]}'] = phase_mass_rate_for_well
+                    perf_counter += len(well.perforations)
+
+            elif rate_type == 'phases_volumetric_rates':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+
+                    for phase in range(pc.nph):
+                        phase_volumetric_rate_for_well = 0
+                        for perf in well.perforations:
+                            phase_volumetric_rate_for_well += - rates[:, perf_counter, phase]
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                        plt.figure()
+                        plt.plot(time, phase_volumetric_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' volumetric rate [m$^3$/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(
+                                os.path.join(well_dir, f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}.png'))
+                        well_output_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}'] = phase_volumetric_rate_for_well
+                        well_output_dict['well_' + well.name + '_volumetric_rate_' + pc.phases_name[phase]] = phase_volumetric_rate_for_well
+
+                    perf_counter += len(well.perforations)
+
+            elif rate_type == 'components_molar_rates':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+                    for component in range(pc.nc_fl):
+                        component_molar_rate_for_well = 0
+                        for perf in well.perforations:
+                            component_molar_rate_for_well += - np.sum(
+                                rates[:, perf_counter, component::pc.nc_fl], axis=1)
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                        plt.figure()
+                        plt.plot(time, component_molar_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel(pc.components_name[component] + ' molar rate [kmole/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.components_name[component]}.png'))
+                        well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}'] = component_molar_rate_for_well
+                        well_output_dict['well_' + well.name + '_molar_rate_' + pc.components_name[component]] = component_molar_rate_for_well
+
+                    perf_counter += len(well.perforations)
+
+            elif rate_type == 'components_mass_rates':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+                    for component in range(pc.nc_fl):
+                        component_mass_rate_for_well = 0
+                        for perf in well.perforations:
+                            component_mass_rate_for_well += - np.sum(rates[:, perf_counter, component::pc.nc_fl],
+                                                                     axis=1)
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                        plt.figure()
+                        plt.plot(time, component_mass_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('time [day]', fontsize=16)
+                        plt.ylabel(pc.components_name[component] + ' mass rate [kg/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        if plot_figs:
+                            plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.components_name[component]}.png'))
+                        well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}'] = component_mass_rate_for_well
+                        well_output_dict['well_' + well.name + '_mass_rate_' + pc.components_name[component]] = component_mass_rate_for_well
+
+                    perf_counter += len(well.perforations)
+
+            elif rate_type == 'heat_rate':
+                perf_counter = 0
+                for well in self.reservoir.wells:
+
+                    heat_rate_for_well = 0
+                    for phase in range(pc.nph):
+                        for perf in well.perforations:
+                            heat_rate_for_well += - rates[:, perf_counter, phase]
+
+                            perf_counter += 1
+                        perf_counter -= len(well.perforations)
+
+                    plt.figure()
+                    plt.plot(time, heat_rate_for_well, color='r', marker='o', markersize=5)
+                    plt.xlabel('time [day]', fontsize=16)
+                    plt.ylabel('heat rate [kJ/day]', fontsize=16)
+                    well_dir = os.path.join(main_dir, 'well_' + well.name)
+                    plt.tight_layout()
+                    os.makedirs(well_dir, exist_ok=True)
+                    if plot_figs:
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_heat_rate.png'))
+                    well_output_dict[f'well_{well.name}_heat_rate'] = heat_rate_for_well
+
+                    perf_counter += len(well.perforations)
+
+        plt.close()
+
+        return well_output_dict
