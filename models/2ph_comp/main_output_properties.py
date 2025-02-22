@@ -152,3 +152,5 @@ m.output.output_to_vtk()
 # # filter properties to only evaluate the properties of interest
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')
+
+m.output.plot_well_rates(["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates", "heat_rate", "components_molar_rates", "components_mass_rates"])
