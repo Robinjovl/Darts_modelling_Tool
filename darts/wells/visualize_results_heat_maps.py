@@ -33,7 +33,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             true_vertical_depths_segments = true_vertical_depths_segments[::-1]
 
     if x_axis == "simulation_time":
-        simulation_time = h5_well_data["dynamic"]["time"]
+        simulation_time = h5_well_data["dynamic"]["time"] * 24 * 60 * 60   # convert days to seconds
 
     # Get components names
     components_names = coupled_model.physics.property_containers[0].components_name
