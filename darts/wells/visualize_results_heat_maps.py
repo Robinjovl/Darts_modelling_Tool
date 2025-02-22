@@ -7,6 +7,12 @@ import pickle
 from darts.models.darts_model import DartsModel
 
 def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict, coupled_model: DartsModel):
+    """
+    :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
+    properties of well segments are stored
+    :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
+    :param coupled_model: An instance of DartsModel
+    """
     # y axis: standard direction and segment depths in meters
     y_axis_convention = "standard"
     y_axis = "segment_depth"
@@ -34,70 +40,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     components_names = coupled_model.physics.property_containers[0].components_name
     num_components = len(components_names)
     num_segments = well_geom.num_segments
-
-    #%% Component/components overall mole fraction profiles
-    #
-    # for c, comp_name in enumerate(components_names[:-1]):
-    #     # Initialize component c mole fraction matrix
-    #     component_c_mole_fraction_matrix = np.zeros((num_segments, len(time_steps)))
-    #
-    #     # Fill component c mole fraction matrix
-    #     for i, time_step in enumerate(time_steps):
-    #         component_c_mole_fraction_profile = primary_variables_df[time_step][num_segments * (c + 1):num_segments * (c + 2)]
-    #         component_c_mole_fraction_matrix[:, i] = component_c_mole_fraction_profile
-    #
-    #     # Initialize the plot
-    #     fig, ax = plt.subplots(figsize=(12, 6))
-    #
-    #     # Create the heatmap
-    #     cmap = plt.get_cmap('jet')
-    #     if x_axis == "time_step_index" and y_axis == "segment_index":
-    #         cax = ax.pcolormesh(range(len(time_steps)), range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-    #
-    #         # Set the y-axis ticks
-    #         ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #         # Add axes labels
-    #         ax.set_xlabel('Time step [-]', fontsize=14)
-    #         ax.set_ylabel('Segment index [-]', fontsize=14)
-    #
-    #     elif x_axis == "simulation_time" and y_axis == "segment_index":
-    #         cax = ax.pcolormesh(simulation_time, range(num_segments), component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-    #
-    #         # Set the y-axis ticks
-    #         ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #         # Add axes labels
-    #         ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #         ax.set_ylabel('Segment index [-]', fontsize=14)
-    #
-    #     elif x_axis == "time_step_index" and y_axis == "segment_depth":
-    #         cax = ax.pcolormesh(range(len(time_steps)), true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-    #
-    #         # Add axes labels
-    #         ax.set_xlabel('Time step [-]', fontsize=14)
-    #         ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    #     elif x_axis == "simulation_time" and y_axis == "segment_depth":
-    #         cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, component_c_mole_fraction_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-    #
-    #         # Add axes labels
-    #         ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #         ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    #     if y_axis_convention == "standard":
-    #         # Reverse the y-axis
-    #         ax.invert_yaxis()
-    #
-    #     # Add title
-    #     ax.set_title(comp_name + " overall mole fraction profile along the wellbore over time", fontsize=14, fontweight='bold')
-    #
-    #     # Add a colorbar
-    #     cbar = fig.colorbar(cax, ax=ax)
-    #     cbar.set_label(comp_name + ' overall mole fraction [-]', fontsize=14)
-    #
-    #     plt.tight_layout()
-    #     plt.show()
 
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
@@ -241,7 +183,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         plt.tight_layout()
         plt.show()
 
-
     #%% Temperature profile
 
     if coupled_model.physics.thermal is True:
@@ -295,7 +236,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         if y_axis_convention == "standard":
             # Reverse the y-axis
             ax.invert_yaxis()
-
 
         # Add title
         ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -361,7 +301,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Reverse the y-axis
         ax.invert_yaxis()
 
-
     # Add title
     ax.set_title('Gas saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
 
@@ -371,7 +310,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     plt.tight_layout()
     plt.show()
-
 
     #%% Profile/profiles of components mole fractions in the gaseous phase
 
@@ -439,7 +377,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         plt.tight_layout()
         plt.show()
 
-
     #%% Profile/profiles of components mole fractions in the liquid phase
 
     for c, comp_name in enumerate(components_names):
@@ -491,7 +428,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             ax.set_xlabel('Simulation time [second]', fontsize=14)
             ax.set_ylabel('TVD [meter]', fontsize=14)
 
-
         if y_axis_convention == "standard":
             # Reverse the y-axis
             ax.invert_yaxis()
@@ -505,7 +441,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         plt.tight_layout()
         plt.show()
-
 
     #%% Gas density profile
 
@@ -523,7 +458,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
-
 
     # Create the heatmap
     cmap = plt.get_cmap('jet')
@@ -565,7 +499,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Reverse the y-axis
         ax.invert_yaxis()
 
-
     # Add title
     ax.set_title('Gas density profile along the wellbore over time', fontsize=14, fontweight='bold')
 
@@ -575,7 +508,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     plt.tight_layout()
     plt.show()
-
 
     #%% Liquid density profile
 
@@ -661,7 +593,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
-
 
     # Create the heatmap
     cmap = plt.get_cmap('jet')
@@ -781,7 +712,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     plt.tight_layout()
     plt.show()
 
-
     #%% Gas velocity profile
 
     # # Initialize the gas velocity matrix
@@ -850,7 +780,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #
     # plt.tight_layout()
     # plt.show()
-
 
     #%% Liquid velocity profile
 
