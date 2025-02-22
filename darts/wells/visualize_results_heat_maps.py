@@ -6,7 +6,7 @@ import pickle
 
 from darts.models.darts_model import DartsModel
 
-def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, coupled_model: DartsModel):
+def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict, coupled_model: DartsModel):
     # y axis: standard direction and segment depths in meters
     y_axis_convention = "standard"
     y_axis = "segment_depth"
@@ -15,8 +15,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # y_axis_convention = "T2Well"
     # y_axis = "segment_index"
 
-    x_axis = "time_step_index"
-    # x_axis = "simulation_time"
+    # x_axis = "time_step_index"
+    x_axis = "simulation_time"
 
     well_geom = next(iter(coupled_model.wells_geometry.values()))
 
@@ -27,12 +27,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             true_vertical_depths_segments = true_vertical_depths_segments[::-1]
 
     if x_axis == "simulation_time":
-        # Load dt from the pickle file
-        with open('stored_dt_pipe_geometry_other_info.pkl', 'rb') as file:
-            dt, _, _ = pickle.load(file)
-
-        simulation_time = np.concatenate(([0], np.cumsum(dt)))
-        simulation_time = np.delete(simulation_time, 0)
+        dt = h5_well_data["dynamic"]["time"]
+        simulation_time = np.cumsum(dt)
 
     # Get components names
     components_names = coupled_model.physics.property_containers[0].components_name
