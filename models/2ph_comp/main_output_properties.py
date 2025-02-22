@@ -153,4 +153,4 @@ m.output.output_to_vtk()
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')
 
-m.output.store_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
+m.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
