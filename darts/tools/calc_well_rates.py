@@ -9,7 +9,7 @@ from darts.physics.super.property_container import PropertyContainer
 
 #%% Main function
 def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, geometric_WI: np.ndarray,
-                               rate_type: str, thermal: bool, pc: PropertyContainer):
+                               thermal: bool, pc: PropertyContainer, rate_type: str):
     """
     Calculates different types of rates at perforations of wells
 
@@ -82,7 +82,7 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
 
             rates[i, j] = values * geometric_WI[j] * dp[j]
 
-    return h5_well_data['dynamic']['time'], rates
+    return rates
 
 #%% Operator functions
 def phase_molar_rate_operators(state, pc):
