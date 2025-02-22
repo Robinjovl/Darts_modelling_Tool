@@ -941,7 +941,7 @@ class Output:
 
         well_output_dict = {}
         types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
-                               "components_molar_rates", "components_mass_rates""heat_rate"]
+                               "components_molar_rates", "components_mass_rates", "heat_rate"]
         for rate_type in types_of_well_rates:
             # if rate_type == 'heat_rate' and not self.physics.thermal:
             if rate_type == 'heat_rate':
