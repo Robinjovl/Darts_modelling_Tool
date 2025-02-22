@@ -154,4 +154,3 @@ m.output.output_to_vtk()
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')
 
 m.output.store_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
-# m.output.plot_well_rates(["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates", "heat_rate", "components_molar_rates", "components_mass_rates"])
