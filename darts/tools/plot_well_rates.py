@@ -19,7 +19,7 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
     :type perfs_conn_ids: numpy.ndarray
     :param geometric_WI: Geometric part of well indices
     :type geometric_WI: numpy.ndarray
-    :param rate_type: Types of rates to calculate
+    :param rate_type: Type of well rate to calculate
     :type rate_type: str
     :param thermal: If the model is thermal or not
     :type thermal: bool
@@ -71,8 +71,10 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
                 values = phase_mass_rate_operators(state, pc)
             elif rate_type == 'phases_volumetric_rates':
                 values = phase_volumetric_rate_operators(state, pc)
-            elif rate_type in ['components_molar_rates', 'components_mass_rates']:
+            elif rate_type in ['components_molar_rates']:
                 values = components_molar_rates_operators(state, pc)
+            elif rate_type == 'components_mass_rates':
+                values = components_mass_rates_operators(state, pc)
             elif rate_type == 'heat_rate':
                 values = heat_rate_operators(state, pc)
             else:
@@ -149,6 +151,24 @@ def components_molar_rates_operators(state, pc):
     for j in pc.ph:
         for i in range(pc.nc_fl):
             values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+
+    return values
+
+def components_mass_rates_operators(state, pc):
+    """
+    This function is used for calculating advective mass rates of components in each phase [kg/day]
+
+    :param state: State of the fluid containing the primary variables
+    :type state: numpy.ndarray
+    :param pc: An instance of the class PropertyContainer
+    :type pc: PropertyContainer
+    """
+    pc.evaluate(state)
+
+    values = np.zeros(pc.nph * pc.nc_fl)
+    for j in pc.ph:
+        for i in range(pc.nc_fl):
+            values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
 
     return values
 
