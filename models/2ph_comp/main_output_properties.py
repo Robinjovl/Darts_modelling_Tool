@@ -81,7 +81,7 @@ n.print_timers()
 # prop_plot(n.output_folder, property_array4)
 
 #%% Well output
-well_rates_dict = n.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
+well_rates_dict = n.output.store_and_plot_well_rates_bhp_and_bht_over_time(plot_figs=False)
 
 plt.figure()
 plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
