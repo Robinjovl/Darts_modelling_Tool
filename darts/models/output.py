@@ -887,6 +887,30 @@ class Output:
 
                     perf_counter += len(well.perforations)
 
+        # Store bottom-hole pressure (BHP) and temperature (BHT)
+        n_ts = len(time)
+        for well in self.reservoir.wells:
+            BHP = np.zeros(n_ts)
+            if self.physics.thermal:
+                BHT = np.zeros(n_ts)
+            elif self.physics.thermal is not True:
+                system_temp = self.physics.property_containers[0].temperature
+                BHT = system_temp * np.ones(n_ts)
+
+            well_head_idx = well.well_head_idx
+            cell_idx = find_one_array_in_another_indices([well_head_idx], h5_well_data['dynamic']['cell_id'])
+            for i in range(n_ts):
+                id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
+                p = h5_well_data['dynamic']['X'][i, :, id_pres]
+                BHP[i] = p[cell_idx]
+                if self.physics.thermal:
+                    id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')
+                    T = h5_well_data['dynamic']['X'][i, :, id_temp]
+                    BHT[i] = T[cell_idx]
+
+            well_output_dict[f'well_{well.name}_BHP'] = BHP
+            well_output_dict[f'well_{well.name}_BHT'] = BHT
+
         plt.close()
 
         # Convert well_output_dict to a DataFrame
