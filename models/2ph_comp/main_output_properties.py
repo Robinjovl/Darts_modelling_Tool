@@ -80,6 +80,13 @@ n.print_timers()
 # time, property_array4 = n.output.output_properties(filepath = None, output_properties = None, engine = True)
 # prop_plot(n.output_folder, property_array4)
 
+#%% Well output
+well_rates_dict = n.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
+
+plt.figure()
+plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
+plt.show()
+
 #%% plot results
 
 xarray_data = n.output.output_to_xarray() # evaluate properties from *.h5 and save as *.nc file
@@ -129,10 +136,3 @@ m.output.output_to_vtk()
 # # filter properties to only evaluate the properties of interest
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')
-
-#%% Well output
-well_rates_dict = m.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
-
-plt.figure()
-plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
-plt.show()
