@@ -96,15 +96,19 @@ class Model(DartsModel):
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
+            state_spec = Compositional.StateSpecification.PT
         else:
             thermal = False
+            state_spec = Compositional.StateSpecification.P
+            
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
         max_t = 373.15 if temperature is None else None
         self.physics = Compositional(components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=zero / 10, max_z=1 - zero / 10, min_t=min_t, max_t=max_t,
-                                     thermal=thermal, cache=False)
+                                     state_spec = state_spec, 
+                                     cache=False)
         self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
 
         dispersivity = 10.
