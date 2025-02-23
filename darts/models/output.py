@@ -4,6 +4,7 @@ import h5py
 import xarray as xr
 import matplotlib.pyplot as plt
 import shutil
+import pickle
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
@@ -887,5 +888,9 @@ class Output:
                     perf_counter += len(well.perforations)
 
         plt.close()
+
+        # Save well_output_dict to a pickle file
+        with open(os.path.join(self.output_folder, 'output_well_rates_bhp_and_bht.pkl'), "wb") as file:
+            pickle.dump(well_output_dict, file)
 
         return well_output_dict
