@@ -5,6 +5,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import shutil
 import pickle
+import pandas as pd
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
@@ -598,7 +599,7 @@ class Output:
         components_mass_rates, and heat_rate), bottom-hole pressure (BHP), and bottom-hole temperature (BHT) over time.
         """
         # Path of the folder in which figures will be saved
-        main_dir = os.path.join(self.output_folder, 'figures/output_well_rates')
+        main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
         if plot_figs:
             # Create new folders in which well figures will be stored
             if not os.path.exists(main_dir):
@@ -889,8 +890,12 @@ class Output:
 
         plt.close()
 
-        # Save well_output_dict to a pickle file
-        with open(os.path.join(self.output_folder, 'output_well_rates_bhp_and_bht.pkl'), "wb") as file:
-            pickle.dump(well_output_dict, file)
+        # Convert well_output_dict to a DataFrame
+        td = pd.DataFrame.from_dict(well_output_dict)
+        # Store the well time data in a pickle file
+        td.to_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
+        # Store the well time data in an Excel file
+        with pd.ExcelWriter(os.path.join(self.output_folder, 'well_time_data.xlsx')) as writer:
+            td.to_excel(writer, sheet_name='Sheet1')
 
         return well_output_dict

@@ -44,9 +44,8 @@ def read_data(sol_filepath, well_filepath, timestep = None):
 from model import Model
 n = Model()
 n.init()
-n.set_output(
-    output_folder='data\case_0', sol_filename='solution.h5',
-    save_initial=True, all_phase_props=False, precision='d', compression = None, verbose=False)
+n.set_output(output_folder='data\case_0', sol_filename='solution.h5',
+             save_initial=True, all_phase_props=False, precision='d', compression = None, verbose=False)
 print(type(n.reservoir))
 # print(n.sol_filename)
 # print(n.sol_filepath)
@@ -96,28 +95,6 @@ n.output.output_to_vtk()
 # evaluate density at the last time step from engine
 # n.output.output_to_vtk(ith_step = 4, output_directory = n.output_folder + '/vtk_files2', output_properties = ['dens0'], engine = True)
 
-#%%
-
-# types_of_well_rates = [
-    # 'phases_molar_rates',
-    # 'phases_mass_rates',
-    # 'phases_volumetric_rates',
-    # 'components_molar_rates',
-    # 'components_mass_rates'
-    # 'heat_rate'
-    # ]
-
-# well_rates_dict = n.output.plot_well_rates(types_of_well_rates)
-# td = pd.DataFrame.from_dict(well_rates_dict)
-# td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
-# writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
-# td.to_excel(writer, sheet_name='Sheet1')
-# writer.close()
-
-# plt.figure()
-# plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
-# plt.show()
-
 #%% restart a model
 
 from model import Model
@@ -153,4 +130,9 @@ m.output.output_to_vtk()
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')
 
-m.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
+#%% Well output
+well_rates_dict = m.output.store_and_plot_well_rates_bhp_and_bht_over_time_as_dict(plot_figs=False)
+
+plt.figure()
+plt.plot(well_rates_dict['time'], well_rates_dict['well_P1_molar_rate_gas'])
+plt.show()
