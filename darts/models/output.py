@@ -11,7 +11,6 @@ from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
 from darts.tools.calc_well_rates import *
 from darts.physics.base.operators_base import PropertyOperators
-# from darts.tools.plot_well_rates import *
 
 #%%
 
