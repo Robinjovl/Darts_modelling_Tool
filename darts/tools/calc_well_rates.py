@@ -84,6 +84,9 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
 
     return rates
 
+def calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, thermal, pc, rate_type):
+    return None
+
 #%% Operator functions
 def phase_molar_rate_operators(state, pc):
     """
@@ -210,6 +213,9 @@ def find_conn_ids_for_perfs(perfs, block_m, block_p, n_res_blocks):
     perfs_conn_ids = np.nonzero(np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks))[0]
     assert (len(perfs_conn_ids) == len(perfs) and (block_m[perfs_conn_ids] > n_res_blocks).all())
     return perfs_conn_ids
+
+def find_conn_ids_for_wellhead_conns():
+    return None
 
 def find_one_array_in_another_indices(to_find, in_array):
     indices = []

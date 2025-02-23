@@ -630,9 +630,11 @@ class Output:
         block_m = np.array(self.reservoir.mesh.block_m, copy=False)
         block_p = np.array(self.reservoir.mesh.block_p, copy=False)
         perfs_conn_ids = find_conn_ids_for_perfs(perfs, block_m, block_p, self.reservoir.mesh.n_res_blocks)
+        wellhead_conn_ids = find_conn_ids_for_wellhead_conns()
 
         # Get well indices for each perforation
         geometric_WI = np.array([p[2] for well in self.reservoir.wells for p in well.perforations])
+        wellhead_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
 
         # Get property container for operators calculations
         property_container = self.physics.property_containers
@@ -647,6 +649,8 @@ class Output:
 
             rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI,
                                                self.physics.thermal, pc, rate_type)
+            total_rates = calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, self.physics.thermal,
+                                                            pc, rate_type)
 
             """""""""  Plot well rates over time """""""""
             """ Rates for each perforation """
