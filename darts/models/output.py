@@ -597,10 +597,10 @@ class Output:
         Stores well rates (phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates,
         components_mass_rates, and heat_rate), bottom-hole pressure (BHP), and bottom-hole temperature (BHT) over time.
         """
-        # Path of the folder in which figures will be saved
+        # Path of the folder in which well time plots are already saved or will be saved
         main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
         if plot_figs:
-            # Create new folders in which well figures will be stored
+            # Create new folders in which well time plots will be stored
             if not os.path.exists(main_dir):
                 os.makedirs(main_dir, exist_ok=True)
             elif os.path.exists(main_dir):
@@ -614,7 +614,7 @@ class Output:
                     perf_dir = os.path.join(main_dir, 'well_' + well.name, 'perf_' + str(perf[0]))
                     os.makedirs(perf_dir, exist_ok=True)
         elif plot_figs is False:
-            # If plot_figs is False and the directory in which well figures were saved in the past exists,
+            # If plot_figs is False and the directory in which well time pots were saved in the past exists,
             # it removes that folder to avoid confusion.
             if os.path.exists(main_dir):
                 shutil.rmtree(main_dir)
