@@ -592,7 +592,7 @@ class Output:
 
         self.timer.node["vtk_output"].stop(); self.timer.stop()
 
-    def store_and_plot_well_rates_bhp_and_bht_over_time(self, plot_figs : bool = False):
+    def store_and_plot_well_time_data(self, plot_figs : bool = False):
         """
         Stores well rates (phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates,
         components_mass_rates, and heat_rate), bottom-hole pressure (BHP), and bottom-hole temperature (BHT) over time.
