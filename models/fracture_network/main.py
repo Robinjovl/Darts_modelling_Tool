@@ -13,7 +13,7 @@ def run_test(args: list = [], platform='cpu'):
         print('Not enough arguments provided')
         return 1, 0.0
 
-def test(case, overwrite='0', platform='cpu'):
+def run_case(case, overwrite='0', platform='cpu'):
     freeze_support()
 
     input_data = set_input_data(case)
@@ -66,4 +66,4 @@ if __name__ == "__main__":
     cases_list = ['whitby']
 
     for case in cases_list:
-        test(case, platform=platform)
+        run_case(case, platform=platform)

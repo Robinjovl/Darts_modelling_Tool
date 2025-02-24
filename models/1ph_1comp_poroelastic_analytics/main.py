@@ -126,7 +126,7 @@ def run_timestep_python(m, dt, t):
     converged = self.e.post_newtonloop(dt, t, converged)
     self.timer.node['simulation'].stop()
     return converged
-def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0'):
+def run_case(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0'):
     '''
     :param case: mandel/terzaghi
     :param scheme: stabilized/non_stabilized
@@ -474,7 +474,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
 
 def run_test(args: list = [], platform='cpu'):
     if len(args) == 4:
-        return test(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
+        return run_case(case=args[0], discr_name=args[1], mesh=args[2], overwrite=args[3])
     else:
         print('Wrong number of arguments provided to the run_test:', args)
         return 1, 0.0
@@ -574,8 +574,8 @@ if __name__ == '__main__':
             for mesh in ['rect', 'wedge', 'hex']:
                 if case == 'terzaghi_two_layers' and mesh == 'hex':
                     continue
-                mech_res = test(case=case, discr_name='mech_discretizer', mesh=mesh)
+                mech_res = run_case(case=case, discr_name='mech_discretizer', mesh=mesh)
                 if case != 'bai':  # is not supported by poroelastic as bai is thermoporoelasticity
-                    pm_res   = test(case=case, discr_name='pm_discretizer',   mesh=mesh)
+                    pm_res   = run_case(case=case, discr_name='pm_discretizer',   mesh=mesh)
 
         print('Ok')

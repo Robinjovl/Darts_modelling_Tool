@@ -12,7 +12,7 @@ from model_deadoil import ModelDeadOil
 from darts.models.cicd_model import compare_solution_with_reference
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
+def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -188,7 +188,7 @@ def run_test(args: list = [], platform='cpu'):
         physics_type = args[1]
 
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
+        ret = run_case(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
@@ -223,7 +223,7 @@ if __name__ == '__main__':
                     continue
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
+                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run_case(physics_type=physics_type,
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
                                                                                         platform=platform)
