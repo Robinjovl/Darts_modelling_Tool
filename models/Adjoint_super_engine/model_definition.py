@@ -198,7 +198,7 @@ class Model(CICDModel, OptModuleSettings):
 
 
 class customized_etor_specific_component(operator_set_evaluator_iface):
-    n_ops = 6
+    n_ops = 1
 
     def evaluate(self, state, values):
         """
