@@ -57,6 +57,8 @@ public:
   virtual int set_bhp_control(bool is_inj, std::vector<value_t>& well_control_spec_);
   virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, std::vector<value_t>& well_control_spec_);
 
+  WellControlType get_well_control_type() { return this->control_type; }
+
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
   
