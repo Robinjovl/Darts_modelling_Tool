@@ -12,7 +12,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      '2ph_geothermal', '2ph_geothermal_mass_flux',
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
-                     #'Chem_benchmark_new',
+                     'Chem_benchmark_new',
                      'CCS',
                      #'CO2_foam_CCS',
                      'SPE11b',
