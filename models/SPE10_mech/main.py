@@ -161,7 +161,7 @@ def run(model_folder, physics_type, is_finalize=True):
 
     return m, data
 
-def test(mesh_type, physics_type, overwrite='0'):
+def run_case(mesh_type, physics_type, overwrite='0'):
     '''
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
@@ -206,7 +206,7 @@ def test(mesh_type, physics_type, overwrite='0'):
 
 def run_test(args: list = [], platform='cpu'):
     if len(args) == 3:
-        return test(mesh_type=args[0], physics_type=args[1], overwrite=args[2])
+        return run_case(mesh_type=args[0], physics_type=args[1], overwrite=args[2])
     else:
         print('Wrong number of arguments provided to the run_test:', args)
         return 1, 0.0
