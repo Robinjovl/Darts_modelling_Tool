@@ -142,20 +142,14 @@ class Model(CICDModel, OptModuleSettings):
         return
 
     def set_well_controls(self):
-        self.inj_stream = [1.]
-        self.inj_stream = self.inj_stream[:-1] + [-45000.]  # TODO: fix well controls to specify temperature in PH specification
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            if self.iapws_physics:
-                if "I" in w.name:
-                    w.control = self.physics.new_bhp_water_inj(self.init_pressure + 30, 308.15)
-                else:
-                    w.control = self.physics.new_bhp_prod(self.init_pressure - 10)
+            if i == 0:
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.init_pressure + 30., inj_stream=[], inj_temp=308.15)
             else:
-                if "I" in w.name:
-                    w.control = self.physics.new_bhp_inj(self.init_pressure + 30, self.inj_stream)
-                else:
-                    w.control = self.physics.new_bhp_prod(self.init_pressure - 10)
-
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.init_pressure - 10.)
 
     def run(self, export_to_vtk=False, file_name='data'):
         output_props = ['pressure', 'temperature', 'enthalpy']

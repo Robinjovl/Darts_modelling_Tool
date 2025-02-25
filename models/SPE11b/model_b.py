@@ -547,29 +547,31 @@ class Model(DartsModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 if self.inj_rate[i] == 0:
-                    w.control = self.physics.define_well_controls(well_name = w.name, 
-                                                                  control_type = well_control_iface.MASS_RATE,
-                                                                  is_inj = True, 
-                                                                  target = 0.01,
-                                                                  phase_name = 'V',
-                                                                  inj_stream = self.inj_stream[:-1],
-                                                                  inj_temp = 273.15+T_inj)
+                    self.physics.set_well_controls(well = w,
+                                                   is_control = True,
+                                                   control_type = well_control_iface.MASS_RATE,
+                                                   is_inj = True,
+                                                   target = 0.01,
+                                                   phase_name = 'V',
+                                                   inj_stream = self.inj_stream[:-1],
+                                                   inj_temp = 273.15+T_inj)
                 
                 else:
-                    w.control = self.physics.define_well_controls(well_name = w.name, 
-                                                                  control_type = well_control_iface.MASS_RATE,
-                                                                  is_inj = True,
-                                                                  target = self.inj_rate[i], 
-                                                                  phase_name = 'V', 
-                                                                  inj_stream = self.inj_stream[:-1],
-                                                                  inj_temp = 273.15 + T_inj)
+                    self.physics.set_well_controls(well = w,
+                                                   is_control = True,
+                                                   control_type = well_control_iface.MASS_RATE,
+                                                   is_inj = True,
+                                                   target = self.inj_rate[i],
+                                                   phase_name = 'V',
+                                                   inj_stream = self.inj_stream[:-1],
+                                                   inj_temp = 273.15 + T_inj)
                     
                     print(f'Set well {w.name} to {self.inj_rate[i]} kg/day at 10°C')
                     
             
             # else:
-            #     w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-            #                                                   is_inj=False, target=self.p_prod)
+            #     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+            #                                    is_inj=False, target=self.p_prod)
 
     # def set_rhs_flux(self, t: float = None):
     #     M_CO2 = 44.01  # kg/kmol

@@ -90,12 +90,12 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
-                                                              is_inj=True, target=self.well_rate, phase_name='wat', inj_stream=self.inj[:-1],
-                                                              inj_temp=self.inj[-1])
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=self.well_rate, phase_name='wat', inj_stream=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
             else:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.MOLAR_RATE,
-                                                              is_inj=False, target=-self.well_rate, phase_name='wat')
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=False, target=-self.well_rate, phase_name='wat')
 
 
     def set_rhs_flux(self, t: float = None):
