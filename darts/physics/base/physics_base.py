@@ -214,39 +214,44 @@ class PhysicsBase:
                                                        precision=itor_precision)
         return
 
-    def define_well_controls(self, well_name: str, control_type: well_control_iface.WellControlType,
-                             is_inj: bool, target: float, phase_name: str = None,
-                             inj_stream: list = None, inj_temp: float = None):
+    def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
+                          target: float, phase_name: str = None, inj_stream: list = None, inj_temp: float = None,
+                          is_control: bool = True):
         """
-        Method to define well controls
+        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param well_name: Name of the well on which the control is defined
-        :param control_type: Well control type 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE, 4) BHP, default is BHP
-        :param is_inj: Is injection well or production well
+        :param well: ms_well object on which the control/constraint is defined
+        :param control_type: Well control type 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE,
+                             4) BHP, 5) NONE (if constraint needs to be deactivated); default is BHP
+        :param is_inj: Is injection well (true) or production well (false)
         :param target: Target BHP or rate, consistent with well control type
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
         :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
+        :param is_control: Is control (true) or constraint (false), default is true
         """
-        control = well_control_iface(well_name, self.nph, self.nc, self.thermal, self.well_ctrl_itor)
-
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
-        inj_stream = inj_stream if inj_stream is not None else np.zeros(self.nc - 1)  # for BHP controlled production well, pass dummy variables
-        inj_temp = inj_temp if inj_temp is not None else 0.
-        phase_idx = self.phases.index(phase_name) if phase_name is not None else 0
+        inj_stream = value_vector(inj_stream) if inj_stream is not None else value_vector(np.zeros(self.nc - 1))  # for BHP controlled production well, pass dummy variables
+        inj_temp = inj_temp if inj_temp is not None else 0.  # for isothermal case or production well, pass dummy variables
+        phase_idx = self.phases.index(phase_name) if phase_name is not None else 0   # for BHP controlled production well, pass dummy variables
 
-        well_control_spec = value_vector(np.concatenate([[target], inj_stream, [inj_temp]])) if self.thermal \
-            else value_vector(value_vector(np.concatenate([[target], inj_stream])))
-
-        # Pass controls specification to well controls object
+        # Pass controls specification to ms_well object
         if control_type == well_control_iface.BHP:
-            control.set_bhp_control(is_inj, well_control_spec)
+            if is_control:
+                well.set_bhp_control(is_inj, target, inj_stream, inj_temp)
+            else:
+                well.set_bhp_constraint(is_inj, target, inj_stream, inj_temp)
         else:
             # Injection/production rate
-            well_control_spec[0] = np.abs(well_control_spec[0]) if is_inj else -np.abs(well_control_spec[0])  # + for inj, - for prod
-            control.set_rate_control(is_inj, control_type, phase_idx, well_control_spec)
+            target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
 
-        return control
+            if is_control:
+                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+            else:
+                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+
+        return
 
     def determine_obl_bounds(self, state_min: list, state_max: list, state_spec: StateSpecification = StateSpecification.PH):
         """

@@ -90,11 +90,12 @@ void pybind_well_controls(py::module &m)
 
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
-    .def(py::init<std::string, index_t, index_t, bool, operator_set_gradient_evaluator_iface*>())
+    .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*>())
     .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
     .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
     .def("set_bhp_control", &well_control_iface::set_bhp_control)
-    .def("set_rate_control", &well_control_iface::set_rate_control);
+    .def("set_rate_control", &well_control_iface::set_rate_control)
+    .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("MOLAR_RATE",	well_control_iface::WellControlType::MOLAR_RATE)
@@ -102,6 +103,7 @@ void pybind_well_controls(py::module &m)
     .value("VOLUMETRIC_RATE", well_control_iface::WellControlType::VOLUMETRIC_RATE)
     .value("ADVECTIVE_HEAT_RATE", well_control_iface::WellControlType::ADVECTIVE_HEAT_RATE)
     .value("BHP", well_control_iface::WellControlType::BHP)
+    .value("NONE", well_control_iface::WellControlType::NONE)
 	.export_values();
 
 #endif
