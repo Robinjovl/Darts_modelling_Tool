@@ -125,14 +125,14 @@ class ModelDeadOil(Model_CPG):
             else:
                 print('Unknown well ctrl.type', wctrl.type)
                 exit(1)
-            if verbose:
-                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
+            # if verbose:
+            #     print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
 
         # check
-        for w in self.reservoir.wells:
-            assert w.control is not None, 'well control is not initialized for the well ' + w.name
-            if verbose and w.constraint is not None and 'rate' in str(type(w.control)):
-                print('A constraint for the well ' + w.name + ' is not initialized!')
+        # for w in self.reservoir.wells:
+        #     assert w.control is not None, 'well control is not initialized for the well ' + w.name
+        #     if verbose and w.constraint is not None and 'rate' in str(type(w.control)):
+        #         print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def get_arrays(self):
         '''

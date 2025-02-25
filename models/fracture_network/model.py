@@ -206,11 +206,11 @@ class Model(CICDModel):
                     self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=wctrl.prod_bhp_constraint)
 
-            print(w.name,
-                  w.well_head_depth,
-                  w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
-                  w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
-                  w.control.target_rate if hasattr(w.control, 'target_rate') else '')
+            # print(w.name,
+            #       w.well_head_depth,
+            #       w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
+            #       w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
+            #       w.control.target_rate if hasattr(w.control, 'target_rate') else '')
         return 0
 
     def get_mat_frac_range(self, part):
