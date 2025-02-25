@@ -112,51 +112,6 @@ class Geothermal(PhysicsBase):
         assert 'pressure' in input_distribution.keys() and ('temperature' in input_distribution.keys() or
                                                             'enthalpy' in input_distribution.keys())
         input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
-        for key, input_values in enumerate(input_distribution.values()):
-            input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
-            assert len(input_values) == len(input_depth)
-
-        # Get depths and primary variable arrays from mesh object
-        depths = np.asarray(mesh.depth)
-
-        # adjust the size of initial_state array in c++
-        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
-
-        # Loop over variables to fill initial_state vector in c++
-        for ith_var, variable in enumerate(self.vars):
-            if variable == "enthalpy" and "enthalpy" not in input_distribution.keys():
-                # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
-                p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
-                pressure = p_itor(depths)
-
-                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
-                temperature = t_itor(depths)
-
-                values = np.empty(mesh.n_blocks)
-                for j in range(mesh.n_blocks):
-                    state = np.array([pressure[j], temperature[j]])
-                    values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
-            else:
-                # Else, interpolate primary variable
-                itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
-                values = itor(depths)
-
-            np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
-
-    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray]):
-        """
-        Function to set initial conditions from given distribution of properties over depth.
-
-        :param mesh: conn_mesh object
-        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
-                                   and each entry is scalar or array of length equal to depths
-        :param input_depth: Array of depths over which depth table has been specified
-        """
-        # Assertions of consistent depth table specification
-        assert 'pressure' in input_distribution.keys() and ('temperature' in input_distribution.keys() or
-                                                            'enthalpy' in input_distribution.keys())
-        input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
         for key, input_values in input_distribution.values():
             input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
             assert len(input_values) == len(input_depth)

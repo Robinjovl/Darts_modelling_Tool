@@ -742,7 +742,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 	index_t r_ind, r_ind1, r_ind2, r_ind3, r_ind4, l_ind, l_ind1, upwd_idx[NP];
 	index_t j, diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], conn_id = 0, st_id = 0, conn_st_id = 0;
     value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
-	value_t avg_density, *buf, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult;
+	value_t avg_density, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult, t_cur, p_cur;
 	uint8_t d, v, c, p;
 	value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
@@ -825,22 +825,24 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 
 				if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
 				{
-					buf =		&X[N_VARS * stencil[conn_st_id]];
+					p_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + PRES_OP];
+					t_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + TEMP_OP];
 					buf_c =		&op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
 					buf_diff =	&op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
 				}
 				else									// boundary condition
 				{
-					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
+					p_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + P_VAR];
+					t_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + T_VAR];
 					buf_c =		&ZEROS[0]; // TODO: zeros only for Neumann
 					buf_diff =	&ZEROS[0]; // TODO: zeros only for Neumann
 				}
 
 
-				p_diff += tran[conn_st_id] * buf[P_VAR];
+				p_diff += tran[conn_st_id] * p_cur;
 				// heat conduction
 				if (THERMAL)
-					t_diff += tran_heat_cond[conn_st_id] * buf[T_VAR];
+					t_diff += tran_heat_cond[conn_st_id] * t_cur;
 				
 				for (p = 0; p < NP; p++)
 				{
@@ -1161,7 +1163,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 	index_t r_ind, r_ind1, r_ind2, r_ind3, l_ind, l_ind1, upwd_idx[NP];
 	index_t diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], st_id = 0, conn_st_id = 0;
 	value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
-	value_t avg_density, * buf, * buf_c, * buf_diff, avg_heat_cond_multiplier;
+	value_t avg_density, * buf_c, * buf_diff, avg_heat_cond_multiplier, p_cur, t_cur;
 	uint8_t d, v, p;
 	value_t CFL_in[NC], CFL_out[NC];
 	value_t CFL_max_local = 0;
@@ -1233,22 +1235,24 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 
 				if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
 				{
-					buf = &X[N_VARS * stencil[conn_st_id]];
-					buf_c = &op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
-					buf_diff = &op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
+					p_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + PRES_OP];
+					t_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + TEMP_OP];
+					buf_c =		&op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
+					buf_diff =	&op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
 				}
 				else									// boundary condition
 				{
-					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
-					buf_c = &ZEROS[0]; // TODO: zeros only for Neumann
-					buf_diff = &ZEROS[0]; // TODO: zeros only for Neumann
+					p_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + P_VAR];
+					t_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + T_VAR];
+					buf_c =		&ZEROS[0]; // TODO: zeros only for Neumann
+					buf_diff =	&ZEROS[0]; // TODO: zeros only for Neumann
 				}
 
 
-				p_diff += tran[conn_st_id] * buf[P_VAR];
+				p_diff += tran[conn_st_id] * p_cur;
 				// heat conduction
 				if (THERMAL)
-					t_diff += tran_heat_cond[conn_st_id] * buf[T_VAR];
+					t_diff += tran_heat_cond[conn_st_id] * t_cur;
 
 				for (p = 0; p < NP; p++)
 				{

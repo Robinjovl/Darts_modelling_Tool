@@ -43,8 +43,12 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
-        nx = 20
-        ny = 10
+        # nx = 20
+        # ny = 10
+        # nz = 2
+
+        nx = 5
+        ny = 5
         nz = 2
 
         # reservoir geometry： for realistic case, one just needs to load the data and input it
@@ -54,11 +58,11 @@ class Model(CICDModel, OptModuleSettings):
         return
 
     def set_wells(self):
-        self.inj_list = [[5, 5]]
-        self.prod_list = [[15, 3], [15, 8]]
+        # self.inj_list = [[5, 5]]
+        # self.prod_list = [[15, 3], [15, 8]]
 
-        # self.inj_list = [[2, 2]]
-        # self.prod_list = [[1, 2], [3, 2]]
+        self.inj_list = [[3, 3]]
+        self.prod_list = [[1, 1], [5, 5]]
 
         # well index setting
         if self.Peaceman_WI:
