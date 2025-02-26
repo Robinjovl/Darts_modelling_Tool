@@ -163,9 +163,8 @@ class ReservoirOperators(OperatorsSuper):
         values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
 
         """ Beta operator represents flux term: """
-        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kJ/m3.bar.day)
-        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * \
-            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
+        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph]
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
@@ -292,7 +291,7 @@ class WellOperators(OperatorsSuper):
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:
-            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
+            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
                 self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
