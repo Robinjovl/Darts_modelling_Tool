@@ -67,11 +67,11 @@ class GeothermalPropertiesBase(PropertyBase):
         self.Mw = np.zeros(self.nc)
         self.nu = np.zeros(self.nph)
         self.x = np.zeros((self.nph, self.nc))
-        self.density = np.zeros(self.nph)
+        self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
         self.saturation = np.zeros(self.nph)
-        self.viscosity = np.zeros(self.nph)
-        self.relperm = np.zeros(self.nph)
+        self.mu = np.zeros(self.nph)
+        self.kr = np.zeros(self.nph)
         self.pc = np.zeros(self.nph)
         self.enthalpy = np.zeros(self.nph)
         self.conduction = np.zeros(self.nph)
@@ -80,7 +80,7 @@ class GeothermalPropertiesBase(PropertyBase):
         self.energy_source = 0.
         self.temperature = 0.
 
-        self.phase_props = [self.density, self.dens_m, self.saturation, self.nu, self.viscosity, self.relperm, self.pc,
+        self.phase_props = [self.dens, self.dens_m, self.saturation, self.nu, self.mu, self.kr, self.pc,
                             self.enthalpy, self.conduction, self.mass_source]
 
         self.output_props = {'temperature': lambda: self.temperature}
@@ -97,12 +97,12 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
         for j, phase in enumerate(['water', 'steam']):
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state)
-            self.density[j] = self.density_ev[phase].evaluate(state)
-            self.dens_m[j] = self.density[j] / self.Mw[0]
+            self.dens[j] = self.density_ev[phase].evaluate(state)
+            self.dens_m[j] = self.dens[j] / self.Mw[0]
             self.saturation[j] = self.saturation_ev[phase].evaluate(state)
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state)
+            self.mu[j] = self.viscosity_ev[phase].evaluate(state)
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
-            self.relperm[j] = self.relperm_ev[phase].evaluate(state)
+            self.kr[j] = self.relperm_ev[phase].evaluate(state)
 
         self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
@@ -186,9 +186,9 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
         for j in self.ph:
             phase = self.phases[j]
             Mw = np.sum(self.Mw * self.x[j, :])
-            self.density[j] = self.density_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
-            self.dens_m[j] = self.density[j] / Mw
-            self.viscosity[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :], self.density[j])
+            self.dens[j] = self.density_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
+            self.dens_m[j] = self.dens[j] / Mw
+            self.mu[j] = self.viscosity_ev[phase].evaluate(state[0], self.temperature, self.x[j, :], self.dens[j])
             self.enthalpy[j] = self.enthalpy_ev[phase].evaluate(state[0], self.temperature, self.x[j, :])
             self.conduction[j] = self.conduction_ev[phase].evaluate(state)
 
@@ -197,7 +197,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
 
         # self.pc = self.capillary_pressure_ev.evaluate(self.sat)
         for j in self.ph:
-            self.relperm[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
+            self.kr[j] = self.relperm_ev[self.phases[j]].evaluate(self.saturation[j])
 
         return
 

@@ -25,41 +25,119 @@
 
 #define WELL_CONTROL_FILL
 
-/// Base class work well control/constraint
 class well_control_iface
 {
 public:
-  well_control_iface() { 
-    block_idx.resize(1);
-    block_idx[0] = 0;
-  };
+  enum WellControlType : int { MOLAR_RATE = 0, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, BHP, NONE };
+  static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
+
+protected:
+  WellControlType control_type = NONE;
+  index_t phase_idx{ 0 }, n_phases, n_comps, thermal, n_vars, n_ops, well_state_offset;
+  value_t target, inj_temp;
+  std::vector<value_t> inj_comp;
+  std::vector<index_t> block_idx {0};
+  std::vector<value_t> state;
+  std::vector<value_t> well_control_ops;
+  std::vector<value_t> well_control_ops_derivs;
+  operator_set_gradient_evaluator_iface *well_controls_etor;
+  
+public:
+  well_control_iface() {}
+  well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
+  : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_) 
+  {
+	  // Evaluate well control operators
+    // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
+	  n_vars = n_comps + thermal;
+    n_ops = WellControlType::BHP * n_phases + well_control_iface::n_state_ctrls;
+	  well_control_ops.resize(n_ops);
+	  well_control_ops_derivs.resize(n_ops * n_vars);
+  }
+
+  virtual int set_bhp_control(bool is_inj, value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
+  virtual int set_rate_control(bool is_inj, well_control_iface::WellControlType control_type_, index_t phase_idx_, 
+                               value_t target_, std::vector<value_t>& inj_comp_, value_t inj_temp_);
+
+  WellControlType get_well_control_type() { return this->control_type; }
+  std::string get_well_control_type_str();
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) = 0;
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
+  
+  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
-  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) = 0;
-
-  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
-
-  virtual int add_to_csr_jacobian(value_t /*dt*/, index_t /*well_head_idx*/, value_t /*segment_trans*/,
-	  index_t /*n_state_size*/, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) {
-	  return 0;
-  };
-
-  std::string name;
-  std::vector<index_t> block_idx;
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 };
+
+#if 0
+class well_controls : public well_control_iface
+{
+public:
+  well_controls(std::string name_, operator_set_gradient_evaluator_iface* well_controls_etor_) : well_control_iface(well_controls_etor_) 
+  {
+    name = name_;
+  }
+
+  virtual int set_bhp_control(std::vector<value_t>& well_control_spec_) override;
+  virtual int set_rate_control(well_control_iface::WellControlType control_type_, index_t phase_idx, std::vector<value_t>& well_control_spec_) override;
+
+  virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+  virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
+
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) override;
+};
+#endif
+
+// class ProdControls : public WellControls
+// {
+// public:
+//   ProdControls(operator_set_gradient_evaluator_iface* well_controls_etor_) : WellControls(well_controls_etor_) {}
+
+//   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+// 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) override;
+
+//   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
+//     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) override;
+
+//   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) override;
+// };
+
+// /// Base class work well control/constraint
+// class well_control_iface
+// {
+// public:
+//   well_control_iface() { 
+//     block_idx.resize(1);
+//     block_idx[0] = 0;
+//   };
+
+//   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
+// 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS) = 0;
+
+//   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X) = 0;
+
+//   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour) = 0;
+
+//   std::string name;
+//   std::vector<index_t> block_idx;
+// };
 
 /** @defgroup Well_controls
  *  Methods for well control/constraint exposed to Python
  *  @{
  */
 
+/*
 /// BHP control for injection compositional well
 class bhp_inj_well_control : public well_control_iface
 {
 public:
-  bhp_inj_well_control(value_t target_pressure_, std::vector <value_t> &injection_stream_) : target_pressure(target_pressure_),
+  bhp_inj_well_control(value_t target_pressure_, std::vector <value_t> & injection_stream_) : target_pressure(target_pressure_),
                                                                                              injection_stream(injection_stream_)
   {
     name = "BHP injector";
@@ -67,9 +145,6 @@ public:
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
@@ -91,8 +166,6 @@ public:
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
@@ -104,31 +177,38 @@ public:
 class rate_inj_well_control : public well_control_iface
 {
 public:
-  rate_inj_well_control(std::vector <std::string> phase_names_, index_t target_phase_idx_, index_t n_equations_, index_t n_variables_,
-                        value_t target_rate_, std::vector <value_t> &injection_stream_, 
+  rate_inj_well_control(std::vector <std::string> phase_names_, std::string ctrl_rate_type_, index_t ctrl_phase_index_, index_t n_equations_, index_t n_variables_,
+                        value_t target_rate_, std::vector <value_t> &injection_stream_,
                         operator_set_gradient_evaluator_iface* rate_etor_) :
-    phase_names(phase_names_), target_phase_idx(target_phase_idx_), n_equations(n_equations_), n_variables(n_variables_),
+    phase_names(phase_names_), ctrl_rate_type(ctrl_rate_type_), ctrl_phase_idx(ctrl_phase_index_), n_equations(n_equations_), n_variables(n_variables_),
     target_rate(target_rate_), injection_stream(injection_stream_), rate_etor(rate_etor_)
   {
-    name = phase_names[target_phase_idx] + " rate injector";
+    name = "Injector with constant " + phase_names[ctrl_phase_idx] + " rate ";
     state.resize(n_variables);
-    rates.resize(phase_names_.size());
-    rates_derivs.resize(phase_names_.size() * n_variables);
+    rates.resize(phase_names_.size() * 4);
+    rates_derivs.resize(phase_names_.size() * 4 * n_variables);
+
+	if (ctrl_rate_type == "phase_molar_rate")
+		FLUX_OP = ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_mass_rate")
+		FLUX_OP = phase_names.size() + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_volumetric_rate")
+		FLUX_OP = phase_names.size() * 2 + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_advective_heat_rate")
+		FLUX_OP = phase_names.size() * 3 + ctrl_phase_idx;
   };
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 
 
-  index_t target_phase_idx, n_equations, n_variables;
+  index_t ctrl_phase_idx, n_equations, n_variables;
   std::vector <std::string> phase_names;
+  std::string ctrl_rate_type;
   value_t target_rate;
   std::vector <value_t> injection_stream;
   operator_set_gradient_evaluator_iface *rate_etor;
@@ -136,21 +216,31 @@ public:
   std::vector<value_t> state;
   std::vector<value_t> rates;
   std::vector<value_t> rates_derivs;
+  index_t FLUX_OP;
 };
 
 /// Volumetric rate control for production compositional well 
 class rate_prod_well_control : public well_control_iface
 {
 public:
-  rate_prod_well_control(std::vector <std::string> phase_names_, index_t target_phase_idx_, index_t n_equations_, index_t n_variables_,
+  rate_prod_well_control(std::vector <std::string> phase_names_, std::string ctrl_rate_type_, index_t ctrl_phase_index_, index_t n_equations_, index_t n_variables_,
                         value_t target_rate_, operator_set_gradient_evaluator_iface* rate_etor_) :
-    phase_names(phase_names_), target_phase_idx(target_phase_idx_), n_equations(n_equations_), n_variables(n_variables_),
+    phase_names(phase_names_), ctrl_rate_type(ctrl_rate_type_), ctrl_phase_idx(ctrl_phase_index_), n_equations(n_equations_), n_variables(n_variables_),
     target_rate(target_rate_), rate_etor(rate_etor_)
   {
-    name = phase_names[target_phase_idx] + " rate producer";
+	name = "Producer with constant " + phase_names[ctrl_phase_idx] + " rate ";
     state.resize(n_variables);
-    rates.resize(phase_names_.size());
-    rates_derivs.resize(phase_names_.size() * n_variables);
+    rates.resize(phase_names_.size() * 4);
+    rates_derivs.resize(phase_names_.size() * 4 * n_variables);
+
+	if (ctrl_rate_type == "phase_molar_rate")
+		FLUX_OP = ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_mass_rate")
+		FLUX_OP = phase_names.size() + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_volumetric_rate")
+		FLUX_OP = phase_names.size() * 2 + ctrl_phase_idx;
+	else if (ctrl_rate_type == "phase_advective_heat_rate")
+		FLUX_OP = phase_names.size() * 3 + ctrl_phase_idx;
   };
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
@@ -161,14 +251,16 @@ public:
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 
 
-  index_t target_phase_idx, n_equations, n_variables;
+  index_t ctrl_phase_idx, n_equations, n_variables;
   std::vector <std::string> phase_names;
+  std::string ctrl_rate_type;
   value_t target_rate;
   operator_set_gradient_evaluator_iface *rate_etor;
 
   std::vector<value_t> state;
   std::vector<value_t> rates;
   std::vector<value_t> rates_derivs;
+  index_t FLUX_OP;
 };
 
 
@@ -191,9 +283,6 @@ public:
 	};
 	virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 		index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-    index_t n_block_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
 	virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
@@ -220,9 +309,6 @@ public:
 	};
 	virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
 		index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
-
-  virtual int add_to_csr_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-    index_t n_block_size, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
 
 	virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
@@ -443,7 +529,7 @@ public:
   std::vector<value_t> sources_derivs;
 };
 
-
+*/
 
 /*
 class bhp_prod_well_control : public well_control_iface

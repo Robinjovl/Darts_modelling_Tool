@@ -4,7 +4,7 @@ import warnings
 from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
 from darts.physics.geothermal.operator_evaluator import *
 
 
@@ -20,7 +20,7 @@ class Geothermal(PhysicsBase):
     """
 
     def __init__(self, timer: timer_node, n_points: int, min_p: float, max_p: float, min_e: float, max_e: float,
-                 mass_rate: bool = False, cache: bool = False):
+                 cache: bool = False):
         """
         This is the constructor of the Geothermal Physics class.
 
@@ -34,8 +34,6 @@ class Geothermal(PhysicsBase):
         :type min_p, max_p: float
         :param min_e, max_e: Minimum, maximum enthalpy
         :type min_e, max_e: float
-        :param mass_rate: Switch for mass rate/volume rate?
-        :type mass_rate: bool
         :param cache: Switch to cache operator values
         :type cache: bool
         """
@@ -43,11 +41,7 @@ class Geothermal(PhysicsBase):
         components = ["H2O"]
 
         # Define phases and variables
-        self.mass_rate = mass_rate
-        if self.mass_rate:
-            phases = ['water_mass', 'steam_mass', 'temperature', 'energy']
-        else:
-            phases = ['water', 'steam', 'temperature', 'energy']
+        phases = ['water', 'steam']
         variables = ['pressure', 'enthalpy']
         state_spec = PhysicsBase.StateSpecification.PH
 
@@ -68,20 +62,16 @@ class Geothermal(PhysicsBase):
     def set_operators(self):
         """
         Function to set operator objects: :class:`acc_flux_gravity_evaluator` for each of the reservoir regions,
-        :class:`acc_flux_gravity_evaluator_python_well` for the well cells
+        :class:`acc_flux_gravity_evaluator_python_well` for the well segments
         and :class:`geothermal_rate_custom_evaluator_python` for evaluation of rates.
         """
         for region in self.regions:
             self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
-            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region])
-        self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
+        self.well_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
 
-        # create rate operators evaluator
-        if self.mass_rate:
-            self.rate_operators = geothermal_mass_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
-        else:
-            self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
+        # create well control operators evaluator
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
 
         return
 
@@ -94,35 +84,18 @@ class Geothermal(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
+        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph))()
 
-    def define_well_controls(self):
-        # create well controls
-        # water stream
-        # pure water injection at constant temperature
+    def determine_obl_bounds(self, state_min, state_max):
+        """
+        Function to compute minimum and maximum enthalpy (kJ/kmol)
 
-        self.water_inj_stream = value_vector([1.0])
-        # water injection at constant temperature with bhp control
-        self.new_bhp_water_inj = lambda bhp, temp: gt_bhp_temp_inj_well_control(self.phases, self.n_vars, bhp, temp,
-                                                                                self.water_inj_stream, self.rate_itor)
-        # water injection at constant temperature with volumetric rate control
-        self.new_rate_water_inj = lambda rate, temp: gt_rate_temp_inj_well_control(self.phases, 0, self.n_vars, rate,
-                                                                                   temp, self.water_inj_stream,
-                                                                                   self.rate_itor)
-        # water production with bhp control
-        self.new_bhp_prod = lambda bhp: gt_bhp_prod_well_control(bhp)
-        # water production with volumetric rate control
-        self.new_rate_water_prod = lambda rate: gt_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                          rate, self.rate_itor)
-        # water injection of constant enthalpy with mass rate control
-        self.new_mass_rate_water_inj = lambda rate, enth: \
-            gt_mass_rate_enthalpy_inj_well_control(self.phases, 0, self.n_vars,
-                                                   self.water_inj_stream,
-                                                   rate, enth,
-                                                   self.rate_itor)
-        # water production with mass rate control
-        self.new_mass_rate_water_prod = lambda rate: gt_mass_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                                    rate, self.rate_itor)
+        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
+        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        """
+        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
+        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
+
         return
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,

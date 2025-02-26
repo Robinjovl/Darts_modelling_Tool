@@ -9,6 +9,7 @@
 #endif
 
 #include "engine_base.h"
+#include "well_controls.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -969,7 +970,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	Temp_dj_du = sub2;
 
 
-
     
     if (objfun_prod_phase_rate)
     {
@@ -1048,7 +1048,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 
                 // corresponding to ms_well::check_constraints
-                if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
                 {
                     Temp_dj_dx[upstream_idx * n_vars + v] += -ders_term;
                     if (v == 0)  // derivatives w.r.t. pressure
@@ -1153,8 +1153,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                     p_idx++;
 				}
 
-				// corresponding to ms_well::check_constraints
-				if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 				{
 					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
@@ -1208,7 +1207,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
             // adding minus sign on "bhp_BHP" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 			// corresponding to ms_well::check_constraints
-			if (w->control->name.find("BHP") != std::string::npos)  // BHP control
+			if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 			{
 				index_t v = 0;  // derivatives w.r.t. pressure
 				Temp_dj_dx[w->well_head_idx * n_vars + v] += 0 * (-bhp_BHP[ww]);

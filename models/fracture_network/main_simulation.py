@@ -30,7 +30,7 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
 
     m = Model(idata)
 
-    m.init(verbose=True, output_folder = output_directory, platform=platform)
+    m.init(verbose=True, output_folder=output_directory, platform=platform)
 
     # Specify some other time-related properties (NOTE: all time parameters are in [days])
     size_report_step = 60  # Size of the reporting step 

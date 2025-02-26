@@ -127,11 +127,14 @@ class Model(CICDModel, OptModuleSettings):
 
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            if "I" in w.name:
-                w.control = self.physics.new_bhp_inj(140, self.inj_stream)
+            if i == 0:
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=140., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def set_op_list(self):
         if self.customize_new_operator:
@@ -183,11 +186,14 @@ class Model(CICDModel, OptModuleSettings):
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
         for ts in time_step_arr:
+            from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if "I" in w.name:
-                    w.control = self.physics.new_bhp_inj(140, self.inj_stream)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=140., inj_stream=self.inj_stream)
                 else:
-                    w.control = self.physics.new_bhp_prod(50)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=50.)
 
             CICDModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
@@ -207,6 +213,8 @@ class customized_etor_specific_component(operator_set_evaluator_iface):
         """
 
         # temp = self.temperature.evaluate(state)
+        vec_values_as_np = values.to_numpy()
+        vec_values_as_np[:] = 0
 
         # values[0] = state[0]  # pressure
         values[0] = 1 - state[1]  # comp_1

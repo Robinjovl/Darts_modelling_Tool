@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, well_control_iface
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -82,7 +82,8 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                # w.control = self.physics.new_rate_gas_inj(20, self.inj_stream)
-                w.control = self.physics.new_bhp_inj(140, inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=140., inj_stream=inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)

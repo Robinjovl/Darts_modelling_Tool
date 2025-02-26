@@ -30,17 +30,16 @@ class PhysicsBase:
     :type reservoir_operators: dict
     :ivar property_operators: :class:`PropertyOperators` object for evaluation and interpolation of properties
     :type property_operators: dict
-    :ivar wellbore_operators: :class:`WellOperators` object for evaluation of well cell states
-    :type wellbore_operators: dict
-    :ivar rate_operators: :class:`RateOperators` object for evaluation of fluxes
-    :type rate_operators: dict
+    :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
+    :type well_operators: dict
+    :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
+    :type well_ctrl_operators: dict
     :ivar regions: List of property regions
     :type regions: list
     """
     engine: engine_base
-    wellbore_operators: operator_set_evaluator_iface
-    rate_operators: operator_set_evaluator_iface
-    mass_flux_operators: operator_set_evaluator_iface
+    well_operators: operator_set_evaluator_iface
+    well_ctrl_operators: operator_set_evaluator_iface
 
     @total_ordering
     class StateSpecification(Enum):
@@ -84,6 +83,7 @@ class PhysicsBase:
 
         self.components = components
         self.nc = len(components)
+        self.thermal = self.n_vars - self.nc
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops
@@ -106,7 +106,6 @@ class PhysicsBase:
         self.property_containers = {}
         self.reservoir_operators = {}
         self.property_operators = {}
-        self.mass_flux_operators = {}
 
     def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive',
@@ -133,7 +132,6 @@ class PhysicsBase:
         self.engine = self.set_engine(discr_type, platform)
         self.set_operators()
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
-        self.define_well_controls()
         return
 
     def add_property_region(self, property_container, region: int = 0):
@@ -193,7 +191,6 @@ class PhysicsBase:
         # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}
-        self.mass_flux_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
                                                                   platform=platform, algorithm=itor_type,
@@ -206,21 +203,54 @@ class PhysicsBase:
                                                                   mode=itor_mode, precision=itor_precision,
                                                                   timer_name='property %d interpolation' % region, region=str(region))
 
-            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
-                                                                   platform=platform, algorithm=itor_type,
-                                                                   mode=itor_mode, precision=itor_precision,
-                                                                   timer_name='Mass flux %d interpolation' % region,
-                                                                   region=str(region))
-
-        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
-                                                        timer_name='wellbore interpolation',
+        self.acc_flux_w_itor = self.create_interpolator(self.well_operators, n_ops=self.n_ops,
+                                                        timer_name='well interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
                                                         precision=itor_precision, region='-1')
 
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.nph,
-                                                  timer_name='well controls interpolation',
-                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                  precision=itor_precision)
+        self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
+                                                       timer_name='well controls interpolation',
+                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                       precision=itor_precision)
+        return
+
+    def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
+                          target: float, phase_name: str = None, inj_stream: list = None, inj_temp: float = None,
+                          is_control: bool = True):
+        """
+        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
+
+        :param well: ms_well object on which the control/constraint is defined
+        :param control_type: Well control type 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE,
+                             4) BHP, 5) NONE (if constraint needs to be deactivated); default is BHP
+        :param is_inj: Is injection well (true) or production well (false)
+        :param target: Target BHP or rate, consistent with well control type
+        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
+        :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
+        :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
+        :param is_control: Is control (true) or constraint (false), default is true
+        """
+        # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
+        inj_stream = value_vector(inj_stream) if inj_stream is not None else value_vector(np.zeros(self.nc - 1))  # for BHP controlled production well, pass dummy variables
+        inj_temp = inj_temp if inj_temp is not None else 0.  # for isothermal case or production well, pass dummy variables
+        phase_idx = self.phases.index(phase_name) if phase_name is not None else 0   # for BHP controlled production well, pass dummy variables
+
+        # Pass controls specification to ms_well object
+        if control_type == well_control_iface.BHP:
+            if is_control:
+                well.set_bhp_control(is_inj, target, inj_stream, inj_temp)
+            else:
+                well.set_bhp_constraint(is_inj, target, inj_stream, inj_temp)
+        else:
+            # Injection/production rate
+            target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
+
+            if is_control:
+                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+            else:
+                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+
         return
 
     def determine_obl_bounds(self, state_min: list, state_max: list, state_spec: StateSpecification = StateSpecification.PH):
@@ -261,10 +291,6 @@ class PhysicsBase:
         """
         pass
 
-    @abc.abstractmethod
-    def define_well_controls(self):
-        pass
-
     def init_wells(self, wells):
         """
         Function to initialize the well rates for each well.
@@ -273,7 +299,7 @@ class PhysicsBase:
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, timer_name: str, n_ops: int,
                             algorithm: str = 'multilinear', mode: str = 'adaptive',
@@ -304,7 +330,7 @@ class PhysicsBase:
         :type precision: str
         :type region: str
         :param region: str(region index) for reservoir operator, str(-1) for well operator, '' for others
-        needed to make different filenames for cache as self.wellbore_operators has the same type ReservoirOperators
+        needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """

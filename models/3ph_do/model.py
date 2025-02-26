@@ -81,12 +81,14 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_inj(120, self.inj_stream)
-                # w.control = self.physics.new_bhp_inj(100, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=120., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.new_bhp_prod(60)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=60.)
 
 
 class ModelProperties(PropertyContainer):
