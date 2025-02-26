@@ -171,12 +171,18 @@ class Model(CICDModel):
         inj_stream = [1e-5, 1e-5]
         self.reservoir.wells[0].control = self.physics.new_rate_inj(0, inj_stream, 0)  # inj rate in kmol/day
 
+        # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
+        inj_segment_idx = 0
+        inj_rate = 58895.98 / 3  # kmol/day
+        inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
+        self.source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
+
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
-        # inj_comp = np.array([1.0 - 1e-5, 1e-5])
-        inj_rate = 58895.98/3   # kmol/day
+        inj_segment_idx = self.source_props["segment_idx_source"]
+        inj_rate = self.source_props["rate_source"]
+        inj_comp = self.source_props["comp_source"]
         inj_flux = inj_rate * inj_comp
-        well_head_start_idx = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
         return rhs_flux

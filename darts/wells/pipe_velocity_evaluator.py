@@ -302,19 +302,20 @@ class PipeVelocityEvaluator:
 
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
-            # if self.darts_model.reservoir.wells[0].control.target_rate:
-            if hasattr(self.darts_model.reservoir.wells[0].control, 'target_rate'):
-                # TODO: This segment_index_source and mass_rate should be directly received from the well control class, but now done manually
-                segment_index_source = num_segments - 1
-                # mass_rate = self.darts_model.reservoir.wells[0].control.target_rate   # must be in kg/s
-                mass_rate = sum(58895.98 * np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5]) * [44.0098, 16.04288, 18.0152]) / (24 * 60 * 60)
+            if hasattr(self.darts_model, 'source_props'):
+                segment_idx_source = self.darts_model.source_props["segment_idx_source"]   # gives segment index based on darts convention
+                segment_idx_source = num_segments - 1 - segment_idx_source   # gives segment index based on T2Well convention
+                rate_source = self.darts_model.source_props["rate_source"]
+                comp_source = self.darts_model.source_props["comp_source"]
+                Mw = self.physics.property_containers[0].Mw
+                mass_rate = sum(rate_source * comp_source * Mw) / (24 * 60 * 60)   # must be in kg/s
 
                 pipe_internal_A = self.pipe_geometry.pipe_internal_A
 
                 # The props of the fluid of the segment on which the constant mass rate source is defined are used.
-                sG0_source = sG0[segment_index_source]
-                rhoG0_source = rhoG0[segment_index_source]
-                rhoL0_source = rhoL0[segment_index_source]
+                sG0_source = sG0[segment_idx_source]
+                rhoG0_source = rhoG0[segment_idx_source]
+                rhoL0_source = rhoL0[segment_idx_source]
 
                 if sG0_source == 0:
                     vG0 = 0
