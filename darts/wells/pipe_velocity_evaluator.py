@@ -340,9 +340,9 @@ class PipeVelocityEvaluator:
 
                 delta_at_bc_interface0 = pipe_internal_A * (rhoG0_source * sG0_source * vG0 ** 2 + rhoL0_source * (1 - sG0_source) * vL0 ** 2)
 
-                if segment_index_source == 0:
+                if segment_idx_source == 0:
                     momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
-                elif segment_index_source == num_segments - 1:
+                elif segment_idx_source == num_segments - 1:
                     momentum_at_first_last_exterfaces[1] = delta_at_bc_interface0
 
             delta_interface0 = np.insert(delta_interface0, 0, momentum_at_first_last_exterfaces[0])
