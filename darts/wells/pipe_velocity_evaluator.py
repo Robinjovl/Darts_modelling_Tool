@@ -620,8 +620,7 @@ class PipeVelocityEvaluator:
             if not self.isothermal:
                 # Derivatives of all the phase velocities with respect to the temperature of segment i
                 X_ms_well[i * n_vars + n_vars - 1] += self.eps_temp
-                jac[:, i * n_vars + n_vars - 1] = (self.evaluate_phase_velocities(
-                    Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_temp
+                jac[:, i * n_vars + n_vars - 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_temp
                 X_ms_well[i * n_vars + n_vars - 1] -= self.eps_temp
 
         # Update properties at the current time step with the original primary variables (original X_ms_well)
