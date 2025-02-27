@@ -1,5 +1,6 @@
 import numpy as np
 from darts.engines import value_vector, index_vector
+from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.base.operators_base import PropertyOperators
 
 
@@ -7,7 +8,7 @@ class Initialize:
     def __init__(self, physics, algorithm: str = 'multilinear', mode: str = 'adaptive', is_barycentric: bool = False,
                  aq_idx: int = None, h2o_idx: int = None):
         """
-        Constructor for Initialize class
+        Constructor for Initialize class. It solves the equilibrated vertical distribution in the PT-domain
 
         :param physics: Physics object
         :param algorithm: Type of interpolation (multilinear/linear), default is multilinear
@@ -18,8 +19,11 @@ class Initialize:
         """
         self.physics = physics
         self.nv = physics.n_vars
-        self.var_idxs = {var: i for i, var in enumerate(physics.vars)}
-        self.thermal = ('temperature' in physics.vars)
+        self.thermal = physics.thermal
+
+        # Index of pressure, temperature and components
+        self.vars = ['pressure'] + self.physics.components[:-1] + (['temperature'] if self.thermal else [])
+        self.var_idxs = {var: i for i, var in enumerate(self.vars)}
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
@@ -36,8 +40,14 @@ class Initialize:
         self.primary_specs = {}
         self.secondary_specs = {}
 
-        self.etor = PropertyOperators(physics.property_containers[0], physics.thermal, self.props)
+        # If PH-formulation, evaluate_PT method must be called in the evaluate() during Initialize
+        pc.evaluate_PT_bool = (physics.state_spec > PhysicsBase.StateSpecification.PT)
+
+        # Create PropertyOperators and interpolators
+        self.etor = PropertyOperators(pc, self.thermal, self.props)
         self.itor = physics.create_interpolator(evaluator=self.etor, n_ops=physics.n_ops,
+                                                axes_min=value_vector(self.physics.PT_axes_min),
+                                                axes_max=value_vector(self.physics.PT_axes_max),
                                                 timer_name='initialization itor',
                                                 algorithm=algorithm, mode=mode, is_barycentric=is_barycentric)
 
@@ -80,7 +90,7 @@ class Initialize:
         # If only one block has been specified, return the boundary state
         if nb == 1:
             self.depths = np.array([depth_known])
-            return np.array([boundary_state[variable] for variable in self.physics.vars])
+            return np.array([boundary_state[variable] for variable in self.var_idxs.keys()])
 
         # Else, check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
@@ -100,9 +110,10 @@ class Initialize:
                 assert len(self.secondary_specs[spec]) == nb, "Length of " + spec + " not compatible"
         for i in range(nb):
             assert int(np.sum([not np.isnan(np.float64(spec[i])) for spec in self.primary_specs.values()]) +
-                       np.sum([not np.isnan(np.float64(spec[i])) for spec in
-                               self.secondary_specs.values()])) == self.nv - 1 - self.thermal, \
-                "Not enough variables specified for well-defined system of equations in block {}".format(i)
+                       np.sum([not np.isnan(np.float64(spec[i])) for spec in self.secondary_specs.values()])
+                       ) == self.nv - 1 - self.thermal, \
+                "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
+                    i, self.nv - 1 - self.thermal)
 
         # Define thermal gradient
         if self.thermal:
@@ -110,7 +121,7 @@ class Initialize:
 
         # Set state in known cell
         X = np.zeros((nb, self.nv))
-        X[bc_idx] = np.array([boundary_state[v] for v in self.physics.vars])
+        X[bc_idx] = np.array([boundary_state[v] for v in self.vars])
 
         # Solve cells from specified cell upwards
         for i in range(bc_idx, 0, -1):
@@ -119,6 +130,9 @@ class Initialize:
         # Solve cells from specified cell downwards
         for i in range(bc_idx, nb - 1):
             self.solve_cell(X, cell_idx=i + 1, downward=True)
+
+        # Switch evaluate_PT boolean off to flash.evaluate() during simulation again
+        self.physics.property_containers[0].evaluate_PT_bool = False
 
         return X.flatten()
 
@@ -136,7 +150,9 @@ class Initialize:
         """
         assert int(np.sum([not np.isnan(np.float64(spec)) for spec in primary_specs.values()]) +
                    np.sum([not np.isnan(np.float64(spec)) for spec in secondary_specs.values()])) == self.nv, \
-            "Not enough variables specified for well-defined system of equations"
+            "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
+                int(np.sum([not np.isnan(np.float64(spec)) for spec in primary_specs.values()])
+                    + np.sum([not np.isnan(np.float64(spec)) for spec in secondary_specs.values()])), self.nv)
 
         for it in range(max_iter):
             res = np.zeros(self.nv)
