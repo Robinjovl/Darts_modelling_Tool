@@ -108,7 +108,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
 
   // BHP and temperature
   time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_block_size + P_VAR]);
-  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::BHP * n_phases + 1]);
+  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
 
   return 0;
 }
@@ -192,7 +192,7 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
   // BHP and temperature
   time_data[name + " : BHP (bar)"].push_back(X[well_head_idx * n_vars + P_VAR]);
-  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::BHP * n_phases + 1]);
+  time_data[name + " : temperature (K)"].push_back(rates[well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + 1]);
 
   return 0;
 }
@@ -201,7 +201,12 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
 
 int ms_well::initialize_control(std::vector<value_t>& X)
 {
-  std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
+  if (control.get_well_control_type() == well_control_iface::WellControlType::NONE)
+  {
+    std::cout << "Well " << name << " has uninitialized well control\n";
+    exit(1);
+  }
+  std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;  
 
 #if 1
   for (auto &p : perforations)

@@ -32,13 +32,17 @@ std::string well_control_iface::get_well_control_type_str()
 {
 	std::string out;
 
-	if (this->control_type == WellControlType::BHP)
+	if (this->control_type == WellControlType::NONE)
+	{
+		out = "uninitialized/deactivated control";
+	}
+	else if (this->control_type == WellControlType::BHP)
 	{
 		out = "BHP-control";
 	}
-	else if (this->control_type < WellControlType::BHP)
+	else if (this->control_type > WellControlType::BHP && this->control_type < WellControlType::NUMBER_OF_RATE_TYPES)
 	{
-		out = "Phase " + std::to_string(phase_idx);
+		out = "phase " + std::to_string(phase_idx);
 		switch (this->control_type)
 		{
 			case WellControlType::MOLAR_RATE:
@@ -64,7 +68,8 @@ std::string well_control_iface::get_well_control_type_str()
 	}
 	else
 	{
-		out = "Undefined control";
+		out = "undefined control";
+		exit(1);
 	}
 	return out;
 }
@@ -90,7 +95,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
     well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
   	
-	index_t pres_op_idx = WellControlType::BHP * n_phases;
+	index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
 	RHS_well_head[0] = well_control_ops[pres_op_idx] - this->target;
 
 	// BHP operator derivatives
@@ -150,7 +155,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	// If thermal, specify
 	for (index_t ii = n_comps; ii < n_vars; ii++)
 	{
-	  index_t temp_op_idx = WellControlType::BHP * n_phases + 1;
+	  index_t temp_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases + 1;
 	  RHS_well_head[ii] = well_control_ops[temp_op_idx] - this->inj_temp;  // well_control_ops[1] contains temperature
 
 	  for (int jj = 0; jj < n_vars; jj++)
@@ -176,7 +181,7 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
 	// Check if BHP constraint is violated
 	state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars);
   	well_controls_etor->evaluate(state, well_control_ops);
-	index_t pres_op_idx = WellControlType::BHP * n_phases;
+	index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
 
 	return (p_diff > 0.) ?
 			well_control_ops[pres_op_idx] > this->target : // injection well

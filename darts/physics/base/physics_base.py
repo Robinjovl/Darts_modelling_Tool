@@ -222,8 +222,8 @@ class PhysicsBase:
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
         :param well: ms_well object on which the control/constraint is defined
-        :param control_type: Well control type 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE,
-                             4) BHP, 5) NONE (if constraint needs to be deactivated); default is BHP
+        :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
+                             0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
         :param target: Target BHP or rate, consistent with well control type
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.

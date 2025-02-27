@@ -66,7 +66,7 @@ public:
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(well_control_iface::BHP * n_phases + well_control_iface::n_state_ctrls);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
 	  rate_etor_ad = well_controls_etor;;  //adjoint method
   };
@@ -87,7 +87,7 @@ public:
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
-    rates.resize(well_control_iface::BHP * n_phases + well_control_iface::n_state_ctrls);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES* n_phases + well_control_iface::n_state_ctrls);
 
 	  rate_etor_ad = well_controls_etor;  //adjoint method
   };
