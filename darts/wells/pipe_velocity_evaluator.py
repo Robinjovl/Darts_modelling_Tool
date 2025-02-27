@@ -116,7 +116,7 @@ class PipeVelocityEvaluator:
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
             # Reshape into blocks
-            Xn_ms_well_reshaped = Xn_ms_well.reshape(-1, nc)
+            Xn_ms_well_reshaped = Xn_ms_well.reshape(-1, n_vars)
             # Reverse the order of the blocks
             Xn_ms_well_reversed_blocks = Xn_ms_well_reshaped[::-1]
             # Flatten back to a 1D array
@@ -156,7 +156,7 @@ class PipeVelocityEvaluator:
 
         """ Calculate phase props of current time step at centroids """
         # Reshape into blocks
-        X_ms_well_reshaped = X_ms_well.reshape(-1, nc)
+        X_ms_well_reshaped = X_ms_well.reshape(-1, n_vars)
         # Reverse the order of the blocks
         X_ms_well_reversed_blocks = X_ms_well_reshaped[::-1]
         # Flatten back to a 1D array
