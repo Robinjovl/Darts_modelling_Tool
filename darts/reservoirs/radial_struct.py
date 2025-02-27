@@ -43,7 +43,7 @@ class RadialStruct(StructReservoir):
             # Find dr distribution such that outer radius is R1
             from scipy.optimize import fsolve
             f = lambda dr1: np.sum(np.logspace(np.log10(dr), np.log10(dr1), num=nr)) - R1
-            dr1 = fsolve(f, dr)
+            dr1 = fsolve(f, dr)[0]
 
             dr = np.logspace(start=np.log10(dr), stop=np.log10(dr1), num=nr)
         elif isinstance(dr, (int, float)):
