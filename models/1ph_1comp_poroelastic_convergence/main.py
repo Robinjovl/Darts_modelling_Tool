@@ -12,6 +12,13 @@ rcParams["font.serif"] = ["Liberation Serif"]
 plt.rc('xtick',labelsize=14)
 plt.rc('ytick',labelsize=14)
 
+try:
+    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+    from darts.engines import set_num_threads
+    set_num_threads(1)
+except:
+    pass
+
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
@@ -303,13 +310,6 @@ def run_thermoporoelastic_convergence_study_peclet_number(mesh='rect'):
     plt.show()
 
 def run_test(args: list = [], platform='cpu'):
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
-
     n_res = [3, 3, 3, 3, 3]
     discretizers = ['pm_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer', 'mech_discretizer']
     modes = ['poroelastic', 'poroelastic', 'poroelastic', 'thermoporoelastic', 'thermoporoelastic']

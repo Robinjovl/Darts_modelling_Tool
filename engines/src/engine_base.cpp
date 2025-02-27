@@ -2,7 +2,6 @@
 #include <cstring>
 #include <vector>
 #include <algorithm>
-#include <fstream>
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
 #ifdef __GNUC__

@@ -1,4 +1,7 @@
 import numpy as np
+from typing import Union
+import warnings
+from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
@@ -18,7 +21,8 @@ class Compositional(PhysicsBase):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
+                 state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
+                 cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -39,8 +43,8 @@ class Compositional(PhysicsBase):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param thermal: Switch for (iso)thermal simulation
-        :type thermal: bool
+        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
+        :type state_spec: StateSpecification
         :param cache: Switch to cache operator values
         :type cache: bool
         :param axes_min: (optional) Minimum bounds of OBL axes
@@ -53,15 +57,18 @@ class Compositional(PhysicsBase):
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
-        self.thermal = thermal
+        self.thermal = (state_spec > PhysicsBase.StateSpecification.P)
 
-        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature
+        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
         variables = ['pressure'] + components[:-1]
         if self.thermal:
-            variables += ['temperature']
+            variables += ['temperature'] if state_spec == PhysicsBase.StateSpecification.PT else ['enthalpy']
 
         n_vars = len(variables)
-        n_ops = n_vars + nph * n_vars + nph + nph * n_vars + n_vars + 3 + 2 * nph + 1 + nph
+        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
+        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/
+        # = NE * (2 * nph + 2) + 4 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 4 * nph + 3
 
         # axes_min
         if axes_min is None:
@@ -88,7 +95,7 @@ class Compositional(PhysicsBase):
             n_axes_points = index_vector(n_axes_points)
 
         # Call PhysicsBase constructor
-        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
+        super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
 
     def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
@@ -144,78 +151,98 @@ class Compositional(PhysicsBase):
                                                                       self.n_vars, rate, self.rate_itor)
         return
 
-    def set_uniform_initial_conditions(self, mesh: conn_mesh,
-                                       uniform_pressure: float, uniform_composition: list, uniform_temp: float = None):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
         """
-        Function to set uniform initial conditions.
+        Function to set initial conditions from given distribution of properties over depth.
 
-        :param mesh: Mesh object
-        :type mesh:
-        :param uniform_pressure: Uniform pressure setting
-        :type uniform_pressure: float
-        :param uniform_composition: Uniform composition setting
-        :type uniform_composition: list
-        :param uniform_temp: Uniform temperature setting, default is None for isothermal
-        :type uniform_temp: float
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :param input_depth: Array of depths over which depth table has been specified
         """
-        assert isinstance(mesh, conn_mesh)
+        # Assertions of consistent depth table specification
+        assert np.all([variable in input_distribution.keys() for variable in self.vars[1:self.nc]]), \
+            "Initial state for must be specified for all primary variables"
+        assert not self.thermal or ('temperature' in input_distribution.keys() or
+                                    'enthalpy' in input_distribution.keys()), \
+            "Temperature or enthalpy must be specified for thermal models"
+        input_depth = input_depth if hasattr(input_depth, "__len__") else np.array([input_depth])
+        for key, input_values in input_distribution.values():
+            input_values = input_values if hasattr(input_values, "__len__") else np.ones(len(input_depth)) * input_values
+            assert len(input_values) == len(input_depth)
 
-        nb = mesh.n_blocks
-        """ Uniform Initial conditions """
+        # Get depths and primary variable arrays from mesh object
+        depths = np.asarray(mesh.depth)
+
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+
+        # Loop over variables to fill initial_state vector in c++
+        for ith_var, variable in enumerate(self.vars):
+            if variable == "enthalpy" and "enthalpy" not in input_distribution.keys():
+                # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
+                p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
+                pressure = p_itor(depths)
+
+                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+                temperature = t_itor(depths)
+
+                values = np.empty(mesh.n_blocks)
+                for j in range(mesh.n_blocks):
+                    state = np.array([pressure[j], temperature[j]])
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+            else:
+                # Else, interpolate primary variable
+                itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+                values = itor(depths)
+
+            np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
+
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
+        """
+        Function to set uniform initial reservoir condition
+
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
+        """
+        for variable, values in input_distribution.items():
+            if not np.isscalar(values) and not len(values) == mesh.n_blocks:
+                warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
+                              format(variable, len(values), mesh.n_blocks))
+                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_blocks)
+
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+
         # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
+        np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
 
-        # if thermal, set initial temperature
-        if uniform_temp is not None:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature.fill(uniform_temp)
+        # if thermal, set initial temperature or enthalpy
+        if self.thermal:
+            if self.state_spec == PhysicsBase.StateSpecification.PT:
+                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = input_distribution['temperature']
+            else:
+                # interpolate pressure and temperature to compute enthalpies
+                enthalpy = np.empty(mesh.n_blocks)
+                if not np.isscalar(input_distribution['pressure']):
+                    # Pressure specified as an array
+                    for j in range(mesh.n_blocks):
+                        state = value_vector([input_distribution['pressure'][j], 0])
+                        temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+                else:
+                    state = value_vector([input_distribution['pressure'], 0])  # enthalpy is dummy variable
+                    enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
+                    enthalpy[:] = enth
 
-         # set initial composition
-        mesh.composition.resize(nb * (self.nc - 1))
-        composition = np.array(mesh.composition, copy=False)
-        # composition[:] = np.array(uniform_composition)
-        if self.nc == 2:
-            for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = uniform_composition[:]
-        else:
-            for c in range(self.nc - 1):  # Denis
-                composition[c::(self.nc - 1)] = uniform_composition[c]
-
-    def set_nonuniform_initial_conditions(self, mesh: conn_mesh,
-                                        input_pressure, input_composition, input_temperature = None):
-        """
-        Function to set non-uniform initial conditions.
-
-        :param mesh: Mesh object
-        :type mesh: conn_mesh
-        :param input_pressure: Array of pressures
-        :param input_composition: Array of compositions
-        :param input_temperature: Array of temperatures, default is None for isothermal
-        """
-        assert isinstance(mesh, conn_mesh)
-        nb = mesh.n_blocks
-
-        """ Uniform Initial conditions """
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = input_pressure
-
-        # if thermal, set initial temperature
-        if input_temperature is not None:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature[:] = input_temperature
+                np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
 
         # set initial composition
-        mesh.composition.resize(nb * (self.nc - 1))
-        composition = np.array(mesh.composition, copy=False)
-        # composition[:] = np.array(uniform_composition)
-        if self.nc == 2:
-            for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = input_composition[:]
-        else:
-            for c in range(self.nc - 1):  # Denis
-                composition[c::(self.nc - 1)] = input_composition[c]
+        for c in range(self.nc-1):
+            np.asarray(mesh.initial_state)[(c+1)::self.n_vars] = input_distribution[self.vars[c+1]] \
+                if np.isscalar(input_distribution[self.vars[c+1]]) else input_distribution[self.vars[c+1]][:]
 
     def init_wells(self, wells):
         """

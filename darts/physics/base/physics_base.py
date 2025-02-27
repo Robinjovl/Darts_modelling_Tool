@@ -4,6 +4,9 @@ import os
 import pickle
 import atexit
 import numpy as np
+from typing import Union
+from enum import Enum
+from functools import total_ordering
 
 from darts.engines import *
 
@@ -39,16 +42,28 @@ class PhysicsBase:
     rate_operators: operator_set_evaluator_iface
     mass_flux_operators: operator_set_evaluator_iface
 
-    def __init__(self, variables: list, nc: int, phases: list, n_ops: int,
+    @total_ordering
+    class StateSpecification(Enum):
+        P = 0
+        PT = 1
+        PH = 2
+        def __lt__(self, other):
+            if self.__class__ is other.__class__:
+                return self.value < other.value
+            return NotImplemented
+
+    def __init__(self, state_spec: StateSpecification, variables: list, components: list, phases: list, n_ops: int,
                  axes_min: value_vector, axes_max: value_vector, n_axes_points: index_vector,
                  timer: timer_node, cache: bool = False):
         """
         This is the constructor of the PhysicsBase class. It creates a `simulation` timer node and initializes caching.
 
+        :param state_spec: State specification - 0) P, 1) PT, 2) PH
+        :type state_spec: StateSpecification
         :param variables: List of independent variables
         :type variables: list
-        :param nc: Number of components
-        :type nc: int
+        :param components: Components
+        :type components: list
         :param phases: List of phases
         :type phases: list
         :param n_ops: Number of operators
@@ -63,10 +78,12 @@ class PhysicsBase:
         :type cache: bool
         """
         # Define variables and number of operators
+        self.state_spec = state_spec
         self.vars = variables
         self.n_vars = len(variables)
 
-        self.nc = nc
+        self.components = components
+        self.nc = len(components)
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops
@@ -113,8 +130,8 @@ class PhysicsBase:
         :type is_barycentric: bool
         """
         # Define operators, set engine, set interpolators and define well controls
-        self.set_operators()
         self.engine = self.set_engine(discr_type, platform)
+        self.set_operators()
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
         self.define_well_controls()
         return
@@ -173,6 +190,7 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
+        # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}
         self.mass_flux_itor = {}
@@ -204,6 +222,44 @@ class PhysicsBase:
                                                   platform=platform, algorithm=itor_type, mode=itor_mode,
                                                   precision=itor_precision)
         return
+
+    def determine_obl_bounds(self, state_min: list, state_max: list, state_spec: StateSpecification = StateSpecification.PH):
+        """
+        Function to compute minimum and maximum enthalpy (kJ/kmol)
+
+        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
+        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        """
+        if state_spec == PhysicsBase.StateSpecification.PH:
+            self.axes_min[-1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[-1])
+            self.axes_max[-1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[-1])
+        else:
+            raise RuntimeError(f"Unknown state specification: {state_spec}")
+        return
+
+    @abc.abstractmethod
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
+        """
+        Function to set initial conditions from given distribution of properties over depth.
+
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :param input_depth: Array of depths over which depth table has been specified
+        """
+        pass
+
+    @abc.abstractmethod
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
+        """
+        Method to set initial conditions by arrays or uniformly for all cells
+
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
+        """
+        pass
 
     @abc.abstractmethod
     def define_well_controls(self):
@@ -289,6 +345,7 @@ class PhysicsBase:
                 else:
                     itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max)
             except (ValueError, NameError):
+                raise ValueError("Number of operators is incorrect, no templatized interpolator exists")
                 # if 64-bit index also failed, probably the combination of required n_ops and n_dims
                 # was not instantiated/exposed. In this case substitute general implementation of interpolator
                 itor = eval("multilinear_adaptive_cpu_interpolator_general")(evaluator, self.n_axes_points,

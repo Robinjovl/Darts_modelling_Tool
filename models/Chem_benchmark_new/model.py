@@ -169,6 +169,7 @@ class Model(CICDModel):
 
         thermal = 0
         ne = nc + thermal
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
 
         """ properties correlations """
         if self.combined_ions:
@@ -196,13 +197,14 @@ class Model(CICDModel):
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
                                          n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                         cache=0, volume=delta_volume, num_wells=num_well_blocks)
+                                         state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
             self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10, cache=0)
+                                         n_points=401, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
+                                         state_spec=state_spec, cache=0)
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
@@ -237,17 +239,19 @@ class Model(CICDModel):
     # Initialize reservoir and set boundary conditions:
     def set_initial_conditions(self):
         """ initialize conditions for all scenarios"""
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, self.init_pres, self.ini_comp)
+        input_distribution = {'pressure': self.init_pres}
+        input_distribution.update({comp: self.ini_comp[i] for i, comp in enumerate(self.physics.components[:-1])})
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh, input_distribution=input_distribution)
 
         if len(self.map) > 0:
             nc = self.physics.nc
             nb = self.reservoir.mesh.n_res_blocks
-            composition = np.array(self.reservoir.mesh.composition, copy=False)
+            initial_state = np.array(self.reservoir.mesh.initial_state, copy=False)
             zc = np.zeros(nb)
             for i in range(nc-1):
                 zc[:] = self.ini_comp[i]
                 zc[self.map == 0] = self.ini_void[i]
-                composition[i:(nc-1)*nb:nc-1] = zc
+                initial_state[(i+1):self.physics.n_vars*nb:self.physics.n_vars] = zc
         return
 
     def set_well_controls(self):
@@ -456,13 +460,13 @@ class MassSource:
 
 
 class CustomPhysics(Compositional):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1, thermal=0,
-                 cache=False, volume=0, num_wells=0):
+    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=-1, max_t=-1,
+                 state_spec = Compositional.StateSpecification.P, cache=False, volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells
 
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache)
+        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
 
     def set_operators(self):  # default definition of operators
         self.reservoir_operators[0] = ReservoirOperators(self.property_containers[0], self.thermal)

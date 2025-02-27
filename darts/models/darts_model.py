@@ -166,6 +166,7 @@ class DartsModel:
     def configure_output(self, kind: str):
         """
         Configuration of output
+        
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
         :param restart: Boolean to check if existing file should be overwritten or appended
@@ -206,6 +207,7 @@ class DartsModel:
     def load_restart_data(self, filename: str = os.path.join('restart', 'solution.h5'), timestep = -1):
         """
         Function to load data from previous simulation and uses them for following simulation.
+        
         :param output_folder: restart_data filename
         :type output_folder: str
         """
@@ -229,86 +231,16 @@ class DartsModel:
         self.reservoir.set_wells(verbose)
         return
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+    def set_initial_conditions(self):
         """
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
 
-        :param initial_values: Map of scalars/arrays of initial values for each primary variable, keys are the variables
-        :type initial_values: dict
-        :param gradient: Map of scalars of gradients for initial values
-        :type gradient: dict
+        Initial conditions can be specified in multiple ways:
+        1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_by_array()
+        2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth
+                          to self.physics.set_initial_conditions_by_depth_table()
         """
-        initial_values = initial_values if initial_values is not None else self.initial_values
-        gradient = gradient if gradient is not None else (self.gradient if hasattr(self, 'gradient') else None)
-
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
-
-        for i, variable in enumerate(self.physics.vars):
-            # Check if variable exists in initial values dictionary
-            if variable not in initial_values.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
-
-            if variable == 'pressure':
-                values = np.array(self.reservoir.mesh.pressure, copy=False)
-            elif variable == 'temperature':
-                values = np.array(self.reservoir.mesh.temperature, copy=False)
-            elif variable == 'enthalpy':
-                values = np.array(self.reservoir.mesh.enthalpy, copy=False)
-            else:
-                values = np.array(self.reservoir.mesh.composition, copy=False)
-
-            # values = np.array(self.reservoir.mesh.values[i], copy=False)
-            initial_value = initial_values[variable]
-
-            if variable not in ['pressure', 'temperature', 'enthalpy']:
-                c = i - 1
-                values[c::(self.physics.nc - 1)] = initial_value
-            elif isinstance(initial_values[variable], (list, np.ndarray)):
-                # If initial value is an array, assign array
-                values[:] = initial_value
-            elif gradient is not None and variable in gradient.keys():
-                # If gradient has been defined, calculate distribution over depth and assign to array
-                values[:self.reservoir.mesh.n_res_blocks] = initial_value + \
-                    np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_res_blocks] * gradient[variable]
-            else:
-                # Else, assign constant value to each cell in array
-                values.fill(initial_value)
-
-        return
-
-    def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
-        """
-        Function to set initial conditions from given distribution of properties over depth.
-
-        :param depth: depth
-        :param initial_distribution: initial distributions of unknowns over depth,
-                                    must have keys equal to self.physics.vars
-        :type initial_distribution: dict
-        """
-
-        # all depths
-        depths = np.asarray(self.reservoir.mesh.depth)
-
-        # adjust the size of composition array in c++
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
-
-        z_counter = 0
-        nz_vars = self.physics.n_vars - 1
-        for variable in self.physics.vars:
-            if variable not in initial_distribution.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
-
-            values_foo = interp1d(depth, initial_distribution[variable], kind='linear', fill_value='extrapolate')
-
-            if variable == 'pressure':
-                np.asarray(self.reservoir.mesh.pressure)[:] = values_foo(depths)
-            elif variable == 'temperature':
-                np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
-            elif variable == 'enthalpy':
-                np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
-            else:           # compositions
-                np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
-                z_counter += 1
+        raise NotImplementedError('Model.set_initial_conditions() not implemented.')
 
     def set_boundary_conditions(self):
         """
@@ -422,7 +354,7 @@ class DartsModel:
                 # to not allow the next time step be smaller than min_ts
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
-                    dt = min(dt, self.params.max_ts)
+
 
                 if t + dt > stop_time:
                     dt = stop_time - t
@@ -464,7 +396,6 @@ class DartsModel:
         :type verbose: bool
         """
         days = days if days is not None else self.runtime
-
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
@@ -475,7 +406,8 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt * self.params.mult_ts, self.params.max_ts)
+
+            dt = min(self.prev_dt*self.params.mult_ts, days, self.params.max_ts)
         self.prev_dt = dt
 
         ts = 0
@@ -500,7 +432,6 @@ class DartsModel:
                 # to not allow the next time step be smaller than min_ts
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
-                    dt = min(dt, self.params.max_ts)
 
                 if t + dt > stop_time:
                     dt = stop_time - t
@@ -517,8 +448,8 @@ class DartsModel:
                 dt /= self.params.mult_ts
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
-                if dt < self.params.min_ts:
-                    break
+                assert dt > self.params.min_ts, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(self.params.min_ts) + ' dt=' + str(dt))
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -532,6 +463,7 @@ class DartsModel:
                   % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+        return 0
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
@@ -582,6 +514,24 @@ class DartsModel:
         self.timer.node['simulation'].stop()
         return converged
 
+    def do_after_step(self):
+        '''
+        can be overrided by an user to be executed in the 'run_simulation()'
+        '''
+        pass
+
+    def run_simulation(self):
+        time = 0.0
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            self.set_well_controls(time=time)
+            ret = self.run(dt)
+            if ret != 0:
+                print('run() failed for the step=', ith_step, 'dt=', dt)
+                return 1
+            self.do_after_step()
+            time += dt
+        return 0
+
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
         Function to specify modifications to RHS vector. User can implement his own boundary conditions here.
@@ -617,8 +567,10 @@ class DartsModel:
     def save_data_to_h5(self, kind):
         """
         Function to write output solution or well output to *.h5 file
+        
         :param kind: 'well' for well output or 'solution' to write the whole solution vector
         :type kind: str
+        
         """
 
         if not hasattr(self, 'output_configured') or kind not in self.output_configured:
@@ -636,6 +588,7 @@ class DartsModel:
     def save_specific_data(self, filename):
         """
         Function to write output to *.h5 file
+        
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
@@ -657,6 +610,7 @@ class DartsModel:
     def read_specific_data(self, filename: str, timestep: int = None):
         """
         Function to read *.h5 files contents.
+        
         :param filename: path to *.h5 filename to append data to
         :param timestep:
         :return time: time of the saved data in days
@@ -691,12 +645,14 @@ class DartsModel:
 
     def output_properties(self, output_properties: list = None, timestep: int = None) -> tuple:
         """
-        Function to read *.h5 data and evaluate properties per grid block, per timestep
+        Function to read *.h5 data and evaluate properties per grid block, per timestep. 
+        
         :param output_properties: List of properties to evaluate for output
         :return property_array : dictionary containing the states and evaluated properties
         :return timesteps: np.ndarray containing the timesteps at which the properties were evaluated
         :rtype: tuple
         """
+        
         # Read binary file
         path = os.path.join(self.output_folder, self.sol_filename)
         if timestep is None:
@@ -708,19 +664,24 @@ class DartsModel:
         n_vars = len(var_names)
         n_ops = self.physics.n_ops
         nb = self.reservoir.mesh.n_res_blocks
-        props = list(var_names) + output_properties if output_properties is not None else list(var_names)
-        property_array = {prop: np.zeros((len(timesteps), nb)) for prop in props}
-        prop_idxs = [list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop)
-                     for prop in output_properties] if output_properties is not None else []
+
+        output_properties = output_properties if output_properties is not None else []
+        primary_props = [prop for prop in output_properties if prop in var_names]
+        primary_prop_idxs = {prop: list(var_names).index(prop) for prop in primary_props}
+        secondary_props = [prop for prop in output_properties if prop not in var_names]
+        secondary_prop_idxs = {prop: list(self.physics.property_containers[next(iter(self.physics.property_containers))].
+                                          output_props.keys()).index(prop) for prop in secondary_props}
+        property_array = {prop: np.zeros((len(timesteps), nb)) for prop in primary_props + secondary_props}
 
         # Loop over timesteps
         for k, timestep in enumerate(timesteps):
-            # Extract vector of states
-            for j, variable in enumerate(var_names):
-                property_array[variable][k, :] = X[k, :nb, j]
+            # Extract primary properties from X vector
+            for var_name, var_idx in primary_prop_idxs.items():
+                property_array[var_name][k] = X[k, :nb, var_idx]
 
-            if output_properties is not None:
-                state = value_vector(np.stack([property_array[var][k] for var in var_names]).T.flatten())
+            # Interpolate secondary properties
+            if secondary_props:
+                state = value_vector(np.stack([X[k, :nb, j] for j in range(n_vars)]).T.flatten())
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
@@ -729,10 +690,51 @@ class DartsModel:
                     prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
                     i += 1
 
-                for j, prop in enumerate(output_properties):
-                    property_array[prop][k] = values_numpy[prop_idxs[j]::n_ops]
+                for prop_name, prop_idx in secondary_prop_idxs.items():
+                    property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
 
         return timesteps, property_array
+
+    def output_to_plt(self, output_properties: list = None, ith_step: int = None, lims: dict = None, fig=None,
+                      figsize: tuple = None, axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False,
+                      plot_zeros: bool = True, cmap: str = 'jet', colorbar_loc: str = 'right',
+                      output_directory: str = None, file_format: str = "pdf"):
+        """
+        Function to plot results with matplotlib.
+
+        :param output_properties: List of properties to plot, default is None which will pass all
+        :type output_properties: list
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+        :param lims: Ranges of colorbars, default is empty
+        :type lims: dict
+        :param fig: Optional figure object to append plots, default is None
+        :param figsize: Tuple of (width, height) for figure
+        :param axs_shape: Tuple of (rows, columns) for figure
+        :param aspect_ratio: Aspect ratio of plots ('equal', 'auto', or float), default is 'equal'
+        :param logx: Bool to plot x-axis in logscale, default is False
+        :param plot_zeros: Bool to plot zero values, default is True
+        :param cmap: plt.Colourmap, default is 'jet'
+        :param colorbar_loc: Location of colorbar ('right' or 'bottom'), default is 'right'
+        :param output_directory: Directory to save file
+        :param file_format: File format, 'pdf' is default
+        """
+        # Set default output directory
+        if output_directory is None:
+            output_directory = self.output_folder
+
+        # Find properties to output
+        timesteps, property_array = self.output_properties(output_properties=output_properties, timestep=ith_step)
+
+        # Pass to Reservoir.plot() method
+        fig = self.reservoir.output_to_plt(data=property_array, output_props=output_properties, lims=lims, fig=fig,
+                                           figsize=figsize, axs_shape=axs_shape, aspect_ratio=aspect_ratio, logx=logx,
+                                           plot_zeros=plot_zeros, cmap=cmap, colorbar_loc=colorbar_loc)
+
+        import matplotlib.pyplot as plt
+        plt.savefig(output_directory + '/step' + str(ith_step) + '.' + file_format)
+
+        return fig
 
     def output_to_xarray(self, output_properties: list = None, timestep: int = None):
         """

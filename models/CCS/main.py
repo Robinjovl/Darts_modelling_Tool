@@ -17,10 +17,6 @@ m.set_reservoir()
 zero = 1e-10
 m.set_physics(zero, n_points=1001, temperature=None)
 
-m.initial_values = {"pressure": 100.,
-                    "H2O": 0.99995,
-                    "temperature": 350.
-                    }
 m.inj_stream = [0.00005]
 m.inj_stream += [350.] if m.physics.thermal else []
 m.p_inj = 100.
@@ -37,7 +33,7 @@ X, Y = np.meshgrid(x, y)
 
 properties = m.physics.vars + m.physics.property_operators[0].props_name
 print_props = m.physics.vars + ['satV', 'xCO2', 'yH2O']
-timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=0)
+timesteps, output = m.output_properties(print_props, timestep=0)
 nv = m.physics.n_vars
 
 fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
@@ -59,7 +55,7 @@ for t in range(2):
 
     #m.params.max_ts = 0.5
 
-    timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=t+1)
+    timesteps, output = m.output_properties(print_props, timestep=t+1)
 
     fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
     for i, ith_prop in enumerate(print_props):

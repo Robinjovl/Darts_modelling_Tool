@@ -49,8 +49,13 @@ build-linux-3.9:
 
 build-linux-3.9-gpu: 
     rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_GPU_LINUX == "1"   
     extends: .build-linux-gpu
+
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
         PY_VER: '3.9'       # for python image selection in .build-linux
@@ -218,7 +223,7 @@ build-windows-3.9-ODLS:
         - pip install wheel
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
-        - ./helper_scripts/build_darts_cmake.sh -w -t -m -j 8 $ODLS
+        - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS
     artifacts:
       paths:
         - './dist/*.whl'
@@ -230,6 +235,7 @@ build-windows-3.9-ODLS:
      
 .build-linux-gpu:
     stage: build
+
     tags:
         - linux_gpu
     before_script:
@@ -239,7 +245,7 @@ build-windows-3.9-ODLS:
         - conda activate darts_gitlab_gpu_build
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
-        - ./helper_scripts/build_install_darts_gpu.sh
+        - ./helper_scripts/build_install_darts_gpu.sh -c
     artifacts:
       paths:
         - './dist/*.whl'
@@ -268,7 +274,7 @@ build-windows-3.9-ODLS:
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # compile and make the wheel
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -w -t -j 8
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8
     artifacts:
       paths:
         - '*.log'
@@ -384,6 +390,10 @@ test-linux-3.9:
 
 test-linux-3.9-gpu:
     rules: 
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_GPU_LINUX == "1"
     extends: .test-linux-gpu
     variables:
@@ -526,7 +536,6 @@ test-windows-3.9-ODLS:
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
         # test interpolators
         - cd tests/engines/src/interpolation
@@ -538,18 +547,22 @@ test-windows-3.9-ODLS:
         - cd ../../..
         #
         - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - './models/_logs/*.log'
         - './models/pkl_lin.tar.gz'
       when: always
       expire_in: 1 week
-      when: always
 
 ###################################################################################
 
 .test-linux-gpu:
     stage: test
+
     tags:
         - linux_gpu
     before_script:
@@ -568,7 +581,6 @@ test-windows-3.9-ODLS:
         # passing additional argument LOG to trigger verbose check performance
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
-        - ./archive_pkl.sh $ODLS $TEST_GPU
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -576,6 +588,10 @@ test-windows-3.9-ODLS:
         - cd ../../..
         #
         - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - './models/_logs/*.log'
@@ -608,7 +624,6 @@ test-windows-3.9-ODLS:
         - cd models
         # passing additional argument to trigger verbose check performance
         - python run_test_suite2.py LOG
-        - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
         - cd ..
         # test interpolators
         - cd tests\engines\src\interpolation
@@ -618,6 +633,10 @@ test-windows-3.9-ODLS:
         - cd discretizer\tests\compare_discretizers
         - python main.py
         - cd ..\..\..
+    after_script:
+        - cd models
+        - .\archive_pkl.bat $env:ODLS $env:TEST_GPU
+        - cd ..
     artifacts:
       paths:
         - '.\models\_logs\*.log'

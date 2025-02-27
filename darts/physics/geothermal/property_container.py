@@ -169,7 +169,7 @@ class PropertyContainerPH(PropertyBase):
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
-        self.temperature = flash_results.T
+        self.temperature = flash_results.temperature
 
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
 
@@ -195,12 +195,8 @@ class PropertyContainerPH(PropertyBase):
         if len(ph) == 1:
             self.saturation[ph] = 1.
         else:
-            Vtot = 0
-            for j in ph:
-                Vtot += self.nu[j] / self.dens_m[j]
-
-            for j in ph:
-                self.saturation[j] = (self.nu[j] / self.dens_m[j]) / Vtot
+            vol = [self.nu[j] / self.dens_m[j] for j in ph]
+            self.saturation[ph] = vol / np.sum(vol)
 
         return
 
