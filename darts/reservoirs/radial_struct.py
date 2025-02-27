@@ -80,18 +80,16 @@ class RadialStruct(StructReservoir):
                 '''
                 assert nz == len(dz)
 
-            dr = np.tile(dr, nz)
-            dy = np.tile(dy, nz)
+            # Create tile of dr, dy and dz to pass to StructReservoir constructor as dx, dy, dz
+            dr = np.tile(dr, (nz, 1)).transpose()
+            dy = np.tile(dy, (nz, 1)).transpose()
+            dz = np.tile(dz, (nr, 1))
 
             dr = dr.reshape(nr, 1, nz)
             dy = dy.reshape(nr, 1, nz)
+            dz = dz.reshape(nr, 1, nz)
 
-            DZ, Z = np.zeros((nr, 1, nz)), np.zeros((nr, 1, nz))
-
-            for i in range(nr):
-                DZ[i, 0, :] = dz
-                Z[i, 0, :] = depth + np.cumsum(dz) - 0.5*dz[0]
-            dz, depth = DZ, Z
+            depth = np.cumsum(dz, axis=2) + depth - 0.5 * dz[0, ...]
 
         super().__init__(timer, nx=nr, ny=1, nz=nz, dx=dr, dy=dy, dz=dz, permx=permr, permy=permr, permz=permz,
                          poro=poro, depth=depth, rcond=rcond, hcap=hcap, op_num=op_num)
@@ -162,6 +160,29 @@ class RadialStruct(StructReservoir):
         self.output_points[:, 0] = points[:, 0] * np.cos(points[:, 1])
         self.output_points[:, 1] = points[:, 0] * np.sin(points[:, 1])
         self.output_cells = cells
+
+    def populate_data_for_radial_vtk_output(self, data):
+        new_data = {}
+        n_cells = self.reservoir.mesh.n_res_blocks
+        for prop, val in data.items():
+            # populate r-z data to all angles
+            new_data[prop] = np.tile(val, self.reservoir.nphi)
+
+        return new_data
+
+    def get_unknowns_for_radial_vtk_output(self):
+        X = np.array(self.physics.engine.X, copy=False)
+
+        # prepare data
+        data = {}
+        n_cells = self.reservoir.mesh.n_res_blocks
+        for i, var in enumerate(self.physics.vars):
+            # write r-z data
+            data[var] = X[i:self.physics.n_vars * n_cells:self.physics.n_vars]
+            # populate r-z data to all angles
+            data[var] = np.tile(data[var], self.reservoir.nphi)
+
+        return data
 
     def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         import os
