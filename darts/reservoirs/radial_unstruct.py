@@ -7,8 +7,6 @@ from darts.reservoirs.mesh.geometry.shapes import Square, Circle, MeshProperties
 
 
 class RadialUnstruct(UnstructReservoir):
-    r = []
-
     def __init__(self, timer: timer_node, mesh_properties: MeshProperties, angle: float,
                  permx, permy, permz, poro, hcap=2200, rcond=181.44):
         """
@@ -42,6 +40,8 @@ class RadialUnstruct(UnstructReservoir):
 
         self.physical_tags['matrix'] += [tag for name, tag in m.physical_groups['matrix'].items()]
         self.physical_tags['boundary'] += [tag for name, tag in m.physical_groups['boundary'].items()]
+
+        self.r = []
 
         super().__init__(timer=timer, mesh_file=filename + '.msh',
                          permx=permx, permy=permy, permz=permz, poro=poro, hcap=hcap, rcond=rcond)

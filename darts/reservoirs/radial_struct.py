@@ -4,8 +4,6 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 
 
 class RadialStruct(StructReservoir):
-    boundary_cells = {'top': [], 'bottom': [], 'inner': [], 'outer': []}
-
     def __init__(self, timer: timer_node, nr: int, nz: int, dr, dz, permr, permz, poro, logspace: bool = False,
                  R0: float = 0., R1: float = None, angle: float = 360., depth=0, rcond=181.44, hcap=2200, op_num=0,
                  boundary_volume: float = None):
@@ -99,6 +97,7 @@ class RadialStruct(StructReservoir):
                          poro=poro, depth=depth, rcond=rcond, hcap=hcap, op_num=op_num)
 
         # Fill boundary cells
+        self.boundary_cells = {'top': [], 'bottom': [], 'inner': [], 'outer': []}
         self.boundary_cells['top'] = [i for i in range(self.nx)]
         self.boundary_cells['bottom'] = [(self.nz-1) * self.nx + i for i in range(self.nx)]
 
