@@ -478,7 +478,7 @@ public:
 	std::vector<value_t> test_value_vec;
 	std::vector<index_t> test_index_vec;
 
-
+	well_control_iface::WellControlType observation_rate_type;
 };
 
 template <uint8_t N_VARS>

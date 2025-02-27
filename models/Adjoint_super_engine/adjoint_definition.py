@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import value_vector, redirect_darts_output
+from darts.engines import value_vector, redirect_darts_output, well_control_iface
 from darts.models.opt.opt_module_settings import model_modifier_aggregator, transmissibility_modifier, well_index_modifier
 from model_definition import Model
 
@@ -333,6 +333,10 @@ def process_adjoint(history_matching=False):
         proxy_model.customized_op_weights = op_coef * np.ones(
             (Training_report, np.size(time_data_report_customized, 1)))
 
+    # choose the type of observation rate
+    # todo: in the future, we will add more observation rate options, e.g. mass rate. By fefault, we use volumetric rate.
+    proxy_model.observation_rate_type = well_control_iface.VOLUMETRIC_RATE
+
     # activate optimization options--------------------------------
     proxy_model.activate_opt_options()
 
@@ -488,11 +492,12 @@ def process_adjoint(history_matching=False):
             obj_func = proxy_model.make_opt_step_adjoint_method
             grad_func = proxy_model.grad_adjoint_method_all
 
+            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
+                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
+
             opt_num = minimize(obj_func, x0, method='SLSQP', bounds=bounds,
                                options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True, 'eps': eps})
 
-            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
-                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
 
             adjoint_gradient = array(opt_adjoint.jac)
 
