@@ -158,9 +158,10 @@ class PropertyContainer(PropertyBase):
         # Evaluate flash at PT
         ph = self.run_flash(pressure, temperature, zc, evaluate_PT=True)
 
+        # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.
         for j in ph:
-            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])
+            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # kJ/kmol
 
         return enthalpy
 
