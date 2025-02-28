@@ -28,7 +28,8 @@
 class well_control_iface
 {
 public:
-  enum WellControlType : int { NONE, BHP, MOLAR_RATE = 0, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, NUMBER_OF_RATE_TYPES };
+  // MOLAR_RATE is 0 because it is the first rate operator type in the WellControlOperators
+  enum WellControlType : int { NONE = -2, BHP, MOLAR_RATE, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, NUMBER_OF_RATE_TYPES };
   static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
 
 protected:

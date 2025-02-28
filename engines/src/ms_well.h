@@ -69,7 +69,7 @@ public:
     state_neighbour.resize(n_vars);
     rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-	  rate_etor_ad = well_controls_etor;;  //adjoint method
+	  rate_etor_ad = well_controls_etor;  //adjoint method
   };
 
   void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
