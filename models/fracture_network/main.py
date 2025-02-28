@@ -8,7 +8,7 @@ from darts.models.cicd_model import compare_solution_with_reference
 
 def run_test(args: list = [], platform='cpu'):
     if len(args) > 1:
-        return test(case=args[0], overwrite=args[1], platform=platform)
+        return run_case(case=args[0], overwrite=args[1], platform=platform)
     else:
         print('Not enough arguments provided')
         return 1, 0.0
@@ -51,19 +51,19 @@ if __name__ == "__main__":
 
     cases_list = ['case_1']
 
-    cases_list += ['case_1_burden_O1']
-    cases_list += ['case_1_burden_O2']
-    cases_list += ['case_1_burden_U1']
-    cases_list += ['case_1_burden_U2']
-    cases_list += ['case_1_burden_O1_U1']
-    cases_list += ['case_1_burden_O2_U2']
+    #cases_list += ['case_1_burden_O1']
+    #cases_list += ['case_1_burden_O2']
+    #cases_list += ['case_1_burden_U1']
+    #cases_list += ['case_1_burden_U2']
+    #cases_list += ['case_1_burden_O1_U1']
+    #cases_list += ['case_1_burden_O2_U2']
 
     ##cases_list = ['case_2']
-    cases_list = ['case_3']
-    cases_list = ['case_4']
-    cases_list = ['case_5']
+    #cases_list = ['case_3']
+    #cases_list = ['case_4']
+    #cases_list = ['case_5']
 
-    cases_list = ['whitby']
+    #cases_list = ['whitby']
 
     for case in cases_list:
         run_case(case, platform=platform)
