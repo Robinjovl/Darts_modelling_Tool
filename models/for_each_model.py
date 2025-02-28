@@ -147,12 +147,12 @@ def run_single_test(dir, module_name, args, ret_value, platform):
                                 str(dir) + '_' + args_str + '.log')
         f = open(log_file, 'w')
         f.close()
-        log_stream = redirect_all_output(log_file)
+        #log_stream = redirect_all_output(log_file)
         shutil.rmtree("__pycache__", ignore_errors=True)
         # create model instance
         ret_value.value, test_time = mod.run_test(args, platform=platform)
-        log_stream = redirect_all_output(log_file)
-        abort_redirection(log_stream)
+        ###log_stream = redirect_all_output(log_file)
+        #abort_redirection(log_stream)
         if ret_value.value:
             print('FAIL, \t%.2f s' % test_time)
         else:
@@ -186,13 +186,13 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             log_file = os.path.join(logs_folder, str(dir) + '_' + str(arg[0]) + '.log')
             f = open(log_file, "w")
             f.close()
-            log_stream = redirect_all_output(log_file)
+            #log_stream = redirect_all_output(log_file)
             starting_time = time.time()
             p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
-            abort_redirection(log_stream)
+            #abort_redirection(log_stream)
             ending_time = time.time()
             str_status = 'OK' if not ret_value.value else 'FAIL'
             print('Test ' + dir + ' ' + '_'.join(arg) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
