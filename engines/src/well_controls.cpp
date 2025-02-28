@@ -205,16 +205,19 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
   // If block to be initialized is well head, initialize according to well control target
   if (is_well_head)
   {
+	// Fill target state with target BHP/rate pressure, composition and target temperature
+	std::vector<value_t> target_state(n_vars);
+
 	// Pressure initialization
 	if (this->control_type == WellControlType::BHP)
 	{
 	  // BHP-controlled: set bhp
-	  state_block[0] = this->target;
+	  target_state[0] = this->target;
 	}
 	else
 	{
 	  // Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-	  state_block[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] - 0.001;
+	  target_state[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] - 0.001;
 	}
   
 	// Other state specifications
@@ -222,39 +225,42 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
 	{
 	  // PRODUCTION WELL
 	  // Initialize production well with state of neighbouring cell
-	  for (size_t i = 1; i < state_block.size() - thermal; i++)
+	  for (int i = 1; i < n_vars; i++)
 	  {
-		state_block[i] = state_neighbour[i];
-	  }
-  
-	  // For temperature/enthalpy, use neighbouring cell
-	  if (this->thermal)
-	  {
-		index_t i = state_block.size()-1;
-		state_block[i] = state_neighbour[i];
+		target_state[i] = state_neighbour[i];
 	  }
 	}
 	else
 	{
 	  // INJECTION WELL
 	  // Initialize injection well with injection stream
-	  for (index_t i = 1; i < state_block.size() - thermal; i++)
+	  for (int i = 1; i < n_vars - thermal; i++)
 	  {
-		state_block[i] = this->inj_comp[i-1];
+		target_state[i] = this->inj_comp[i-1];
 	  }
-  
-	  // For temperature/enthalpy, use neighbouring cell
+	
+	  // For temperature/enthalpy, use specified control
 	  if (this->thermal)
 	  {
-		index_t i = state_block.size()-1;
-		state_block[i] = state_neighbour[i];
+		// Evaluate WellInitOperators to initialize temperature/enthalpy of well head according to specified injection conditions
+		target_state[n_vars - 1] = inj_temp;
+		std::vector<value_t> well_init_ops(1);
+		this->well_init_etor->evaluate(target_state, well_init_ops);
+		
+		target_state[n_vars - 1] = well_init_ops[0];
 	  }
+	}
+
+	// Fill state block with target state vector
+	for (size_t i = 0; i < n_vars; i++)
+	{
+	  state_block[i] = target_state[i];
 	}
   }
   // In case block to be initialized well block, initialize with neighbouring state (perforated reservoir cell)
   else
   {
-	for (size_t i = 0; i < state_block.size(); i++)
+	for (int i = 0; i < n_vars; i++)
 	{
 	  state_block[i] = state_neighbour[i];
 	}

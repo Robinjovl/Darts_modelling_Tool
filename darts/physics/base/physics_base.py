@@ -9,6 +9,7 @@ from enum import Enum
 from functools import total_ordering
 
 from darts.engines import *
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
 
 
 class PhysicsBase:
@@ -39,7 +40,8 @@ class PhysicsBase:
     """
     engine: engine_base
     well_operators: operator_set_evaluator_iface
-    well_ctrl_operators: operator_set_evaluator_iface
+    well_ctrl_operators: WellControlOperators
+    well_init_operators: WellInitOperators
 
     @total_ordering
     class StateSpecification(Enum):
@@ -225,6 +227,12 @@ class PhysicsBase:
                                                        timer_name='well controls interpolation',
                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
                                                        precision=itor_precision)
+        self.well_init_itor = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
+                                                       axes_min=value_vector(self.PT_axes_min),
+                                                       axes_max=value_vector(self.PT_axes_max),
+                                                       timer_name='well initialization',
+                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                       precision=itor_precision)
         return
 
     def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
@@ -342,7 +350,7 @@ class PhysicsBase:
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.well_init_itor, self.thermal)
 
     def create_interpolator(self, evaluator: operator_set_evaluator_iface, axes_min: value_vector, axes_max: value_vector,
                             timer_name: str, n_ops: int, algorithm: str = 'multilinear', mode: str = 'adaptive',

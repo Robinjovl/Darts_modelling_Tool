@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
@@ -130,6 +130,8 @@ class Compositional(PhysicsBase):
             self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
         self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
         return
 
