@@ -1,13 +1,10 @@
 from sys import stdout, stderr
-
-from darts.engines import print_build_info as engines_pbi
-from darts.models.cicd_model import is_iter_solvers
-
-from for_each_model import run_tests, abort_redirection, redirect_all_output
+import time
 import sys, os, shutil
 import subprocess
-from darts.engines import sim_params
+
 from darts.models.cicd_model import get_platform, is_iter_solvers
+from darts.engines import print_build_info as engines_pbi
 
 def run_testing(platform, redirect_output=True):
     iter_solvers = is_iter_solvers()
@@ -59,12 +56,14 @@ def run_testing(platform, redirect_output=True):
         else:
             stdout_ = stdout
             stderr_ = stderr
+        starting_time = time.time()
         mrun = subprocess.run(["python", "main.py"], stdout=stdout_, stderr=stderr_)
+        ending_time = time.time()
         rcode = mrun.returncode
         if not rcode:
-            print('OK')
+            print('OK', '\t%.2f s' % (ending_time - starting_time))
         else:
-            print('FAIL')
+            print('FAIL, \t%.2f s' % (ending_time - starting_time))
             failed_models += [mdir]
             # duplicate 10 last lines to screen from the error log file
             with open('../_logs/' + mdir + '_err.log', 'r') as f:
