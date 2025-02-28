@@ -1127,10 +1127,16 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			std::vector<value_t> rates;
 			std::vector<value_t> rates_derivs;
 
-			rates.resize(w->n_phases);
-			rates_derivs.resize(w->n_phases * n_vars);
+			//rates.resize(w->n_phases);
+			//rates_derivs.resize(w->n_phases * n_vars);
 
-			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars);
+			index_t n_ops_well = w->control.get_well_n_ops();
+			index_t n_vars_well = w->control.get_well_n_vars();
+
+			rates.resize(n_ops_well);
+			rates_derivs.resize(n_ops_well* n_vars_well);
+
+			state.assign(X.begin() + upstream_idx * w->n_block_size + w->P_VAR, X.begin() + upstream_idx * w->n_block_size + w->P_VAR + n_vars_well);
 			w->rate_etor_ad->evaluate_with_derivatives(state, block_idx, rates, rates_derivs);
 
 
@@ -1138,12 +1144,12 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 			//uint8_t c = component_index[0];
 			double ders_term, vals_term;
-			for (uint8_t v = 0; v < n_vars; v++)
+			for (uint8_t v = 0; v < n_vars_well; v++)
 			{
 				ders_term = 0.0;
 				vals_term = 0.0;
 
-                index_t p_idx = 0;  // the index of the phase in DARTS model definition
+				index_t p_idx = observation_rate_type * w->n_phases;  // by default it is volumetric rate
 				for (std::string phase : w->phase_names)
 				{
                     index_t p = 0;  // the index of the phase in observation data set
@@ -1152,7 +1158,7 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
 							vals_term += rates[p_idx] * w->segment_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
@@ -1162,21 +1168,21 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
 				{
-					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
 					}
 				}
 				else  // rate control
 				{
 					//;  // all zero
 
-					Temp_dj_dx[upstream_idx * n_vars + v] += ders_term;
+					Temp_dj_dx[upstream_idx * n_vars_well + v] += ders_term;
 					if (v == 0)  // derivatives w.r.t. pressure
 					{
-						Temp_dj_dx[w->well_body_idx * n_vars + v] += -vals_term;
-						Temp_dj_dx[w->well_head_idx * n_vars + v] += vals_term;
+						Temp_dj_dx[w->well_body_idx * n_vars_well + v] += -vals_term;
+						Temp_dj_dx[w->well_head_idx * n_vars_well + v] += vals_term;
 					}
 				}
 			}
