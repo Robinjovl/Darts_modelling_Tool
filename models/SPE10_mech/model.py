@@ -241,9 +241,9 @@ class Model(THMCModel):
 
     def set_boundary_conditions(self):
         from darts.engines import well_control_iface
-        self.reservoir.wells[0].control = self.physics.define_well_controls(well_name=self.reservoir.wells[0].name,
-                                                                            control_type=well_control_iface.MOLAR_RATE,
-                                                                            is_inj=False, target=0., phase_name='wat')
+        self.physics.set_well_controls(well=self.reservoir.wells[0], is_control=True,
+                                       control_type=well_control_iface.MOLAR_RATE,
+                                       is_inj=False, target=0., phase_name='wat')
         if len(self.reservoir.wells) > 1:
             inj = []
             inj_temp = None
@@ -254,10 +254,9 @@ class Model(THMCModel):
             elif self.physics_type == 'dead_oil_thermal':
                 inj = [1.0 - self.idata.obl.zero]
                 inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
-            self.reservoir.wells[1].control = self.physics.define_well_controls(well_name=self.reservoir.wells[1].name,
-                                                                                control_type=well_control_iface.MOLAR_RATE,
-                                                                                is_inj=True, target=0., phase_name='wat',
-                                                                                inj_stream=inj, inj_temp=inj_temp)
+            self.physics.set_well_controls(well=self.reservoir.wells[1], is_control=True,
+                                           control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=0., phase_name='wat', inj_stream=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         """
@@ -270,8 +269,8 @@ class Model(THMCModel):
         for i, w in enumerate(self.reservoir.wells):
             p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
             if i == 0:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=False, target=np.min(p_cell)-50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=np.min(p_cell)-50)
             else:
                 inj = []
                 inj_temp = None
@@ -282,9 +281,9 @@ class Model(THMCModel):
                 elif self.physics_type == 'dead_oil_thermal':
                     inj = [1.0 - self.idata.obl.zero]
                     inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=True, target=np.max(p_cell) + 50., inj_stream=inj,
-                                                              inj_temp=inj_temp)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=np.max(p_cell) + 50., inj_stream=inj,
+                                               inj_temp=inj_temp)
         return 0
 
     def set_initial_conditions(self):

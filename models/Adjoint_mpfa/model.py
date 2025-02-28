@@ -159,12 +159,12 @@ class Model(DartsModel, OptModuleSettings):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=False, target=self.p_init-10.)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.p_init-10.)
             else:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=True, target=self.p_init+10., inj_stream=self.inj[:-1],
-                                                              inj_temp=self.inj[-1])
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.p_init+10., inj_stream=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
 
     def set_op_list(self):
         """
@@ -224,11 +224,11 @@ class Model(DartsModel, OptModuleSettings):
             from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if i == 0:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=False, target=self.p_init-10.)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=self.p_init-10.)
                 else:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=True, target=self.p_init+10., inj_stream=self.inj)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=self.p_init+10., inj_stream=self.inj)
 
             DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()

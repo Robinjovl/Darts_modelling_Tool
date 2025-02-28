@@ -43,8 +43,12 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
-        nx = 20
-        ny = 10
+        # nx = 20
+        # ny = 10
+        # nz = 2
+
+        nx = 5
+        ny = 5
         nz = 2
 
         # reservoir geometry： for realistic case, one just needs to load the data and input it
@@ -54,11 +58,11 @@ class Model(CICDModel, OptModuleSettings):
         return
 
     def set_wells(self):
-        self.inj_list = [[5, 5]]
-        self.prod_list = [[15, 3], [15, 8]]
+        # self.inj_list = [[5, 5]]
+        # self.prod_list = [[15, 3], [15, 8]]
 
-        # self.inj_list = [[2, 2]]
-        # self.prod_list = [[1, 2], [3, 2]]
+        self.inj_list = [[3, 3]]
+        self.prod_list = [[1, 1], [5, 5]]
 
         # well index setting
         if self.Peaceman_WI:
@@ -126,11 +130,11 @@ class Model(CICDModel, OptModuleSettings):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=True, target=140., inj_stream=self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=140., inj_stream=self.inj_stream)
             else:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=False, target=50.)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def set_op_list(self):
         if self.customize_new_operator:
@@ -185,11 +189,11 @@ class Model(CICDModel, OptModuleSettings):
             from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if "I" in w.name:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=True, target=140., inj_stream=self.inj_stream)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=140., inj_stream=self.inj_stream)
                 else:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=False, target=50.)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=50.)
 
             CICDModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()

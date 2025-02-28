@@ -82,8 +82,8 @@ class Model(CICDModel):
         inj_stream = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=True, target=140., inj_stream=inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=140., inj_stream=inj_stream)
             else:
-                w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                              is_inj=False, target=50.)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)

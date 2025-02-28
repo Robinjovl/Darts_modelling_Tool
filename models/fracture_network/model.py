@@ -184,29 +184,33 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):
                 if inj_rate is None:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=True, target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
                 else:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                                  is_inj=True, target=inj_rate, phase_name='water', inj_stream=[], inj_temp=inj_temp)
-                    w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                     is_inj=True, target=wctrl.inj_bhp_constraint, inj_stream=[],
-                                                                     inj_temp=inj_temp)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=True, target=inj_rate, phase_name='water', inj_stream=[], inj_temp=inj_temp)
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.inj_bhp_constraint, inj_stream=[],
+                                                   inj_temp=inj_temp)
             else:
                 if prod_rate is None:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                  is_inj=False, target=prod_bhp)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=prod_bhp)
                 else:
-                    w.control = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                                  is_inj=False, target=-np.abs(prod_rate), phase_name='water')
-                    w.constraint = self.physics.define_well_controls(well_name=w.name, control_type=well_control_iface.BHP,
-                                                                     is_inj=False, target=wctrl.prod_bhp_constraint)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=False, target=-np.abs(prod_rate), phase_name='water')
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.prod_bhp_constraint)
 
-            print(w.name,
-                  w.well_head_depth,
-                  w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
-                  w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
-                  w.control.target_rate if hasattr(w.control, 'target_rate') else '')
+            # print(w.name,
+            #       w.well_head_depth,
+            #       w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
+            #       w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
+            #       w.control.target_rate if hasattr(w.control, 'target_rate') else '')
         return 0
 
     def get_mat_frac_range(self, part):
