@@ -163,7 +163,7 @@ def run_case(mesh_type, physics_type, overwrite='0'):
     '''
     print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, 'overwrite: ' + overwrite, sep=', ')
 
-    m, data = run(mesh_type, physics_type, is_finalize)
+    m, data = run(mesh_type, physics_type)
 
     pkl_suffix = '_iter' if is_iter_solvers() else ''
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
