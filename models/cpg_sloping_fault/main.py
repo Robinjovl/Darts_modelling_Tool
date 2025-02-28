@@ -47,7 +47,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
-    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
+    #m.reservoir.save_grdecl(m.get_arrays(ith_step=0), os.path.join(out_dir, 'res_init'))
 
     ret = m.run_simulation()
     if ret != 0:
@@ -55,7 +55,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.reservoir.centers_to_vtk(out_dir)
 
-    m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
+    #m.reservoir.save_grdecl(m.get_arrays(ith_step=1), os.path.join(out_dir, 'res_last'))
     
     m.print_timers()
     #m.print_stat()

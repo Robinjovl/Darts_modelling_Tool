@@ -82,6 +82,17 @@ class ModelCCS(Model_CPG):
 
         return
 
+    def get_arrays(self, ith_step):
+        '''
+        :return: dictionary of current unknown arrays (p, T)
+        '''
+        # Find index of properties to output
+        ev_props = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
+        # If output_properties is None, all variables and properties from property_operators will be passed
+        props_names = list(ev_props)
+        timesteps, property_array = self.output_properties(output_properties=props_names, timestep=ith_step)
+        return property_array
+
     def set_input_data(self, case=''):
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type='uniform')
         set_input_data(self.idata, case)
@@ -100,7 +111,7 @@ class ModelCCS(Model_CPG):
                 wdata.add_prd_rate_control(time=10 * y2d, name=w, rate=0., comp_index=0, bhp_constraint=70)  # STOP WELL
         elif 'wrate' in case:
             for w in wells:
-                wdata.add_inj_rate_control(name=w, rate=1e6, comp_index=1, bhp_constraint=250)  # kmol/day | bars | K
+                wdata.add_inj_rate_control(name=w, rate=1e6, comp_index=1, bhp_constraint=250, temperature=300)  # kmol/day | bars | K
                 wdata.add_prd_rate_control(time=10 * y2d, name=w, rate=0., comp_index=0, bhp_constraint=70)  # STOP WELL
 
         self.idata.obl.n_points = 1000
@@ -139,7 +150,7 @@ class ModelCCS(Model_CPG):
         :param time: simulation time, [days]
         :return:
         '''
-        inj_stream_base = [self.physics.zero * 100]
+        inj_stream_base = [self.zero * 100]
         eps_time = 1e-15
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
