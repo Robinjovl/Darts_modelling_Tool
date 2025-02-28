@@ -208,7 +208,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   }
   std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;  
 
-#if 1
+  // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
   for (auto &p : perforations)
   {
     index_t i_w, i_r;
@@ -221,17 +221,18 @@ int ms_well::initialize_control(std::vector<value_t>& X)
     // copy neighbour state
     std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
     // initialize
-    control.initialize_well_block(state, state_neighbour);
+    control.initialize_well_block(state, state_neighbour, false);
     // move initialized state back to X
     std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
   }
-#endif
+
+  // Initialize state in well head - state neighbour is well body, state is well head
   // move the state from X
   std::move(X.begin() + well_head_idx * n_block_size + P_VAR, X.begin() + well_head_idx * n_block_size + P_VAR + n_vars, state.begin());
   // copy neighbour state
   std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
   // initialize
-  control.initialize_well_block(state, state_neighbour);
+  control.initialize_well_block(state, state_neighbour, true);
   // move initialized state back to X
   std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
   return 0;

@@ -200,46 +200,66 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   }
 }
 
-int well_control_iface::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
+int well_control_iface::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour, bool is_well_head)
 {
-  // Pressure initialization
-  if (this->control_type == WellControlType::BHP)
+  // If block to be initialized is well head, initialize according to well control target
+  if (is_well_head)
   {
-	// BHP-controlled: set bhp
-	state_block[0] = this->target;
-  }
-  else
-  {
-	// Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-	state_block[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] - 0.001;
-  }
-
-  // Other state specifications
-  if (this->well_state_offset == 1)  // if production well
-  {
-	// PRODUCTION WELL
-	// Initialize production well with state of neighbouring cell
-	for (size_t i = 1; i < state_block.size(); i++)
-  	{
-      state_block[i] = state_neighbour[i];
-  	}
-  }
-  else
-  {
-	// INJECTION WELL
-	// Initialize injection well with injection stream
-	for (index_t i = 1; i < state_block.size() - thermal; i++)
-    {
-      state_block[i] = this->inj_comp[i-1];
-    }
-
-	// For temperature/enthalpy, use neighbouring cell
-	if (this->thermal)
+	// Pressure initialization
+	if (this->control_type == WellControlType::BHP)
 	{
-	  index_t i = state_block.size()-1;
+	  // BHP-controlled: set bhp
+	  state_block[0] = this->target;
+	}
+	else
+	{
+	  // Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
+	  state_block[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] - 0.001;
+	}
+  
+	// Other state specifications
+	if (this->well_state_offset == 1)  // if production well
+	{
+	  // PRODUCTION WELL
+	  // Initialize production well with state of neighbouring cell
+	  for (size_t i = 1; i < state_block.size() - thermal; i++)
+	  {
+		state_block[i] = state_neighbour[i];
+	  }
+  
+	  // For temperature/enthalpy, use neighbouring cell
+	  if (this->thermal)
+	  {
+		index_t i = state_block.size()-1;
+		state_block[i] = state_neighbour[i];
+	  }
+	}
+	else
+	{
+	  // INJECTION WELL
+	  // Initialize injection well with injection stream
+	  for (index_t i = 1; i < state_block.size() - thermal; i++)
+	  {
+		state_block[i] = this->inj_comp[i-1];
+	  }
+  
+	  // For temperature/enthalpy, use neighbouring cell
+	  if (this->thermal)
+	  {
+		index_t i = state_block.size()-1;
+		state_block[i] = state_neighbour[i];
+	  }
+	}
+  }
+  // In case block to be initialized well block, initialize with neighbouring state (perforated reservoir cell)
+  else
+  {
+	for (size_t i = 0; i < state_block.size(); i++)
+	{
 	  state_block[i] = state_neighbour[i];
 	}
   }
+
   return 0;
 }
 

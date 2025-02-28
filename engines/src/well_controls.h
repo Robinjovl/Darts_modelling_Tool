@@ -40,12 +40,12 @@ protected:
   std::vector<value_t> state;
   std::vector<value_t> well_control_ops;
   std::vector<value_t> well_control_ops_derivs;
-  operator_set_gradient_evaluator_iface *well_controls_etor;
+  operator_set_gradient_evaluator_iface *well_controls_etor, *well_init_etor;
   
 public:
   well_control_iface() {}
-  well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_) 
-  : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_) 
+  well_control_iface(index_t n_phases_, index_t n_comps_, bool thermal_, operator_set_gradient_evaluator_iface* well_controls_etor_, operator_set_gradient_evaluator_iface* well_init_etor_) 
+  : n_phases(n_phases_), n_comps(n_comps_), thermal(thermal_), well_controls_etor(well_controls_etor_), well_init_etor(well_init_etor_)
   {
 	  // Evaluate well control operators
     // WellControlOperators are defined as follows: P, composition, T, NP MOLAR_RATE, NP MASS_RATE, NP VOLUMETRIC_RATE, and NP ADVECTIVE_HEAT_RATE operators
@@ -70,7 +70,7 @@ public:
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
     index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
-  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
+  virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour, bool is_well_head);
 };
 
 #if 0
