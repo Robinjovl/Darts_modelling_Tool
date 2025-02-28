@@ -82,9 +82,9 @@ n.print_timers()
 
 #%% Well output
 well_time_data = n.output.store_well_time_data()
-types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
-                       "components_molar_rates", "components_mass_rates", "heat_rate", "BHP", "BHT"]
-n.output.plot_well_time_data(types_of_well_rates)
+types_of_well_time_data = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
+                           "components_molar_rates", "components_mass_rates", "advective_heat_rate", "BHP", "BHT"]
+n.output.plot_well_time_data(types_of_well_time_data)
 
 plt.figure()
 plt.plot(well_time_data['time'], well_time_data['well_P1_molar_rate_gas'])
