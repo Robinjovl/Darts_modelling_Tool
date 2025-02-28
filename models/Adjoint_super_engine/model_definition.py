@@ -1,6 +1,6 @@
 from darts.engines import *
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 import numpy as np
 
@@ -15,10 +15,10 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.tools.keyword_file_tools import get_table_keyword
 
 
-class Model(CICDModel, OptModuleSettings):
+class Model(DartsModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, customize_new_operator=False, Peaceman_WI=False):
         # call base class constructor
-        CICDModel.__init__(self)
+        DartsModel.__init__(self)
         OptModuleSettings.__init__(self)
 
         # measure time spend on reading/initialization
@@ -179,7 +179,7 @@ class Model(CICDModel, OptModuleSettings):
                 else:
                     w.control = self.physics.new_bhp_prod(50)
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 self.export_vtk(file_name)
