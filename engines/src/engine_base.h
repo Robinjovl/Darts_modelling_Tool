@@ -16,11 +16,14 @@
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
+#include "openDARTS/linear_solvers/csr_matrix.hpp"
+using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
+#include "csr_matrix.h"
 #endif // OPENDARTS_LINEAR_SOLVERS 
 
 #ifdef WITH_GPU
