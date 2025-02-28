@@ -151,10 +151,11 @@ class Compositional(PhysicsBase):
         assert not self.thermal or ('temperature' in input_distribution.keys() or
                                     'enthalpy' in input_distribution.keys()), \
             "Temperature or enthalpy must be specified for thermal models"
-        input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
-        for key, input_values in enumerate(input_distribution.values()):
-            input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
-            assert len(input_values) == len(input_depth)
+        input_depth = input_depth if not (np.isscalar(input_depth) or len(input_depth) == 1) else np.array([input_depth, input_depth + 1.]).flatten()
+        for key, input_values in input_distribution.items():
+            input_distribution[key] = input_values if not (np.isscalar(input_values) or len(input_values) == 1) else \
+                (np.ones(len(input_depth)) * input_values)
+            assert len(input_distribution[key]) == len(input_depth)
 
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)
