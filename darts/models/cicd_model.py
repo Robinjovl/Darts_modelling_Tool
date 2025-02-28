@@ -218,3 +218,40 @@ def get_platform():
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         platform = 'gpu'
     return platform
+
+def is_iter_solvers():
+    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
+        return True
+    return False
+
+def pkl_suffix_solvers():
+    return '_iter' if is_iter_solvers() else '_odls'
+
+def set_one_thread():
+    try: # if compiled with OpenMP
+        # set to run with 1 thread, as mech tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
+def reset_num_threads():
+    try:  # if compiled with OpenMP
+        from darts.engines import set_num_threads
+        set_num_threads(int(os.environ['OMP_NUM_THREADS']))
+    except:
+        pass
+
+def is_overwrite_pkl():
+    # overwrite existing pkl files
+    overwrite = '0'
+    if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
+        overwrite = '1'
+    return overwrite
+
+def is_test_all_models():
+    # run larger set of models (takes longer)
+    test_all_models = False
+    if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
+        test_all_models = True
+    return test_all_models

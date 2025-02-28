@@ -4,16 +4,9 @@ from model import Model
 import numpy as np
 import meshio
 from darts.engines import redirect_darts_output
-from darts.models.cicd_model import compare_solution_with_reference, get_platform
+from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers, set_one_thread
 
 def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cpu'):
-    try:
-        # if compiled with OpenMP, set to run with 1 thread, as MPFA tests are not working in the multithread version yet
-        from darts.engines import set_num_threads
-        set_num_threads(1)
-    except:
-        pass
-
     redirect_darts_output('run.log')
 
     m = Model(discr_type=discr_type, mesh_file=mesh_file)
@@ -69,6 +62,12 @@ def run(discr_type='mpfa', mesh_file='meshes/wedge.msh', test=True, platform='cp
     return failed
 
 if __name__ == '__main__':
+    set_one_thread()
+    platform = get_platform()
+
+    if platform != 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
+        exit(0)
+
     # 'tpfa' - Python discretizer + tpfa super engine
     # 'mpfa' - C++ (new) discretizer + mpfa super engine
     # permeabilitties and heat conductivities are different between 'tpfa' and 'mpfa'

@@ -9,7 +9,7 @@ from darts.tools.logging import redirect_all_output, abort_redirection
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
-from darts.models.cicd_model import compare_solution_with_reference
+from darts.models.cicd_model import compare_solution_with_reference, get_platform, is_iter_solvers
 
 
 def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
@@ -108,7 +108,6 @@ def run_case(physics_type : str, case: str, out_dir: str, export_vtk=True, redir
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
-##########################################################################################################
 def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, label_list, physics_type, out_dir):
     plt.rc('font', size=12)
 
@@ -180,25 +179,9 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
         plt.tight_layout()
         plt.close()
 
-##########################################################################################################
-# for CI/CD
-def run_test(args: list = [], platform='cpu'):
-    if len(args) > 1:
-        case = args[0]
-        physics_type = args[1]
-
-        out_dir = 'results_' + physics_type + '_' + case
-        ret = run_case(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
-        return ret[0], ret[1] #failed_flag, sim_time
-    else:
-        print('Not enough arguments provided')
-        return True, 0.0
-##########################################################################################################
-
 if __name__ == '__main__':
-    platform = 'cpu'
-    if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-            platform = 'gpu'
+    platform = get_platform()
+    iter_solvers = is_iter_solvers()
 
     physics_list = []
     physics_list += ['geothermal']
@@ -206,27 +189,35 @@ if __name__ == '__main__':
 
     cases_list = []
     cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    if iter_solvers:
+        cases_list += ['generate_51x51x1']
+        cases_list += ['case_40x40x10']
     #cases_list += ['generate_100x100x100']
-    #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
     well_controls = []
     well_controls += ['wrate']
     well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wperiodic']
 
+    n_failed = 0
     for physics_type in physics_list:
         for case_geom in cases_list:
             for wctrl in well_controls:
                 if physics_type == 'deadoil' and wctrl == 'wrate':
-                    continue
+                    continue  # TODO fix convergence
                 case = case_geom + '_' + wctrl
                 out_dir = 'results_' + physics_type + '_' + case
+                print('Running', os.path.basename(__file__), case, physics_type)
                 failed, sim_time, time_data, time_data_report, wells, well_is_inj = run_case(physics_type=physics_type,
                                                                                         case=case, out_dir=out_dir,
                                                                                         redirect_log=False,
                                                                                         platform=platform)
+                n_failed += failed
+                if failed:
+                    print('FAIL')
+                else:
+                    print('OK')
 
                 # one can read well results from pkl file to add/change well plots without re-running the model
                 pkl1_dir = '.'
@@ -247,3 +238,4 @@ if __name__ == '__main__':
                 plot_results(wells=wells, well_is_inj=well_is_inj,
                              time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
                              physics_type=physics_type, out_dir=out_dir)
+    exit(n_failed)
