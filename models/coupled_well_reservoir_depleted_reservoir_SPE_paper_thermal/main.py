@@ -1,7 +1,6 @@
 """
 Uniform temperature along the wellbore
 Uniform temperature in the entire reservoir
-Injection rate = 10 kg/second
 A smaller time step is needed for convergence compared to isothermal scenarios
 Be careful that OBL ranges are large enough to cover the conditions of the simulation.
 """
@@ -35,8 +34,8 @@ if 1:
     #     coupled_model.output_to_vtk(ith_step=i+1)   # save a .vtk every day
 
     time_steps = [1/24/60,   # 1 minute
-                  1/24/30 - 1/24/60,   # 2 minute
-                  1/24/20 - 1/24/30,   # 3 minute
+                  1.0001/24/30 - 1/24/60,   # 2 minute
+                  1/24/20 - 1.0001/24/30,   # 3 minute
                   1/24/12 - 1/24/20,   # 5 minute
                   1/24/6 - 1/24/12,   # 10 minute
                   1/24/3 - 1/24/6,   # 20 minute

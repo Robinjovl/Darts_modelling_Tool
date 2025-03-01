@@ -234,7 +234,7 @@ class Model(CICDModel):
 
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         inj_segment_idx = 0
-        inj_rate = 58895.98/3   # kmol/day
+        inj_rate = 58895.98   # kmol/day
         inj_comp = np.array([1.0 - 2 * self.zero, self.zero, self.zero])
         self.source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
 
