@@ -1,8 +1,6 @@
 """
-Uniform temperature along the wellbore
 Uniform temperature in the entire reservoir
-A smaller time step is needed for convergence compared to isothermal scenarios
-Be careful that OBL ranges are large enough to cover the conditions of the simulation.
+Smaller time steps are needed for convergence compared to isothermal scenarios
 """
 
 import numpy as np

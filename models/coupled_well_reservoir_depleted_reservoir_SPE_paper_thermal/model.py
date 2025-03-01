@@ -20,7 +20,7 @@ from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 
 from darts.wells.define_pipe_geometry import PipeGeometry
-from darts.wells.set_initial_conditions import SingleAmbientTemperature
+from darts.wells.set_initial_conditions import LinearAmbientTemperature
 from darts.wells.check_initial_conditions import check_initial_conditions
 from darts.wells.interfacial_tension import IFT_multicomponent_MCM
 from darts.wells.units import *
@@ -43,12 +43,9 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
         # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
-        p_init_res = 23.297207
-        # geothermal_gradient = 25  # deg C/km
-        # surface_temp = 25  # deg C
-        # wellbore_depth = 3  # km
-        # T_init_res = geothermal_gradient * wellbore_depth + surface_temp + 273.15
-        T_init_res = 40 + 273.15
+        p_init_res = 23.771887   # from the pressure of the perforated segment of the wellbore
+        T_init_res = 371.90   # from the temperature of the perforated segment of the wellbore
+
         sw_init_res = 0.25
         zCO2_init_res = self.zero
         zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
@@ -190,8 +187,9 @@ class Model(CICDModel):
         self.wells_geometry = {"Well1": well_1_geometry}
 
         #%% Set initial conditions in the pipe using SingleAmbientTemperature
-        wellbore_fluid_temp = self.initial_values["temperature"]  # use uniform temperature along the wellbore
-        pipe_head_pressure = 20   # bar
+        pipe_head_pressure = 20  # bar
+        pipe_head_temperature = 25 + 273.15  # Kelvin
+        temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
 
         # Wellhead conditions because of the constant rate control
@@ -202,9 +200,9 @@ class Model(CICDModel):
         initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 
-        well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], wellbore_fluid_temp,
-                                                             pipe_head_pressure, pipe_head_segment_index,
-                                                             initial_fluid_conditions, verbose)
+        well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0],
+                                                             pipe_head_pressure, pipe_head_temperature, temp_grad,
+                                                             pipe_head_segment_index, initial_fluid_conditions)
 
         # %% Put initial conditions in wells_initial_conditions
         initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
@@ -213,7 +211,7 @@ class Model(CICDModel):
         self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
                                          'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
                                          'initial_C1_mole_fraction': initial_C1_mole_fraction,
-                                         'initial_temperature': wellbore_fluid_temp * np.ones(well_1_geometry.num_segments)}
+                                         'initial_temperature': well_1_initial_conditions.temp_init_segments}
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
