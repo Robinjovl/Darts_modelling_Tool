@@ -245,13 +245,14 @@ class Model(CICDModel):
         inj_flux = inj_rate * inj_comp
 
         injected_fluid_pressure = 20
-        injected_fluid_temperature = (40 + 273.15) * Kelvin()
+        injected_fluid_temperature = (35 + 273.15) * Kelvin()
         injected_fluid_mole_fractions = inj_comp
 
-        injected_fluid_specific_enthalpy = self.physics.property_containers[0].enthalpy_ev['gas'].evaluate(
-            injected_fluid_pressure,
-            injected_fluid_temperature,
-            injected_fluid_mole_fractions)  # Constant injection specific enthalpy
+        # injected_fluid_specific_enthalpy = self.physics.property_containers[0].enthalpy_ev['gas'].evaluate(
+        #     injected_fluid_pressure,
+        #     injected_fluid_temperature,
+        #     injected_fluid_mole_fractions)  # Constant injection specific enthalpy
+        injected_fluid_specific_enthalpy = - 1000
         injected_heat_rate = inj_rate * injected_fluid_specific_enthalpy
         inj_flux = np.append(inj_flux, injected_heat_rate)
 
