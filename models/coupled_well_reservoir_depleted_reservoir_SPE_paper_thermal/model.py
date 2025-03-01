@@ -44,10 +44,11 @@ class Model(CICDModel):
 
         # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
         p_init_res = 23.297207
-        geothermal_gradient = 25  # deg C/km
-        surface_temp = 25  # deg C
-        wellbore_depth = 3  # km
-        T_init_res = geothermal_gradient * wellbore_depth + surface_temp + 273.15
+        # geothermal_gradient = 25  # deg C/km
+        # surface_temp = 25  # deg C
+        # wellbore_depth = 3  # km
+        # T_init_res = geothermal_gradient * wellbore_depth + surface_temp + 273.15
+        T_init_res = 40 + 273.15
         sw_init_res = 0.25
         zCO2_init_res = self.zero
         zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
@@ -246,7 +247,7 @@ class Model(CICDModel):
         inj_flux = inj_rate * inj_comp
 
         injected_fluid_pressure = 20
-        injected_fluid_temperature = (60 + 273.15) * Kelvin()
+        injected_fluid_temperature = (40 + 273.15) * Kelvin()
         injected_fluid_mole_fractions = inj_comp
 
         injected_fluid_specific_enthalpy = self.physics.property_containers[0].enthalpy_ev['gas'].evaluate(
