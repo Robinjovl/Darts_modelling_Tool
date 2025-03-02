@@ -65,6 +65,27 @@ class WellControlOperators(OperatorsBase):
         return 0
 
 
+class WellInitOperators(OperatorsBase):
+    def __init__(self, property_container: PropertyBase, thermal: bool, is_pt: bool = True):
+        super().__init__(property_container, thermal)
+
+        self.n_ops = 1
+        self.is_pt = is_pt
+
+    def evaluate(self, state, values):
+        vec_state_as_np = state.to_numpy()
+        vec_values_as_np = values.to_numpy()
+        vec_values_as_np[:] = 0
+
+        if self.is_pt:
+            vec_values_as_np[0] = state[-1]
+        else:
+            zc = np.append(state[1:self.nc], np.sum(1.-np.sum(state[1:self.nc])))
+            vec_values_as_np[0] = self.property.compute_total_enthalpy(pressure=state[0], temperature=state[-1], zc=zc)
+
+        return 0
+
+
 class PropertyOperators(OperatorsBase):
     """
     This class contains a set of operators for evaluation of output properties.

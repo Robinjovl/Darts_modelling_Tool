@@ -5,7 +5,6 @@
 #include <string>
 #include "globals.h"
 #include "ms_well.h"
-#include "block_well.h"
 
 
 /// This class defines mesh and corresponding arrays
@@ -40,10 +39,6 @@ public:
   int save_zmf (std::string filename);                      // dump ZMF
   int save_temperature (std::string filename);              // dump TEMPERATURE
   int save_enthalpy (std::string filename);                 // dump ENTHALPY
-
-  int save_wells (std::string filename, 
-    std::vector <block_well> &well_list, 
-    sim_params &params);                                    // dump wells and timestepping params
 
 public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)

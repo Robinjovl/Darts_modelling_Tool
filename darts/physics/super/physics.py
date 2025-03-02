@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
@@ -73,20 +73,16 @@ class Compositional(PhysicsBase):
         # axes_min
         if axes_min is None:
             if self.thermal:
-                axes_min = value_vector([min_p] + [min_z] * (nc - 1) + [min_t])
+                axes_min = [min_p] + [min_z] * (nc - 1) + [min_t]
             else:
-                axes_min = value_vector([min_p] + [min_z] * (nc - 1))
-        else:
-            axes_min = value_vector(axes_min)
+                axes_min = [min_p] + [min_z] * (nc - 1)
 
         # axes_max
         if axes_max is None:
             if self.thermal:
-                axes_max = value_vector([max_p] + [max_z] * (nc - 1) + [max_t])
+                axes_max = [max_p] + [max_z] * (nc - 1) + [max_t]
             else:
-                axes_max = value_vector([max_p] + [max_z] * (nc - 1))
-        else:
-            axes_max = value_vector(axes_max)
+                axes_max = [max_p] + [max_z] * (nc - 1)
 
         # n_axes_points
         if n_axes_points is None:
@@ -134,6 +130,8 @@ class Compositional(PhysicsBase):
             self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
         self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
         return
 
@@ -153,10 +151,11 @@ class Compositional(PhysicsBase):
         assert not self.thermal or ('temperature' in input_distribution.keys() or
                                     'enthalpy' in input_distribution.keys()), \
             "Temperature or enthalpy must be specified for thermal models"
-        input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
-        for key, input_values in enumerate(input_distribution.values()):
-            input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
-            assert len(input_values) == len(input_depth)
+        input_depth = input_depth if not (np.isscalar(input_depth) or len(input_depth) == 1) else np.array([input_depth, input_depth + 1.]).flatten()
+        for key, input_values in input_distribution.items():
+            input_distribution[key] = input_values if not (np.isscalar(input_values) or len(input_values) == 1) else \
+                (np.ones(len(input_depth)) * input_values)
+            assert len(input_distribution[key]) == len(input_depth)
 
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)
@@ -171,18 +170,25 @@ class Compositional(PhysicsBase):
                 p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
                 pressure = p_itor(depths)
 
-                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear',
+                                  fill_value='extrapolate')
                 temperature = t_itor(depths)
 
-                values = np.empty(mesh.n_blocks)
-                for j in range(mesh.n_blocks):
-                    state = np.array([pressure[j], temperature[j]])
-                    values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+                z_itors = [interp1d(input_depth, input_distribution[comp], kind='linear', fill_value='extrapolate') for
+                           comp in self.components[:-1]]
+                zi = np.array([z_itor(depths) for z_itor in z_itors])
+
+                values = np.empty(mesh.n_res_blocks)
+                for j in range(mesh.n_res_blocks):
+                    zc = np.append(np.asarray(zi[:, j]), 1. - np.sum(zi[:, j])) if self.nc > 1 else np.array([1.])
+
+                    values[j] = self.property_containers[0].compute_total_enthalpy(pressure[j], temperature[j], zc)
             else:
                 # Else, interpolate primary variable
                 itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
                 values = itor(depths)
 
+            values = np.resize(np.asarray(values), mesh.n_blocks)
             np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
 
     def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
@@ -223,9 +229,9 @@ class Compositional(PhysicsBase):
                     enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
                     enthalpy[:] = enth
 
-                np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
+                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
 
         # set initial composition
-        for c in range(self.nc-1):
-            np.asarray(mesh.initial_state)[(c+1)::self.n_vars] = input_distribution[self.vars[c+1]] \
-                if np.isscalar(input_distribution[self.vars[c+1]]) else input_distribution[self.vars[c+1]][:]
+        for c in range(self.nc - 1):
+            np.asarray(mesh.initial_state)[(c + 1)::self.n_vars] = input_distribution[self.vars[c + 1]] \
+                if np.isscalar(input_distribution[self.vars[c + 1]]) else input_distribution[self.vars[c + 1]][:]

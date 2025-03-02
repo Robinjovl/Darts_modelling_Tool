@@ -50,7 +50,8 @@ public:
     well_type = PRODUCER;
   };
 
-  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* well_controls_etor, int thermal_ = 0)
+  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+                            operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = n_vars_;
     P_VAR = 0;
@@ -60,18 +61,19 @@ public:
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
 
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
     state_neighbour.resize(n_vars);
     rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
 
-	  rate_etor_ad = well_controls_etor;;  //adjoint method
+	  rate_etor_ad = well_controls_etor;  //adjoint method
   };
 
-  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* well_controls_etor, int thermal_ = 0)
+  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+                                 operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
@@ -81,8 +83,8 @@ public:
     phase_names = phase_names_;
     thermal = thermal_;
 
-    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor);
-    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor);
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
 
     rate_evaluator = well_controls_etor;
     state.resize(n_vars);
