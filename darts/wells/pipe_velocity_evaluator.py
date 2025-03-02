@@ -344,6 +344,8 @@ class PipeVelocityEvaluator:
                     momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
                 elif segment_idx_source == num_segments - 1:
                     momentum_at_first_last_exterfaces[1] = delta_at_bc_interface0
+                else:
+                    raise Exception(f"segment_idx_source must be either 0 or {num_segments - 1}! Got {segment_idx_source}!")
 
             delta_interface0 = np.insert(delta_interface0, 0, momentum_at_first_last_exterfaces[0])
             delta_interface0 = np.insert(delta_interface0, num_segments, momentum_at_first_last_exterfaces[1])
