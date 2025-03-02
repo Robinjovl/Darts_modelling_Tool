@@ -66,7 +66,7 @@ class PipeGeometry:
         self.D = np.append(self.D, self.D[-1])
 
         # Get interfaces positions
-        self.z_interfaces = np.cumsum(self.segments_lengths)[:-1]
+        self.z_interfaces = np.cumsum(self.segments_lengths)[:-1]   # [:-1] removes the last exterface position
 
         # Get segments centroids and interfaces positions together
         self.z_seg_interfaces = np.zeros(self.num_segments + self.num_interfaces)
