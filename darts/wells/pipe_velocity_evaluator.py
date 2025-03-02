@@ -351,8 +351,8 @@ class PipeVelocityEvaluator:
             delta_interface0 = np.insert(delta_interface0, num_segments, momentum_at_first_last_exterfaces[1])
 
             delta_segment0 = (pg.pipe_internal_A * delta_interface0[0:-1] / pg.D[0:-1] + pg.pipe_internal_A * delta_interface0[1:] / pg.D[1:]) / (pg.pipe_internal_A / pg.D[0:-1] + pg.pipe_internal_A / pg.D[1:])
-            self.delta_m0 = delta_segment0[0:-1:1]
-            self.delta_p0 = delta_segment0[1::1]
+            self.delta_m0 = delta_segment0[0:-1]
+            self.delta_p0 = delta_segment0[1:]
 
             ff0 = self.calc_Fanning_friction_factor()
             self.w0 = 1 / (1 / dt + pg.perimeter * ff0 * abs(vM0) / (2 * pg.pipe_internal_A))
@@ -443,15 +443,13 @@ class PipeVelocityEvaluator:
                     def colebrook(f, Re, relative_roughness):
                         if f <= 0:  # Ensure the friction factor doesn't go negative or zero
                             return 1e6  # Return a large value to prevent sqrt of negative number
-                        return 1 / math.sqrt(f) + 4 * math.log10(
-                            relative_roughness / 3.7065 + (1.2613 / (Re * math.sqrt(f))))
+                        return 1 / math.sqrt(f) + 4 * math.log10(relative_roughness / 3.7065 + (1.2613 / (Re * math.sqrt(f))))
 
                     # Initial guess for f
                     initial_guess = 0.005
 
                     # Solve for f using fsolve
-                    Fanning_friction_factor = \
-                    fsolve(colebrook, initial_guess, args=(Re0[i], pg.wall_roughness / pg.pipe_ID))[0]
+                    Fanning_friction_factor = fsolve(colebrook, initial_guess, args=(Re0[i], pg.wall_roughness / pg.pipe_ID))[0]
                     ff0.append(Fanning_friction_factor)
 
         self.ff0 = np.array(ff0)
