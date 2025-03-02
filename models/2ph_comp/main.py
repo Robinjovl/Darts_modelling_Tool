@@ -53,6 +53,8 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.set_output(output_folder='output', sol_filename='solution.h5',
+                 save_initial=True, all_phase_props=False, precision='d', compression=None, verbose=False)
 
     if True:
         n.run(1000)
@@ -60,6 +62,8 @@ if __name__ == '__main__':
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
+
+
         time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         time_data.to_pickle("darts_time_data.pkl")
         # n.save_restart_data()

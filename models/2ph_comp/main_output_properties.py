@@ -52,7 +52,7 @@ print(type(n.reservoir))
 redirect_darts_output(n.output_folder + '/run_n.log')
 Nt = 5
 for i in range(Nt):
-    n.run(7, verbose = False, save_well_data = True, save_reservoir_data = True)
+    n.run(1, verbose = False, save_well_data = True, save_reservoir_data = True)
 n.print_timers()
 
 # read_data(n.sol_filepath, n.well_filepath)
@@ -65,8 +65,8 @@ n.print_timers()
 #%% evaluate properties
 
 # evaluate all available properties and timesteps from *.h5
-# time, property_array1 = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
-#prop_plot(n.output_folder, property_array1)
+time, property_array1 = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
+# prop_plot(n.output_folder, property_array1)
 
 # evaluate all available properties from last saved timestep
 # time, property_array2 = n.output.output_properties(filepath = None, output_properties = None, timestep = -1, engine = False)
@@ -81,11 +81,12 @@ n.print_timers()
 # prop_plot(n.output_folder, property_array4)
 
 #%% Well output
-well_time_data = n.output.store_and_plot_well_time_data(plot_figs=False)
 
-plt.figure()
-plt.plot(well_time_data['time'], well_time_data['well_P1_molar_rate_gas'])
-plt.show()
+# well_time_data = n.output.store_and_plot_well_time_data(plot_figs=False)
+
+# plt.figure()
+# plt.plot(well_time_data['time'], well_time_data['well_P1_molar_rate_gas'])
+# plt.show()
 
 #%% plot results
 
@@ -119,20 +120,20 @@ m.params.first_ts = 1e-9
 m.params.max_ts = 1.0
 Nt = 5
 for i in range(Nt):
-    m.run(7, verbose = True, save_well_data = True, save_reservoir_data = True)
+    m.run(1, verbose = True, save_well_data = True, save_reservoir_data = True)
 # m.print_timers()
 # read_data(m.sol_filepath, m.well_filepath)
-#
-# # evaluate properties
-# for i in range(Nt):
-#     time, property_array = m.output.output_properties(timestep = i)
-#
 
-xarray_data = m.output.output_to_xarray() # evaluate properties from *.h5 and save as *.nc file
+# evaluate properties
+for i in range(Nt):
+    time, property_array = m.output.output_properties(output_properties = m.output.properties, timestep = i)
+
+
+xarray_data = m.output.output_to_xarray(output_properties = m.output.properties) # evaluate properties from *.h5 and save as *.nc file
 for i in range(Nt + 1):
     m.output.plot_xarray(xarray_data, timestep=i, y=0)
 m.output.output_to_vtk()
-#
+
 # # filter properties to only evaluate the properties of interest
 # m.output.filter_phase_props(['dens_gas', 'dens_oil', 'sat_gas', 'sat_oil', 'nu_gas'])
 # m.output.output_to_vtk(output_directory = m.output_folder + '/vtk_files1')

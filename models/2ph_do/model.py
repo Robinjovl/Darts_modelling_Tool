@@ -9,7 +9,6 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
-
 class Model(CICDModel):
     def __init__(self):
         # call base class constructor

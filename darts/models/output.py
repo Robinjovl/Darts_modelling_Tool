@@ -7,6 +7,10 @@ import shutil
 import pickle
 import pandas as pd
 
+from darts.physics.blackoil import BlackOil
+from darts.physics.super.physics import Compositional
+from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
+
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
 from darts.tools.calc_well_rates import *
@@ -68,29 +72,33 @@ class Output:
             self.save_data_to_h5(kind='reservoir')
 
         if all_phase_props:
-            from darts.physics.super.physics import Compositional
-            from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
-
-            if type(self.physics) is Compositional:
-
+            if type(self.physics) is Compositional or type(self.physics) is BlackOil:
                 phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
-                # self.phase_props_units  = ['kmol/m3', 'kg/m3', '', 'cP', '', 'Bar', '', '']
+                phase_props_units = [' $[kg/m^{3}]$', ' $[kmol/m^{3}]$', ' [-]', ' [cP]', ' [-]', ' [Bar]', ' [kJ]', ' [kJ/m/day/K]']
 
                 self.physics.property_itor = {}
 
                 for region in self.physics.regions:  # loop over the different sets of operators
-                    temp_dict = {}
+                    pc = self.physics.property_containers[region]
+
+                    temp_dict = {} # output_properties dictionary
+                    self.unit_dict = {}
+                    self.unit_dict['pressure'] = 'bar'
 
                     # Loop through each property label and phase name
                     for i, name in enumerate(phase_props_labels):
-                        for j, phase_name in enumerate(self.physics.phases):
-                            temp_dict[f"{name}_{phase_name}"] = lambda i=i, j=j: self.physics.property_containers[region].phase_props[i][j]
+                        for j in range(len(pc.phase_props[i])):
+                            temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
+                            self.unit_dict[f"{name}_{self.physics.phases[j]}"] = phase_props_units[i]
 
-                    for i, comp_name in enumerate(self.physics.property_containers[region].components_name):  # loop over components
-                        for j, phase_name in enumerate(self.physics.phases):  # loop over phases
-                            temp_dict[f"x_{phase_name}_{comp_name}"] = lambda i=i, j=j: self.physics.property_containers[region].x[j, i]
 
-                    self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region], self.physics.thermal, temp_dict)
+
+                    # Add partitioning coefficients
+                    for i in range(pc.x.shape[1]):
+                        for j in range(pc.x.shape[0]):
+                            temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda i=i, j=j: pc.x[j, i]
+
+                    self.physics.property_operators[region] = PropertyOperators(pc, self.physics.thermal, temp_dict)
 
                     self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
                                                                                           n_ops=self.physics.n_ops,
@@ -103,12 +111,12 @@ class Output:
                     self.physics.property_containers[region].output_props = temp_dict
 
                 # Initialize physics and engine settings
-                self.physics.init_physics()
-                self.physics.engine.init(self.reservoir.mesh,
-                                         ms_well_vector(self.reservoir.wells),
-                                         op_vector(op_list),
-                                         params,
-                                         timer.node["simulation"])
+                # self.physics.init_physics()
+                # self.physics.engine.init(self.reservoir.mesh,
+                #                          ms_well_vector(self.reservoir.wells),
+                #                          op_vector(op_list),
+                #                          params,
+                #                          timer.node["simulation"])
 
             elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
 
@@ -141,12 +149,12 @@ class Output:
                     self.physics.property_containers[region].output_props = temp_dict
 
                 # Initialize physics and engine settings
-                self.physics.init_physics()
-                self.physics.engine.init(self.reservoir.mesh,
-                                         ms_well_vector(self.reservoir.wells),
-                                         op_vector(op_list),
-                                         params,
-                                         timer.node["simulation"])
+                # self.physics.init_physics()
+                # self.physics.engine.init(self.reservoir.mesh,
+                #                          ms_well_vector(self.reservoir.wells),
+                #                          op_vector(op_list),
+                #                          params,
+                #                          timer.node["simulation"])
             # self.reset()
 
         # Update the properties list
@@ -452,7 +460,13 @@ class Output:
                     state = value_vector(np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten())
 
                 i = 0
-                n_ops = self.physics.property_operators[i].n_ops
+                # n_ops = self.physics.property_operators[i].n_ops
+
+                if len(self.properties) < self.physics.n_ops:
+                    n_ops = self.physics.n_ops
+                else:
+                    n_ops = len(self.properties) + self.physics.n_vars
+
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
@@ -536,23 +550,28 @@ class Output:
             if z is not None:
                 assert z < len(xarray_data['z']), 'z-level step should be less than %d' % len(xarray_data['z'])
                 xarray_data[var].isel(time=timestep, z=z).plot()
-                plt.savefig(output_directory + '/%s_ts%d_z%d.png'%(var, timestep, z))
+                try:
+                    plt.ylabel(var + self.unit_dict[var])
+                except KeyError:
+                    pass
+
+                plt.savefig(output_directory + '/%s ts%d z%d.png'%(var, timestep, z))
 
             elif y is not None:
                 assert y < len(xarray_data['y']), 'y-level step should be less than %d' % len(xarray_data['y'])
                 xarray_data[var].isel(time=timestep, y=y).plot()
-                plt.savefig(output_directory + '/%s_ts%d_y%d.png' % (var, timestep, y))
+                plt.savefig(output_directory + '/%s ts%d y%d.png' % (var, timestep, y))
 
             elif x is not None:
                 assert x < len(xarray_data['x']), 'x-level step should be less than %d' % len(xarray_data['x'])
                 xarray_data[var].isel(time=timestep, x=x).plot()
-                plt.savefig(output_directory + '/%s_ts%d_zx%d.png'%(var, timestep, z))
+                plt.savefig(output_directory + '/%s ts%d zx%d.png'%(var, timestep, z))
 
             else:
                 # model is a 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(output_directory + '/%s_ts%d.png' % (var, timestep))
-            # plt.close()
+                plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
+        plt.close('all')
 
     def output_to_vtk(self, filepath: str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
@@ -642,15 +661,19 @@ class Output:
 
         types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
                                "components_molar_rates", "components_mass_rates", "heat_rate"]
+
         for rate_type in types_of_well_rates:
             # if rate_type == 'heat_rate' and not self.physics.thermal:
             if rate_type == 'heat_rate':
                 continue
 
-            rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI,
-                                               self.physics.thermal, pc, rate_type)
-            total_rates = calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, self.physics.thermal,
-                                                            pc, rate_type)
+            elif type(self.physics) is Geothermal:
+                thermal = 1
+            else:
+                thermal = self.physics.thermal
+
+            rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, thermal, pc, rate_type)
+            total_rates = calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, thermal, pc, rate_type)
 
             """""""""  Plot well rates over time """""""""
             """ Rates for each perforation """
