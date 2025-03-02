@@ -2530,10 +2530,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
 		std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
 		std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
+		std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
 		// The following lines are not applied to ms_well yet.
 		//for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		//{
-		//	heat_capacity[wells[iw]->well_head_idx + p] = 0;
 		//	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
 		//	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
 		//}
