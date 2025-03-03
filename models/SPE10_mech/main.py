@@ -4,7 +4,7 @@ import os
 import platform
 
 from darts.engines import redirect_darts_output, timer_node
-from darts.models.cicd_model import get_platform, is_iter_solvers, set_one_thread
+from darts.models.cicd_model import get_platform, is_iter_solvers, set_one_thread, is_overwrite_pkl, is_test_all_models
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
@@ -156,12 +156,12 @@ def run(model_folder, physics_type):
 
     return m, data
 
-def run_case(mesh_type, physics_type, overwrite='0'):
+def run_case(mesh_type, physics_type):
     '''
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
     '''
-    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, 'overwrite: ' + overwrite, sep=', ')
+    print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, sep=', ')
 
     m, data = run(mesh_type, physics_type)
 
@@ -183,8 +183,7 @@ def run_case(mesh_type, physics_type, overwrite='0'):
         else:
             failed = True
 
-    if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(data=data, file_name=file_name)
+    m.save_performance_data(data=data, file_name=file_name, overwrite=is_overwrite_pkl())
 
     return failed
 
@@ -194,7 +193,8 @@ if __name__ == '__main__':
 
     meshes_list = []
     meshes_list += ['data_10_10_10']
-    #meshes_list += ['data_20_40_40']
+    #if is_test_all_models():
+    #    meshes_list += ['data_20_40_40']
 
     physics_list = []
     physics_list += ['single_phase']
