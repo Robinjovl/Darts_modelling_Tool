@@ -186,7 +186,8 @@ def run_case(case='mandel', discr_name='mech_discretizer', mesh='rect'):
             print('PKL FILE', file_name, 'was not found!')
             failed = True
 
-    m.save_performance_data(data=data, file_name=file_name, overwrite=is_overwrite_pkl())
+    if is_overwrite_pkl():
+        m.save_performance_data(data=data, file_name=file_name)
 
     # m.print_timers()
 

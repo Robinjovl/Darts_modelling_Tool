@@ -183,7 +183,8 @@ def run_case(mesh_type, physics_type):
         else:
             failed = True
 
-    m.save_performance_data(data=data, file_name=file_name, overwrite=is_overwrite_pkl())
+    if is_overwrite_pkl():
+        m.save_performance_data(data=data, file_name=file_name)
 
     return failed
 
