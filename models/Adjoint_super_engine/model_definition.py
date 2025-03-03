@@ -61,7 +61,7 @@ class Model(CICDModel, OptModuleSettings):
         # self.inj_list = [[5, 5]]
         # self.prod_list = [[15, 3], [15, 8]]
 
-        self.inj_list = [[3, 3]]
+        self.inj_list = [[1, 5], [5, 1]]
         self.prod_list = [[1, 1], [5, 5]]
 
         # well index setting
@@ -129,7 +129,7 @@ class Model(CICDModel, OptModuleSettings):
     def set_well_controls(self):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
+            if "I" in w.name:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=True, target=140., inj_stream=self.inj_stream)
             else:
@@ -139,7 +139,12 @@ class Model(CICDModel, OptModuleSettings):
     def set_op_list(self):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
-            customized_component_itor = self.physics.create_interpolator(customized_component_etor, n_ops=1,
+            axes_min = self.physics.axes_min
+            axes_max = self.physics.axes_max
+            customized_component_itor = self.physics.create_interpolator(customized_component_etor,
+                                                                         axes_min=self.physics.axes_min,
+                                                                         axes_max=self.physics.axes_max,
+                                                                         n_ops=1,
                                                                          platform='cpu', algorithm='multilinear',
                                                                          mode='adaptive', precision='d',
                                                                          timer_name='customized component interpolation')
@@ -188,7 +193,10 @@ class Model(CICDModel, OptModuleSettings):
         for ts in time_step_arr:
             from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
-                if "I" in w.name:
+                if "I1" in w.name:
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                                   is_inj=True, target=40., phase_name='gas', inj_stream=self.inj_stream)
+                elif "I" in w.name:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=140., inj_stream=self.inj_stream)
                 else:
