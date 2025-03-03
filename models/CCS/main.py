@@ -36,24 +36,23 @@ def run(platform='cpu'):
 
     for t in range(5):
         m.run(200)
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        m.print_timers()
-        m.print_stat()
 
-        #m.params.max_ts = 0.5
+    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    m.print_timers()
+    m.print_stat()
 
-        timesteps, output = m.output_properties(print_props, timestep=t+1)
+    timesteps, output = m.output_properties(print_props, timestep=t+1)
 
-        fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
-        for i, ith_prop in enumerate(print_props):
-            if m.reservoir.nz > 1:
-                prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
-                plt.colorbar(prop, ax=axs[i])
-            else:
-                axs[i].plot(output[ith_prop])
-            axs[i].set_title(ith_prop + str(t+1))
+    fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
+    for i, ith_prop in enumerate(print_props):
+        if m.reservoir.nz > 1:
+            prop = axs[i].pcolormesh(X, Y, output[ith_prop].reshape(m.reservoir.nz, m.reservoir.nx))
+            plt.colorbar(prop, ax=axs[i])
+        else:
+            axs[i].plot(output[ith_prop])
+        axs[i].set_title(ith_prop + str(t+1))
 
-        plt.savefig('step' + str(t+1) + '.png', format='png')
+    plt.savefig('step' + str(t+1) + '.png', format='png')
 
     td = pd.DataFrame.from_dict(m.physics.engine.time_data)
     td.to_pickle("darts_time_data.pkl")
