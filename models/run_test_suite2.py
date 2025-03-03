@@ -30,17 +30,18 @@ def run_testing(platform, redirect_output=True):
                      'cpg_sloping_fault', # # Geothermal engine / Deadoil (Compositional engine)
                      'fracture_network',  # Geothermal engine
                      # adjoint gradients
-                     'Adjoint_super_engine',
-                     # mechanical models (with multiple cases)
-                     '1ph_1comp_poroelastic_analytics',
-                     '1ph_1comp_poroelastic_convergence'
+                     'Adjoint_super_engine'
                      ]
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
         accepted_dirs += ['Adjoint_mpfa']
-    if iter_solvers:
-        accepted_dirs += ['SPE10_mech']
+
+        # mechanical models (with multiple cases)
+        accepted_dirs += ['1ph_1comp_poroelastic_analytics']
+        accepted_dirs += ['1ph_1comp_poroelastic_convergence']
+        if iter_solvers:
+            accepted_dirs += ['SPE10_mech']
 
     # RUN main.py files in the folder listed in the accepted_dirs
     n_total = 0
