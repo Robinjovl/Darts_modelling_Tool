@@ -114,8 +114,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
+def run(model_folder, physics_type, uniform_props):
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props)
     m.init()
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
@@ -156,14 +156,14 @@ def run(model_folder, physics_type):
 
     return m, data
 
-def run_case(mesh_type, physics_type):
+def run_case(mesh_type, physics_type, uniform_props):
     '''
     :param overwrite: write pkl file even if it exists
     :return: tuple (bool failed, float64 time)
     '''
     print('mesh_type:' + mesh_type, 'physics_type:' + physics_type, sep=', ')
 
-    m, data = run(mesh_type, physics_type)
+    m, data = run(mesh_type, physics_type, uniform_props)
 
     pkl_suffix = '_iter' if is_iter_solvers() else ''
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
@@ -203,6 +203,10 @@ if __name__ == '__main__':
     physics_list += ['dead_oil']
     physics_list += ['dead_oil_thermal']
 
+    uniform_props_list = []
+    uniform_props_list += [False]
+    #uniform_props_list += [True]
+
     n_failed = 0
     test_all = False
     test_all = True
@@ -210,11 +214,12 @@ if __name__ == '__main__':
         is_finalize = False
         for physics in physics_list:
             for mesh in meshes_list:
-                print('Running', os.path.basename(__file__), physics, mesh)
-                failed = run_case(mesh_type=mesh, physics_type=physics)
-                n_failed += failed
-                if failed:
-                    print('FAIL')
-                else:
-                    print('OK')
+                for uniform_props in uniform_props_list:
+                    print('Running', os.path.basename(__file__), physics, mesh, uniform_props)
+                    failed = run_case(mesh_type=mesh, physics_type=physics, uniform_props=uniform_props)
+                    n_failed += failed
+                    if failed:
+                        print('FAIL')
+                    else:
+                        print('OK')
     exit(n_failed)
