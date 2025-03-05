@@ -5,7 +5,7 @@ from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
 
-def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str, h5_well_data: dict, coupled_model: DartsModel):
+def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str, h5_well_data: dict, coupled_model: DartsModel, time_step_increment: int = 1):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -23,7 +23,7 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
 
     simulation_times = h5_well_data["dynamic"]["time"] * 24 * 60 * 60   # convert days to seconds
     num_ts = len(simulation_times)
-    list_of_time_steps = range(num_ts)
+    list_of_time_steps = range(0, num_ts, time_step_increment)
 
     # Create a colormap
     cmap = plt.colormaps.get_cmap('jet')  # You can use other colormaps like 'plasma', 'inferno', etc.
