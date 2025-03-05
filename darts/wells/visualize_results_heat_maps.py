@@ -191,7 +191,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Fill the temperature matrix
         for ts_counter in range(num_ts):
             T = data_frame["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-            T_matrix[:, ts_counter] = T
+            T_matrix[:, ts_counter] = T - 273.15
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
