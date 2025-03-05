@@ -60,11 +60,13 @@ class PipeGeometry:
         self.z_p = self.z[1::1]
 
         self.D = self.z_p - self.z_m   # Distances between the centroids of neighboring interfaces
-        self.D = np.insert(self.D, 0, self.D[0])  # Duplicate the first value of the array, which will be used for exterface
-        self.D = np.append(self.D, self.D[-1])  # Duplicate the last value of the array, which will be used for exterface
+
+        # Duplicate the first and last values of the array, which will be used for exterfaces
+        self.D = np.insert(self.D, 0, self.D[0])
+        self.D = np.append(self.D, self.D[-1])
 
         # Get interfaces positions
-        self.z_interfaces = np.cumsum(self.segments_lengths)[:-1]
+        self.z_interfaces = np.cumsum(self.segments_lengths)[:-1]   # [:-1] removes the last exterface position
 
         # Get segments centroids and interfaces positions together
         self.z_seg_interfaces = np.zeros(self.num_segments + self.num_interfaces)
