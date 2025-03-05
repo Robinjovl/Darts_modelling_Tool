@@ -2,7 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MultipleLocator
-import pickle
 
 from darts.models.darts_model import DartsModel
 
