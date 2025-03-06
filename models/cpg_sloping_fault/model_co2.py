@@ -77,7 +77,7 @@ class ModelCCS(Model_CPG):
                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
-                                     thermal=self.idata.obl.thermal, cache=self.idata.obl.cache)
+                                     thermal=self.idata.thermal, cache=self.idata.obl.cache)
         self.physics.add_property_region(property_container)
 
         return
@@ -108,11 +108,9 @@ class ModelCCS(Model_CPG):
         if 'wbhp' in case:
             for w in wells:
                 wdata.add_inj_bhp_control(name=w, bhp=250, comp_index=1, temperature=300)  # kmol/day | bars | K
-                wdata.add_prd_rate_control(time=10 * y2d, name=w, rate=0., comp_index=0, bhp_constraint=70)  # STOP WELL
         elif 'wrate' in case:
             for w in wells:
                 wdata.add_inj_rate_control(name=w, rate=1e6, comp_index=1, bhp_constraint=250, temperature=300)  # kmol/day | bars | K
-                wdata.add_prd_rate_control(time=10 * y2d, name=w, rate=0., comp_index=0, bhp_constraint=70)  # STOP WELL
 
         self.idata.obl.n_points = 1000
         self.idata.obl.zero = 1e-11
@@ -123,7 +121,7 @@ class ModelCCS(Model_CPG):
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
         self.idata.obl.cache = False
-        self.idata.obl.thermal = True
+        self.idata.thermal = True
 
     def set_initial_conditions(self):
         self.temperature_initial_ = 273.15 + 76.85  # K
@@ -193,3 +191,6 @@ class ModelCCS(Model_CPG):
             assert w.control is not None, 'well control is not initialized for the well ' + w.name
             if verbose and w.constraint is not None and 'rate' in str(type(w.control)):
                 print('A constraint for the well ' + w.name + ' is not initialized!')
+
+    def print_well_rate(self):
+        return

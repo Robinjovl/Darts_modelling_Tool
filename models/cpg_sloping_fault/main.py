@@ -238,16 +238,17 @@ if __name__ == '__main__':
     physics_list += ['ccs']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     #well_controls += ['wbhp']
     #well_controls += ['wperiodic']
+    well_controls += ['co2_wbhp']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

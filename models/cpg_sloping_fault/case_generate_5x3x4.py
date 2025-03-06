@@ -18,7 +18,7 @@ def input_data_case_5x3x4(idata: InputData, case: str):
     geom.dz = np.array([100, 150, 180, 120])
 
     # vertical wells, the 'k' index is unused (so set to -1)
-    if 'wperiodic' in case:
+    if 'wperiodic' in case or 'co2' in case:
         well_data.add_well(name='W', loc_type='ijk', loc_ijk=(geom.nx // 2, geom.ny // 2, -1))
     else:
         well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(1, 1, -1))
