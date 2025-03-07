@@ -184,7 +184,7 @@ class Model(CICDModel):
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
         # This stored geometry information is only used for post-processing (plotting)
-        self.wells_geometry = {"Well1": well_1_geometry}
+        self.wells_geometry = {well_1_name: well_1_geometry}
 
         #%% Set initial conditions in the pipe using SingleAmbientTemperature
         pipe_head_pressure = 20  # bar
