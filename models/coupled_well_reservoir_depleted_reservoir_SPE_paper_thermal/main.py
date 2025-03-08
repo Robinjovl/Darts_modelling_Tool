@@ -67,5 +67,5 @@ else:
     save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model)
 
     primary_vars_and_phase_props_file_address = "output/stored_primary_vars_and_phase_props.pkl"
-    # visualize_results_heat_maps(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    visualize_results_line_graphs(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, 3)
+    visualize_results_heat_maps(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
+    # visualize_results_line_graphs(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, 3)
