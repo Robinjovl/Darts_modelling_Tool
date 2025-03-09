@@ -83,9 +83,10 @@ class WellLateralHeatTransfer:
     def evaluate(self, T_segments, simulation_timer):
         """
         :param T_segments: Fluid temperature inside the segment
-        :param simulation_timer: Simulation timer in seconds
+        :param simulation_timer: Simulation timer in days
         :return Lateral heat rate
         """
+        simulation_timer = simulation_timer * 24 * 60 * 60
         # Time function evaluation
         # outermost_layer_OD is the outside diameter of the outermost layer of the wellbore before the formation, so
         # it could be a casing, a cement sheath, etc.
@@ -104,11 +105,11 @@ class WellLateralHeatTransfer:
             # For constant overall heat transfer coefficient
             # I should see if U is based on ID or OD of the pipe. I think it's based on ID.
             self.q_lateral_heat = (2 * np.pi * self.tubing_IR * self.segments_lengths) * self.Ui * (self.T_earth - T_segments) / f_t
-            return self.q_lateral_heat
         elif self.well_layers_props is not None:
             # Calculate the overall heat transfer coefficient using Willhite's formula
             U_to = "Willhite's formula"
             r_to = "tubing_outside_radius"
             self.q_lateral_heat = (2 * np.pi * self.K_earth * self.segments_lengths * (self.T_earth - T_segments)
                                    / (f_t + self.K_earth / (r_to * U_to)))
-            return self.q_lateral_heat
+
+        return self.q_lateral_heat * 24 * 60 * 60 / 1000   # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
