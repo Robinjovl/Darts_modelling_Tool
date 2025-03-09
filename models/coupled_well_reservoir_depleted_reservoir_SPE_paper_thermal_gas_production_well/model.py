@@ -221,11 +221,11 @@ class Model(CICDModel):
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
 
         # Add large boundary volume for well
-        self.reservoir.large_wellhead_volume = {"I1": {"flag": True,
-                                                       "volume": 1e10,
-                                                       "pressure": 1,
-                                                       "composition": [self.zero, 1 - 2 * self.zero],
-                                                       "temperature": 273.15 + 40}}
+        self.reservoir.large_wellhead_volume = {well_1_name: {"flag": True,
+                                                              "volume": 1e10,
+                                                              "pressure": 1,
+                                                              "composition": [self.zero, 1 - 2 * self.zero],
+                                                              "temperature": 273.15 + 40}}
 
     def set_well_controls(self):
         inj_stream = [self.zero, 1 - 2 * self.zero]
