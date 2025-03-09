@@ -301,6 +301,25 @@ class DartsModel:
                 start_w_idx = end_w_idx
                 start_ms_w_idx += well.num_segments
 
+            # Add the conditions of the wellhead for when the wellhead of the well has a large volume
+            if hasattr(self.reservoir, "large_wellhead_volume"):
+                for w in self.reservoir.wells:
+                    if w.name in self.reservoir.large_wellhead_volume and self.reservoir.large_wellhead_volume[
+                        w.name].get("flag", False):
+                        required_keys = ["pressure", "composition"]
+                        required_keys += ["temperature"] if self.physics.thermal is True else []
+                        assert all(key in self.reservoir.large_wellhead_volume[w.name] for key in
+                                   required_keys), f"Required conditions of the wellhead of the well {w.name} not specified!"
+
+                        if variable == 'pressure':
+                            values[w.well_head_idx] = self.reservoir.large_wellhead_volume[w.name]["pressure"]
+                        elif variable == 'temperature':
+                            values[w.well_head_idx] = self.reservoir.large_wellhead_volume[w.name]["temperature"]
+                        else:
+                            values[w.well_head_idx * (self.physics.nc - 1):w.well_head_idx * (
+                                        self.physics.nc - 1) + self.physics.nc - 1] = \
+                                self.reservoir.large_wellhead_volume[w.name]["composition"]
+
         return
 
     def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
