@@ -22,7 +22,9 @@ from dartsflash.components import CompData
 from darts.wells.define_pipe_geometry import PipeGeometry
 from darts.wells.set_initial_conditions import LinearAmbientTemperature
 from darts.wells.check_initial_conditions import check_initial_conditions
+from darts.wells.add_lateral_heat_exchange import WellLateralHeatTransfer
 from darts.wells.interfacial_tension import IFT_multicomponent_MCM
+import darts.wells.library as library
 from darts.wells.units import *
 
 class Model(CICDModel):
@@ -219,6 +221,22 @@ class Model(CICDModel):
 
         # Well with single perforation
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
+
+        # Add lateral heat exchange
+        # Import rock data from the library
+        c_rock = library.mats_thermal_props['Rock']['c']
+        K_rock = library.mats_thermal_props['Rock']['K']
+        rho_rock = library.mats_thermal_props['Rock']['rho']
+        earth_thermal_props = {'T': well_1_initial_conditions.temp_init_segments[::-1], 'c': c_rock, 'K': K_rock,
+                               'rho': rho_rock}
+        pipe_wall_thickness = 5e-3   # Thickness of the outermost layer of the wellbore in meters
+        outermost_layer_OD = well_1_geometry.pipe_ID + 2 * pipe_wall_thickness
+        # Set a constant overall heat transfer coefficient (Ui)
+        Ui = 0.2 * BTU() / (ft() ** 2 * hour() * Fahrenheit())  # Unit: BTU / (ft2 * hr * F)]  or  W / (m2 * C)
+        well_1_lateral_heat_transfer = WellLateralHeatTransfer(well_1_name, well_1_geometry, earth_thermal_props,
+                                                               outermost_layer_OD, Ui, time_function_name="Chiu&Thakur",
+                                                               verbose=verbose)
+        self.reservoir.wells_lateral_heat_flux = {well_1_name: well_1_lateral_heat_transfer}
 
     def set_well_controls(self):
         inj_stream = [self.zero, 1 - 2 * self.zero]
