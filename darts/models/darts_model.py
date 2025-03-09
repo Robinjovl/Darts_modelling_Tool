@@ -602,6 +602,7 @@ class DartsModel:
             # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
+            self.apply_well_lateral_heat_flux(dt, t)
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
@@ -633,6 +634,13 @@ class DartsModel:
 
         self.timer.node['simulation'].stop()
         return converged
+
+    def apply_well_lateral_heat_flux(self, dt, t):
+        for well in self.reservoir.wells:
+            if well.model_type == "ms_well" and hasattr(self.reservoir, "wells_lateral_heat_flux") and (well.name in self.reservoir.wells_lateral_heat_flux):
+                well_lateral_heat_rate = self.reservoir.wells_lateral_heat_flux[well.name].evaluate(self.physics.engine.X[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars], t + dt)
+                rhs = np.array(self.physics.engine.RHS, copy=False)
+                rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
