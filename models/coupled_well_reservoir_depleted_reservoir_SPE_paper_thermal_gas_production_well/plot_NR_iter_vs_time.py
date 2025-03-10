@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
 # Read the new log file
-file_path = "terminal_log_for_10_minutes.txt"
+file_path = "run_log.log"
 with open(file_path, "r") as file:
     lines = file.readlines()
 
@@ -13,10 +13,10 @@ times = []
 nr_iterations = []
 
 for line in lines:
-    match = re.match(r"#\s*(\d+)\s*T\s*=\s*([\d.eE+-]+)\s*DT\s*=\s*([\d.eE+-]+)\s*NI\s*=\s*(\d+)", line)
+    match = re.search(r"T\s*=\s*([\d.eE+-]+),\s*DT\s*=\s*([\d.eE+-]+),\s*NI\s*=\s*(\d+)", line)
     if match:
-        time_value = float(match.group(2))
-        ni_value = int(match.group(4))
+        time_value = float(match.group(1))
+        ni_value = int(match.group(3))
 
         times.append(time_value * 24 * 60 * 60)   # convert day to second
         nr_iterations.append(ni_value)
