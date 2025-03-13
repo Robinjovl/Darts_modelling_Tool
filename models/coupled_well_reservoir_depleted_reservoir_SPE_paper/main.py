@@ -13,12 +13,7 @@ coupled_model = Model()
 coupled_model.init()
 
 if True:
-    output_props = ["sat_CO2/C1_rich_phase", "sat_aqueous_phase",
-                    "mole_fraction_CO2__in_CO2/C1_rich_phase", "mole_fraction_CO2__in_aqueous_phase",
-                    "mole_fraction_CH4__in_CO2/C1_rich_phase", "mole_fraction_CH4__in_aqueous_phase",
-                    "mole_fraction_H2O__in_CO2/C1_rich_phase", "mole_fraction_H2O__in_aqueous_phase",
-                    "rho_CO2/C1_rich_phase", "rho_aqueous_phase",
-                    "miu_CO2/C1_rich_phase", "miu_aqueous_phase"]
+    output_props = coupled_model.physics.property_operators[0].props_name
     coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # initial conditions
 
     # for i in range(5):
