@@ -87,7 +87,10 @@ types_of_well_time_data = ["phases_molar_rates", "phases_mass_rates", "phases_vo
 n.output.plot_well_time_data(types_of_well_time_data)
 
 plt.figure()
-plt.plot(well_time_data['time'], well_time_data['well_P1_molar_rate_gas'])
+plt.plot(well_time_data['time'], well_time_data['well_P1_molar_rate_oil_at_wh'], marker='o')
+plt.xlabel("Simulation time [days]")
+plt.ylabel("Oil molar production rate of well P1 [kmole/day]")
+plt.tight_layout()
 plt.show()
 
 #%% plot results

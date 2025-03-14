@@ -166,7 +166,7 @@ class DartsModel:
         self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
 
-        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.well_head_conn_id, self.well_perf_conn_ids,
                              self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
         # self.reset()
         return

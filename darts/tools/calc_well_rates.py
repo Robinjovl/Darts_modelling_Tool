@@ -8,50 +8,50 @@ from darts.physics.super.property_container import PropertyContainer
 # from darts.models.darts_model import DartsModel
 
 #%% Main function
-def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, geometric_WI: np.ndarray,
-                               thermal: bool, pc: PropertyContainer, rate_type: str):
+def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndarray,
+                              thermal: bool, pc: PropertyContainer, rate_type: str):
     """
     Calculates different types of rates at perforations of wells
 
     :param h5_well_data: Well data stored in the HDF5 file
     :type h5_well_data: dict
-    :param perfs_conn_ids: IDs of perforations of wells
-    :type perfs_conn_ids: numpy.ndarray
-    :param geometric_WI: Geometric part of well indices
-    :type geometric_WI: numpy.ndarray
-    :param rate_type: Type of well rate to calculate
-    :type rate_type: str
+    :param conn_ids: IDs of connections
+    :type conn_ids: numpy.ndarray
+    :param trans: Transmissibility (For perforations, it is geometric part of well index)
+    :type trans: numpy.ndarray
     :param thermal: If the model is thermal or not
     :type thermal: bool
     :param pc: An instance of the class PropertyContainer
     :type pc: PropertyContainer
+    :param rate_type: Type of well rate to calculate
+    :type rate_type: str
     """
     # Evaluate position of block_m, block_p in stored data, for every connection
     block_m = h5_well_data['static']['block_m']
     block_p = h5_well_data['static']['block_p']
-    cell_m = find_one_array_in_another_indices(block_m[perfs_conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
-    cell_p = find_one_array_in_another_indices(block_p[perfs_conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
-    assert (cell_m.size == len(perfs_conn_ids) and cell_p.size == len(perfs_conn_ids))
+    cell_m = find_one_array_in_another_indices(block_m[conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
+    cell_p = find_one_array_in_another_indices(block_p[conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
+    assert (cell_m.size == len(conn_ids) and cell_p.size == len(conn_ids))
 
-    nt = h5_well_data['dynamic']['time'].size
+    num_ts = h5_well_data['dynamic']['time'].size
 
     # Pre-allocate data
     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
-        rates = np.zeros((nt, len(perfs_conn_ids), pc.nph))
+        rates = np.zeros((num_ts, len(conn_ids), pc.nph))
     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
-        rates = np.zeros((nt, len(perfs_conn_ids), pc.nc_fl * pc.nph))
+        rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
     elif rate_type == 'heat_rate':
         if thermal:
-            rates = np.zeros((nt, len(perfs_conn_ids), pc.nph))
+            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
         else:
             raise Exception('The model is isothermal, so heat rate cannot be calculated for it!')
     else:
         raise Exception("The rate type is not entered correctly or is not supported!")
-    id_state_cell = np.zeros(len(perfs_conn_ids), dtype=np.intp)
+    id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
 
     id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
     # Looping over time steps
-    for i in range(nt):
+    for i in range(num_ts):
 
         p = h5_well_data['dynamic']['X'][i,:,id_pres]
         # Determine upwind cell indices for all connections
@@ -62,7 +62,7 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
         id_state_cell[upstream] = cell_p[upstream]
 
         # Looping over perforations
-        for j in range(len(perfs_conn_ids)):
+        for j in range(len(conn_ids)):
             state = h5_well_data['dynamic']['X'][i, id_state_cell[j]]
 
             if rate_type == 'phases_molar_rates':
@@ -80,12 +80,9 @@ def calc_rates_at_perforations(h5_well_data: dict, perfs_conn_ids: np.ndarray, g
             else:
                 raise Exception("Rate type is entered incorrectly!")
 
-            rates[i, j] = values * geometric_WI[j] * dp[j]
+            rates[i, j] = values * trans[j] * dp[j]
 
     return rates
-
-def calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, thermal, pc, rate_type):
-    return None
 
 #%% Operator functions
 def phase_molar_rate_operators(state, pc):

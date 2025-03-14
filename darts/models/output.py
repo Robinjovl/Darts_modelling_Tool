@@ -22,9 +22,10 @@ class Output:
     """
     Base class for all output related functionality
     """
-    def __init__(self, timer: timer_node, reservoir, physics, op_list, params,
-                 output_folder : str, sol_filename : str, well_filename : str, save_initial : bool,
-                 all_phase_props : bool, precision : str, compression : str, verbose : bool):
+
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, well_head_conn_id, well_perf_conn_ids,
+                 output_folder: str, sol_filename: str, well_filename: str, save_initial: bool,
+                 all_phase_props: bool, precision: str, compression: str, verbose: bool):
         """
         Class constructor method for output related functionalities including saving primary variables (state variables),
         evaulating secondary variables (properties) and creating visualizations.
@@ -34,6 +35,8 @@ class Output:
         :param physics: physics object
         :param op_list: list of operator interpolators
         :param params: engine params
+        :param well_head_conn_id: dictionary of wellhead indices of wells (values are integers)
+        :param well_perf_conn_ids: dictionary of perforation indices of wells (values are lists)
         :param output_folder: output folder for saved data and figures
         :param sol_filename: hdf5 filename for saving reservoir solution
         :param well_filename: hdf5 filename for saving well solution
@@ -48,6 +51,8 @@ class Output:
         self.physics = physics
         self.op_list = op_list
         self.params = params
+        self.well_head_conn_id = well_head_conn_id
+        self.well_perf_conn_ids = well_perf_conn_ids
         self.verbose = verbose
 
         self.timer = timer.node['output']
@@ -257,7 +262,7 @@ class Output:
             if os.path.exists(sol_output_path): #and not restart:
                 os.remove(sol_output_path)
             self.configure_h5_output(filename=sol_output_path, cell_ids=np.arange(self.reservoir.mesh.n_res_blocks),
-                                add_static_data=False, description='Reservoir data')
+                                     add_static_data=False, description='Reservoir data')
 
         # Find relevant connections for well data
         if kind == 'well':
@@ -285,7 +290,7 @@ class Output:
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
-        X = np.array(self.physics.engine.X, copy=False)#[:self.physics.n_vars*self.reservoir.n]
+        X = np.array(self.physics.engine.X, copy=False)  # [:self.physics.n_vars*self.reservoir.n]
 
         # Open the HDF5 file in append mode
         with h5py.File(filename, "a") as f:
@@ -524,7 +529,7 @@ class Output:
 
         return dataset
 
-    def plot_xarray(self, xarray_data, timestep: int = -1, x: int = None, y: int =None, z: int = None):
+    def plot_xarray(self, xarray_data, timestep: int = -1, x: int = None, y: int = None, z: int = None):
         """
         :param xarray_data: xarray data set
         :param timestep: time index
@@ -592,7 +597,7 @@ class Output:
 
         main_dir = os.path.join(output_directory, 'vtk_files')
         if not os.path.exists(main_dir):
-            os.makedirs(main_dir, exist_ok = True)
+            os.makedirs(main_dir, exist_ok=True)
 
         # timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
         timesteps, property_array = self.output_properties(filepath, output_properties, ith_step, engine)
@@ -616,23 +621,24 @@ class Output:
         Stores well time data, including phases_molar_rates, phases_mass_rates, phases_volumetric_rates,
         components_molar_rates, components_mass_rates, advective_heat_rate, bottom-hole pressure (BHP),
         and bottom-hole temperature (BHT) over time.
+        Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
+        two different methods: 1- summing up the rates of perforations 2- calculating the rates directly at the
+        wellhead connection
         """
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
 
         well_output_dict = {}
+
         time = h5_well_data['dynamic']['time']
         well_output_dict['time'] = time
 
-        """ Calculate well rates """
-        perfs = [p for well in self.reservoir.wells for p in well.perforations]
-        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
-        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
-        perfs_conn_ids = find_conn_ids_for_perfs(perfs, block_m, block_p, self.reservoir.mesh.n_res_blocks)
-        wellhead_conn_ids = find_conn_ids_for_wellhead_conns()
+        perfs_conn_ids = [item for sublist in self.well_perf_conn_ids.values() for item in sublist]
+        well_head_conn_ids = list(self.well_head_conn_id.values())
 
         # Get well indices for each perforation
         geometric_WI = np.array([p[2] for well in self.reservoir.wells for p in well.perforations])
-        wellhead_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
+        # Get transmissibility for each wellhead connection
+        well_head_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
 
         # Get property container for operators calculations
         property_container = self.physics.property_containers
@@ -640,39 +646,31 @@ class Output:
 
         types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
                                "components_molar_rates", "components_mass_rates", "advective_heat_rate"]
-                               "components_molar_rates", "components_mass_rates", "heat_rate"]
-
         for rate_type in types_of_well_rates:
-            # if rate_type == 'advective_heat_rate' and not self.physics.thermal:
             if rate_type == 'advective_heat_rate':
                 continue
 
-            elif type(self.physics) is Geothermal:
-                thermal = 1
-            else:
-                thermal = self.physics.thermal
+            perfs_rates = calc_rates_at_connections(h5_well_data, perfs_conn_ids, geometric_WI,
+                                                    self.physics.thermal, pc, rate_type)
 
-            rates = calc_rates_at_perforations(h5_well_data, perfs_conn_ids, geometric_WI, thermal, pc, rate_type)
-            total_rates = calc_rates_at_wellhead_connection(h5_well_data, wellhead_conn_trans, thermal, pc, rate_type)
-
-            """ Rates for each perforation """
+            """ Store rates for each perforation """
             perf_counter = 0
             for well in self.reservoir.wells:
                 for perf in well.perforations:
                     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
-                        for phase in range(pc.nph):
-                            phase_rate_for_perf = - rates[:, perf_counter, phase]
+                        for phase_idx, phase in enumerate(pc.phases_name):
+                            phase_rate_for_perf = - perfs_rates[:, perf_counter, phase_idx]
 
                             if rate_type == 'phases_molar_rates':
-                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{phase}'] = phase_rate_for_perf
                             elif rate_type == 'phases_mass_rates':
-                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{phase}'] = phase_rate_for_perf
                             elif rate_type == 'phases_volumetric_rates':
-                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{pc.phases_name[phase]}'] = phase_rate_for_perf
+                                well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_volumetric_rate_{phase}'] = phase_rate_for_perf
 
                     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
                         for component in range(pc.nc_fl):
-                            component_rate_for_perf = - np.sum(rates[:, perf_counter, component::pc.nc_fl], axis=1)
+                            component_rate_for_perf = - np.sum(perfs_rates[:, perf_counter, component::pc.nc_fl], axis=1)
 
                             if rate_type == 'components_molar_rates':
                                 well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_molar_rate_{pc.components_name[component]}'] = component_rate_for_perf
@@ -680,25 +678,25 @@ class Output:
                                 well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_mass_rate_{pc.components_name[component]}'] = component_rate_for_perf
 
                     elif rate_type == 'advective_heat_rate':
-                        advective_heat_rate_of_all_phases_for_perf = - np.sum(rates[:, perf_counter, :], axis=1)
+                        advective_heat_rate_of_all_phases_for_perf = - np.sum(perfs_rates[:, perf_counter, :], axis=1)
 
                         well_output_dict[f'well_{well.name}_perf_{str(perf[0])}_advective_heat_rate'] = advective_heat_rate_of_all_phases_for_perf
 
                     perf_counter += 1
 
-            """ Total rates for each well """
+            """ Store total rates for each well (by summing up the rates of perforations) """
             if rate_type == 'phases_molar_rates':
                 perf_counter = 0
                 for well in self.reservoir.wells:
-                    for phase in range(pc.nph):
+                    for phase_idx, phase in enumerate(pc.phases_name):
                         phase_molar_rate_for_well = 0
                         for perf in well.perforations:
-                            phase_molar_rate_for_well += - rates[:, perf_counter, phase]
+                            phase_molar_rate_for_well += - perfs_rates[:, perf_counter, phase_idx]
 
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                        well_output_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}'] = phase_molar_rate_for_well
+                        well_output_dict[f'well_{well.name}_molar_rate_{phase}_by_sum_perfs'] = phase_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -706,29 +704,29 @@ class Output:
                 perf_counter = 0
                 for well in self.reservoir.wells:
 
-                    for phase in range(pc.nph):
+                    for phase_idx, phase in enumerate(pc.phases_name):
                         phase_mass_rate_for_well = 0
                         for perf in well.perforations:
-                            phase_mass_rate_for_well += - rates[:, perf_counter, phase]
+                            phase_mass_rate_for_well += - perfs_rates[:, perf_counter, phase_idx]
 
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                        well_output_dict[f'well_{well.name}_mass_rate_{pc.phases_name[phase]}'] = phase_mass_rate_for_well
+                        well_output_dict[f'well_{well.name}_mass_rate_{phase}_by_sum_perfs'] = phase_mass_rate_for_well
 
                     perf_counter += len(well.perforations)
 
             elif rate_type == 'phases_volumetric_rates':
                 perf_counter = 0
                 for well in self.reservoir.wells:
-                    for phase in range(pc.nph):
+                    for phase_idx, phase in enumerate(pc.phases_name):
                         phase_volumetric_rate_for_well = 0
                         for perf in well.perforations:
-                            phase_volumetric_rate_for_well += - rates[:, perf_counter, phase]
+                            phase_volumetric_rate_for_well += - perfs_rates[:, perf_counter, phase_idx]
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                        well_output_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}'] = phase_volumetric_rate_for_well
+                        well_output_dict[f'well_{well.name}_volumetric_rate_{phase}_by_sum_perfs'] = phase_volumetric_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -738,12 +736,12 @@ class Output:
                     for component in range(pc.nc_fl):
                         component_molar_rate_for_well = 0
                         for perf in well.perforations:
-                            component_molar_rate_for_well += - np.sum(rates[:, perf_counter, component::pc.nc_fl], axis=1)
+                            component_molar_rate_for_well += - np.sum(perfs_rates[:, perf_counter, component::pc.nc_fl], axis=1)
 
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                        well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}'] = component_molar_rate_for_well
+                        well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}_by_sum_perfs'] = component_molar_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -753,12 +751,12 @@ class Output:
                     for component in range(pc.nc_fl):
                         component_mass_rate_for_well = 0
                         for perf in well.perforations:
-                            component_mass_rate_for_well += - np.sum(rates[:, perf_counter, component::pc.nc_fl], axis=1)
+                            component_mass_rate_for_well += - np.sum(perfs_rates[:, perf_counter, component::pc.nc_fl], axis=1)
 
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                        well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}'] = component_mass_rate_for_well
+                        well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}_by_sum_perfs'] = component_mass_rate_for_well
 
                     perf_counter += len(well.perforations)
 
@@ -767,16 +765,53 @@ class Output:
                 for well in self.reservoir.wells:
 
                     advective_heat_rate_for_well = 0
-                    for phase in range(pc.nph):
+                    for phase_idx in range(pc.nph):
                         for perf in well.perforations:
-                            advective_heat_rate_for_well += - rates[:, perf_counter, phase]
+                            advective_heat_rate_for_well += - perfs_rates[:, perf_counter, phase_idx]
 
                             perf_counter += 1
                         perf_counter -= len(well.perforations)
 
-                    well_output_dict[f'well_{well.name}_advective_heat_rate'] = advective_heat_rate_for_well
+                    well_output_dict[f'well_{well.name}_advective_heat_rate_by_sum_perfs'] = advective_heat_rate_for_well
 
                     perf_counter += len(well.perforations)
+
+            """ Store total rates for each well (by calculation at wellhead connection) """
+            total_rates_at_wellhead_conn = calc_rates_at_connections(h5_well_data, well_head_conn_ids,
+                                                                     well_head_conn_trans,
+                                                                     self.physics.thermal, pc, rate_type)
+            if rate_type == 'phases_molar_rates':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    for phase_idx, phase_name in enumerate(pc.phases_name):
+                        well_output_dict[
+                            f'well_{well.name}_molar_rate_{phase_name}_at_wh'] = - total_rates_at_wellhead_conn[:, wh_counter, phase_idx]
+            elif rate_type == 'phases_mass_rates':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    for phase_idx, phase_name in enumerate(pc.phases_name):
+                        well_output_dict[
+                            f'well_{well.name}_mass_rate_{phase_name}_at_wh'] = - total_rates_at_wellhead_conn[:, wh_counter, phase_idx]
+            elif rate_type == 'phases_volumetric_rates':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    for phase_idx, phase_name in enumerate(pc.phases_name):
+                        well_output_dict[
+                            f'well_{well.name}_volumetric_rate_{phase_name}_at_wh'] = - total_rates_at_wellhead_conn[:, wh_counter, phase_idx]
+
+            elif rate_type == 'components_molar_rates':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    for component_idx, component_name in enumerate(pc.components_name):
+                        well_output_dict[f'well_{well.name}_molar_rate_{component_name}_at_wh'] = - np.sum(total_rates_at_wellhead_conn[:, wh_counter, component_idx::pc.nc_fl], axis=1)
+
+            elif rate_type == 'components_mass_rates':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    for component_idx, component_name in enumerate(pc.components_name):
+                        well_output_dict[f'well_{well.name}_mass_rate_{component_name}_at_wh'] = - np.sum(total_rates_at_wellhead_conn[:, wh_counter, component_idx::pc.nc_fl], axis=1)
+
+            elif rate_type == 'advective_heat_rate':
+                for wh_counter, well in enumerate(self.reservoir.wells):
+                    advective_heat_rate_for_well = 0
+                    for phase_idx in range(pc.nph):
+                        advective_heat_rate_for_well += - total_rates_at_wellhead_conn[:, wh_counter, phase_idx]
+                    well_output_dict[f'well_{well.name}_advective_heat_rate_at_wh'] = advective_heat_rate_for_well
 
         # Store bottom-hole pressure (BHP) and temperature (BHT)
         n_ts = len(time)
@@ -801,8 +836,6 @@ class Output:
 
             well_output_dict[f'well_{well.name}_BHP'] = BHP
             well_output_dict[f'well_{well.name}_BHT'] = BHT
-
-        plt.close()
 
         # Convert well_output_dict to a DataFrame
         td = pd.DataFrame.from_dict(well_output_dict)
@@ -927,7 +960,7 @@ class Output:
             if time_data_type == 'phases_molar_rates':
                 for well in self.reservoir.wells:
                     for phase in range(pc.nph):
-                        phase_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}']
+                        phase_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}_by_sum_perfs']
 
                         plt.figure()
                         plt.plot(time, phase_molar_rate_for_well, color='r', marker='o', markersize=5)
@@ -936,12 +969,23 @@ class Output:
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
                         plt.tight_layout()
                         os.makedirs(well_dir, exist_ok=True)
-                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.phases_name[phase]}.png'))
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.phases_name[phase]}_by_sum_perfs.png'))
+
+                        phase_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.phases_name[phase]}_at_wh']
+
+                        plt.figure()
+                        plt.plot(time, phase_molar_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('Time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' molar rate [kmol/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.phases_name[phase]}_at_wh.png'))
 
             elif time_data_type == 'phases_mass_rates':
                 for well in self.reservoir.wells:
                     for phase in range(pc.nph):
-                        phase_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.phases_name[phase]}']
+                        phase_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.phases_name[phase]}_by_sum_perfs']
 
                         plt.figure()
                         plt.plot(time, phase_mass_rate_for_well, color='r', marker='o', markersize=5)
@@ -950,12 +994,23 @@ class Output:
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
                         plt.tight_layout()
                         os.makedirs(well_dir, exist_ok=True)
-                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.phases_name[phase]}.png'))
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.phases_name[phase]}_by_sum_perfs.png'))
+
+                        phase_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.phases_name[phase]}_at_wh']
+
+                        plt.figure()
+                        plt.plot(time, phase_mass_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('Time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' mass rate [kg/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.phases_name[phase]}_at_wh.png'))
 
             elif time_data_type == 'phases_volumetric_rates':
                 for well in self.reservoir.wells:
                     for phase in range(pc.nph):
-                        phase_volumetric_rate_for_well = well_output_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}']
+                        phase_volumetric_rate_for_well = well_output_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}_by_sum_perfs']
 
                         plt.figure()
                         plt.plot(time, phase_volumetric_rate_for_well, color='r', marker='o', markersize=5)
@@ -964,12 +1019,23 @@ class Output:
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
                         plt.tight_layout()
                         os.makedirs(well_dir, exist_ok=True)
-                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}.png'))
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}_by_sum_perfs.png'))
+
+                        phase_volumetric_rate_for_well = well_output_dict[f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}_at_wh']
+
+                        plt.figure()
+                        plt.plot(time, phase_volumetric_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('Time [day]', fontsize=16)
+                        plt.ylabel(pc.phases_name[phase] + ' volumetric rate [m$^3$/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_volumetric_rate_{pc.phases_name[phase]}_at_wh.png'))
 
             elif time_data_type == 'components_molar_rates':
                 for well in self.reservoir.wells:
                     for component in range(pc.nc_fl):
-                        component_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}']
+                        component_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}_by_sum_perfs']
 
                         plt.figure()
                         plt.plot(time, component_molar_rate_for_well, color='r', marker='o', markersize=5)
@@ -978,12 +1044,23 @@ class Output:
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
                         plt.tight_layout()
                         os.makedirs(well_dir, exist_ok=True)
-                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.components_name[component]}.png'))
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.components_name[component]}_by_sum_perfs.png'))
+
+                        component_molar_rate_for_well = well_output_dict[f'well_{well.name}_molar_rate_{pc.components_name[component]}_at_wh']
+
+                        plt.figure()
+                        plt.plot(time, component_molar_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('Time [day]', fontsize=16)
+                        plt.ylabel(pc.components_name[component] + ' molar rate [kmol/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_molar_rate_{pc.components_name[component]}_at_wh.png'))
 
             elif time_data_type == 'components_mass_rates':
                 for well in self.reservoir.wells:
                     for component in range(pc.nc_fl):
-                        component_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}']
+                        component_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}_by_sum_perfs']
 
                         plt.figure()
                         plt.plot(time, component_mass_rate_for_well, color='r', marker='o', markersize=5)
@@ -992,11 +1069,23 @@ class Output:
                         well_dir = os.path.join(main_dir, 'well_' + well.name)
                         plt.tight_layout()
                         os.makedirs(well_dir, exist_ok=True)
-                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.components_name[component]}.png'))
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.components_name[component]}_by_sum_perfs.png'))
+
+                        component_mass_rate_for_well = well_output_dict[f'well_{well.name}_mass_rate_{pc.components_name[component]}_at_wh']
+
+                        plt.figure()
+                        plt.plot(time, component_mass_rate_for_well, color='r', marker='o', markersize=5)
+                        plt.xlabel('Time [day]', fontsize=16)
+                        plt.ylabel(pc.components_name[component] + ' mass rate [kg/day]', fontsize=16)
+                        well_dir = os.path.join(main_dir, 'well_' + well.name)
+                        plt.tight_layout()
+                        os.makedirs(well_dir, exist_ok=True)
+                        plt.savefig(os.path.join(well_dir, f'well_{well.name}_mass_rate_{pc.components_name[component]}_at_wh.png'))
 
             elif time_data_type == 'advective_heat_rate':
                 for well in self.reservoir.wells:
-                    advective_heat_rate_for_well = well_output_dict[f'well_{well.name}_advective_heat_rate']
+                    advective_heat_rate_for_well = well_output_dict[
+                        f'well_{well.name}_advective_heat_rate_by_sum_perfs']
 
                     plt.figure()
                     plt.plot(time, advective_heat_rate_for_well, color='r', marker='o', markersize=5)
@@ -1005,7 +1094,18 @@ class Output:
                     well_dir = os.path.join(main_dir, 'well_' + well.name)
                     plt.tight_layout()
                     os.makedirs(well_dir, exist_ok=True)
-                    plt.savefig(os.path.join(well_dir, f'well_{well.name}_advective_heat_rate.png'))
+                    plt.savefig(os.path.join(well_dir, f'well_{well.name}_advective_heat_rate_by_sum_perfs.png'))
+
+                    advective_heat_rate_for_well = well_output_dict[f'well_{well.name}_advective_heat_rate_at_wh']
+
+                    plt.figure()
+                    plt.plot(time, advective_heat_rate_for_well, color='r', marker='o', markersize=5)
+                    plt.xlabel('Time [day]', fontsize=16)
+                    plt.ylabel('Advective heat rate [kJ/day]', fontsize=16)
+                    well_dir = os.path.join(main_dir, 'well_' + well.name)
+                    plt.tight_layout()
+                    os.makedirs(well_dir, exist_ok=True)
+                    plt.savefig(os.path.join(well_dir, f'well_{well.name}_advective_heat_rate_at_wh.png'))
 
             elif time_data_type == 'BHP':
                 for well in self.reservoir.wells:
