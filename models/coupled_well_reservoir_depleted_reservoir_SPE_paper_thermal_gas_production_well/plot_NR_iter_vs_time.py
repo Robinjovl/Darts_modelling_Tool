@@ -27,10 +27,11 @@ df = pd.DataFrame({"Time": times, "NR iterations": nr_iterations})
 # Plot the results
 plt.figure(figsize=(8, 5))
 plt.plot(df["Time"], df["NR iterations"], marker=".", linestyle="--")
+plt.xscale("log")  # Set x-axis to log scale
 plt.xlabel("Simulation time [second]")
 plt.ylabel("Number of NR iterations")
 plt.title("NR iterations vs. Time")
-plt.grid(True)
+plt.grid(True, which="both", linestyle="--", linewidth=0.5)  # Show grid for both major and minor ticks
 plt.gca().yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 plt.tight_layout()
 plt.show()
