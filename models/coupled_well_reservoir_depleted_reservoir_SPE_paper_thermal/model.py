@@ -39,6 +39,7 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
+        # If 0.1 is chosen as the max time step size, no stationary points will be observed, and the max NR iterations will be 3.
         self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=1/(24*60*60), tol_newton=1e-4, tol_linear=1e-4,
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
