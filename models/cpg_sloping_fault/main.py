@@ -71,7 +71,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             if 'temperature' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
-            if physics_type == 'dead_oil' and 'm3/day' in k:
+            if (physics_type == 'dead_oil' or physics_type == 'ccs') and 'm3/day' in k:
                 time_data[k.replace('m3/day', 'kmol/day')] = time_data[k]
                 time_data.drop(columns=k, inplace=True)
 
@@ -248,7 +248,8 @@ if __name__ == '__main__':
     #well_controls += ['wrate']
     #well_controls += ['wbhp']
     #well_controls += ['wperiodic']
-    well_controls += ['co2_wbhp']
+    #well_controls += ['co2_wbhp']
+    well_controls += ['co2_wrate']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

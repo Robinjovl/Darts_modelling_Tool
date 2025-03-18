@@ -18,6 +18,29 @@ from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 from model_cpg import Model_CPG, fmt
 
+class AlternativeContainer(PropertyContainer):
+    def run_flash(self, pressure, temperature, zc):
+        # Normalize fluid compositions
+        zc_norm = zc if not self.ns else zc[:self.nc_fl] / (1. - np.sum(zc[self.nc_fl:]))
+
+        # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
+        error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+        flash_results = self.flash_ev.get_flash_results()
+        self.nu = np.array(flash_results.nu)
+        try:
+            self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+        except ValueError as e:
+            print(e.args[0], pressure, temperature, zc)
+            error_output += 1
+
+        # Set present phase idxs
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
+
+        if ph.size == 1:
+            self.x[ph[0]] = zc_norm
+
+        return ph
+
 class ModelCCS(Model_CPG):
     def __init__(self):
         self.zero = 1e-10
@@ -44,14 +67,14 @@ class ModelCCS(Model_CPG):
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
-        temperature = None
+        temperature = 273.15 + 100
         if temperature is None:  # if None, then thermal=True
             thermal = True
         else:
             thermal = False
 
         """ properties correlations """
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
+        property_container = AlternativeContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                temperature=temperature, min_z=self.zero/10)
 
         property_container.flash_ev = NegativeFlash(flash_params, ["AQ", "PR"], [InitialGuess.Henry_AV])
@@ -110,7 +133,7 @@ class ModelCCS(Model_CPG):
                 wdata.add_inj_bhp_control(name=w, bhp=250, comp_index=1, temperature=300)  # kmol/day | bars | K
         elif 'wrate' in case:
             for w in wells:
-                wdata.add_inj_rate_control(name=w, rate=1e6, comp_index=1, bhp_constraint=250, temperature=300)  # kmol/day | bars | K
+                wdata.add_inj_rate_control(name=w, rate=1e4, comp_index=1, bhp_constraint=250, temperature=300)  # kmol/day | bars | K
 
         self.idata.obl.n_points = 1000
         self.idata.obl.zero = 1e-11
@@ -189,7 +212,7 @@ class ModelCCS(Model_CPG):
         # check
         for w in self.reservoir.wells:
             assert w.control is not None, 'well control is not initialized for the well ' + w.name
-            if verbose and w.constraint is not None and 'rate' in str(type(w.control)):
+            if verbose and w.constraint is None and 'rate' in str(type(w.control)):
                 print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def print_well_rate(self):
