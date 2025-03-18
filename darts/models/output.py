@@ -165,6 +165,58 @@ class Output:
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
 
+    def save_property_array(self, time_vector, property_array, filename="property_array.h5"):
+        """
+        Saves property_array to an HDF5 file.
+
+        time_vector : Array of timesteps.
+        property_array : Dictionary where keys are property names and values are NumPy arrays.
+        filename : Name of the HDF5 file to save.
+        """
+        
+        compression_level = 2
+        output_directory = os.path.join(self.output_folder, filename)
+        
+        with h5py.File(output_directory, "w") as h5f:
+            # Save the time vector with compression
+            h5f.create_dataset("time_vector", data=time_vector, compression="gzip", compression_opts=compression_level)
+
+            # Save each property array with compression
+            for key, array in property_array.items():
+                h5f.create_dataset(key, data=array, compression="gzip", compression_opts=compression_level)
+        
+        return 0 
+        
+        
+     def load_property_array(self, file_directory="property_array.h5"):
+        
+        property_array = {}
+
+        with h5py.File(file_directory, "r") as h5f:
+            # Load time vector
+            time_vector = np.array(h5f["time_vector"])
+            
+            # Load each property array
+            for key in h5f.keys():
+                if key != "time_vector":  # Skip time vector in property dictionary
+                    property_array[key] = np.array(h5f[key])
+
+        print(f"{filename} loaded successfully.")
+        
+        return time_vector, property_array
+        
+    def print_simulation_parameters(self):
+        filename = 'simulation_input_parameters.txt'
+        
+        obj = [self.params, self.reservoir, self.physics]
+        
+        for obj in obj_list:
+            with open(filename, "w") as file:
+                for key, value in vars(obj).items():
+                    file.write(f"{key}: {value}\n")
+                    
+        return 0 
+    
     def filter_phase_props(self, new_prop_keys):
         """
         Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
