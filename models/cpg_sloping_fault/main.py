@@ -131,7 +131,7 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
             plt.tight_layout()
             plt.savefig(os.path.join(out_dir, 'energy_extracted_' + well_name + '_' + case + '.png'))
             plt.close()
-        else:
+        elif physics_type == 'deadoil':
             # rate plotting
             ax = None
             for time_data_report, label in zip(time_data_report_list, label_list):

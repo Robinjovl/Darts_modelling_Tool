@@ -36,6 +36,13 @@ class Model_CPG(CICDModel):
         else:
             # read grid and rock properties
             arrays = read_arrays(self.idata.gridfile, self.idata.propfile)
+
+            
+            #from darts.discretizer import index_vector as index_vector_discr, load_single_int_keyword
+            #satnum_cpp = index_vector_discr()  # self.discr_mesh.coord
+            #load_single_int_keyword(satnum_cpp, self.idata.propfile, 'SATNUM', -1)
+            #arrays['SATNUM'] = np.array(satnum_cpp, copy=False)
+
             check_arrays(arrays)
             if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
                 arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0

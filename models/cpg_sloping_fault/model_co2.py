@@ -67,11 +67,6 @@ class ModelCCS(Model_CPG):
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
-        temperature = 273.15 + 100
-        if temperature is None:  # if None, then thermal=True
-            thermal = True
-        else:
-            thermal = False
 
         """ properties correlations """
         property_container = AlternativeContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
