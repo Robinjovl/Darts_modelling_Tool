@@ -230,16 +230,6 @@ class Model(CICDModel):
         self.reservoir.wells_lateral_heat_flux = {well_1_name: well_1_lateral_heat_transfer}
 
     def set_well_controls(self):
-        inj_stream = [self.zero, self.zero]
-        # inj_stream = [1e-5]
-        for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
-                # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
-                # 58895.98 kmol/day = 30 kg/s
-                w.control = self.physics.new_rate_inj(0, inj_stream, 0)   # inj rate in kmol/day
-            # else:
-            #     w.control = self.physics.new_bhp_prod(self.initial_values['pressure'])
-
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         prod_segment_idx = 0
         prod_rate = - 471829./6   # kmol/day

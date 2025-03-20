@@ -167,11 +167,6 @@ class Model(CICDModel):
         return
 
     def set_well_controls(self):
-        inj_stream = [1e-5, 1e-5]
-        # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
-        # 58895.98 kmol/day = 30 kg/s
-        self.reservoir.wells[0].control = self.physics.new_rate_inj(0, inj_stream, 0)  # inj rate in kmol/day
-
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         inj_segment_idx = 0
         inj_rate = 58895.98/3   # kmol/day

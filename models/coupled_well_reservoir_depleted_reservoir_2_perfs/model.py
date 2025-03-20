@@ -208,16 +208,6 @@ class Model(CICDModel):
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 4), well_seg_idx=59, well_geometry=well_1_geometry)
 
     def set_well_controls(self):
-        inj_stream = [self.zero, 1 - 2 * self.zero]
-        # inj_stream = [1e-5]
-        for i, w in enumerate(self.reservoir.wells):
-            if i == 0:
-                # If the injected fluid composition changes, the momentum bc in pipe_velocity_evaluator.py should get updated.
-                # 58895.98 kmol/day = 30 kg/s
-                w.control = self.physics.new_rate_inj(0, inj_stream, 0)   # inj rate in kmol/day
-            # else:
-            #     w.control = self.physics.new_bhp_prod(self.initial_values['pressure'])
-
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         inj_segment_idx = 0
         inj_rate = 58895.98   # kmol/day
