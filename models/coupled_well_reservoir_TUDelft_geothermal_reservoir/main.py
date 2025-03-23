@@ -20,11 +20,7 @@ coupled_model.init()
 
 if 1:
     output_props = coupled_model.physics.property_operators[0].props_name
-    coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # initial conditions
-
-    # for i in range(5):
-    #     coupled_model.run(1)
-    #     coupled_model.output_to_vtk(ith_step=i+1)   # save a .vtk every day
+    coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial conditions
 
     time_steps = [1/24/60,   # 1 minute
                   1.0001/24/30 - 1/24/60,   # 2 minute
