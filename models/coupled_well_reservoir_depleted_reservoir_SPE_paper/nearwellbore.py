@@ -255,6 +255,3 @@ class RadialUnstruct(UnstructReservoir):
             self.r[ith_cell] = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2)
 
         return
-
-    def plot(self, data):
-        return
