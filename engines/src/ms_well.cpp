@@ -219,7 +219,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
 {
   std::cout << "Well " << name << " initialized with " << control->name << std::endl;
 
-  if (model_type == "basic_well")
+  if (ms_type == ms_well::MS_Type::EPM)
   {
   #if 1
       for (auto& p : perforations)
@@ -248,7 +248,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   // initialize
   control->initialize_well_block(state, state_neighbour);
   // if well model is ms_well, there is not need to change the pressure. The following if statement places the original value of wellhead pressure in wellhead state.
-  if (model_type == "ms_well")
+  if (ms_type == ms_well::MS_Type::DFM)
   {
       state[0] = X[well_head_idx * n_block_size + P_VAR];
   }

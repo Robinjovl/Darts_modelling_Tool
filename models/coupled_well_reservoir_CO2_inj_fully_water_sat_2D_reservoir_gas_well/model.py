@@ -1,7 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
-import numpy as np
+from darts.engines import ms_well
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -109,7 +109,7 @@ class Model(CICDModel):
     def set_wells(self):
         """================================================= Well 1 ================================================="""
         well_1_name = "I1"
-        well_1_type = "ms_well"
+        well_1__ms_type = ms_well.MS_Type.DFM
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
         well_1_segments_lengths = 50 * np.ones(20)  # From bottom to top of the wellbore
@@ -149,23 +149,23 @@ class Model(CICDModel):
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
-        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
+        self.reservoir.add_well(well_1_name, well_1__ms_type, well_geometry=well_1_geometry, physics=self.physics, darts_model = self)
         reservoir_middle_cell_index = int(self.reservoir.nx / 2)
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=19, well_geometry=well_1_geometry)
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 2), well_seg_idx=20, well_geometry=well_1_geometry)
 
         """================================================= Well 2 ================================================="""
         # well_2_name = "P1"
-        # well_2_type = "basic_well"
+        # well_2_ms_type = ms_well.MS_Type.EPM
         # well_2_ID = 0.1
-        # self.reservoir.add_well(well_2_name, well_2_type, well_ID=well_2_ID)
+        # self.reservoir.add_well(well_2_name, well_2_ms_type, well_ID=well_2_ID)
         # self.reservoir.add_perforation(well_2_name, cell_index=(1, 1, 1), well_ID=well_2_ID)
 
         """================================================= Well 3 ================================================="""
         # well_3_name = "P2"
-        # well_3_type = "basic_well"
+        # well_3_ms_type = ms_well.MS_Type.EPM
         # well_3_ID = 0.1
-        # self.reservoir.add_well(well_3_name, well_3_type, well_ID=well_3_ID)
+        # self.reservoir.add_well(well_3_name, well_3_ms_type, well_ID=well_3_ID)
         # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
     def set_well_controls(self):

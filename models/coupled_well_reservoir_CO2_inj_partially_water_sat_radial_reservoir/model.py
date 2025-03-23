@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, ms_well
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
@@ -129,7 +129,7 @@ class Model(CICDModel):
     def set_wells(self):
         """================================================= Well 1 ================================================="""
         well_1_name = "I1"
-        well_1_type = "ms_well"
+        well_1__ms_type = ms_well.MS_Type.DFM
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
         well_1_segments_lengths = 50 * np.ones(20)  # From bottom to top of the wellbore
@@ -162,7 +162,7 @@ class Model(CICDModel):
         check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
                                  not self.physics.property_containers[0].thermal)
 
-        self.reservoir.add_well(well_1_name, well_1_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
+        self.reservoir.add_well(well_1_name, well_1__ms_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 6), well_seg_idx=20, well_geometry=well_1_geometry)
 
     def set_well_controls(self):

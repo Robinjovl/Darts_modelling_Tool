@@ -160,7 +160,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
         /*phase_A_veloc_ders.push_back(0);
         phase_B_veloc_ders.push_back(0);*/
-        if (w->model_type == "ms_well")
+        if (w->ms_type == ms_well::MS_Type::DFM)
         {
             std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
             std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
@@ -198,13 +198,13 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 phase_B_veloc_ders.push_back(chunk_B);
             }
         }
-        else if (w->model_type == "basic_well")
+        else if (w->ms_type == ms_well::MS_Type::EPM)
         {
-            // basic wells have only one connection. This zero velocity won't be used in calculations of basic wells. It's just to keep the consistency of the size of the vectors.
+            // EPM wells have only one connection. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
             phase_A_veloc.push_back(0);
             phase_B_veloc.push_back(0);
 
-            // derivatives of phase velocities at the connection of basic wells, which will remain unused
+            // derivatives of phase velocities at the connection of EPM wells, which will remain unused
             phase_A_veloc_ders.push_back(0);
             phase_B_veloc_ders.push_back(0);
         }
@@ -273,14 +273,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             if (i == j)
                 continue;
 
-            bool ms_well_conn = false;
+            bool DFM_conn = false;
             for (ms_well* w : wells)
             {
-                if (w->model_type == "ms_well")
+                if (w->ms_type == ms_well::MS_Type::DFM)
                 {
                     if (i >= w->well_head_idx && i < (w->well_head_idx + w->num_segments) && j >= w->well_head_idx && j < (w->well_head_idx + w->num_segments))
                     {
-                        ms_well_conn = true;   // if it is a connection in the multi-segment well, ms_well_conn is true
+                        DFM_conn = true;   // if it is a connection in the DFM-MS well, DFM_conn is true
                         break;
                     }
                 }
@@ -342,7 +342,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                 phase_fluxes[p] = 0.0;
 
-                if (ms_well_conn)
+                if (DFM_conn)
                 {
                     if (j > i)
                     {
@@ -457,7 +457,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     value_t phase_volumetric_rate;
                     value_t phase_vol_rate_der_i[N_VARS];
                     value_t phase_vol_rate_der_j[N_VARS];
-                    if (!ms_well_conn)
+                    if (!DFM_conn)
                     {
                         // calculate phase volumetric rate using Darcy's law for reservoir connections
                         phase_volumetric_rate = tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * phase_p_diff;
@@ -537,7 +537,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
                             Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c] * dt;
 
-                            if (!ms_well_conn)
+                            if (!DFM_conn)
                             {
                                 if (v == 0)
                                 {
@@ -557,7 +557,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     value_t phase_volumetric_rate;
                     value_t phase_vol_rate_der_i[N_VARS];
                     value_t phase_vol_rate_der_j[N_VARS];
-                    if (!ms_well_conn)
+                    if (!DFM_conn)
                     {
                         // calculate phase volumetric rate for reservoir connections using Darcy's law
                         phase_volumetric_rate = tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * phase_p_diff;
@@ -636,7 +636,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 phase_volumetric_rate * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
                             Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
-                            if (!ms_well_conn)
+                            if (!DFM_conn)
                             {
                                 if (v == 0)
                                 {

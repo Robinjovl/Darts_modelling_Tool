@@ -39,13 +39,19 @@ public:
     INJECTOR = 1
   };
 
+  enum class MS_Type
+  {
+      EPM,
+      DFM
+  };
+
   ms_well()
   {
     segment_volume = 0;
     segments_volumes = {};
     segments_depths = {};
     num_segments = 0;
-    well_transmissibility = 100000;   // used for wells of the type "basic_well"
+    well_transmissibility = 100000;   // used for multi-segment wells of the type EPM
     control = 0;
     constraint = 0;
     well_head_depth = 0;
@@ -54,6 +60,7 @@ public:
     segment_diameter = 0;
     segment_roughness = 0;
     well_type = PRODUCER;
+    ms_type = MS_Type::EPM;
   };
 
   void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
@@ -113,7 +120,6 @@ public:
 
   // These properties are only used in discretization, before simulation starts
   std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
-  std::string model_type;
   std::vector<value_t> segments_depths;
   std::vector<value_t> segments_volumes;
   index_t num_segments;
@@ -126,6 +132,8 @@ public:
   value_t segment_roughness;
 
   // Properties for simulation
+
+  MS_Type ms_type;
 
   index_t well_head_idx;        // index of the well head block, where well controls apply
   index_t well_body_idx;        // index of the first well segment block, which connects to ghost well block

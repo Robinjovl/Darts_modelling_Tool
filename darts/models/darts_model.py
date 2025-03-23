@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
+from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector, ms_well
 from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
@@ -243,7 +243,7 @@ class DartsModel:
 
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
-        if any(well.model_type == "ms_well" for well in self.reservoir.wells):
+        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
             assert hasattr(self, 'wells_initial_conditions'), \
                 "Initial conditions of the multi-segmented well/wells are not defined!"
 
@@ -282,12 +282,12 @@ class DartsModel:
             end_w_idx = start_w_idx
             start_ms_w_idx = 0
             for well in self.reservoir.wells:
-                if well.model_type == "basic_well":
+                if well.ms_type == ms_well.MS_Type.EPM:
                     end_w_idx += 2
-                elif well.model_type == "ms_well":
+                elif well.ms_type == ms_well.MS_Type.DFM:
                     end_w_idx += well.num_segments
                     end_ms_w_idx = start_ms_w_idx + well.num_segments
-                if well.model_type == "ms_well":
+                if well.ms_type == ms_well.MS_Type.DFM:
                     if variable == 'pressure':
                         wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"][::-1]
                         values[start_w_idx:end_w_idx] = wells_initial_pressure_profile[start_ms_w_idx:end_ms_w_idx]
@@ -637,7 +637,7 @@ class DartsModel:
 
     def apply_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
-            if well.model_type == "ms_well" and hasattr(self.reservoir, "wells_lateral_heat_flux") and (well.name in self.reservoir.wells_lateral_heat_flux):
+            if well.ms_type == ms_well.MS_Type.DFM and hasattr(self.reservoir, "wells_lateral_heat_flux") and (well.name in self.reservoir.wells_lateral_heat_flux):
                 well_lateral_heat_rate = self.reservoir.wells_lateral_heat_flux[well.name].evaluate(self.physics.engine.X[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars], t + dt)
                 rhs = np.array(self.physics.engine.RHS, copy=False)
                 rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
