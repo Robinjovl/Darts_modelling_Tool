@@ -262,6 +262,7 @@ class Model(CICDModel):
 
         well_head_start_idx = wellhead_idx * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - prod_flux   # inflow (e.g., injection) becomes minus for rhs
+
         return rhs_flux
 
     def plot(self, output_properties: list, fig=None, lims: dict = None, i: int = -1):

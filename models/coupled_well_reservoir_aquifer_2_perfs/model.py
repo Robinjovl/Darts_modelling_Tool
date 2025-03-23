@@ -42,10 +42,7 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
-        p_init_res = 309.617400
-
-        self.initial_values = {self.physics.vars[0]: p_init_res,
+        self.initial_values = {self.physics.vars[0]: 309.617400,
                                self.physics.vars[1]: self.zero,
                                self.physics.vars[2]: self.zero
                                }
@@ -217,6 +214,7 @@ class Model(CICDModel):
         inj_flux = inj_rate * inj_comp
         well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
+
         return rhs_flux
 
     def plot(self, output_properties: list, fig=None, lims: dict = None, i: int = -1):

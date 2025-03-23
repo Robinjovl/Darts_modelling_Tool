@@ -55,6 +55,48 @@ class Model(CICDModel):
                                            'xz_minus': None, 'xz_plus': None}
         return
 
+    def set_physics(self):
+        """Physical properties"""
+        zero = 1e-5
+        components_names = ['CO2', 'C1', 'H2O']
+        phases_names = ['gas', 'aqueous']
+        comp_data = CompData(components_names, setprops=True)
+
+        ceos = CubicEoS(comp_data, CubicEoS.PR)
+        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
+
+        flash_params = FlashParams(comp_data)
+
+        # EoS-related parameters
+        flash_params.add_eos("CEOS", ceos)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["CEOS", "AQ"]
+
+        # Flash-related parameters
+        flash_params.split_tol = 1e-14
+
+        system_temperature = 10 + 273.15
+
+        """ properties correlations """
+        property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
+                                               temperature=system_temperature, rock_comp=0, min_z=zero / 10)
+
+        property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
+        property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
+                                              ('aqueous', Garcia2001(components_names))])
+        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
+                                                ('aqueous', Islam2012(components_names))])
+        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
+                                               ('aqueous', PhaseRelPerm("oil"))])
+        property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
+
+        """ Activate physics """
+        self.physics = Compositional(components_names, phases_names, self.timer,
+                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+        self.physics.add_property_region(property_container)
+
+        return
+
     def set_wells(self):
         """================================================= Well 1 ================================================="""
         well_1_name = "I1"
@@ -114,48 +156,6 @@ class Model(CICDModel):
         # self.reservoir.add_well(well_3_name, well_3_type, well_ID=well_3_ID)
         # self.reservoir.add_perforation(well_3_name, cell_index=(self.reservoir.nx, 1, 1), well_ID=well_3_ID)
 
-    def set_physics(self):
-        """Physical properties"""
-        zero = 1e-5
-        components_names = ['CO2', 'C1', 'H2O']
-        phases_names = ['gas', 'aqueous']
-        comp_data = CompData(components_names, setprops=True)
-
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
-
-        flash_params = FlashParams(comp_data)
-
-        # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["CEOS", "AQ"]
-
-        # Flash-related parameters
-        flash_params.split_tol = 1e-14
-
-        system_temperature = 10 + 273.15
-
-        """ properties correlations """
-        property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
-                                               temperature=system_temperature, rock_comp=0, min_z=zero / 10)
-
-        property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
-        property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components_names))])
-        property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('aqueous', Islam2012(components_names))])
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('aqueous', PhaseRelPerm("oil"))])
-        property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
-
-        """ Activate physics """
-        self.physics = Compositional(components_names, phases_names, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
-        self.physics.add_property_region(property_container)
-
-        return
-
     def set_well_controls(self):
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         inj_segment_idx = 0
@@ -171,4 +171,5 @@ class Model(CICDModel):
         inj_flux = inj_rate * inj_comp
         well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
+
         return rhs_flux
