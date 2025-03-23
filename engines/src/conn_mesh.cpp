@@ -2430,10 +2430,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   {
     wells[iw]->well_head_idx = well_head_idx; // well head
     wells[iw]->well_body_idx = well_head_idx + 1; // well body
-	if (wells[iw]->model_type == "ms_well")
-	{
-		wells[iw]->well_body_idx += wells[iw]->num_segments - 2;
-	}
     
     index_t n_segments = 0;
     // connections between well segments and reservoir

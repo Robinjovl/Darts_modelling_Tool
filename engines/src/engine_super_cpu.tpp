@@ -162,8 +162,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_B_veloc_ders.push_back(0);*/
         if (w->model_type == "ms_well")
         {
-            std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_body_idx + 1) * N_VARS);
-            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_body_idx + 1) * N_VARS);
+            std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
+            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
             // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
             auto result_tuple = w->evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt);
 
@@ -278,7 +278,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             {
                 if (w->model_type == "ms_well")
                 {
-                    if (i >= w->well_head_idx && i <= w->well_body_idx && j >= w->well_head_idx && j <= w->well_body_idx)
+                    if (i >= w->well_head_idx && i < (w->well_head_idx + w->num_segments) && j >= w->well_head_idx && j < (w->well_head_idx + w->num_segments))
                     {
                         ms_well_conn = true;   // if it is a connection in the multi-segment well, ms_well_conn is true
                         break;
