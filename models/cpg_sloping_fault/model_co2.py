@@ -67,7 +67,7 @@ class ModelCCS(Model_CPG):
 
         # Flash-related parameters
         # flash_params.split_switch_tol = 1e-3
-
+        temperature =None
         """ properties correlations """
         property_container = AlternativeContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                temperature=temperature, min_z=self.zero/10)
