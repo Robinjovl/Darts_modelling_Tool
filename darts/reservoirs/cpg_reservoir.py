@@ -105,6 +105,12 @@ class CPG_Reservoir(ReservoirBase):
         ids = np.array(self.discretizer.get_one_way_tpfa_transmissibilities())
         cell_m = np.array(self.discretizer.cell_m)[ids]
         cell_p = np.array(self.discretizer.cell_p)[ids]
+
+        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
+        if self.faultfile is not None:
+            self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
+            # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
+
         tran = mpfa_tran[::2][ids]
         tranD = mpfa_tranD[::2][ids]
 
@@ -112,11 +118,6 @@ class CPG_Reservoir(ReservoirBase):
         print('tranD mean=', tranD.mean(), 'tranD max=', tranD.max())
         #max_tranD = 1e3
         #tranD[tranD > max_tranD] = max_tranD
-
-        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
-        if self.faultfile is not None:
-            self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
-            # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
 
         tran = np.fabs(tran)
         self.mesh.init(darts.engines.index_vector(cell_m), darts.engines.index_vector(cell_p),
