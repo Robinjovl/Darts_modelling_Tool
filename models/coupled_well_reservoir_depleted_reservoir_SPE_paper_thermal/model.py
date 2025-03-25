@@ -249,7 +249,11 @@ class Model(CICDModel):
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         inj_segment_idx = self.source_props["segment_idx_source"]
-        inj_rate = self.source_props["rate_source"]
+
+        # Calc ramp-up injection rate
+        ramp_up_period = 4 / (24 * 60)   # 4 minutes
+        inj_rate = self.calc_ramp_up_rate(self.source_props["rate_source"], ramp_up_period, t)
+
         inj_comp = self.source_props["comp_source"]
         inj_flux = inj_rate * inj_comp
 
@@ -269,6 +273,17 @@ class Model(CICDModel):
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
 
         return rhs_flux
+
+    def calc_ramp_up_rate(self, target_rate, ramp_up_period, simulation_time) -> float:
+
+        if simulation_time == 0:
+            rate = (self.params.first_ts / ramp_up_period) * target_rate
+        elif simulation_time < ramp_up_period:
+            rate = ((simulation_time + self.params.first_ts) / ramp_up_period) * target_rate
+        else:
+            rate = target_rate
+
+        return rate
 
     def plot(self, output_properties: list, fig=None, lims: dict = None, i: int = -1):
         output_data = self.output_properties()
