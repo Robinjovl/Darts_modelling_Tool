@@ -28,13 +28,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1)
         self.wells = []
 
+    def get_reservoir_pressure(self, depths):
+        #return 290. + 0. * depths
+        return 1. + 0.1 * depths  # bars/m
+
     def get_reservoir_temperature(self, depths):
-        top = -3608.832
-        bot = -3657.6
-        t_top = 300.0
-        t_bot = 350.0
-        temp_grad = (t_bot - t_top) / (bot - top)
-        return t_top + temp_grad * (depths - top)
+        return 273.15 + 90. + 0. * depths
+        return 273.15 + 10 + 30. / 1000 * depths
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
         self.mesh_filename = model_folder + '/spe10.msh'
@@ -43,17 +43,21 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
-        self.grav = -9.80665e-5
-        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.grav = 9.80665e-5
+        #self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.init_gravity(gravity_on=False, gravity_coeff=0.)
+
+        self.depths = np.array([c.values[2] for c in self.centroids])
+        self.p_init = self.get_reservoir_pressure(self.depths[:self.n_matrix])
 
         # specify initial temperature
         if self.thermoporoelasticity:
-            self.depths = np.array([c.values[2] for c in self.centroids])
             self.t_init = self.get_reservoir_temperature(self.depths[:self.n_matrix])
 
         if uniform_props:
             self.init_uniform_properties(idata=idata)
         else:
+            self.set_heterogeneous_props_by_interpolation(idata=idata)
             self.init_heterogeneous_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
@@ -71,7 +75,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     def set_boundary_conditions(self, idata: InputData):
-        self.F = -900.0
+        self.F = 0.
         self.boundary_conditions = {}
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
@@ -79,6 +83,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
 
         if self.thermoporoelasticity:
             for key, bc in self.boundary_conditions.items():
@@ -118,15 +123,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.hcap = np.zeros(self.n_matrix + self.n_fracs)
         for i, cell_id in enumerate(range(self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                                           self.discr_mesh.region_ranges[elem_loc.MATRIX][1])):
-            permx = idata.rock.permx[3 * cell_id]
-            permy = idata.rock.permy[3 * cell_id + 1]
-            permz = idata.rock.permz[3 * cell_id + 2]
+            #permx = idata.rock.permx[3 * cell_id]
+            #permy = idata.rock.permy[3 * cell_id + 1]
+            #permz = idata.rock.permz[3 * cell_id + 2]
+            permx = idata.rock.permx[cell_id]
+            permy = idata.rock.permy[cell_id]
+            permz = idata.rock.permz[cell_id]
             self.discr.perms.append(disc_matrix33(permx, permy, permz))
             self.discr.biots.append(disc_matrix33(idata.rock.biot))
             self.discr.stfs.append(disc_stiffness(lam[cell_id], mu[cell_id]))
             if self.thermoporoelasticity:
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.conductivity))
-                self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn[cell_id]))
+                self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))#[cell_id]))
 
     def add_well(self, name, depth):
         """
@@ -201,7 +209,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 for i in range(6):
                     cell_data['tot_stress'][-1][:, i] = total_stresses[i::6]
 
-                if ith_step == 0:
+                if True:#ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []
                     if 'E' not in cell_data: cell_data['E'] = []
                     if 'poro' not in cell_data: cell_data['poro'] = []
@@ -224,3 +232,135 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
 
         return 0
+
+    def set_heterogeneous_props_by_interpolation(self, idata):
+        # set different values in the reservoir and lateral surrounding+over/under-burden
+        # first, create a struct grid to easily set heterogeneous rock properties
+        # second, interpolate them to unstructured mesh used for computation
+        self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
+        nx_ny_nz = self.nx * self.ny * self.nz
+
+        #rsv_start = 4 * self.ny * self.nx  # 4 overburden layers
+        #rsv_end = nx_ny_nz - 3 * self.ny * self.nx  # 3 underburden layers
+
+        porosity_struct = 0.1 + np.zeros(self.nz * self.ny * self.nx)
+        permeability_struct = 0.1 + np.zeros(self.nz * self.ny * self.nx) # mD
+        E_struct = 1. + np.zeros(self.nz * self.ny * self.nx)  # [10 GPa]
+
+        from scipy.interpolate import griddata as gd
+
+        centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
+        x = centers[:, 0]
+        y = centers[:, 1]
+        z = centers[:, 2]
+
+        #xs = np.arange(x.min(), x.max(), (x.max()-x.min()) / self.nx)
+        #ys = np.arange(y.min(), y.max(), (y.max()-y.min()) / self.ny)
+        #zs = np.arange(z.min(), z.max(), (z.max()-z.min()) / self.nz)
+
+        # 16x16
+        xs = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+        # 22x22
+        #xs = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
+        ys = xs
+        zs = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
+
+        # centers
+        xs = (xs[1:] + xs[:-1]) * 0.5
+        ys = (ys[1:] + ys[:-1]) * 0.5
+        zs = (zs[1:] + zs[:-1]) * 0.5
+
+        centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
+        centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
+
+        from functools import reduce
+        border_xy = 1000.
+        rsv = reduce(np.logical_and, [2100. <= centers_struct_z, centers_struct_z <= 2200.,
+                                      -border_xy <= centers_struct_y,  centers_struct_y <= border_xy,
+                                      -border_xy <= centers_struct_x,  centers_struct_x <= border_xy])
+        porosity_struct[rsv] = 0.25
+        permeability_struct[rsv] = 10.
+        E_struct[rsv] = 1.
+
+        porosity = np.zeros(self.nz * self.ny * self.nx)
+        permeability = np.zeros(self.nz * self.ny * self.nx)
+        E = np.zeros(self.nz * self.ny * self.nx)
+
+        arrays = [porosity, permeability, E]
+        arrays_struct = [porosity_struct, permeability_struct, E_struct]
+
+        for arr, arr_struct in zip(arrays, arrays_struct):
+            arr[:] = gd((centers_struct_x, centers_struct_y, centers_struct_z), arr_struct, (x, y, z), method='nearest')
+
+        # porosity = np.flip(np.swapaxes(porosity.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+        # permeability = np.flip(np.swapaxes(permeability.reshape((self.nz, self.ny, self.nx, 3)), 0, 2), axis=2).flatten()
+        # E = np.flip(np.swapaxes(E.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+        #p_init = np.flip(np.swapaxes(p_init.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+
+        idata.rock.porosity = porosity
+
+        idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability
+        #permeability_xyz = np.zeros((self.nz * self.ny * self.nx, 3))
+        #permeability_xyz[:, 0] = permeability_xyz[:, 1] =  permeability_xyz[:, 2] = permeability
+        #idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability_xyz
+
+        idata.rock.E = 1.e+5 * E  # to bars
+
+    def create_vtk_wells(self, output_directory: str, prolongation=-3000, tube_radius=20):
+        '''
+        creates a file wells.vtk with a tube per well based on its first perforation
+        :param output_directory:
+        :return:
+        '''
+        import vtk
+        well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
+        # Append multiple cylinders into one polydata
+        appendFilter = vtk.vtkAppendPolyData()
+
+        def create_tube(center, prolongation, tube_radius):
+            # Create points for the polyline
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(center[0], center[1], -center[2] + prolongation)  # Point 1
+            points.InsertNextPoint(center[0], center[1], -center[2])  # Point 2
+
+            # Create a polyline that connects the points
+            lines = vtk.vtkCellArray()
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)  # Number of points
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+            lines.InsertNextCell(line)
+
+            # Create a polydata to hold the points and the polyline
+            polyData = vtk.vtkPolyData()
+            polyData.SetPoints(points)
+            polyData.SetLines(lines)
+
+            # Apply vtkTubeFilter to create a tube around the polyline
+            tubeFilter = vtk.vtkTubeFilter()
+            tubeFilter.SetInputData(polyData)
+            tubeFilter.SetRadius(tube_radius)  # Tube radius
+            tubeFilter.SetNumberOfSides(50)  # Smoothness of the tube
+            tubeFilter.Update()
+
+            return tubeFilter.GetOutput()
+
+        for w in self.wells:
+            for p in w.perforations:
+                well_block, res_block_local, well_index, well_indexD = p
+                #c = self.centroids_all_cells[res_block_local].values
+                c = np.array(self.centroids[res_block_local].values)
+                c[2] = -c[2]
+                cyl = create_tube(c, prolongation=prolongation, tube_radius=tube_radius)
+                appendFilter.AddInputData(cyl)
+                #prolongation = 0
+                break  # use only the first perf
+
+        # Update the append filter to combine the polydata
+        appendFilter.Update()
+
+        # Write the cylinders to a VTK file
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(appendFilter.GetOutputPort())
+        writer.Write()

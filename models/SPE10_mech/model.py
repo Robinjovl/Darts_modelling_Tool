@@ -59,23 +59,23 @@ class Model(THMCModel):
             porosity = 0.375
             permeability = 10.0 # [mD]
             E = 1 # [10 GPa]
-            # p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
+            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
         else:
-            porosity = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/poro.txt', 'PORO', cache=0).
-                                        reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-            permeability = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/perm.txt', 'PERM', cache=0).
-                                        reshape(self.nz, self.ny, self.nx, 3), 0, 2), axis=2).flatten()
-            E = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/young.txt', 'YOUNG', cache=0).
-                                    reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-        p_init = np.flip(np.swapaxes(load_single_keyword(self.model_folder + '/ref_pres.txt', 'REF_PRESSURE', cache=0).
-                        reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+            porosity = 0.375
+            permeability = 10.0 # [mD]
+            E = 1 # [10 GPa]
+            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
+
         nu = 0.2
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
+
+        self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = self.nx, self.ny, self.nz
+
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        self.idata.rock.biot = 1.0
+        self.idata.rock.biot = 0.5
         self.idata.rock.E = 1.e+5 * E
         self.idata.rock.nu = nu
         self.idata.rock.compressibility = get_rock_compressibility(
@@ -93,7 +93,7 @@ class Model(THMCModel):
         self.idata.fluid.Mw = 18.015
         self.idata.fluid.compressibility = 1.45e-5
         self.idata.fluid.viscosity = 1.0
-        self.idata.fluid.density = 666.854632
+        self.idata.fluid.density = 1000. #666.854632
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
         self.idata.initial.initial_pressure = p_init  # [bar]
@@ -115,8 +115,8 @@ class Model(THMCModel):
         self.idata.obl.zero = 1e-9
         self.idata.obl.min_p = 0.0
         self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 273.15 + 20
-        self.idata.obl.max_t = 273.15 + 200
+        self.idata.obl.min_t = 273.15
+        self.idata.obl.max_t = 273.15 + 300
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
         super().set_input_data()
@@ -199,24 +199,27 @@ class Model(THMCModel):
         return
 
     def set_wells(self):
-        centroids = np.array([np.array([c.values[0], c.values[1]]) for
+        well_init_depth = 2150.
+        centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
-        l_min = np.min(self.reservoir.mesh_data.points, axis=0)
-        l_max = np.max(self.reservoir.mesh_data.points, axis=0)
-
-        well_coords = np.array([[l_max[0] / 2 - 2, l_max[1] / 2 - 200], [l_max[0] / 2 - 2, l_max[1] / 2 + 200]])
+        middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), well_init_depth #centroids_3d[:, 2].mean()
+        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]],
+                                [middle[0] + 250, middle[1], middle[2]]])
+        print('well_coords:', well_coords)
+        print('centroids_mean depth:', centroids_3d[:, 2].mean())
         well_names = ['PRD1', 'INJ1']
         self.well_cell_ids = []
-        well_init_depth = l_min[2]
+
         nodes = np.array(self.reservoir.discr_mesh.nodes)
         elems = np.array(self.reservoir.discr_mesh.elems)
         for i, coord in enumerate(well_coords):
-            ids = ((centroids[:, 0] - coord[0]) ** 2 + (centroids[:, 1] - coord[1]) ** 2).argsort()
-            self.well_cell_ids.append(ids[:self.nz])
+            ids = ((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (centroids_3d[:, 2] - coord[2]) ** 2).argmin()
+            ids_1 = [ids]
+            self.well_cell_ids.append(ids_1)
             # adding well
             self.reservoir.add_well(well_names[i], depth=well_init_depth)
             # adding perforations
-            for cell_id in ids[:self.nz]:
+            for cell_id in ids_1:
                 cell = elems[cell_id]
                 pt_ids = self.reservoir.discr_mesh.elem_nodes[cell.pts_offset:cell.pts_offset + cell.n_pts]
                 pts = np.array([nodes[id].values for id in pt_ids])
@@ -258,20 +261,41 @@ class Model(THMCModel):
         """
         # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
         # rate) water/oil rate:
-
         for i, w in enumerate(self.reservoir.wells):
             p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
+
+            delta_temp_inj = 40
+
+            bhp_prod = np.min(p_cell) - 50
+            bhp_inj = np.max(p_cell) + 50
+
+            #p_init = self.reservoir.p_init[self.well_cell_ids[1]]
+            #bhp_prod = p_init - 50
+            #bhp_prod = p_init + 50
+
+            # water molar density = 18.015 g/mol = 18 kg/kmol
+            # 7500 m3/day = 7500 * 1000 kg/day = 7500 * 1000 / 18 kmol/day
+            rate = 1e-10  # 7500 # m3/day
+            m3_to_kmol = 1000. / 18  # for water
+            rate_inj = rate_prod = m3_to_kmol * rate # kmol/day
+
             if i == 0:
-                w.control = self.physics.new_bhp_prod(np.min(p_cell) - 50)
+                #w.control = self.physics.new_bhp_prod(bhp_prod)
+                #print(w.name, w.control, bhp_prod)
+                w.control = self.physics.new_rate_prod(rate_prod, 0)
+                #w.constraint = self.physics.new_bhp_prod(bhp_prod)
             else:
                 inj = []
                 if self.physics_type == 'single_phase_thermal':
-                    inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+                    inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]] - delta_temp_inj)]
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
                 elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25]
-                w.control = self.physics.new_bhp_inj(np.max(p_cell) + 50, inj)
+                    inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj]
+                #w.control = self.physics.new_bhp_inj(bhp_inj, inj)
+                #print(w.name, w.control, bhp_inj)
+                w.control = self.physics.new_rate_inj(rate_inj, inj, 0)
+                #w.constraint = self.physics.new_bhp_inj(bhp_inj, inj)
         return 0
 
     def set_initial_conditions(self):

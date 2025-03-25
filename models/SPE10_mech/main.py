@@ -118,10 +118,11 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, is_finalize=True):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
+def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props)
     m.params.finalize_mpi = is_finalize
     m.init()
+
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
@@ -136,7 +137,7 @@ def run(model_folder, physics_type, is_finalize=True):
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
 
-    size_report_step = 1
+    size_report_step = 90
     max_dt = size_report_step
     m.max_dt = max_dt
     m.params.max_ts = max_dt
@@ -144,14 +145,18 @@ def run(model_folder, physics_type, is_finalize=True):
     m.params.first_ts = first_ts
     m.set_boundary_conditions_after_initialization()
 
-    sim_time = 20 # days
+    m.reservoir.create_vtk_wells(output_directory=m.output_directory)
+
+    m.reservoir.write_to_vtk(m.output_directory, 1, m.physics.engine)
+
+    sim_time = 30 * 365 # 10 years
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
     ith_step = 0
     while m.physics.engine.t < sim_time:
         run_python(m=m, days=size_report_step)
-        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 2, m.physics.engine)
         ith_step += 1
         m.time_steps.append(m.physics.engine.t)
         data.append(m.get_performance_data(is_last_ts=(m.physics.engine.t >= sim_time)))
@@ -221,7 +226,7 @@ if __name__ == '__main__':
         pass
 
     test_all = False
-    test_all = True
+    #test_all = True
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
     meshes_list = ['data_10_10_10', 'data_20_40_40']
     if test_all:
@@ -232,7 +237,15 @@ if __name__ == '__main__':
                     is_finalize = True
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
-    #run(model_folder='data_10_10_10', physics_type='single_phase')
+    #run(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=True)
+    run(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=False)
+
+    #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=True)
+    #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=False)
+
+    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=True)
+    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=False)
+
     #run(model_folder='data_10_10_10', physics_type='single_phase_thermal')
     #run(model_folder='data_10_10_10', physics_type='dead_oil')
     #run(model_folder='data_10_10_10', physics_type='dead_oil_thermal')
