@@ -265,7 +265,7 @@ class Model(CICDModel):
         #     injected_fluid_pressure,
         #     injected_fluid_temperature,
         #     injected_fluid_mole_fractions)  # Constant injection specific enthalpy
-        injected_fluid_specific_enthalpy = - 1000
+        injected_fluid_specific_enthalpy = - 2000
         injected_heat_rate = inj_rate * injected_fluid_specific_enthalpy
         inj_flux = np.append(inj_flux, injected_heat_rate)
 
