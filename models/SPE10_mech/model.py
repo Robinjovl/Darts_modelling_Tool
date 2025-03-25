@@ -58,15 +58,13 @@ class Model(THMCModel):
         if self.uniform_props:
             porosity = 0.375
             permeability = 10.0 # [mD]
-            E = 1 # [10 GPa]
+            E = 10 # [GPa]
             p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
         else:
             porosity = 0.375
             permeability = 10.0 # [mD]
-            E = 1 # [10 GPa]
+            E = 10 # [GPa]
             p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
-
-        nu = 0.2
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 
@@ -76,14 +74,14 @@ class Model(THMCModel):
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
         self.idata.rock.biot = 0.5
-        self.idata.rock.E = 1.e+5 * E
-        self.idata.rock.nu = nu
+        self.idata.rock.E = 1.e+4 * E  # to bars
+        self.idata.rock.nu = 0.2
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
-        self.idata.rock.th_expn = 9.0 * 1.E-7
+        self.idata.rock.th_expn = 0 #9.0 * 1.E-7
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
         self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
