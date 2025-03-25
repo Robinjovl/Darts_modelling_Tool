@@ -275,7 +275,7 @@ class Model(THMCModel):
 
             # water molar density = 18.015 g/mol = 18 kg/kmol
             # 7500 m3/day = 7500 * 1000 kg/day = 7500 * 1000 / 18 kmol/day
-            rate = 1e-10  # 7500 # m3/day
+            rate = 100  # 7500 # m3/day
             m3_to_kmol = 1000. / 18  # for water
             rate_inj = rate_prod = m3_to_kmol * rate # kmol/day
 

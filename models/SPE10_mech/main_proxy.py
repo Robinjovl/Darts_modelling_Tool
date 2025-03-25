@@ -13,7 +13,7 @@ import vtk
 
 def read_vtk_darts_solution(timestep : int):
     #folder = 'sol_cpp_single_phase_10_10_10'
-    folder = 'sol_cpp_single_phase_16_16_13'
+    folder = 'sol_cpp_single_phase_16_16_12'
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtk')
     msh = meshio.read(filename)
     print("Cells:", msh.cells_dict.keys())
