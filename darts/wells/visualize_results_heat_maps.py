@@ -187,7 +187,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Add title
         ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=14, fontweight='bold')
 
-        # Add a colorbar to show the temperature values
+        # Add a colorbar to show the overall mole fraction values
         cbar = fig.colorbar(cax, ax=ax)
         cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
@@ -381,7 +381,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Add title
         ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=14, fontweight='bold')
 
-        # Add a colorbar to show the xG_mole_CO2 values
+        # Add a colorbar to show the xG_mole values
         cbar = fig.colorbar(cax, ax=ax)
         cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
 
@@ -446,7 +446,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Add title
         ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
 
-        # Add a colorbar to show the xG_mole_CO2 values
+        # Add a colorbar to show the xL_mole values
         cbar = fig.colorbar(cax, ax=ax)
         cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
 
@@ -648,7 +648,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Add title
     ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
 
-    # Add a colorbar to show the liquid density values
+    # Add a colorbar to show the gas viscosity values
     cbar = fig.colorbar(cax, ax=ax)
     cbar.set_label('Gas viscosity [cP]', fontsize=14)
 
@@ -716,7 +716,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Add title
     ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
 
-    # Add a colorbar to show the liquid density values
+    # Add a colorbar to show the liquid viscosity values
     cbar = fig.colorbar(cax, ax=ax)
     cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
 
