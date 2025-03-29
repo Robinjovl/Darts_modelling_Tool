@@ -221,7 +221,7 @@ class Model(CICDModel):
         self.reservoir.add_well(well_1_name, well_1__ms_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
 
         # Well with single perforation
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry, well_indexD=0)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
 
         # Add lateral heat exchange
         # Import rock data from the library
