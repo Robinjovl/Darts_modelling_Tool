@@ -102,32 +102,39 @@ def run_geomech_proxy():
     centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # x
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
-    coord = centroids[:, 0].mean(), centroids[:, 1].mean(), 0 #centroids[:, 2].mean()  # middle point
-    cell = ((centroids[:, 0] - coord[0]) ** 2 + (centroids[:, 1] - coord[1]) ** 2 + (centroids[:, 2] - coord[2]) ** 2).argmin()
 
-    # Compute center of the cell
-    y1, y2, x1, x2, z1, z2 = prisms[cell]
-    center = np.array([(y2 + y1)/2, (x2 + x1)/2, (z2 + z1)/2])
-    # define evaluation point for proxy
-    center_surface = center.copy()
-    center_surface[2] = 0.
-    eval_points = np.zeros((1,3))
-    eval_points[0] = np.array([center_surface])
-
+    # init geomech proxy
     from geomechanics import geomech
     g = geomech()
-
     # just to set input data
     from model import Model
     m = Model(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=False)
-
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
     g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
-    upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
 
-    print('THM   uz=', uz_last[cell], 'm.')
-    print('Proxy uz=', -upz1[0], 'm.')
+    def get_thm_solution(point):
+        # find an index of the cell, closest to the desired point
+        cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
+        uz_thm = uz_last[cell]
+        return uz_thm
+
+    def get_proxy_solution(point):
+        eval_points = np.zeros((1,3))  # just one point
+        eps = 1e-3  # to avoid r=0 for the integral in the geomech proxy 1/r
+        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]]) # Y,X,Z
+        upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
+        uz_proxy = -upz1[0]
+        return uz_proxy
+
+    point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point
+    point[2] = 0. # surface
+    uz_thm = get_thm_solution(point)
+    uz_prx = get_proxy_solution(point)
+    print('point ', point)
+    print('THM   ', 'uz=', uz_thm, 'm.')
+    print('Proxy ', 'uz=', uz_prx, 'm.')
+
 
 run_geomech_proxy()
