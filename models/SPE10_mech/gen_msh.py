@@ -415,5 +415,6 @@ if __name__ == '__main__':
     # for field scale model
     tags_no_fault = tags.copy()
     tags_no_fault.pop('FRAC')
-    generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault,
+    filename = generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags_no_fault,
                                is_transfinite=True, is_recombine=True, popup=True)
+    write_to_vtk_with_faces(filename)
