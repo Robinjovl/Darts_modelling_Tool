@@ -217,7 +217,7 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
 	else
 	{
 	  // Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-	  target_state[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] - 0.001;
+	  target_state[0] = (this->target > 0.) ? state_neighbour[0] * 1.01 : state_neighbour[0] * 0.99;
 	}
   
 	// Other state specifications
