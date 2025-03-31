@@ -281,7 +281,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                                       -border_xy <= centers_struct_x,  centers_struct_x <= border_xy])
         porosity_struct[rsv] = idata.rock.porosity
         permeability_struct[rsv] = idata.rock.permx # [mD]
-        E_struct[rsv] = idata.rock.E [bars]
+        E_struct[rsv] = idata.rock.E #[bars]
 
         porosity = np.zeros(self.nz * self.ny * self.nx)
         permeability = np.zeros(self.nz * self.ny * self.nx)
