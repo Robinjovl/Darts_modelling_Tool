@@ -128,7 +128,10 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
     # Properties for writing to vtk format:
     m.output_directory = 'sol_cpp_' + physics_type + model_folder.split('data')[-1]
 
+    splitter = '-' * 100 + '\n'
+
     # intialization:
+    print(splitter + 'compute initialization ...\n' + splitter)
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
     dt_init = 1.e+8
@@ -136,6 +139,7 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
+    print(splitter + 'initialization completed\n' + splitter)
 
     size_report_step = 90
     max_dt = size_report_step
@@ -237,8 +241,8 @@ if __name__ == '__main__':
                     is_finalize = True
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
-    #run(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=True)
-    run(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=False)
+    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=True)
+    run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=False)
 
     #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=True)
     #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=False)

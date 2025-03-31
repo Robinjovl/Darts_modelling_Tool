@@ -11,9 +11,7 @@ from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
 import vtk
 
-def read_vtk_darts_solution(timestep : int):
-    #folder = 'sol_cpp_single_phase_10_10_10'
-    folder = 'sol_cpp_single_phase_16_16_12'
+def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtk')
     msh = meshio.read(filename)
     print("Cells:", msh.cells_dict.keys())
@@ -84,11 +82,13 @@ def geomech_init_geometry(mesh_data):
     print('prisms', prisms.shape)
     return prisms
 
-def run_geomech_proxy():
-    msh_initial = read_vtk_darts_solution(timestep=0)
+def run_geomech_proxy(case):
+    folder = 'sol_cpp_single_phase_' + case
+
+    msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
 
-    msh_last    = read_vtk_darts_solution(timestep=20)
+    msh_last    = read_vtk_darts_solution(folder=folder, timestep=20)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
 
@@ -108,7 +108,7 @@ def run_geomech_proxy():
     g = geomech()
     # just to set input data
     from model import Model
-    m = Model(model_folder='data_16_16_12', physics_type='single_phase', uniform_props=False)
+    m = Model(model_folder='data_' + case, physics_type='single_phase', uniform_props=False)
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
@@ -122,13 +122,38 @@ def run_geomech_proxy():
 
     def get_proxy_solution(point):
         eval_points = np.zeros((1,3))  # just one point
-        eps = 1e-3  # to avoid r=0 for the integral in the geomech proxy 1/r
-        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]]) # Y,X,Z
+        eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
+        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
         upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
         uz_proxy = -upz1[0]
         return uz_proxy
 
     point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point
+
+    # compare 1 line along z-axis
+    z_min = 0.
+    z_max = centroids[:, 2].max() + 3000.
+    z_range = np.arange(z_min, z_max, 100)
+
+    uz_thm = []
+    uz_prx = []
+    for z in z_range:
+        point[2] = z
+        uz_thm.append(get_thm_solution(point))
+        uz_prx.append(get_proxy_solution(point))
+
+    from matplotlib import pyplot as plt
+    plt.plot(uz_thm, z_range, label='uz_thm')
+    plt.plot(uz_prx, z_range, label='uz_prx')
+    plt.gca().invert_yaxis()
+    plt.xlabel('Vertical displacement, m.')
+    plt.ylabel('Depth, m.')
+    plt.title('Vertical displacement, m.')
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    # compare 1 point and print
     point[2] = 0. # surface
     uz_thm = get_thm_solution(point)
     uz_prx = get_proxy_solution(point)
@@ -136,5 +161,4 @@ def run_geomech_proxy():
     print('THM   ', 'uz=', uz_thm, 'm.')
     print('Proxy ', 'uz=', uz_prx, 'm.')
 
-
-run_geomech_proxy()
+run_geomech_proxy(case='24_24_12')

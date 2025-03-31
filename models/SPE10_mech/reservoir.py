@@ -29,12 +29,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
     def get_reservoir_pressure(self, depths):
-        #return 290. + 0. * depths
-        return 1. + 0.1 * depths  # bars/m
+        return 290. + 0.0 * depths
+        #return 1. + 0.1 * depths  # bars/m
 
     def get_reservoir_temperature(self, depths):
-        return 273.15 + 90. + 0. * depths
-        return 273.15 + 10 + 30. / 1000 * depths
+        return 273.15 + 90. * depths
+        #return 273.15 + 10 + 30. / 1000 * depths
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
         self.mesh_filename = model_folder + '/spe10.msh'
@@ -43,9 +43,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_uniform_initial_conditions(idata=idata)
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
+
         self.grav = 9.80665e-5
         #self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
-        self.init_gravity(gravity_on=False, gravity_coeff=0.)
+        #self.init_gravity(gravity_on=True, gravity_coeff=0.)
+        self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
         self.p_init = self.get_reservoir_pressure(self.depths[:self.n_matrix])
@@ -75,14 +77,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     def set_boundary_conditions(self, idata: InputData):
-        self.F = 0.
         self.boundary_conditions = {}
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.LOAD(self.F, [0.0, 0.0, 0.0]) }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
 
         if self.thermoporoelasticity:
@@ -243,9 +243,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #rsv_start = 4 * self.ny * self.nx  # 4 overburden layers
         #rsv_end = nx_ny_nz - 3 * self.ny * self.nx  # 3 underburden layers
 
-        porosity_struct = 0.1 + np.zeros(self.nz * self.ny * self.nx)
-        permeability_struct = 0.1 + np.zeros(self.nz * self.ny * self.nx) # mD
-        E_struct = 1. + np.zeros(self.nz * self.ny * self.nx)  # [10 GPa]
+        # fill the whole array with non-rsv values, the rsv part will be replaced later on
+        porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv
+        permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
+        E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
 
         from scipy.interpolate import griddata as gd
 
@@ -259,9 +260,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #zs = np.arange(z.min(), z.max(), (z.max()-z.min()) / self.nz)
 
         # 16x16
-        xs = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+        #xs = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
         # 22x22
-        #xs = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
+        xs = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
         ys = xs
         zs = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
 
@@ -278,9 +279,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         rsv = reduce(np.logical_and, [2100. <= centers_struct_z, centers_struct_z <= 2200.,
                                       -border_xy <= centers_struct_y,  centers_struct_y <= border_xy,
                                       -border_xy <= centers_struct_x,  centers_struct_x <= border_xy])
-        porosity_struct[rsv] = 0.25
-        permeability_struct[rsv] = 10.
-        E_struct[rsv] = 1.
+        porosity_struct[rsv] = idata.rock.porosity
+        permeability_struct[rsv] = idata.rock.permx # [mD]
+        E_struct[rsv] = idata.rock.E [bars]
 
         porosity = np.zeros(self.nz * self.ny * self.nx)
         permeability = np.zeros(self.nz * self.ny * self.nx)
@@ -304,7 +305,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #permeability_xyz[:, 0] = permeability_xyz[:, 1] =  permeability_xyz[:, 2] = permeability
         #idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability_xyz
 
-        idata.rock.E = 1.e+5 * E  # to bars
+        idata.rock.E = E  # bars
 
     def create_vtk_wells(self, output_directory: str, prolongation=-3000, tube_radius=20):
         '''

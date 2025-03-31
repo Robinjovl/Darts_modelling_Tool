@@ -76,6 +76,11 @@ class Model(THMCModel):
         self.idata.rock.biot = 0.5
         self.idata.rock.E = 1.e+4 * E  # to bars
         self.idata.rock.nu = 0.2
+
+        self.idata.rock.poro_non_rsv = 0.01
+        self.idata.rock.perm_non_rsv = 0.01
+        self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
+
         self.idata.rock.compressibility = get_rock_compressibility(
             kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
@@ -275,7 +280,8 @@ class Model(THMCModel):
             # 7500 m3/day = 7500 * 1000 kg/day = 7500 * 1000 / 18 kmol/day
             rate = 100  # 7500 # m3/day
             m3_to_kmol = 1000. / 18  # for water
-            rate_inj = rate_prod = m3_to_kmol * rate # kmol/day
+            rate_inj = m3_to_kmol * rate # kmol/day
+            rate_prod = 0#m3_to_kmol * rate # kmol/day
 
             if i == 0:
                 #w.control = self.physics.new_bhp_prod(bhp_prod)
