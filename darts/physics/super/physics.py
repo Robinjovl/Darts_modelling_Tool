@@ -181,8 +181,9 @@ class Compositional(PhysicsBase):
                 values = np.empty(mesh.n_res_blocks)
                 for j in range(mesh.n_res_blocks):
                     zc = np.append(np.asarray(zi[:, j]), 1. - np.sum(zi[:, j])) if self.nc > 1 else np.array([1.])
+                    state_pt = np.array([pressure[j]] + list(zc) + [temperature[j]])
 
-                    values[j] = self.property_containers[0].compute_total_enthalpy(pressure[j], temperature[j], zc)
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
             else:
                 # Else, interpolate primary variable
                 itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
@@ -221,12 +222,13 @@ class Compositional(PhysicsBase):
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
                     for j in range(mesh.n_blocks):
-                        state = value_vector([input_distribution['pressure'][j], 0])
                         temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
-                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+                        
+                        state_pt = np.array([input_distribution['pressure'][j], temp])
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
                 else:
-                    state = value_vector([input_distribution['pressure'], 0])  # enthalpy is dummy variable
-                    enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
+                    state_pt = value_vector([input_distribution['pressure'], input_distribution['temperature']])  # enthalpy is dummy variable
+                    enth = self.property_containers[0].compute_total_enthalpy(state_pt)
                     enthalpy[:] = enth
 
                 np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy

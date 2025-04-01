@@ -80,8 +80,8 @@ class WellInitOperators(OperatorsBase):
         if self.is_pt:
             vec_values_as_np[0] = state[-1]
         else:
-            zc = np.append(state[1:self.nc], np.sum(1.-np.sum(state[1:self.nc])))
-            vec_values_as_np[0] = self.property.compute_total_enthalpy(pressure=state[0], temperature=state[-1], zc=zc)
+            state_pt = np.concatenate((state[:self.nc], np.sum(1.-np.sum(state[1:self.nc])), state[-1]))
+            vec_values_as_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
 
         return 0
 

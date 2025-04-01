@@ -297,17 +297,17 @@ class PhysicsBase:
             axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(self.PT_axes_max)
 
         elif state_spec == PhysicsBase.StateSpecification.PH:
-            pz_axes_min = [min_p] + ([min_z for i in range(self.nc - 1)] if np.isscalar(min_z) else min_z)
-            pz_axes_max = [max_p] + ([max_z for i in range(self.nc - 1)] if np.isscalar(max_z) else max_z)
+            pz_axes_min = [min_p] + ([min_z for i in range(self.nc - 1)] if np.isscalar(min_z) else list(min_z))
+            pz_axes_max = [max_p] + ([max_z for i in range(self.nc - 1)] if np.isscalar(max_z) else list(max_z))
 
             zi = np.append(np.zeros(self.nc - 1), np.array([1.]))
-            min_h = self.property_containers[0].compute_total_enthalpy(max_p, min_t, zi)
-            max_h = self.property_containers[0].compute_total_enthalpy(min_p, max_t, zi)
+            min_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
+            max_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
             for i in range(self.nc - 1):
                 zi = np.array([1. if i == ii else 0. for ii in range(self.nc)])
-                min_hi = self.property_containers[0].compute_total_enthalpy(max_p, min_t, zi)
+                min_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
                 min_h = min_hi if min_hi < min_h else min_h
-                max_hi = self.property_containers[0].compute_total_enthalpy(min_p, max_t, zi)
+                max_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
                 max_h = max_hi if max_hi > max_h else max_h
 
             axes_min = value_vector(pz_axes_min + [min_h])

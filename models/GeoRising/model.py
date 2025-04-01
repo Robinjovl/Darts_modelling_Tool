@@ -129,13 +129,9 @@ class Model(CICDModel):
                                              min_t=273.15, max_t=373.15, cache=False)
                 self.physics.add_property_region(property_container)
 
-                self.physics.determine_obl_bounds(state_min=[self.physics.axes_min[0], 1., 273.15],
-                                                  state_max=[self.physics.axes_max[0], 1., 373.15])
             else:
                 from darts.physics.geothermal.geothermal import GeothermalPH
                 self.physics = GeothermalPH(self.idata, self.timer)
-                self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 273.15],
-                                                  state_max=[self.idata.obl.max_p, 373.15])
 
     def set_initial_conditions(self):
         input_distribution = {'pressure': 200.,

@@ -86,7 +86,7 @@ class GeothermalPropertiesBase(PropertyBase):
         self.output_props = {'temperature': lambda: self.temperature}
 
     @abc.abstractmethod
-    def compute_total_enthalpy(self, state, temperature):
+    def compute_total_enthalpy(self, state_pt):
         pass
 
 
@@ -107,8 +107,8 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
         self.ph = np.array([j for j in range(self.nph) if self.saturation[j] > 0])
         return
 
-    def compute_total_enthalpy(self, state, temperature):
-        return self.enthalpy_ev['total'].evaluate(state, temperature)
+    def compute_total_enthalpy(self, state_pt):
+        return self.enthalpy_ev['total'].evaluate(state_pt, state_pt[-1])
 
 
 class GeothermalIAPWSFluidProps(FluidProps):
@@ -160,8 +160,8 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
 
         return
 
-    def compute_total_enthalpy(self, state, temperature):
-        _ = self.flash_ev.evaluate_PT(state[0], temperature)
+    def compute_total_enthalpy(self, state_pt):
+        _ = self.flash_ev.evaluate_PT(state_pt[0], state_pt[-1])
         flash_results = self.flash_ev.get_flash_results()
         nu = np.array(flash_results.nu)
         x = np.array(flash_results.X).reshape(self.nph, self.nc)
@@ -170,7 +170,7 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
 
         enthalpy = 0.
         for j in ph:
-            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(state[0], temperature, x[j, :])
+            enthalpy += nu[j] * self.enthalpy_ev[self.phases[j]].evaluate(state_pt[0], state_pt[-1], x[j, :])
 
         return enthalpy
 

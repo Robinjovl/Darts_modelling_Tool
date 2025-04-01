@@ -86,18 +86,6 @@ class Geothermal(PhysicsBase):
         """
         return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph))()
 
-    def determine_obl_bounds(self, state_min, state_max):
-        """
-        Function to compute minimum and maximum enthalpy (kJ/kmol)
-
-        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
-        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
-        """
-        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
-        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
-
-        return
-
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
                                                 input_depth: Union[list, np.ndarray]):
         """
@@ -134,8 +122,8 @@ class Geothermal(PhysicsBase):
 
                 values = np.empty(mesh.n_blocks)
                 for j in range(mesh.n_blocks):
-                    state = np.array([pressure[j], temperature[j]])
-                    values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+                    state_pt = np.array([pressure[j], temperature[j]])
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
             else:
                 # Else, interpolate primary variable
                 itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
@@ -171,12 +159,12 @@ class Geothermal(PhysicsBase):
         elif not np.isscalar(input_distribution['pressure']):
             # Pressure specified as an array
             for j in range(mesh.n_blocks):
-                state = value_vector([input_distribution['pressure'][j], 0])
                 temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
-                enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+                state_pt = np.array([input_distribution['pressure'][j], temp])
+                enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
         else:
-            state = value_vector([input_distribution['pressure'], 0])  # enthalpy is dummy variable
-            enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
+            state_pt = np.array([input_distribution['pressure'], input_distribution['temperature']])
+            enth = self.property_containers[0].compute_total_enthalpy(state_pt)
             enthalpy[:] = enth
 
         np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
