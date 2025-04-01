@@ -180,7 +180,8 @@ class Model(DartsModel, OptModuleSettings):
             # customize your own operator, e.g. the Temperature
             temperature_etor = geothermal_customized_etor()
 
-            temperature_itor = self.physics.create_interpolator(temperature_etor,
+            temperature_itor = self.physics.create_interpolator(temperature_etor, axes_min=self.physics.axes_min,
+                                                                axes_max=self.physics.axes_max,
                                                                 timer_name="customized operator interpolation",
                                                                 n_ops=1, platform='cpu', algorithm='multilinear',
                                                                 mode='adaptive', precision='d')
@@ -281,7 +282,7 @@ class ModelProperties(PropertyContainer):
         Mw = np.ones(self.nph)
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
         self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):

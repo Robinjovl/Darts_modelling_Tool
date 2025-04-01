@@ -187,7 +187,7 @@ class PropertyContainer(PropertyBase):
         # If any error has occurred inside the flash routine, try to run flash at slightly different conditions
         if error_output > 0:
             pressure += 0.01
-            return self.run_flash(pressure, temperature, zc)
+            return self.run_flash(pressure, temperature, zc, evaluate_PT)
 
         # Set present phase idxs
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
