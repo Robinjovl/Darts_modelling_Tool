@@ -44,7 +44,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
         self.grav = -9.80665e-5
-        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.init_gravity(gravity_on=False)#True, gravity_coeff=self.grav)
 
         # specify initial temperature
         if self.thermoporoelasticity:
@@ -71,7 +71,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     def set_boundary_conditions(self, idata: InputData):
-        self.F = -900.0
+        self.F = 0.0#-900.0
         self.boundary_conditions = {}
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }

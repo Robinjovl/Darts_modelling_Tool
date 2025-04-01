@@ -96,7 +96,7 @@ class Model(THMCModel):
         self.idata.fluid.density = 666.854632
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
-        self.idata.initial.initial_pressure = p_init  # [bar]
+        self.idata.initial.initial_pressure = 330.0#p_init  # [bar]
         self.idata.initial.initial_displacements = [0., 0., 0.]  # [m]
         if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             self.idata.initial.initial_composition = [0.67]
@@ -199,6 +199,7 @@ class Model(THMCModel):
         return
 
     def set_wells(self):
+        return
         centroids = np.array([np.array([c.values[0], c.values[1]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
         l_min = np.min(self.reservoir.mesh_data.points, axis=0)
@@ -240,6 +241,7 @@ class Model(THMCModel):
                 self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
 
     def set_boundary_conditions(self):
+        return
         self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
         if len(self.reservoir.wells) > 1:
             inj = []
