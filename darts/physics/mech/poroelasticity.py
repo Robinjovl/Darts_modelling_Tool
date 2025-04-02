@@ -1,7 +1,7 @@
 from darts.engines import *
-from darts.physics.super.physics import Compositional
+from darts.physics.super.physics import Compositional, PhysicsBase
 from darts.physics.super.operator_evaluator import *
-from darts.physics.base.operators_base import WellControlOperators, PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
 import numpy as np
 from typing import Union
 
@@ -105,6 +105,8 @@ class Poroelasticity(Compositional):
             self.well_operators = GeomechanicsReservoirOperators(self.property_containers[self.regions[0]], False)
 
         self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
         return
 
@@ -116,8 +118,8 @@ class Poroelasticity(Compositional):
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars,
-                                        self.n_ops, self.phases, self.well_ctrl_itor, self.thermal)
+            w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars, self.n_ops, self.phases,
+                                        self.well_ctrl_itor, self.well_init_itor, self.thermal)
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
                                                 input_depth: Union[list, np.ndarray], input_displacement: list):
