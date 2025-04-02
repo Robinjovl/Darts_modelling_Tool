@@ -154,8 +154,9 @@ class PropertyContainer(PropertyBase):
 
         return self.sat[0]
 
-    def compute_total_enthalpy(self, pressure, temperature, zc):
+    def compute_total_enthalpy(self, state_pt):
         # Evaluate flash at PT
+        pressure, temperature, zc = self.get_state(state_pt)
         ph = self.run_flash(pressure, temperature, zc, evaluate_PT=True)
 
         # Compute molar enthalpy of multiphase mixture

@@ -72,15 +72,14 @@ class WellInitOperators(OperatorsBase):
         self.n_ops = 1
         self.is_pt = is_pt
 
-    def evaluate(self, state, values):
-        vec_state_as_np = state.to_numpy()
+    def evaluate(self, state_pt, values):
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
 
         if self.is_pt:
-            vec_values_as_np[0] = state[-1]
+            vec_values_as_np[0] = state_pt[-1]
         else:
-            state_pt = np.concatenate((state[:self.nc], np.sum(1.-np.sum(state[1:self.nc])), state[-1]))
+            state_pt = np.array(list(state_pt[:self.nc]) + [state_pt[-1] if self.thermal else self.temperature])
             vec_values_as_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
 
         return 0
