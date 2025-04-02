@@ -20,7 +20,7 @@ class PhysicsBase:
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`RateOperators` and a :class:`PropertyOperators` object.
+    a :class:`WellControlOperators`, a :class:`WellInitOperators` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -34,7 +34,9 @@ class PhysicsBase:
     :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
     :type well_operators: dict
     :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
-    :type well_ctrl_operators: dict
+    :type well_ctrl_operators: WellControlOperators
+    :ivar well_init_operators: :class:`WellInitOperators` object for generic state well initialization
+    :type well_init_operators: WellInitOperators
     :ivar regions: List of property regions
     :type regions: list
     """
