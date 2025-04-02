@@ -36,6 +36,7 @@ conn_mesh::init_const_1d(double trans_const, index_t nb)
 
   poro.resize(n_blocks);
   volume.resize(n_blocks);
+  initial_state.resize(n_blocks * n_vars);
   pressure.resize(n_blocks);
   composition.resize(n_blocks);
   temperature.resize(n_blocks);
@@ -109,6 +110,7 @@ conn_mesh::init (std::string conn2p_filename)
 
     poro.resize(n_blocks);
     volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
     pressure.resize(n_blocks);
     composition.resize(n_blocks);
     temperature.resize(n_blocks);
@@ -154,6 +156,7 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
 
   poro.resize(n_blocks);
   volume.resize(n_blocks);
+  initial_state.resize(n_blocks * n_vars);
   pressure.resize(n_blocks);
   composition.resize(n_blocks);
   temperature.resize(n_blocks);
@@ -201,6 +204,7 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 
     poro.resize(n_blocks);
     volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
     pressure.resize(n_blocks);
     composition.resize(n_blocks);
     temperature.resize(n_blocks);
@@ -252,6 +256,7 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
 	pressure.resize(n_blocks);
 	composition.resize(n_blocks);
 	temperature.resize(n_blocks);
@@ -302,6 +307,7 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
 	pressure.resize(n_blocks);
 	composition.resize(n_blocks);
 	temperature.resize(n_blocks);
@@ -427,6 +433,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
 	pressure.resize(n_blocks);
 	composition.resize(n_blocks);
 	temperature.resize(n_blocks);
@@ -478,6 +485,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
 	pressure.resize(n_blocks);
 	ref_pressure.resize(n_blocks);
 	ref_eps_vol.resize(n_matrix);
@@ -536,6 +544,7 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
+	initial_state.resize(n_blocks * n_vars);
 	pressure.resize(n_blocks);
 	ref_pressure.resize(n_blocks);
 	ref_eps_vol.resize(n_matrix);
@@ -597,6 +606,7 @@ conn_mesh::init_pm_mech_discretizer(
 
   poro.resize(n_blocks);
   volume.resize(n_blocks);
+  initial_state.resize(n_blocks * n_vars);
   pressure.resize(n_blocks);
   ref_pressure.resize(n_blocks, 0.0);
   ref_eps_vol.resize(n_matrix, 0.0);
@@ -662,6 +672,7 @@ conn_mesh::init_pme_mech_discretizer(
 
   poro.resize(n_blocks);
   volume.resize(n_blocks);
+  initial_state.resize(n_blocks * n_vars);
   pressure.resize(n_blocks);
   ref_pressure.resize(n_blocks, 0.0);
   ref_temperature.resize(n_blocks, 0.0);
@@ -2296,6 +2307,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   // Resize mesh arrays by number of well blocks and head blocks (one per well)
   volume.resize(well_head_idx);
   poro.resize(well_head_idx);
+  initial_state.resize(well_head_idx * n_vars);
   pressure.resize(well_head_idx);
   temperature.resize(well_head_idx);
   enthalpy.resize(well_head_idx);
@@ -2373,6 +2385,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	// Resize mesh arrays by number of well blocks and head blocks (one per well)
 	volume.resize(volume.size() + dofs_num);
 	poro.resize(poro.size() + dofs_num);
+	initial_state.resize(initial_state.size() + dofs_num * n_vars);
 	pressure.resize(pressure.size() + dofs_num);
 	temperature.resize(temperature.size() + dofs_num);
 	enthalpy.resize(enthalpy.size() + dofs_num);

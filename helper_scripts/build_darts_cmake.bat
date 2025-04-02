@@ -9,6 +9,7 @@ set bos_solvers_artifact=false
 set bos_solvers_dir=""
 set iter_solvers=false
 set MT=true
+set GPU=%false
 set skip_req=false
 set config=Release
 set NT=8
@@ -23,6 +24,7 @@ if "%option%"=="-c" set clean_mode=true & goto parse_args
 if "%option%"=="-t" set testing=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
 if "%option%"=="-m" set MT=true & goto parse_args
+if "%option%"=="-G" set GPU=true & goto parse_args
 if "%option%"=="-r" set skip_req=true & goto parse_args
 if "%option%"=="-d" set config=%1 & shift & goto parse_args
 if "%option%"=="-j" set NT=%1 & shift & goto parse_args
@@ -42,8 +44,12 @@ if %bos_solvers_artifact%==true (
 )
 REM ODLS version does not support OpenMP yet
 if %iter_solvers%==false (
+  if %GPU%==true (
+    echo Error: GPU build requires GPU bos solvers. Specify the path with -b.
+    exit 1
+  )
   if %MT%==true (
-    echo Waring: ODLS version does not support OpenMP yet. Switched to the sequentional build.
+    echo Warning: ODLS version does not support OpenMP yet. Switched to the sequentional build.
     set MT=false
   )
 )
@@ -52,6 +58,7 @@ echo - Report configuration of this script: START
 echo    bos_solvers_dir = %bos_solvers_dir%
 echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
+echo    gpu = %GPU%
 echo    testing = %testing%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
@@ -115,6 +122,9 @@ if %testing%==true (
 )
 if %MT%==true (
   set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=MT
+)
+if %GPU%==true (
+  set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=GPU
 )
 if not %bos_solvers_dir%=="" (
   set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%

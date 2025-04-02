@@ -3,6 +3,7 @@ from darts.physics.super.physics import Compositional
 from darts.physics.super.operator_evaluator import *
 from darts.physics.base.operators_base import PropertyOperators
 import numpy as np
+from typing import Union
 
 
 class Poroelasticity(Compositional):
@@ -17,8 +18,8 @@ class Poroelasticity(Compositional):
     """
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 thermal: bool = False, cache: bool = False, discretizer: str = 'mech_discretizer',
-                 axes_min = None, axes_max = None, n_axes_points = None):
+                 state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+                 cache: bool = False, discretizer: str = 'mech_discretizer', axes_min = None, axes_max = None, n_axes_points = None):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -38,8 +39,8 @@ class Poroelasticity(Compositional):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
-        :param thermal: Switch for (iso)thermal simulation
-        :type thermal: bool
+        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
+        :type state_spec: bool
         :param cache: Switch to cache operator values
         :type cache: bool
         :param discretizer: Name of discretizer
@@ -52,8 +53,9 @@ class Poroelasticity(Compositional):
         :type n_axes_points: list or np.ndarray
         """
         # Define nc, nph and (iso)thermal
-        super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, thermal, cache,
-                         axes_min, axes_max, n_axes_points)
+        super().__init__(components=components, phases=phases, timer=timer, n_points=n_points, min_p=min_p, max_p=max_p,
+                         min_z=min_z, max_z=max_z, min_t=min_t, max_t=max_t, state_spec=state_spec, cache=cache,
+                         axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points)
 
         self.n_dim = 3
         self.discretizer_name = discretizer
@@ -119,55 +121,34 @@ class Poroelasticity(Compositional):
             w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars,
                                         self.n_ops, self.phases, self.rate_itor, self.thermal)
 
-    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_displacement: list,
-                                       uniform_composition: list = None, uniform_temperature: float = None):
-        assert isinstance(mesh, conn_mesh)
-        nb = mesh.n_blocks
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray], input_displacement: list):
+        """
+        Function to set initial conditions from given distribution of properties over depth.
 
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
-
-        # set initial composition
-        if self.nc > 1:
-            mesh.composition.resize(nb * (self.nc - 1))
-            composition = np.array(mesh.composition, copy=False)
-            for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = uniform_composition[c]
-
-        # set initial temperature
-        if self.thermal:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature.fill(uniform_temperature)
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :param input_depth: Array of depths over which depth table has been specified
+        :param input_displacement: Displacement [], array
+        """
+        super().set_initial_conditions_from_depth_table(mesh, input_depth=input_depth, input_distribution=input_distribution)
 
         # set initial displacements
-        displacement = np.array(mesh.displacement, copy=False)
         for i in range(self.n_dim):
-            displacement[i::self.n_dim] = uniform_displacement[i]
+            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]
 
-    def set_nonuniform_initial_conditions(self, mesh, initial_pressure: np.ndarray, initial_displacement: np.ndarray,
-                                          initial_composition: np.ndarray = None, initial_temperature: np.ndarray = None):
-        assert isinstance(mesh, conn_mesh)
-        nb = mesh.n_blocks
-        n_res_blocks = mesh.n_res_blocks
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, input_displacement: list):
+        """
+        Method to set initial conditions by arrays or uniformly for all cells
 
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:n_res_blocks] = initial_pressure
-
-        # set initial composition
-        if self.nc > 1:
-            mesh.composition.resize(nb * (self.nc - 1))
-            composition = np.array(mesh.composition, copy=False)
-            for c in range(self.nc - 1):
-                composition[c::(self.nc - 1)] = initial_composition[c]
-
-        # set initial temperature
-        if self.thermal:
-            temperature = np.array(mesh.temperature, copy=False)
-            temperature[:n_res_blocks] = initial_temperature
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
+        :param input_displacement: Displacement [], array
+        """
+        super().set_initial_conditions_from_array(mesh, input_distribution=input_distribution)
 
         # set initial displacements
-        displacement = np.array(mesh.displacement, copy=False)
         for i in range(self.n_dim):
-            displacement[i:self.n_dim * n_res_blocks:self.n_dim] = initial_displacement[i]
+            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]

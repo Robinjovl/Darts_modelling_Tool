@@ -235,7 +235,7 @@ if [[ "$wheel" == true ]]; then
     echo -e "-- Python wheel generated! \n"
 fi
 
-# installing python package
+# installing python package with -e flag for interactive install (changes will be applied live)
 python3 -m pip install . 2>&1 | tee -a make_wheel.log
 
 echo -e "\n************************************************************************"

@@ -1,4 +1,17 @@
-# 1.2.2 [26-01-2024]
+# 1.3.0 [28-02-2025]
+- Unify set_initial_conditions():
+  - 1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_from_array()
+  - 2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth to self.physics.set_initial_conditions_from_depth_table() 
+  - DartsModel.set_uniform_conditions(): forces user to overload this method in Model() and set initial conditions according to 1) or 2)
+  - PhysicsBase.set_initial_conditions_from_array() to set initial conditions uniformly/with array
+  - PhysicsBase.set_initial_conditions_from_depth_table() to interpolate/calculate properties based on depth table
+  - On the C++ level, there is an array initial_state that lives in the conn_mesh class, which is to be filled with the initial state of all the primary variables in PhysicsBase.set_initial_conditions_from_*()
+- PhysicsBase class constructor contains StateSpecification enum to define state variables
+  - Unifies P (isothermal), PT (pressure-temperature) and PH (pressure-enthalpy)
+  - Compositional constructor contains state_spec variable rather than thermal (bool)
+  - Geothermal is PH by default
+
+# 1.2.2 [26-01-2025]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
 - Temperature and pressure operators are added
 - Add enthalpy operators to elastic super engine

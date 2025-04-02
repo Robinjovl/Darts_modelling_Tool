@@ -41,11 +41,6 @@ class Model(CICDModel, OptModuleSettings):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 50,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1]
-                               }
-
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
         nx = 20
@@ -110,11 +105,22 @@ class Model(CICDModel, OptModuleSettings):
                                                ('oil', PhaseRelPerm("oil"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 50.,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):

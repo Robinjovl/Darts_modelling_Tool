@@ -112,7 +112,7 @@ The energy flux includes the thermal convection and conduction terms,
     \end{aligned}
 \end{equation}
 
-where {math}`h_j` is phase enthalpy {math}`[\mathrm{kJ/kg}]` and {math}`\kappa` is effective thermal conductivity {math}`[\mathrm{kJ/m/day/K}]`.
+where {math}`h_j` is phase enthalpy {math}`[\mathrm{kJ/kmol}]` and {math}`\kappa` is effective thermal conductivity {math}`[\mathrm{kJ/m/day/K}]`.
 
 Finally, the source term in mass conservation equations can be present in the following form
 

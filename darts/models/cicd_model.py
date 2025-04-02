@@ -133,6 +133,7 @@ class CICDModel(DartsModel):
         if file_name == '':
             file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix + '.pkl')
         data = self.get_performance_data()
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 

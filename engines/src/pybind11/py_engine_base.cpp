@@ -45,6 +45,25 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
 		.def_readwrite("molar_weights", &engine_base::molar_weights) \
 		.def_readwrite("dispersivity", &engine_base::dispersivity) \
+		.def_readwrite("newton_update_coefficient", &engine_base::newton_update_coefficient) \
+		.def_readwrite("e_dim", &engine_base::e_dim) \
+		.def_readwrite("p_dim", &engine_base::p_dim) \
+		.def_readwrite("m_dim", &engine_base::m_dim) \
+		.def_readwrite("scale_rows", &engine_base::scale_rows) \
+		.def_readwrite("scale_dimless", &engine_base::scale_dimless) \
+		.def_readwrite("is_fickian_energy_transport_on", &engine_base::is_fickian_energy_transport_on) \
+		.def_readwrite("darcy_fluxes", &engine_base::darcy_fluxes) \
+		.def_readwrite("diffusion_fluxes", &engine_base::diffusion_fluxes) \
+		.def_readwrite("dispersion_fluxes", &engine_base::dispersion_fluxes) \
+		.def_readwrite("heat_darcy_advection_fluxes", &engine_base::heat_darcy_advection_fluxes) \
+		.def_readwrite("heat_diffusion_advection_fluxes", &engine_base::heat_diffusion_advection_fluxes) \
+		.def_readwrite("heat_dispersion_advection_fluxes", &engine_base::heat_dispersion_advection_fluxes) \
+		.def_readwrite("fourier_fluxes", &engine_base::fourier_fluxes) \
+		.def_readwrite("jac_vals", &engine_base::jac_vals) \
+		.def_readwrite("jac_rows", &engine_base::jac_rows) \
+		.def_readwrite("jac_cols", &engine_base::jac_cols) \
+		.def_readwrite("jac_diags", &engine_base::jac_diags) \
+		.def("enable_flux_output", &engine_base::enable_flux_output) \
 		.def("add_value_to_Q", &engine_base::add_value_to_Q)  \
 		.def("clear_Q", &engine_base::clear_Q)  \
 		.def("calc_adjoint_gradient_dirac_all", &engine_base::calc_adjoint_gradient_dirac_all, py::call_guard<py::gil_scoped_release>())  \

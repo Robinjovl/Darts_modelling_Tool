@@ -110,6 +110,7 @@ public:
     stationary_point_tolerance = 1e-3;
     newton_type = NEWTON_LOCAL_CHOP;
     newton_params.push_back(0.1);
+    line_search = false;
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
     linear_type = CPU_SUPERLU;
@@ -143,6 +144,7 @@ public:
   value_t tolerance_linear; // tolerance for linear solver
   value_t well_tolerance_coefficient; // tolerance multiplier for well newton tolerance
   value_t stationary_point_tolerance; // stationary point tolerance
+  bool line_search;         // apply line search in newton iterations
 
   //Added for debugging purposes:
   index_t tot_newt_count;      // total number of newton iterations (wasted + non-wasted)

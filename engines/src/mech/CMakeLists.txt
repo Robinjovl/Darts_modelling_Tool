@@ -48,6 +48,7 @@ target_link_libraries(engines_mechanics
 	opendarts_discretizer
     Eigen3::Eigen
 	HYPRE::HYPRE
+    pybind11::pybind11
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

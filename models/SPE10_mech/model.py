@@ -186,10 +186,11 @@ class Model(THMCModel):
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
-        self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
+        state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
+        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
                                       min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
                                       min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                      thermal=self.thermal, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
+                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
@@ -274,17 +275,17 @@ class Model(THMCModel):
         return 0
 
     def set_initial_conditions(self):
+        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_composition=self.reservoir.z_init,
-                                                           initial_temperature=self.reservoir.t_init,
-                                                           initial_displacement=[0.0, 0.0, 0.0])
+            input_distribution['temperature'] = self.reservoir.t_init
+            input_displacement = [0.0, 0.0, 0.0]
         else:
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                           initial_pressure=self.reservoir.p_init,
-                                                           initial_composition=self.reservoir.z_init,
-                                                           initial_displacement=self.reservoir.u_init)
+            input_displacement = self.reservoir.u_init
+
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                       input_distribution=input_distribution,
+                                                       input_displacement=input_displacement)
         return 0
 
 class ModelProperties(PropertyContainer):
@@ -304,6 +305,8 @@ class ModelProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
+        if self.thermal:
+            self.temperature = vec_state_as_np[-1]
 
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
 

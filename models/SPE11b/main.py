@@ -78,13 +78,6 @@ if 0:
     plt.show()
 
 """ Define initial and boundary conditions """
-# define initial pressure, composition and temperature of the reservoir
-pres_in = 212
-m.initial_values = {"pressure": pres_in,
-                    "H2O": 1. - zero,
-                    "temperature": 323.15}
-m.gradient = {"pressure": 0.09775, "temperature": 0.0}
-
 # define injection stream of the wells
 m.inj_stream = [zero]
 

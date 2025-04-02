@@ -52,6 +52,7 @@ class DartsModel:
         self.output_folder = 'output'
         self.sol_filename = "solution.h5"
         self.well_filename = 'well_data.h5'
+        self.min_line_search_update = 1.e-4
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
@@ -231,86 +232,16 @@ class DartsModel:
         self.reservoir.set_wells(verbose)
         return
 
-    def set_initial_conditions(self, initial_values: dict = None, gradient: dict = None):
+    def set_initial_conditions(self):
         """
         Function to set initial conditions. Passes initial conditions to :class:`Mesh` object.
 
-        :param initial_values: Map of scalars/arrays of initial values for each primary variable, keys are the variables
-        :type initial_values: dict
-        :param gradient: Map of scalars of gradients for initial values
-        :type gradient: dict
+        Initial conditions can be specified in multiple ways:
+        1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_by_array()
+        2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth
+                          to self.physics.set_initial_conditions_by_depth_table()
         """
-        initial_values = initial_values if initial_values is not None else self.initial_values
-        gradient = gradient if gradient is not None else (self.gradient if hasattr(self, 'gradient') else None)
-
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
-
-        for i, variable in enumerate(self.physics.vars):
-            # Check if variable exists in initial values dictionary
-            if variable not in initial_values.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
-
-            if variable == 'pressure':
-                values = np.array(self.reservoir.mesh.pressure, copy=False)
-            elif variable == 'temperature':
-                values = np.array(self.reservoir.mesh.temperature, copy=False)
-            elif variable == 'enthalpy':
-                values = np.array(self.reservoir.mesh.enthalpy, copy=False)
-            else:
-                values = np.array(self.reservoir.mesh.composition, copy=False)
-
-            # values = np.array(self.reservoir.mesh.values[i], copy=False)
-            initial_value = initial_values[variable]
-
-            if variable not in ['pressure', 'temperature', 'enthalpy']:
-                c = i - 1
-                values[c::(self.physics.nc - 1)] = initial_value
-            elif isinstance(initial_values[variable], (list, np.ndarray)):
-                # If initial value is an array, assign array
-                values[:] = initial_value
-            elif gradient is not None and variable in gradient.keys():
-                # If gradient has been defined, calculate distribution over depth and assign to array
-                values[:self.reservoir.mesh.n_res_blocks] = initial_value + \
-                    np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_res_blocks] * gradient[variable]
-            else:
-                # Else, assign constant value to each cell in array
-                values.fill(initial_value)
-
-        return
-
-    def set_initial_conditions_from_depth_table(self, depth, initial_distribution: dict):
-        """
-        Function to set initial conditions from given distribution of properties over depth.
-
-        :param depth: depth
-        :param initial_distribution: initial distributions of unknowns over depth,
-                                    must have keys equal to self.physics.vars
-        :type initial_distribution: dict
-        """
-
-        # all depths
-        depths = np.asarray(self.reservoir.mesh.depth)
-
-        # adjust the size of composition array in c++
-        self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
-
-        z_counter = 0
-        nz_vars = self.physics.nc - 1
-        for variable in self.physics.vars:
-            if variable not in initial_distribution.keys():
-                raise RuntimeError("Primary variable {} was not assigned initial values.".format(variable))
-
-            values_foo = interp1d(depth, initial_distribution[variable], kind='linear', fill_value='extrapolate')
-
-            if variable == 'pressure':
-                np.asarray(self.reservoir.mesh.pressure)[:] = values_foo(depths)
-            elif variable == 'temperature':
-                np.asarray(self.reservoir.mesh.temperature)[:] = values_foo(depths)
-            elif variable == 'enthalpy':
-                np.asarray(self.reservoir.mesh.enthalpy)[:] = values_foo(depths)
-            else:           # compositions
-                np.asarray(self.reservoir.mesh.composition)[z_counter::nz_vars] = values_foo(depths)
-                z_counter += 1
+        raise NotImplementedError('Model.set_initial_conditions() not implemented.')
 
     def set_boundary_conditions(self):
         """
@@ -340,7 +271,7 @@ class DartsModel:
 
     def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
-                       newton_type=None, newton_params=None):
+                       newton_type=None, newton_params=None, line_search: bool=False):
         """
         Function to set simulation parameters.
 
@@ -362,6 +293,8 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param line_search: flag to activate line search in Newton iterations
+        :type: line_search: bool
         """
         self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
         self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
@@ -376,6 +309,7 @@ class DartsModel:
 
         self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
         self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
+        self.params.line_search = line_search
 
     def run_simple(self, physics, params, days):
         """
@@ -550,6 +484,7 @@ class DartsModel:
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
+        residual_history = []
         for i in range(max_newt+1):
             # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
@@ -567,6 +502,10 @@ class DartsModel:
                 break
 
             self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
+            residual_history.append((self.physics.engine.newton_residual_last_dt, # matrix residual
+                                     self.physics.engine.well_residual_last_dt,   # well residual
+                                     1.0))                                        # Newton update coefficient
+
             self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
             if ((self.physics.engine.newton_residual_last_dt < self.params.tolerance_newton and
@@ -574,15 +513,110 @@ class DartsModel:
                     self.physics.engine.n_newton_last_dt == self.params.max_i_newton):
                 if i > 0:  # min_i_newton
                     break
-            r_code = self.physics.engine.solve_linear_equation()
-            self.timer.node["newton update"].start()
-            self.physics.engine.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
+
+            # line search
+            if self.params.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:
+                coef = np.array([0.0, 1.0])
+                history = np.array([residual_history[-2], residual_history[-1]])
+                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
+                max_residual[i] = residual_history[-1][0]
+
+                # check stationary point after line search
+                counter = 0
+                for j in range(i):
+                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.params.stationary_point_tolerance:
+                        counter += 1
+                if counter > 2:
+                    if verbose:
+                        print("Stationary point detected!")
+                    break
+            else:
+                r_code = self.physics.engine.solve_linear_equation()
+                self.timer.node["newton update"].start()
+                self.physics.engine.apply_newton_update(dt)
+                self.timer.node["newton update"].stop()
+
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
         self.timer.node['simulation'].stop()
         return converged
+
+    def line_search(self, dt, t, coef, history, verbose: bool = False):
+        """
+        Performs a line search to find the optimal coefficient that minimizes residuals.
+
+        :param dt: Time step for the update process.
+        :type dt: float
+        :param t: Current time.
+        :type t: float
+        :param coef: Array of current coefficients used in the line search.
+        :type coef: numpy.ndarray
+        :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
+        :type history: list or numpy.ndarray
+        :param verbose: If True, prints detailed debug information during execution.
+        :type verbose: bool
+        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient corresponding to the minimum residual.
+        :rtype: tuple(float, float, float)
+        """
+
+        if verbose:
+            print('LS: ' + str(coef[0]) + '\t' + 'r_mat = ' + str(history[0][0]) + '\tr_well = ' + str(history[0][1]))
+            print('LS: ' + str(coef[1]) + '\t' + 'r_mat = ' + str(history[1][0]) + '\tr_well = ' + str(history[1][1]))
+        res_history = np.array([history[0][0], history[1][0]])
+
+        for iter in range(5):
+            if coef.size > 2:
+                id = res_history.argmin()
+                closest_left = np.where(coef < coef[id])[0]
+                closest_right = np.where(coef > coef[id])[0]
+                if closest_left.size and closest_right.size:
+                    left = closest_left[coef[closest_left].argmax()]
+                    right = closest_right[coef[closest_right].argmin()]
+                    if res_history[left] < res_history[id]:
+                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
+                    elif res_history[right] < res_history[id]:
+                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    else:
+                        if res_history[left] < res_history[right]:
+                            coef = np.append(coef, coef[id] - (coef[id] - coef[left]) / 4)
+                        else:
+                            coef = np.append(coef, coef[id] + (coef[right] - coef[id]) / 4)
+                elif closest_left.size:
+                    left = closest_left[coef[closest_left].argmax()]
+                    if res_history[left] < res_history[id]:
+                        coef = np.append(coef, (coef[id] + coef[left]) / 2)
+                    else:
+                        coef = np.append(coef, coef[id] + (coef[id] - coef[left]) / 2)
+                elif closest_right.size:
+                    right = closest_right[coef[closest_right].argmin()]
+                    if res_history[right] < res_history[id]:
+                        coef = np.append(coef, (coef[id] + coef[right]) / 2)
+                    else:
+                        coef = np.append(coef, coef[id] - (coef[right] - coef[id]) / 2)
+                if coef[-1] <= 0: coef[-1] = self.min_line_search_update
+                if coef[-1] >= 1: coef[-1] = 1.0 - self.min_line_search_update
+            else:
+                coef = np.append(coef, coef[-1] / 2)
+
+            self.physics.engine.newton_update_coefficient = coef[-1] - coef[-2]
+            self.timer.node["newton update"].start()
+            self.physics.engine.apply_newton_update(dt)
+            self.timer.node["newton update"].stop()
+            self.physics.engine.assemble_linear_system(dt)
+            self.apply_rhs_flux(dt, t)
+            res = (self.physics.engine.calc_newton_residual(), self.physics.engine.calc_well_residual())
+            res_history = np.append(res_history, res[0])
+            if verbose:
+                print('LS: ' + str(coef[-1]) + '\t' + 'r_mat = ' + str(res[0]) + '\tr_well = ' + str(res[1]))
+
+        final_id = res_history.argmin()
+        self.physics.engine.newton_update_coefficient = coef[final_id] - coef[-1]
+        self.timer.node["newton update"].start()
+        self.physics.engine.apply_newton_update(dt)
+        self.timer.node["newton update"].stop()
+
+        return res_history[final_id], 0.0, coef[final_id]
 
     def do_after_step(self):
         '''

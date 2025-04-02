@@ -205,7 +205,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	{
 	  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND_ * i + d];
 	}
-	X_init[n_vars * i + P_VAR] = mesh->pressure[i];
+	X_init[n_vars * i + P_VAR] = mesh->initial_state[i];
 
 	PV[i] = mesh->volume[i] * mesh->poro[i];
 	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);

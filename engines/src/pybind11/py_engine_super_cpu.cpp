@@ -25,11 +25,12 @@ struct engine_super_exposer
       long_name = "Non-isothermal ";
     }
     long_name += "CPU simulator engine for " + std::to_string(NC) + " components and " + std::to_string(NP) + " phases with diffusion and kinetic reaction";
-		py::class_<engine_super_cpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())   \
-			.def(py::init<>()) \
-			.def("init", (int (engine_super_cpu<NC, NP, THERMAL>::*)(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) &engine_super_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>());
+    py::class_<engine_super_cpu<NC, NP, THERMAL>, engine_base>(m, short_name.c_str(), long_name.c_str())   \
+      .def(py::init<>()) \
+      .def("init", (int (engine_super_cpu<NC, NP, THERMAL>::*)(conn_mesh*, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, sim_params*, timer_node*)) & engine_super_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>());
 	}
 };
+
 
 void pybind_engine_super_cpu(py::module &m)
 {

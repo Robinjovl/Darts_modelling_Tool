@@ -17,30 +17,6 @@ m.set_reservoir()
 zero = 1e-10
 m.set_physics(zero, n_points=1001, temperature=None)
 
-if 1:
-    def set_initial_conditions():
-        dz = m.reservoir.global_data['dz'][0, 0, :]
-
-        # zH2O = 1
-        from darts.physics.super.initialize import Initialize
-        # depth corresponding to boundary_idx = 10
-        b_depth = m.reservoir.global_data['depth'].min() + (m.reservoir.global_data['depth'].max() - m.reservoir.global_data['depth'].min()) / 4.
-        boundary_state = {'H2O': 1 - zero, 'pressure': 100., 'temperature': 350.}
-        init = Initialize(physics=m.physics)
-        X = init.solve(depth_bottom=m.reservoir.global_data['depth'].max(),
-                       depth_top=m.reservoir.global_data['depth'].min(),
-                       depth_known=b_depth, boundary_state=boundary_state,
-                       primary_specs={'H2O': 1-zero}, secondary_specs={})
-        m.set_initial_conditions_from_depth_table(depth=init.depths,
-                                                  initial_distribution={var: X[i::m.physics.n_vars] for i, var in enumerate(m.physics.vars)})
-
-
-    m.set_initial_conditions = set_initial_conditions
-else:
-    m.initial_values = {"pressure": 100.,
-                        "H2O": 0.99995,
-                        "temperature": 350.
-                        }
 m.inj_stream = [0.00005]
 m.inj_stream += [350.] if m.physics.thermal else []
 m.p_inj = 100.
@@ -57,7 +33,7 @@ X, Y = np.meshgrid(x, y)
 
 properties = m.physics.vars + m.physics.property_operators[0].props_name
 print_props = m.physics.vars + ['satV', 'xCO2', 'yH2O']
-timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=0)
+timesteps, output = m.output_properties(print_props, timestep=0)
 nv = m.physics.n_vars
 
 fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
@@ -79,7 +55,7 @@ for t in range(2):
 
     #m.params.max_ts = 0.5
 
-    timesteps, output = m.output_properties(print_props[m.physics.n_vars:], timestep=t+1)
+    timesteps, output = m.output_properties(print_props, timestep=t+1)
 
     fig, axs = plt.subplots(len(print_props), 1, figsize=(12, 10), dpi=100, facecolor='w', edgecolor='k')
     for i, ith_prop in enumerate(print_props):
