@@ -27,13 +27,6 @@ class Model(CICDModel, OptModuleSettings):
 
         self.timer.node["initialization"].stop()
 
-        self.init_pressure = 200.
-        self.init_temperature = 350.
-
-        self.initial_values = {'pressure': self.init_pressure,
-                               'temperature': self.init_temperature,
-                               }
-
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
         # nx = 20
@@ -136,11 +129,19 @@ class Model(CICDModel, OptModuleSettings):
                                          min_t=273.15, max_t=373.15, cache=False)
             self.physics.add_property_region(property_container)
 
-            self.physics.determine_obl_bounds(state_min=[self.physics.axes_min[0], 1., 273.15],
-                                              state_max=[self.physics.axes_max[0], 1., 373.15])
-
         return
 
+    def set_initial_conditions(self):
+        self.init_pressure = 200.
+        self.init_temperature = 350.
+
+        input_distribution = {'pressure': self.init_pressure}
+        input_distribution.update({comp: self.ini[i] for i, comp in enumerate(self.physics.components[:-1])})
+        if self.physics.thermal:
+            input_distribution['temperature'] = self.init_temperature
+
+        return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
     def set_well_controls(self):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
@@ -166,19 +167,7 @@ class Model(CICDModel, OptModuleSettings):
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
         for ts in time_step_arr:
-            self.inj_stream = [1.]
-            self.inj_stream = self.inj_stream[:-1] + [-45000.]  # TODO: fix well controls to specify temperature in PH specification
-            for i, w in enumerate(self.reservoir.wells):
-                if self.iapws_physics:
-                    if "I" in w.name:
-                        w.control = self.physics.new_bhp_water_inj(self.init_pressure + 30, 308.15)
-                    else:
-                        w.control = self.physics.new_bhp_prod(self.init_pressure - 10)
-                else:
-                    if "I" in w.name:
-                        w.control = self.physics.new_bhp_inj(self.init_pressure + 30, self.inj_stream)
-                    else:
-                        w.control = self.physics.new_bhp_prod(self.init_pressure - 10)
+            self.set_well_controls()
 
             CICDModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
