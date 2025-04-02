@@ -200,7 +200,7 @@ int well_control_iface::check_constraint_violation(value_t dt, index_t well_head
   }
 }
 
-int well_control_iface::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour, bool is_well_head)
+int well_control_iface::initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour)
 {
 	// Fill target state with target BHP/rate pressure, composition and target temperature
 	std::vector<value_t> target_state(n_vars);

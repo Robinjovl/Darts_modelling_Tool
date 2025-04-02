@@ -221,7 +221,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
     // copy neighbour state
     std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
     // initialize
-    control.initialize_well_block(state, state_neighbour, false);
+    control.initialize_well_block(state, state_neighbour);
     // move initialized state back to X
     std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
   }
@@ -232,7 +232,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   // copy neighbour state
   std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
   // initialize
-  control.initialize_well_block(state, state_neighbour, true);
+  control.initialize_well_block(state, state_neighbour);
   // move initialized state back to X
   std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
   return 0;
