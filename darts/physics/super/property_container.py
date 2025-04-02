@@ -112,12 +112,12 @@ class PropertyContainer(PropertyBase):
 
         for ith_comp, zi in enumerate(vec_composition):
             if zi < self.min_z:
-                # print(vec_composition)
+                #print(vec_composition)
                 vec_composition[ith_comp] = self.min_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
             elif zi > 1 - self.min_z:
-                # print(vec_composition)
+                #print(vec_composition)
                 vec_composition[ith_comp] = 1 - self.min_z
                 temp_sum += vec_composition[ith_comp]
             else:
@@ -140,7 +140,7 @@ class PropertyContainer(PropertyBase):
         self.sat[ph] = vol / np.sum(vol)
 
         return
-
+        
     def compute_saturation_full(self, state):
         pressure, temperature, zc = self.get_state(state)
         self.clean_arrays()
@@ -183,11 +183,6 @@ class PropertyContainer(PropertyBase):
         except ValueError as e:
             print(e.args[0], pressure, temperature, zc)
             error_output += 1
-
-        # If any error has occurred inside the flash routine, try to run flash at slightly different conditions
-        if error_output > 0:
-            pressure += 0.01
-            return self.run_flash(pressure, temperature, zc, evaluate_PT)
 
         # Set present phase idxs
         ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])

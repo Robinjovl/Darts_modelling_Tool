@@ -86,7 +86,7 @@ void pybind_globals(py::module &m)
     .def_readwrite("linear_type", &sim_params::linear_type)
     .def_readwrite("linear_params", &sim_params::linear_params)
     .def_readwrite("nonlinear_norm_type", &sim_params::nonlinear_norm_type)
-	.def_readwrite("log_transform", &sim_params::log_transform)
+    .def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("trans_mult_exp", &sim_params::trans_mult_exp)
     .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
@@ -94,7 +94,9 @@ void pybind_globals(py::module &m)
     .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
-    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance);
+    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
+    .def_readwrite("line_search", &sim_params::line_search);
+
 
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
     .def(py::init<>())

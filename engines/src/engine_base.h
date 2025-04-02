@@ -9,6 +9,7 @@
 #include "globals.h"
 #include "conn_mesh.h"
 #include "interpolator_base.hpp"
+#include "pybind11/py_globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/data_types.hpp"
@@ -84,6 +85,9 @@ public:
 
 		print_linear_system = false;
 		output_counter = 0;
+		enabled_flux_output = false;
+		is_fickian_energy_transport_on = true;
+		newton_update_coefficient = 1.0;
 	};
 
 	~engine_base()
@@ -178,6 +182,83 @@ public:
 
 	virtual int test_spmv(int n_timer, int kernel_number = 0, int dump_result = 0);
 
+	/// @brief row-wise scaling of Jacobian by maximum value
+	template<uint16_t N_VARS>
+	void dimensionalize_rows()
+	{
+	  constexpr uint16_t N_VARS_SQ = N_VARS * N_VARS;
+	  const index_t n_blocks = mesh->n_blocks;
+	  value_t* Jac = Jacobian->get_values();
+	  const index_t* rows = Jacobian->get_rows_ptr();
+
+	  // maximum values
+	  std::fill_n(max_row_values_inv.data(), n_blocks * N_VARS, 0.0);
+
+	  #pragma omp parallel for
+	  for (index_t i = 0; i < n_blocks; i++)
+	  {
+		index_t csr_start = rows[i];
+		index_t csr_end = rows[i + 1];
+		for (index_t j = csr_start; j < csr_end; j++)
+		{
+		  const index_t base = j * N_VARS_SQ;
+		  for (uint8_t c = 0; c < N_VARS; c++)
+		  {
+			value_t current_max = max_row_values_inv[i * N_VARS + c];
+			for (uint8_t v = 0; v < N_VARS; v++)
+			{
+			  const index_t idx = base + c * N_VARS + v;
+			  value_t val = fabs(Jac[idx]);
+			  if (val > current_max)
+				current_max = val;
+			}
+			max_row_values_inv[i * N_VARS + c] = current_max;
+		  }
+		}
+	  }
+
+	  // compute inverses
+	  for (index_t i = 0; i < n_blocks; i++) 
+	  {
+		for (uint8_t c = 0; c < N_VARS; c++) 
+		{
+		  value_t& val = max_row_values_inv[i * N_VARS + c];
+		  if (val != 0.0)
+			val = 1.0 / val;
+		  else
+			val = 1.0;
+		}
+	  }
+
+	  // scaling
+	  #pragma omp parallel for
+	  for (index_t i = 0; i < n_blocks; i++)
+	  {
+		index_t csr_start = rows[i];
+		index_t csr_end = rows[i + 1];
+		value_t inv_vals[N_VARS];
+
+		// copy values to local array
+		for (uint8_t c = 0; c < N_VARS; c++)
+		  inv_vals[c] = max_row_values_inv[i * N_VARS + c];
+
+		// scale jacobian
+		for (index_t j = csr_start; j < csr_end; j++) 
+		{
+		  const index_t base = j * N_VARS_SQ;
+		  for (uint8_t c = 0; c < N_VARS; c++) 
+		  {
+			for (uint8_t v = 0; v < N_VARS; v++) 
+			  Jac[base + c * N_VARS + v] *= inv_vals[c];
+		  }
+		}
+
+		// scale residual
+		for (uint8_t c = 0; c < N_VARS; c++)
+		  RHS[i * N_VARS + c] *= inv_vals[c];
+	  }
+	};
+	
 	/// @} // end of Methods
 
 	// properties
@@ -213,6 +294,26 @@ public:
 
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
+
+	// @brief python wrapper for jacobian values
+	py::array_t<value_t> jac_vals;
+	
+	// @brief python wrappers for storing BCSR jacobian structure
+	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
+
+	// @brief method to initialize python wrappers for Jacobian matrix
+	void expose_jacobian()
+	{
+	  value_t* values = Jacobian->get_values();
+	  index_t* rows = Jacobian->get_rows_ptr();
+	  index_t* cols = Jacobian->get_cols_ind();
+	  index_t* diag_ind = Jacobian->get_diag_ind();
+
+	  jac_vals = get_raw_array(values, n_vars * n_vars * rows[mesh->n_blocks]);
+	  jac_rows = get_raw_array(rows, mesh->n_blocks + 1);
+	  jac_cols = get_raw_array(cols, rows[mesh->n_blocks]);
+	  jac_diags = get_raw_array(diag_ind, mesh->n_blocks);
+	};
 
 	/// @} // end of Parameters
 
@@ -261,6 +362,9 @@ public:
 	index_t output_counter;
 	bool print_linear_system;
 
+	// switch on/off heat fluxes related to Fickian mass transport
+	bool is_fickian_energy_transport_on;
+
 	// statistics
 	value_t CFL_max; // maximum value of CFL for last Jacobian assebly
 	index_t n_newton_last_dt, n_linear_last_dt;
@@ -268,18 +372,36 @@ public:
 	double well_residual_last_dt;
 	int linear_solver_error_last_dt;
 
+	value_t newton_update_coefficient; // Newton update coefficient for line search
+
 	timer_node *timer;
 	timer_node full_step_timer;
 	double full_step_run_timer, t_full_step; // for more accurate estimation of time left
 
 	std::string engine_name;
 
+	// flags to apply dimension-based and row-wise scaling respectively
+	bool scale_dimless, scale_rows;
 
+	// dimensions for scaling
+	value_t e_dim, t_dim, m_dim, p_dim;
 
+	// maximum absolute values in rows of jacobian
+	std::vector<value_t> max_row_values_inv;
 
+	// flag to turn on fluxes output
+	bool enabled_flux_output;
+	virtual void enable_flux_output() {};
 
-
-
+	// mass fluxes
+	std::vector<value_t> darcy_fluxes;
+	std::vector<value_t> diffusion_fluxes;
+	std::vector<value_t> dispersion_fluxes;
+	// energy fluxes
+	std::vector<value_t> heat_darcy_advection_fluxes;
+	std::vector<value_t> heat_diffusion_advection_fluxes;
+	std::vector<value_t> heat_dispersion_advection_fluxes;
+	std::vector<value_t> fourier_fluxes;
 
 	// adjoint method--------------------------------------------------------------------------------------
 

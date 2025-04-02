@@ -2,17 +2,28 @@ cmake_minimum_required (VERSION 3.26)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+
+# Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Configure runtime path for finding dynamic libraries
+set(CMAKE_INSTALL_RPATH $ORIGIN)  # shared libraries will be searched in darts folder
+set(CMAKE_MACOSX_RPATH 1)
+
+# Set DARTS installation folder
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
+
+# Disable C++ 11 ABI to support old libraries
 set(SET_CXX11_ABI_0 TRUE)
-set(CMAKE_INSTALL_PREFIX "../darts")
-set(CMAKE_INSTALL_RPATH $ORIGIN)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
+# Set default build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
 endif()
+
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -96,7 +107,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   
   message(STATUS "  Setting MSVC compiler and linker flags")
   # Compiler flags 
-  set(opendarts_cxx_compiler_flags "/MP;/W3;/std:c++20")
+  set(opendarts_cxx_compiler_flags "/MP;/std:c++20")
   
   # for VS Sanitizer usage: 
   # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64
@@ -124,7 +135,10 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  # Using LTO as it seems to reduce compile time
+  # No need for manual optimization flag, CMake build types automatically handle it.
+  # Debug: O0    Release: 03
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -294,4 +308,18 @@ if(ENABLE_TESTING)
 endif()
 # ------------------------------------------------------------------------------
 
+
+# Bundle standard C++ library used by the compiler,
+# to support running even on old systems
+if(UNIX AND NOT APPLE)
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
+        OUTPUT_VARIABLE LIBSTDCXX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    install(CODE "
+        execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
+    ")
+endif()
 
