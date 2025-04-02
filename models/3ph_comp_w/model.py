@@ -101,7 +101,8 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)

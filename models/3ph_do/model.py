@@ -97,8 +97,9 @@ class ModelProperties(PropertyContainer):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          rock_comp=rock_comp, temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
-
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
+        
         ph = np.array([0, 1, 2], dtype=np.intp)
 
         for i in range(self.nc):

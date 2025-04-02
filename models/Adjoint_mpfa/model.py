@@ -282,7 +282,9 @@ class ModelProperties(PropertyContainer):
         Mw = np.ones(self.nph)
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
+        
         self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):
