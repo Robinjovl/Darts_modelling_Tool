@@ -161,11 +161,12 @@ def run_timestep_python(m, dt, t):
     cur_area = sum(areas)
     print('slip area = ' + str(cur_area))
     # print(areas)
-    if cur_area - m.slip_area[-1] > 4.2 * m.min_area:
-        converged *= 0
-    else:
-        m.slip_area.append(cur_area)
-        converged *= 1
+    if m.enable_dynamic_mode:
+        if cur_area - m.slip_area[-1] > 4.2 * m.min_area:
+            converged *= 0
+        else:
+            m.slip_area.append(cur_area)
+            converged *= 1
 
     converged = self.e.post_newtonloop(dt, t, converged)
 
@@ -244,7 +245,6 @@ def run_simulation(config: dict):
 
     m.print_timers()
 
-# not working yet
 config = {'mode': 'static',
           'timesteps': [1.0],
           'depletion': 'uniform',
