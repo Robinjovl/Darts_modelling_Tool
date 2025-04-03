@@ -702,7 +702,7 @@ class UnstructDiscretizer:
                 continue
             sorted_cells[geometry] = {tuple(sorted(cell)) for cell in self.mesh_data.cells_dict[geometry]}
 
-        for ith_frac, dummy in enumerate(self.frac_cell_info_dict):
+        for dummy, ith_frac in enumerate(self.frac_cell_info_dict):
             # Loop over all faces of fracture cell and determine intersections based on
             # nodes belonging to fracture (inter)face:
             for key, nodes_to_face in self.frac_cell_info_dict[ith_frac].nodes_to_faces.items():
@@ -757,8 +757,8 @@ class UnstructDiscretizer:
                                                                        self.mesh_data.points[nodes_to_face])
 
                             # Instead of appending, use list or dictionary:
-                            cell_m[count_connection] = connect_array[0] + offset_frac_cell_count
-                            cell_p[count_connection] = connect_array[1] + offset_frac_cell_count
+                            cell_m[count_connection] = connect_array[0] + offset_frac_cell_count - self.mat_cells_tot
+                            cell_p[count_connection] = connect_array[1] + offset_frac_cell_count - self.mat_cells_tot
                             tran[count_connection] = trans_i_j
                             tran_thermal[count_connection] = thermal_i_j
 
@@ -847,7 +847,7 @@ class UnstructDiscretizer:
 
                             # Instead of appending, use list or dictionary:
                             cell_m[count_connection] = intsect_cells_to_face[0] + offset_mat_cell_count
-                            cell_p[count_connection] = frac_element_nr[0] + offset_frac_cell_count
+                            cell_p[count_connection] = frac_element_nr[0] - self.mat_cells_tot + offset_frac_cell_count
                             tran[count_connection] = trans_i_j
                             tran_thermal[count_connection] = thermal_i_j
 
@@ -876,7 +876,7 @@ class UnstructDiscretizer:
                                                                       self.mesh_data.points[nodes_to_face, :])
 
                             cell_m[count_connection] = intsect_cells_to_face[1] + offset_mat_cell_count
-                            cell_p[count_connection] = frac_element_nr[0] + offset_frac_cell_count
+                            cell_p[count_connection] = frac_element_nr[0] - self.mat_cells_tot + offset_frac_cell_count
                             tran[count_connection] = trans_i_j
                             tran_thermal[count_connection] = thermal_i_j
 
