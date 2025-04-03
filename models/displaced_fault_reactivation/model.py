@@ -11,13 +11,14 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
 class Model(THMCModel):
-    def __init__(self, mode, depletion, friction_law, mesh_file):
+    def __init__(self, config):
         self.physics_type = 'poromechanics'
         self.discretizer_name = 'pm_discretizer'
-        self.enable_dynamic_mode = True if mode != 'static' else False
-        self.depletion = depletion
-        self.friction_law = friction_law
-        self.mesh_file = mesh_file
+        self.enable_dynamic_mode = True if config['mode'] != 'quasi_static' else False
+        self.depletion_mode = config['depletion']['mode']
+        self.depletion_value = config['depletion']['value']
+        self.friction_law = config['friction_law']
+        self.mesh_file = config['mesh_file']
         super().__init__(n_points=256, discretizer=self.discretizer_name)
     def set_physics(self):
         self.fluid_compressibility = 1.e-6
@@ -55,6 +56,23 @@ class Model(THMCModel):
     def set_reservoir(self):
         self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0,
                                            rock_density=self.rock_density0, mesh_file=self.mesh_file)
+    def update_pressure(self, dt, time):
+        dp = self.depletion_value
+        p = lambda x: dp
+
+        if time == dt:
+            X = np.asarray(self.physics.engine.X)
+            Xn = np.asarray(self.physics.engine.Xn)
+            for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
+                if cell.prop_id == 99991 or cell.prop_id == 99993:
+                    X[4 * cell_id + 3] += p(cell.centroid[0])
+                    Xn[4 * cell_id + 3] += p(cell.centroid[0])
+                    #Xref[4 * cell_id + 3] = 100.0
+                    #Xn_ref[4 * cell_id + 3] = 100.0
+            for cell_id, cell in self.reservoir.unstr_discr.frac_cell_info_dict.items():
+                if cell.centroid[1] >= -150.0 and cell.centroid[1] <= 150.0:
+                    X[4 * cell_id + 3] += p(cell.centroid[0])
+                    Xn[4 * cell_id + 3] += p(cell.centroid[0])
     def set_solver_params(self):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
@@ -77,7 +95,7 @@ class Model(THMCModel):
             ls2.max_i_linear = 500
             self.physics.engine.ls_params.append(ls2)
     def set_wells(self):
-        if self.depletion == 'well':
+        if self.depletion_mode == 'well':
             x = 2000.0
             centroids = np.array([c.centroid for c in self.reservoir.unstr_discr.mat_cell_info_dict.values()])
 
@@ -119,7 +137,7 @@ class Model(THMCModel):
             # else:
             #     # Add controls for production well:
             #     # Specify bhp for particular production well:
-            w.control = self.physics.new_bhp_prod(self.reservoir.p_init[self.id_prod] - 250.0)
+            w.control = self.physics.new_bhp_prod(self.reservoir.p_init[self.id_prod] + self.depletion_value)
         return 0
     def setup_contact_friction(self, contact_algorithm: contact_solver):
         if hasattr(self.reservoir, 'contacts'):

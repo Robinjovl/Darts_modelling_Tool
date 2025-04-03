@@ -44,8 +44,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             m.timer.node["update"].start()
             # store boundaries taken at previous time step
             m.reservoir.update(dt=dt, time=new_time)
-            if m.depletion == 'uniform':
-                m.reservoir.update_pressure(dt=dt, time=new_time, physics=m.physics)
+            if m.depletion_mode == 'uniform':
+                m.update_pressure(dt=dt, time=new_time)
             m.reservoir.update_trans(dt, m.physics.engine.X)
             m.timer.node["update"].stop()
 
@@ -69,6 +69,9 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
 
             if t + dt > runtime:
                dt = runtime - t
+        elif not m.enable_dynamic_mode:
+            print("No converged solution found!")
+            exit(-1)
         else:
             new_time -= dt
             if dt / mult_dt > 1.e-8 / 86400:
@@ -181,14 +184,14 @@ def calc_slip_area(m):
             if contact.states[i] == contact_state.SLIP:
                 areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
     return areas
-def run_simulation(config: dict):
+def run_and_plot(config: dict, plot_analytics: bool=False):
     t = config['timesteps']
 
     ## model setup
-    m = Model(mode=config['mode'], depletion=config['depletion'], friction_law=config['friction_law'], mesh_file=config['mesh_file'])
+    m = Model(config=config)
     m.init()
-    redirect_darts_output('log.txt')
-    m.output_directory = 'sol_' + config['depletion'] + '_' + config['friction_law']
+    m.output_directory = 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
+    redirect_darts_output(os.path.join(m.output_directory, 'log.txt'))
     m.timer.node["update"] = timer_node()
     m.ith_step = 0  # Store initial conditions as ../solution0.vtk
 
@@ -226,11 +229,11 @@ def run_simulation(config: dict):
     m.physics.engine.dt1 = 0.0
     m.physics.engine.find_equilibrium = False
 
-    if m.depletion == 'uniform':
-        # eliminate fluid flow and mechanics -> flow coupling, keeping flow->mechanics
+    if m.depletion_mode == 'uniform':
+        # eliminate fluid flow and mechanics -> flow coupling, keeping flow -> mechanics
         m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=True)
     else:
-        # eliminate mechanics -> flow coupling, keeping flow->mechanics
+        # eliminate mechanics -> flow coupling, keeping flow -> mechanics
         m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=False)
 
     ## timestepping
@@ -244,17 +247,221 @@ def run_simulation(config: dict):
         ith_step += 1
 
     m.print_timers()
+    m.print_stat()
 
-config = {'mode': 'static',
-          'timesteps': [1.0],
-          'depletion': 'uniform',
-          'friction_law': 'static',
-          'mesh_file': 'meshes/new_setup_coarse.msh'}
+    datafile = [os.path.join(m.output_directory, 'solution_fault1.vtk')]
+    labels = ['DARTS: ' + config['friction_law']]
+    fig_name = os.path.join(m.output_directory, 'fault_plot.png')
+    plot_analytics = config['friction_law'] if plot_analytics else None
+    plot_profiles(datafile=datafile, labels=labels, figfile=fig_name, analytics=plot_analytics)
 
-config = {'mode': 'mixed',
-          'timesteps': 5 * np.ones(4),
-          'depletion': 'well',
-          'friction_law': 'slip_weakening',
-          'mesh_file': 'meshes/new_setup_coarse.msh'}
+def read_vtk(filename, props):
+    import meshio
 
-run_simulation(config=config)
+    mesh = meshio.read(filename=filename)
+
+    # cell data
+    centers = np.empty([0, 3])
+    cell_data = {}
+    for geom_name, geom in mesh.cells_dict.items():
+        centers = np.append(centers, np.average(mesh.points[geom], axis=1), axis=0)
+        for prop in props:
+            if prop in mesh.cell_data_dict:
+                if prop not in cell_data: cell_data[prop] = []
+                cell_data[prop].append(mesh.cell_data_dict[prop][geom_name])
+
+    # point data
+    points = mesh.points
+    point_data = {}
+    for prop_name, prop in mesh.point_data.items():
+        if prop_name in props:
+            point_data[prop_name] = prop
+
+    return centers, cell_data, points, point_data
+def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
+    from matplotlib import pyplot as plt
+    ls = 13
+    plt.rc('xtick', labelsize=15)
+    plt.rc('ytick', labelsize=15)
+    plt.rc('legend', fontsize=ls)
+
+    b1 = 2250 - 150
+    b2 = 2250 + 150
+    a1 = 2250 - 75
+    a2 = 2250 + 75
+
+    marker = ['', '', '', '', '', '', '', '', '', '', '', '', '']
+    colors = ['b', 'r', 'g']
+    linestyles = ['-', '-', '-']
+    lw = 1
+    msec0 = 0
+
+    n_plots = 6
+    fig, stress = plt.subplots(nrows=1, ncols=n_plots, sharey=True, figsize=(18, 8))
+    for k, filename in enumerate(datafile):
+        c, fault_data, __, __ = read_vtk(filename=filename, props=['f_local', 'g_local', 'mu', 'p'])
+        # times, files = readPVD(dirs[k] + '/solution_fault.pvd')
+        # days = int(times[file_id])
+        # hours = int(24 * times[file_id]) - 24 * days
+        # minutes = int(24 * 60 * times[file_id]) - 60 * (hours + 24 * days)
+        # msec = int(86400 * 1000 * times[file_id]) - 86400 * 1000 * days - 60000 * minutes - msec0
+        # if k == id_start_count_time:
+        #     msec0 = msec
+        #     msec = 0
+
+        # label = 'time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec'
+        # label = 'time = ' + str(round(hours, 2)) + ' hrs + ' + str(msec) + ' msec'
+        # if msec > 1000:
+        #     new_hours = int(msec / 1000 / 3600)
+        #     new_minutes = (msec / 1000 / 60) - 60 * new_hours
+        #     label = str(new_hours) + 'h ' + postfixes[k]
+        # else:
+        #     label = str(msec) + ' msec' + postfixes[k]
+
+        if len(labels) > 0:
+            label = labels[k]
+
+        ids = np.argsort(c[:,1])
+        c[:, 1] = 2250 - c[:, 1]
+        l_slip, = stress[0].plot(np.abs(fault_data['g_local'][0][ids,1]), c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=label)
+        #stress[1].plot(fault_data['g_local'][0][:,0], c[ids,1], linewidth=1, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=labels[k])
+        l_shear, = stress[2].plot(fault_data['f_local'][0][ids,1] / 10, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1)
+        l_normal, = stress[3].plot(-fault_data['f_local'][0][ids,0] / 10, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1)
+        #stress[4].plot(fault_data['mu'][0][ids], c[ids,1], linewidth=1, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=labels[k])
+        #l_pres, = stress[4].plot(fault_data['p'][0][ids] / 10, c[ids,1], linewidth=1, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=labels[k])
+        l_fric, = stress[4].plot(fault_data['mu'][0][ids], c[ids, 1], linewidth=lw, color=colors[k],
+                                 linestyle=linestyles[k], marker=marker[k], markersize=1)
+        l_pres, = stress[5].plot(fault_data['p'][0][ids] / 10, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1)
+
+        #p_lims[0] = fault_data['p'][0].min() if fault_data['p'][0].min() < p_lims[0] else p_lims[0]
+        #p_lims[1] = fault_data['p'][0].max() if fault_data['p'][0].max() > p_lims[1] else p_lims[1]
+
+        # Coulomb stress
+        coulomb_stress = np.sqrt(fault_data['f_local'][0][:,1] ** 2 + fault_data['f_local'][0][:,2] ** 2) - \
+                         fault_data['mu'][0] * np.fabs(fault_data['f_local'][0][:,0])
+        l_coul, = stress[1].plot(coulomb_stress[ids] / 10, c[ids, 1], linewidth=lw, color=colors[k], linestyle=linestyles[k],
+                       marker=marker[k], markersize=1)
+
+        # Uenishi & Rice nucleation length
+        # if len(dc) > 0:
+        #     G = 65000
+        #     nu = 0.15
+        #     ids_nuc = np.argwhere(np.abs(fault_data['g_local'][0][:,1]) > 1.e-5)
+        #     Wmean = np.mean((mu_s[k] - mu_d[k]) * np.abs(fault_data['f_local'][0][ids_nuc,0]))
+        #     Lur = 1.158 * G * dc[k] / (1 - nu) / Wmean
+        #     print('Lnuc ' + label + ' ' + str(Lur))
+
+    if analytics is not None:
+        import pandas as pd
+
+        static_names = {'y1': '9 & 10 lefty_25', 'coulomb': '9 & 10 leftSigma_C_post_25',
+                        'y2': '9 & 10 righty_25', 'slip': '9 & 10 rightdelta_25'}
+        slip_weakening_names = {'y1': '14 lefty', 'coulomb': '14 leftSigma_C_post',
+                                'y2': '14 righty', 'slip': '14 rightdelta'}
+
+        if analytics == 'static':
+            names = static_names
+        elif analytics == 'slip_weakening':
+            names = slip_weakening_names
+
+        df = pd.read_excel('Data_GGGG_NovikovEtAl2024.xlsx')
+        df['identifier'] = df.iloc[:, 0].astype(str) + df.iloc[:, 1].astype(str)
+
+        analytical_data = {}
+        for key, val in names.items():
+            row = df[df['identifier'] == val].iloc[0, 3:-1].dropna()
+            analytical_data[key] = pd.to_numeric(row, errors='coerce').to_numpy(dtype=float)
+
+        k = 0
+        l_an_slip, = stress[0].plot(analytical_data['slip'], 2250 - analytical_data['y2'], linewidth=lw, color=colors[k],
+                             linestyle='--', marker=marker[k], markersize=1, label='Analytics')
+        l_an_coul, = stress[1].plot(analytical_data['coulomb'] / 1e+6, 2250 - analytical_data['y1'], linewidth=lw, color=colors[k],
+                                 linestyle='--', marker=marker[k], markersize=1)
+
+
+    stress[0].set_ylabel(r'depth, $y$, m', fontsize=20)
+    # legend_title = 'time = ' + str(days) + 'd ' + str(hours) + 'hrs ' + str(minutes) + 'min + '
+    updated_legend = False
+    if updated_legend:
+        # new legend
+        # Getting the handles and labels from stress[0]
+        handles, labels = stress[0].get_legend_handles_labels()
+
+        # Inserting a title in between items
+        title_index = len(labels)//3  # Adjust this index to place the title where you want
+        labels.insert(title_index, legend_title)
+
+        # Creating a dummy line with no markers or line
+        dummy_line = Line2D([0], [0], marker='none', color='none', linestyle='none', linewidth=0)
+        handles.insert(title_index, dummy_line)
+
+        # Now you create a legend with the modified handles and labels
+        stress[0].legend(handles, labels, loc='upper left', prop={'size': 14})
+    else:
+        # current legend
+        legend = stress[0].legend(loc='upper left', prop={'size': ls})
+        if len(labels) == 0:
+            legend.set_title(legend_title, prop={'size': ls})
+
+    x_labels = [r'slip, m', r'Coulomb stress, MPa', r'shear stress, MPa', r'effective normal stress, MPa', r'friction coefficient', r'pressure, MPa']#r'friction coefficient',
+    for i in range(n_plots):
+        stress[i].axhline(y=b1, linestyle='--', color='k')
+        stress[i].axhline(y=b2, linestyle='--', color='k')
+        stress[i].axhline(y=a1, linestyle='--', color='k')
+        stress[i].axhline(y=a2, linestyle='--', color='k')
+
+        # stress[i].grid(True, which='both')
+        alpha = 0.3
+        stress[i].set_xlabel(x_labels[i], fontsize=16)
+        # stress[i].set_ylim(list(stress[i].get_ylim()[::-1]))
+        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a1, y2=a2, color='palegoldenrod',
+                             interpolate=True, alpha=alpha)
+        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=b1, y2=a1, color='olive',
+                             interpolate=True, alpha=alpha)
+        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a2, y2=b2, color='olive',
+                             interpolate=True, alpha=alpha)
+
+    stress[0].invert_yaxis()
+    # stress[0].tick_params(axis='x', rotation=45)
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0.05)
+    fig.savefig(figfile)
+    # plt.show()
+
+def run_test(args: list = [], platform='cpu'):
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -250.0},
+              'friction_law': 'static',
+              'mesh_file': 'meshes/new_setup_coarse.msh'}
+    run_and_plot(config=config, plot_analytics=True)
+
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse.msh'}
+    run_and_plot(config=config, plot_analytics=True)
+
+    return 0
+
+if __name__ == '__main__':
+    # config = {'mode': 'mixed',
+    #           'timesteps': 5 * np.ones(4),
+    #           'depletion': {'mode': 'well', 'value': -250.0},
+    #           'friction_law': 'slip_weakening',
+    #           'mesh_file': 'meshes/new_setup_coarse.msh'}
+
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -250.0},
+              'friction_law': 'static',
+              'mesh_file': 'meshes/new_setup_coarse.msh'}
+
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse.msh'}
+
+    run_and_plot(config=config, plot_analytics=True)

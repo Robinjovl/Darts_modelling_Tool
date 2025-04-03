@@ -7,10 +7,9 @@ Y2 = D;
 b = 150;
 Lplus = b + 20;
 phi = 70 * Pi / 180;
-lc = 100;
-mult = 1;
-mult1 = 1;//0.003;
-mult2 = 0.01;
+lc = 200;
+mult = 0.5;
+mult1 = 0.01 / 4.0;
 
 Point(1) = {-W/2, Y1, 0, lc};
 Point(2) = {W/2, Y1, 0, lc};
@@ -59,28 +58,6 @@ Plane Surface(2) = {2};
 Plane Surface(3) = {3};
 Plane Surface(4) = {4, -6};
 
-Field[1] = Distance;
-Field[1].CurvesList = {13:17};
-Field[1].Sampling = 1000;
-
-Field[2] = Threshold;
-Field[2].InField = 1;
-Field[2].SizeMin = mult2 * lc;
-Field[2].SizeMax = mult1 * lc;
-Field[2].DistMin = 0.1;
-Field[2].DistMax = 200;
-
-Field[3] = Distance;
-Field[3].PointsList = {15:18};
-
-Field[4] = MathEval;
-Field[4].F = Sprintf("F3^3 + %g", 0.3 * mult2 * lc);
-
-
-Field[5] = Min;
-Field[5].FieldsList = {2, 4};
-Background Field = 5;
-
 out[] = Extrude {0, 0, 500} {
 	 Surface{:};
 	 Layers{1};
@@ -119,4 +96,4 @@ Physical Curve(FRAC_BOUND_FREE) = {121, 17, 13, 14, 15, 16, 25, 22, 64, 63}; //,
 
 Mesh 3;
 Coherence Mesh;
-Mesh.MshFileVersion = 2.1;                                                     numerable IDisposable GetPreamble RuntimeFieldHandle nStdHandle GetStdHandle SafeHandle findFileHandle SafeFileHandle moduleHandle RuntimeTypeHandle CloseHandle G
+Mesh.MshFileVersion = 2.1;
