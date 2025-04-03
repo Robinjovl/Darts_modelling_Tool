@@ -44,13 +44,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             m.timer.node["update"].start()
             # store boundaries taken at previous time step
             m.reservoir.update(dt=dt, time=new_time)
-            # evaluate and assign transient boundaries or sources / sinks
-            #if res == -1:
-            #    return -1
-                #new_time -= dt
-                #dt = m.reservoir.max_dt_change
-                #continue
-            # update transient boundaries or sources / sinks
+            if m.depletion == 'uniform':
+                m.reservoir.update_pressure(dt=dt, time=new_time, physics=m.physics)
             m.reservoir.update_trans(dt, m.physics.engine.X)
             m.timer.node["update"].stop()
 
@@ -79,7 +74,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             if dt / mult_dt > 1.e-8 / 86400:
                 dt /= mult_dt
 
-            if dt < 1.e-2 / 86400.0 and m.physics.engine.momentum_inertia == 0.0 and m.turn_on_dynamic_mode: # less than smth -> go to fully dynamic (implicit) stepping
+            if dt < 1.e-2 / 86400.0 and m.physics.engine.momentum_inertia == 0.0 and m.enable_dynamic_mode: # less than smth -> go to fully dynamic (implicit) stepping
                 m.physics.engine.momentum_inertia = 2406.0
                 dt = 5.e-4 / 86400 # 500 microseconds
                 max_dt = 5.e-4 / 86400 # 500 microseconds
@@ -89,16 +84,16 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             print("Cut timestep to %.5e" % dt)
 
         max_slip_area = np.max(np.array(m.slip_area))
-        if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.turn_on_dynamic_mode and \
+        if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.enable_dynamic_mode and \
                 m.ith_step_ready_for_reinjection == 0:
             m.ith_step_ready_for_reinjection = m.ith_step
 
-        # if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.turn_on_dynamic_mode and \
+        # if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.enable_dynamic_mode and \
         #         m.ith_step - m.ith_step_ready_for_reinjection > 500:
         #     m.physics.engine.momentum_inertia = 0.0
         #     dt = 0.001
         #     m.params.max_ts = max_dt = 0.005
-        #     m.turn_on_dynamic_mode = False
+        #     m.enable_dynamic_mode = False
         #     m.reservoir.wells[0].control = m.physics.new_rate_prod(0.0)
         #     #X = np.array(m.physics.engine.X, copy = False)
         #     m.reservoir.wells[1].control = m.physics.new_bhp_inj(m.reservoir.p_init[m.id_inj])
@@ -133,7 +128,7 @@ def run_timestep_python(m, dt, t):
         #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
         self.e.well_residual_last_dt = self.e.calc_well_residual()
         print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
+                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt))
         self.e.n_newton_last_dt = i
         #  check tolerance if it converges
         if ((self.e.dev_p < self.params.tolerance_newton and
@@ -152,18 +147,12 @@ def run_timestep_python(m, dt, t):
             print('Contact residual cut-off exceeded!!!')
             break
 
-        if False and i > 1 and self.e.dev_g > m.cut_off_gap_residual:
-            coef = np.array([0.0, 1.0])
-            history = np.array([res_history[-2], res_history[-1]])
-            linear_search(self, dt, coef, history)
+        r_code = self.e.solve_linear_equation()
+        self.timer.node["newton update"].start()
+        self.e.apply_newton_update(dt)
+        self.timer.node["newton update"].stop()
+        if i < max_newt:
             converged = 1
-        else:
-            r_code = self.e.solve_linear_equation()
-            self.timer.node["newton update"].start()
-            self.e.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
-            if i < max_newt:
-                converged = 1
 
     if not hasattr(m, 'slip_area'):
         m.slip_area = [0.0]
@@ -182,57 +171,6 @@ def run_timestep_python(m, dt, t):
 
     self.timer.node['simulation'].stop()
     return converged
-def linear_search(self, dt, coef, history):
-    print('LS: ' + str(coef[0]) + '\t' + 'res_p = ' + str(history[0][0]) + '\tres_u = ' + str(history[0][1]) + '\tres_g = ' + str(history[0][2]))
-    print('LS: ' + str(coef[1]) + '\t' + 'res_p = ' + str(history[1][0]) + '\tres_u = ' + str(history[1][1]) + '\tres_g = ' + str(history[1][2]))
-    res_history = np.array([history[0][2], history[1][2]])
-
-    for iter in range(5):
-        if coef.size > 2:
-            id = res_history.argmin()
-            closest_left = np.where(coef < coef[id])[0]
-            closest_right = np.where(coef > coef[id])[0]
-            if closest_left.size and closest_right.size:
-                left = closest_left[coef[closest_left].argmax()]
-                right = closest_right[coef[closest_right].argmin()]
-                if res_history[left] < res_history[id]:
-                    coef = np.append(coef, (coef[id] + coef[left]) / 2)
-                elif res_history[right] < res_history[id]:
-                    coef = np.append(coef, (coef[id] + coef[right]) / 2)
-                else:
-                    if res_history[left] < res_history[right]:
-                        coef = np.append(coef, coef[id] - (coef[id] - coef[left]) / 4)
-                    else:
-                        coef = np.append(coef, coef[id] + (coef[right] - coef[id]) / 4)
-            elif closest_left.size:
-                left = closest_left[coef[closest_left].argmax()]
-                if res_history[left] < res_history[id]:
-                    coef = np.append(coef, (coef[id] + coef[left]) / 2)
-                else:
-                    coef = np.append(coef, coef[id] + (coef[id] - coef[left]) / 2)
-            elif closest_right.size:
-                right = closest_right[coef[closest_right].argmin()]
-                if res_history[right] < res_history[id]:
-                    coef = np.append(coef, (coef[id] + coef[right]) / 2)
-                else:
-                    coef = np.append(coef, coef[id] - (coef[right] - coef[id]) / 2)
-            if coef[-1] <= 0: coef[-1] = 1.E-2
-            if coef[-1] >= 1: coef[-1] = 1.0 - 1.E-2
-        else:
-            coef = np.append(coef, 0.01)#coef[-1] / 2)
-
-        self.e.newton_update_coefficient = coef[-1] - coef[-2]
-        self.e.apply_newton_update(dt)
-        self.e.run_single_newton_iteration(dt)
-        res = self.e.calc_newton_dev()
-        res_history = np.append(res_history, res[2])
-        print('LS: ' + str(coef[-1]) + '\t' + 'res_p = ' + str(res[0]) + \
-                                            '\tres_u = ' + str(res[1]) + \
-                                            '\tres_g = ' + str(res[2]))
-
-    final_id = res_history.argmin()
-    self.e.newton_update_coefficient = coef[final_id] - coef[-1]
-    self.e.apply_newton_update(dt)
 def calc_slip_area(m):
     areas = []
     dz = np.max(m.reservoir.unstr_discr.mesh_data.points[:,2]) - np.min(m.reservoir.unstr_discr.mesh_data.points[:,2])
@@ -242,22 +180,18 @@ def calc_slip_area(m):
             if contact.states[i] == contact_state.SLIP:
                 areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
     return areas
-def just_run():
-    #t0 = 0.000125
-    nt = 100
-    max_t = 365
-    #t = np.logspace(1, np.log10(max_t), nt)
-    t = 5.0 * np.ones(nt)
-    #t = np.append(t, 1.E-3 / 86400.0 * np.ones(nt))
-    m = Model()
+def run_simulation(config: dict):
+    t = config['timesteps']
+
+    ## model setup
+    m = Model(mode=config['mode'], depletion=config['depletion'], friction_law=config['friction_law'], mesh_file=config['mesh_file'])
     m.init()
     redirect_darts_output('log.txt')
-    m.output_directory = 'sol_{:s}'.format(m.physics_type)
+    m.output_directory = 'sol_' + config['depletion'] + '_' + config['friction_law']
     m.timer.node["update"] = timer_node()
     m.ith_step = 0  # Store initial conditions as ../solution0.vtk
-    #m.physics.engine.print_linear_system = True
 
-    # for the estimation of max slip area increase
+    # calculate fault cell size, for controlling timesteps during dynamic rupture propagation by limiting slip area increase
     m.min_area = 1.e10
     for contact in m.physics.engine.contacts:
         cell_ids = np.array(contact.cell_ids, copy=True)
@@ -266,48 +200,61 @@ def just_run():
     m.min_area /= np.max(m.reservoir.unstr_discr.mesh_data.points[:,2]) - np.min(m.reservoir.unstr_discr.mesh_data.points[:,2])
     print('Min area = ' + str(m.min_area))
 
-    #X = np.array(m.physics.engine.X, copy=False)
+        # control maximum contact residual
+    if m.enable_dynamic_mode:
+        m.cut_off_gap_residual = 0.01# if self.e.momentum_inertia else 0.01
+    else:
+        m.cut_off_gap_residual = 100.0
+
+    ## initialization
     # find equilibrium
     m.reservoir.set_equilibrium()
     m.physics.engine.find_equilibrium = True
     m.physics.engine.print_linear_system = False
     m.physics.engine.scale_rows = True
     m.physics.engine.scale_dimless = False
-    # # scaled unknowns
+    # scaled unknowns
     # m.physics.engine.x_dim = 1.e-6
     # m.physics.engine.p_dim = 1.0
     # m.physics.engine.t_dim = 1.0
     # m.physics.engine.m_dim = 1.0
-    m.turn_on_dynamic_mode = True
-    if m.turn_on_dynamic_mode:
-        m.cut_off_gap_residual = 0.01# if self.e.momentum_inertia else 0.01
-    else:
-        m.cut_off_gap_residual = 100.0
 
     m.params.first_ts = 1.0
     run_python(m, 1.0, init_step=True)
-    # m.physics.engine.momentum_inertia = 2406.0
     m.reinit(zero_conduction=True)
     m.physics.engine.dt1 = 0.0
-
     m.physics.engine.find_equilibrium = False
-    m.reservoir.apply_geomehcanics_mode(m.physics)
-    m.physics.engine.contact_solver = contact_solver.RETURN_MAPPING # local_iterations#flux_from_previous_iteration#return_mapping
-    m.setup_contact_friction(m.physics.engine.contact_solver)
-    if m.params.linear_type == sim_params.cpu_gmres_fs_cpr:
-        m.physics.engine.update_uu_jacobian()
 
+    if m.depletion == 'uniform':
+        # eliminate fluid flow and mechanics -> flow coupling, keeping flow->mechanics
+        m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=True)
+    else:
+        # eliminate mechanics -> flow coupling, keeping flow->mechanics
+        m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=False)
+
+    ## timestepping
     m.physics.engine.t = 0.0
     time = 0
-    #m.params.first_ts = 1.0#0.1
     for ith_step, dt in enumerate(t):
         time += dt
-        # if time > 100.0:
-        #     m.reservoir.wells[0].control = m.physics.new_bhp_inj(m.reservoir.p_init[m.id_prod])
         m.params.max_ts = dt
         m.params.mult_ts = 10.0
         run_python(m, dt)
         ith_step += 1
+
     m.print_timers()
 
-just_run()
+# not working yet
+config = {'mode': 'static',
+          'timesteps': [1.0],
+          'depletion': 'uniform',
+          'friction_law': 'static',
+          'mesh_file': 'meshes/new_setup_coarse.msh'}
+
+config = {'mode': 'mixed',
+          'timesteps': 5 * np.ones(4),
+          'depletion': 'well',
+          'friction_law': 'slip_weakening',
+          'mesh_file': 'meshes/new_setup_coarse.msh'}
+
+run_simulation(config=config)

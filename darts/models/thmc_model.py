@@ -43,6 +43,10 @@ class THMCModel(DartsModel):
         self.reservoir.eps_vol_ref[:] = self.physics.engine.eps_vol[:]
         self.physics.engine.t = 0.0
 
+        if self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.contact_solver = contact_solver.RETURN_MAPPING  # local_iterations # flux_from_previous_iteration # return_mapping
+            self.setup_contact_friction(contact_algorithm=self.physics.engine.contact_solver)
+
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,
                                                thermoporoelasticity=self.idata.type_mech == 'thermal',
@@ -201,6 +205,9 @@ class THMCModel(DartsModel):
 
     def set_op_list(self):
         self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
+
+    def set_contact_friction(self, contact_algorithm: contact_solver):
+        pass
 
     def get_performance_data(self, is_last_ts: bool = False):
         """

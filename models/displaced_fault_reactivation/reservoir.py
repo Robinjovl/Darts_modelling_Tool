@@ -20,12 +20,12 @@ rcParams["text.usetex"]=False
 # rcParams["font.sans-serif"] = ["Liberation Sans"]
 # rcParams["font.serif"] = ["Liberation Serif"]
 
-# Definitions for the unstructured reservoir class:
 class UnstructReservoir:
-    def __init__(self, timer, fluid_density, rock_density):
+    def __init__(self, timer, fluid_density, rock_density, mesh_file):
         self.timer = timer
         self.rho_s = rock_density
         self.rho_f = fluid_density
+        self.mesh_file = mesh_file
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
 
@@ -231,9 +231,8 @@ class UnstructReservoir:
 
         # self.unstr_discr.f[:] = 0.0
         # self.f[:] = 0.0
-    def apply_geomehcanics_mode(self, physics):
+    def apply_geomehcanics_mode(self, physics, full: bool = False):
         geom_mode = np.array(physics.engine.geomechanics_mode, copy=False)
-        # geom_mode[:] = 1
 
         cell_m = np.array(self.mesh.block_m, copy=False)
         cell_p = np.array(self.mesh.block_p, copy=False)
@@ -243,11 +242,13 @@ class UnstructReservoir:
         rhs = np.array(self.mesh.rhs, copy=False)
         rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
 
-        # tran[12::16] = 0.0
-        # tran[13::16] = 0.0
-        # tran[14::16] = 0.0
-        # tran[15::16] = 0.0
-        # rhs[3::4] = 0.0
+        if full:
+            geom_mode[:] = 1
+            tran[12::16] = 0.0
+            tran[13::16] = 0.0
+            tran[14::16] = 0.0
+            tran[15::16] = 0.0
+            rhs[3::4] = 0.0
 
         tran_biot[12::16] = 0.0
         tran_biot[13::16] = 0.0
@@ -287,7 +288,25 @@ class UnstructReservoir:
         #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
+    def update_pressure(self, dt, time, physics):
+        dp = -250.0 # -172.685
+        p = lambda x: dp
 
+        if time == dt:
+            X = np.array(physics.engine.X, copy=False)
+            #Xref = np.array(physics.engine.Xref, copy=False)
+            Xn = np.array(physics.engine.Xn, copy=False)
+            #Xn_ref = np.array(physics.engine.Xn_ref, copy=False)
+            for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items():
+                if cell.prop_id == 99991 or cell.prop_id == 99993:
+                    X[4 * cell_id + 3] += p(cell.centroid[0])
+                    Xn[4 * cell_id + 3] += p(cell.centroid[0])
+                    #Xref[4 * cell_id + 3] = 100.0
+                    #Xn_ref[4 * cell_id + 3] = 100.0
+            for cell_id, cell in self.unstr_discr.frac_cell_info_dict.items():
+                if cell.centroid[1] >= -150.0 and cell.centroid[1] <= 150.0:
+                    X[4 * cell_id + 3] += p(cell.centroid[0])
+                    Xn[4 * cell_id + 3] += p(cell.centroid[0])
     def update_trans(self, dt, x):
         #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
         #self.pm.reconstruct_gradients_per_cell(dt)
@@ -510,15 +529,13 @@ class UnstructReservoir:
         self.p_init0 = 350.0
         self.porosity = 0.15
         self.permx = self.permy = self.permz = 100.0
-        mesh_file = 'meshes/new_setup_coarse.msh'
-        self.file_path = mesh_file
         physical_tags = {}
         physical_tags['matrix'] = [99991, 99992, 99993]
         physical_tags['fracture_boundary'] = [1, 2]
         physical_tags['fracture'] = [9991]
         physical_tags['output'] = []
         physical_tags['boundary'] = [991, 981, 992, 982, 993, 994, 995, 996, 998]
-        self.unstr_discr = UnstructDiscretizer(mesh_file=mesh_file, physical_tags=physical_tags)
+        self.unstr_discr = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=physical_tags)
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
         self.unstr_discr.mu = 3.2
@@ -1101,138 +1118,7 @@ class UnstructReservoir:
                 s_ref_prev += np.max(eval_frac_proj(tag, pts[:,:2].T)) - s_ref
         z_output = {tag: z[:output_layers] for tag, z in z_coords.items()}
         return s, z_output, inds#gap, Ftan, Fnorm
-    def write_data_field(self, filename, u, s = None):
-        r = np.array([cell.centroid for cell in self.unstr_discr.mat_cell_info_dict.values()])
-        inds = list(np.arange(len(r)))
-        inds.sort(key=lambda id: r[id][0] + 1000 * r[id][1] + 1.E+6 * r[id][2])
-        if s is self.write_data_field.__defaults__[0]:
-            np.savetxt(filename, np.c_[r[inds,0], r[inds,1], r[inds, 2], u[inds,0], u[inds,1], u[inds,2]])
-        else:
-            np.savetxt(filename, np.c_[r[inds, 0], r[inds, 1], r[inds, 2], u[inds, 0], u[inds, 1], u[inds,2],
-                s[inds, 0], s[inds, 1], s[inds, 2], s[inds, 3], s[inds, 4], s[inds, 5]])
-    def check_positive_negative_sides(self):
-        block_size = 4
-        cell_m = np.array(self.pm.cell_m,dtype=np.intp)
-        cell_p = np.array(self.pm.cell_p,dtype=np.intp)
-        for i, cell_id1 in enumerate(cell_m):
-            cell_id2 = cell_p[i]
-            if cell_id2 < self.unstr_discr.mat_cells_tot:
-                # find other one
-                st1 = np.array(self.pm.stencil[self.pm.offset[i]:self.pm.offset[i + 1]], dtype=np.intp)
-                all_trans1 = np.array(self.pm.tran)[(self.pm.offset[i] * block_size) * block_size: (self.pm.offset[i + 1] * block_size) * block_size].reshape(self.pm.offset[i + 1] - self.pm.offset[i], block_size, block_size)
-                j = np.where(np.logical_and(cell_m == cell_id2, cell_p == cell_id1))[0][0]
-                st2 = np.array(self.pm.stencil[self.pm.offset[j]:self.pm.offset[j + 1]], dtype=np.intp)
-                all_trans2 = np.array(self.pm.tran)[(self.pm.offset[j] * block_size) * block_size: (self.pm.offset[j + 1] * block_size) * block_size].reshape(self.pm.offset[j + 1] - self.pm.offset[j], block_size, block_size)
-                assert(set(st1) == set(st2) or cell_id1 >= self.unstr_discr.mat_cells_tot or cell_id2 >= self.unstr_discr.mat_cells_tot)
-                ids1 = np.argsort(st1)
-                ids2 = np.argsort(st2)
-                diff = all_trans1[ids1] + all_trans2[ids2]
-                assert((np.abs(diff) < 1.E-6).all())
-    def write_pm_conn_to_file(self, t_step, path='pm_conn.dat'):
-        #self.check_positive_negative_sides()
-        path = 'pm_conn' + str(t_step) + '.dat'
-        block_size = 4
-        f = open(path, 'w')
-        f.write(str(len(self.pm.cell_m)) + '\n')
-        for i, cell_id1 in enumerate(self.pm.cell_m):
-            cell_id2 = self.pm.cell_p[i]
-            f.write(str(cell_id1) + '\t' + str(cell_id2) + '\n')
 
-            for k in range(block_size):
-                row = 'F' + str(k) + '\t{:.5e}'.format(self.pm.rhs[i * block_size + k])
-                for j in range(self.pm.offset[i], self.pm.offset[i + 1]):
-                    if (self.pm.stencil[j] < self.unstr_discr.mat_cells_tot):
-                        row += '\t' + str(self.pm.stencil[j]) + '\t[' + ', '.join(
-                            ['{:.5e}'.format(self.pm.tran[n]) for n in range((j * block_size + k) * block_size, (j * block_size + k + 1) * block_size)]) + str(']')
-                f.write(row + '\n')
-            # Biot
-            for k in range(block_size):
-                row = 'b' + str(k) + '\t{:.5e}'.format(self.pm.rhs_biot[i * block_size + k])
-                for j in range(self.pm.offset[i], self.pm.offset[i + 1]):
-                    if (self.pm.stencil[j] < self.unstr_discr.mat_cells_tot):
-                        row += '\t' + str(self.pm.stencil[j]) + '\t[' + ', '.join(
-                            ['{:.5e}'.format(self.pm.tran_biot[n]) for n in range((j * block_size + k) * block_size, (j * block_size + k + 1) * block_size)]) + str(']')
-                f.write(row + '\n')
-
-            #if self.pm.cell_p[i] < self.unstr_discr.mat_cells_tot:
-                #st = np.array(self.pm.stencil[self.pm.offset[i]:self.pm.offset[i+1]],dtype=np.intp)
-                #all_trans = np.array(self.pm.tran)[(self.pm.offset[i] * block_size) * block_size: (self.pm.offset[i + 1] * block_size) * block_size].reshape(self.pm.offset[i + 1] - self.pm.offset[i], block_size, block_size)
-                #sum = np.sum(all_trans, axis=0)
-                #sum_no_bound = np.sum(all_trans[st < self.unstr_discr.mat_cells_tot], axis=0)
-                #assert((abs(sum[:3,:3]) < 1.E-10).all())
-        f.close()
-
-    # def write_to_vtk(self, output_directory, ith_step, physics):
-    #     """
-    #     Class method which writes output of unstructured grid to VTK format
-    #     :param output_directory: directory of output files
-    #     :param property_array: np.array containing all cell properties (N_cells x N_prop)
-    #     :param cell_property: list with property names (visible in ParaView (format strings)
-    #     :param ith_step: integer containing the output step
-    #     :return:
-    #     """
-    #     # First check if output directory already exists:
-    #     if not os.path.exists(output_directory):
-    #         os.makedirs(output_directory)
-    #
-    #     # Temporarily store mesh_data in copy:
-    #     Mesh = meshio.read(self.unstr_discr.mesh_file)
-    #     Mesh.cell_data.pop('quad', None)
-    #     Mesh.cell_data.pop('triangle', None)
-    #     Mesh.cells.pop('quad', None)
-    #     Mesh.cells.pop('triangle', None)
-    #     # Allocate empty new cell_data dictionary:
-    #     cell_property = ['u_x', 'u_y', 'u_z', 'p']
-    #     props_num = len(cell_property)
-    #     property_array = np.array(physics.engine.X, copy=False)
-    #     cell_data = {}
-    #
-    #     # if ith_step != 0:
-    #     fluxes = np.array(physics.engine.fluxes, copy=False)
-    #     fluxes_biot = np.array(physics.engine.fluxes_biot, copy=False)
-    #     # vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
-    #     #                                   fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
-    #     self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc)
-    #     self.mech_operators.eval_stresses(physics.engine.fluxes, physics.engine.fluxes_biot, physics.engine.X,
-    #                                       self.mesh.bc, physics.engine.op_vals_arr)
-    #     # else:
-    #     #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
-    #     #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
-    #
-    #     for ith_geometry in self.unstr_discr.mesh_data.cells:
-    #         if ith_geometry == 'hexahedron' or ith_geometry == 'wedge' or ith_geometry == 'tetra':
-    #             # Add matrix data to dictionary:
-    #             cell_data[ith_geometry] = {}
-    #             for i in range(props_num):
-    #                 cell_data[ith_geometry][cell_property[i]] = property_array[
-    #                                                             i:props_num * self.unstr_discr.mat_cells_tot:props_num]
-    #
-    #             # cell_data[ith_geometry]['velocity'] = vels
-    #             # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
-    #             #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-    #             #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-    #             #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
-    #             #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
-    #             #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
-    #
-    #             cell_data[ith_geometry]['eps_vol'] = np.array(self.mech_operators.eps_vol, copy=False)
-    #             cell_data[ith_geometry]['porosity'] = np.array(self.mech_operators.porosities, copy=False)
-    #             cell_data[ith_geometry]['stress'] = np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64)
-    #             cell_data[ith_geometry]['tot_stress'] = np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64)
-    #
-    #             stress = np.array(self.mech_operators.stresses, copy=False)
-    #             total_stress = np.array(self.mech_operators.total_stresses, copy=False)
-    #             for i in range(6):
-    #                 cell_data[ith_geometry]['stress'][:, i] = stress[i::6]
-    #                 cell_data[ith_geometry]['tot_stress'][:, i] = total_stress[i::6]
-    #
-    #     if self.unstr_discr.frac_cells_tot > 0:
-    #         self.write_fault_props(output_directory, property_array, ith_step, fluxes)
-    #     # Store solution for each time-step:
-    #     Mesh.cell_data = cell_data
-    #     print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
-    #     meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), Mesh)
-    #     return 0
     def write_to_vtk(self, output_directory, ith_step, engine, dt = 0):
         """
         Class method which writes output of unstructured grid to VTK format

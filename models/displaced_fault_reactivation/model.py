@@ -11,13 +11,14 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
 class Model(THMCModel):
-    def __init__(self, n_points=256):
+    def __init__(self, mode, depletion, friction_law, mesh_file):
         self.physics_type = 'poromechanics'
         self.discretizer_name = 'pm_discretizer'
-        super().__init__(n_points=n_points, discretizer=self.discretizer_name)
-
-        self.add_wells_left_right_reservoir()
-
+        self.enable_dynamic_mode = True if mode != 'static' else False
+        self.depletion = depletion
+        self.friction_law = friction_law
+        self.mesh_file = mesh_file
+        super().__init__(n_points=256, discretizer=self.discretizer_name)
     def set_physics(self):
         self.fluid_compressibility = 1.e-6
         self.rock_density0 = 2650.0
@@ -51,9 +52,9 @@ class Model(THMCModel):
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
 
         return
-
     def set_reservoir(self):
-        self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0, rock_density=self.rock_density0)
+        self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0,
+                                           rock_density=self.rock_density0, mesh_file=self.mesh_file)
     def set_solver_params(self):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
@@ -64,28 +65,35 @@ class Model(THMCModel):
         ls1.linear_type = sim_params.cpu_superlu
         self.physics.engine.ls_params.append(ls1)
 
-        ls2 = linear_solver_params()
-        ls2.linear_type = sim_params.cpu_gmres_ilu0
-        ls2.tolerance_linear = 1.e-12
-        ls2.max_i_linear = 500
-        self.physics.engine.ls_params.append(ls2)
-    def add_wells_left_right_reservoir(self):
-        x = 2000.0
-        centroids = np.array([c.centroid for c in self.reservoir.unstr_discr.mat_cell_info_dict.values()])
+        # for iterative preconditioner need to repeat AMG setup as Juu is changing
+        if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
+            m.physics.engine.update_uu_jacobian()
 
-        pt_left = np.array([-x, (self.reservoir.a - self.reservoir.b) / 2, 0.0])
-        self.id_inj = np.linalg.norm(centroids - pt_left, axis=1).argmin()
+        # different solver for dynamic simulation
+        if self.enable_dynamic_mode:
+            ls2 = linear_solver_params()
+            ls2.linear_type = sim_params.cpu_gmres_ilu0
+            ls2.tolerance_linear = 1.e-12
+            ls2.max_i_linear = 500
+            self.physics.engine.ls_params.append(ls2)
+    def set_wells(self):
+        if self.depletion == 'well':
+            x = 2000.0
+            centroids = np.array([c.centroid for c in self.reservoir.unstr_discr.mat_cell_info_dict.values()])
 
-        # self.reservoir.add_well("INJ001", depth=self.reservoir.depth[self.id_inj])
-        # self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_inj),
-        #                                well_index=self.reservoir.well_index)
+            pt_left = np.array([-x, (self.reservoir.a - self.reservoir.b) / 2, 0.0])
+            self.id_inj = np.linalg.norm(centroids - pt_left, axis=1).argmin()
 
-        pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
-        self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
+            # self.reservoir.add_well("INJ001", depth=self.reservoir.depth[self.id_inj])
+            # self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_inj),
+            #                                well_index=self.reservoir.well_index)
 
-        self.reservoir.add_well("PROD001", depth=self.reservoir.depth[self.id_prod])
-        self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_prod),
-                                       well_index=self.reservoir.well_index)
+            pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
+            self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
+
+            self.reservoir.add_well("PROD001", depth=self.reservoir.depth[self.id_prod])
+            self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_prod),
+                                           well_index=self.reservoir.well_index)
     def set_input_data(self):
         pass
     def set_initial_conditions(self):
@@ -113,10 +121,13 @@ class Model(THMCModel):
             #     # Specify bhp for particular production well:
             w.control = self.physics.new_bhp_prod(self.reservoir.p_init[self.id_prod] - 250.0)
         return 0
-    def setup_contact_friction(self, contact_algorithm):
+    def setup_contact_friction(self, contact_algorithm: contact_solver):
         if hasattr(self.reservoir, 'contacts'):
             for contact in self.physics.engine.contacts:
-                friction_model = friction.SLIP_DEPENDENT#friction.STATIC#friction.SLIP_DEPENDENT#friction.RSF
+                if self.friction_law == 'static':
+                    friction_model = friction.STATIC # friction.STATIC # friction.SLIP_DEPENDENT # friction.RSF
+                elif self.friction_law == 'slip_weakening':
+                    friction_model = friction.SLIP_DEPENDENT # friction.STATIC # friction.SLIP_DEPENDENT # friction.RSF
 
                 # allow to slip
                 contact.set_state(contact_state.SLIP)
