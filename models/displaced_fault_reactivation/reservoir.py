@@ -1232,7 +1232,7 @@ def dict_hash(dict: Dict[str, Any]) -> str:
     dict_wo_arrays = {}
     for k in dict.keys():
         try:
-            tmp = np.array(dictionary[k])
+            tmp = np.array(dict[k])
             if isinstance(tmp, np.ndarray):
                 dict_wo_arrays[k] = sha1(tmp).hexdigest()  # str with a hash of an array
         except:
