@@ -104,33 +104,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       }
     }
 
-    CFL_max = 0;
-
-#ifdef _OPENMP
-    //#pragma omp parallel reduction (max: CFL_max)
-#pragma omp parallel
-    {
-        int id = omp_get_thread_num();
-        index_t start = row_thread_starts[id];
-        index_t end = row_thread_starts[id + 1];
-
-        numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
-#else
-    index_t start = 0;
-    index_t end = n_blocks;
-    memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
-#endif //_OPENMP
-
-    index_t j, diag_idx, jac_idx;
-    value_t p_diff, gamma_p_diff, t_diff, gamma_t_i, gamma_t_j, phi_i, phi_j, phi_avg, phi_0_avg;
-    value_t CFL_in[NC], CFL_out[NC];
-    value_t CFL_max_local = 0;
-    value_t phase_presence_mult;
-    index_t cell_conn_idx, cell_conn_num;
-    std::array<value_t, NP> phase_fluxes;
-
-    int connected_with_well;
-
     bool has_DFM = false;
     for (ms_well* w : wells)
     {
@@ -169,14 +142,10 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             index_t n_perfs = w->perforations.size();
             phase_A_veloc.insert(phase_A_veloc.end(), n_perfs, 0);
             phase_B_veloc.insert(phase_B_veloc.end(), n_perfs, 0);
-            /*phase_A_veloc.push_back(0);
-            phase_B_veloc.push_back(0);*/
 
             // derivatives of phase velocities at perforation, which will remain unused
             phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_perfs, 0);
             phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
-            /*phase_A_veloc_ders.push_back(0);
-            phase_B_veloc_ders.push_back(0);*/
             if (w->ms_type == ms_well::MS_Type::DFM)
             {
                 std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
@@ -185,32 +154,32 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 auto result_tuple = w->evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt);
 
                 // use std::get<index>(tuple) to retrieve individual elements of the tuple
-                std::vector<value_t> phase_velocities = std::get<0>(result_tuple);
-                std::vector<value_t> phase_velocities_derivatives = std::get<1>(result_tuple);
+                std::vector<value_t> phase_v = std::get<0>(result_tuple);
+                std::vector<value_t> phase_v_d = std::get<1>(result_tuple);
 
                 // separate the velocities of the two phases
-                size_t half_size_vel = phase_velocities.size() / 2;
-                std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size_vel);
-                std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size_vel, phase_velocities.end());
+                size_t half_size_vel = phase_v.size() / 2;
+                std::vector<value_t> phase_A_v(phase_v.begin(), phase_v.begin() + half_size_vel);
+                std::vector<value_t> phase_B_v(phase_v.begin() + half_size_vel, phase_v.end());
 
-                phase_A_veloc.insert(phase_A_veloc.end(), phase_A_vel.begin(), phase_A_vel.end());
-                phase_B_veloc.insert(phase_B_veloc.end(), phase_B_vel.begin(), phase_B_vel.end());
+                phase_A_veloc.insert(phase_A_veloc.end(), phase_A_v.begin(), phase_A_v.end());
+                phase_B_veloc.insert(phase_B_veloc.end(), phase_B_v.begin(), phase_B_v.end());
 
                 // separate the derivatives of velocities of the two phases
-                size_t half_size_vel_der = phase_velocities_derivatives.size() / 2;
-                std::vector<value_t> phase_A_vel_ders(phase_velocities_derivatives.begin(), phase_velocities_derivatives.begin() + half_size_vel_der);
-                std::vector<value_t> phase_B_vel_ders(phase_velocities_derivatives.begin() + half_size_vel_der, phase_velocities_derivatives.end());
+                size_t half_size_vel_der = phase_v_d.size() / 2;
+                std::vector<value_t> phase_A_v_d(phase_v_d.begin(), phase_v_d.begin() + half_size_vel_der);
+                std::vector<value_t> phase_B_v_d(phase_v_d.begin() + half_size_vel_der, phase_v_d.end());
 
                 size_t chunk_size = 2 * N_VARS;
-                for (size_t i = 0; i < phase_A_vel_ders.size(); i += chunk_size)
+                for (size_t i = 0; i < phase_A_v_d.size(); i += chunk_size)
                 {
                     // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_A(phase_A_vel_ders.begin() + i, phase_A_vel_ders.begin() + i + chunk_size);
+                    std::vector<value_t> chunk_A(phase_A_v_d.begin() + i, phase_A_v_d.begin() + i + chunk_size);
                     // Insert the chunk into phase_A_veloc_ders
                     phase_A_veloc_ders.push_back(chunk_A);
 
                     // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_B(phase_B_vel_ders.begin() + i, phase_B_vel_ders.begin() + i + chunk_size);
+                    std::vector<value_t> chunk_B(phase_B_v_d.begin() + i, phase_B_v_d.begin() + i + chunk_size);
                     // Insert the chunk into phase_A_veloc_ders
                     phase_B_veloc_ders.push_back(chunk_B);
                 }
@@ -233,6 +202,33 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
         // --- End evaluating phase velocities and derivatives in DFM wells
     }
+
+    CFL_max = 0;
+
+#ifdef _OPENMP
+    //#pragma omp parallel reduction (max: CFL_max)
+#pragma omp parallel
+    {
+        int id = omp_get_thread_num();
+        index_t start = row_thread_starts[id];
+        index_t end = row_thread_starts[id + 1];
+
+        numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
+#else
+    index_t start = 0;
+    index_t end = n_blocks;
+    memset(Jac, 0, rows[end] * N_VARS_SQ * sizeof(value_t));
+#endif //_OPENMP
+
+    index_t j, diag_idx, jac_idx;
+    value_t p_diff, gamma_p_diff, t_diff, gamma_t_i, gamma_t_j, phi_i, phi_j, phi_avg, phi_0_avg;
+    value_t CFL_in[NC], CFL_out[NC];
+    value_t CFL_max_local = 0;
+    value_t phase_presence_mult;
+    index_t cell_conn_idx, cell_conn_num;
+    std::array<value_t, NP> phase_fluxes;
+
+    int connected_with_well;
     
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
