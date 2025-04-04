@@ -131,91 +131,109 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     int connected_with_well;
 
-    // --- Start evaluating phase velocities and derivatives in multi-segment wells
-    std::vector<value_t> phase_A_veloc;
-    std::vector<value_t> phase_B_veloc;
-
-    using MixedType = std::variant<int, std::vector<value_t>>;
-    std::vector<MixedType> phase_A_veloc_ders;
-    std::vector<MixedType> phase_B_veloc_ders;
-
-    // zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-    phase_A_veloc.insert(phase_A_veloc.end(), mesh->n_res_conns / 2, 0);
-    phase_B_veloc.insert(phase_B_veloc.end(), mesh->n_res_conns / 2, 0);
-
-    // derivatives of phase velocities at reservoir connections, which will remain unused
-    phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), mesh->n_res_conns / 2, 0);
-    phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), mesh->n_res_conns / 2, 0);
+    bool has_DFM = false;
     for (ms_well* w : wells)
     {
-        // zero velocity for perforation of each well, which will remain unused
-        index_t n_perfs = w->perforations.size();
-        phase_A_veloc.insert(phase_A_veloc.end(), n_perfs, 0);
-        phase_B_veloc.insert(phase_B_veloc.end(), n_perfs, 0);
-        /*phase_A_veloc.push_back(0);
-        phase_B_veloc.push_back(0);*/
-
-        // derivatives of phase velocities at perforation, which will remain unused
-        phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_perfs, 0);
-        phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
-        /*phase_A_veloc_ders.push_back(0);
-        phase_B_veloc_ders.push_back(0);*/
         if (w->ms_type == ms_well::MS_Type::DFM)
         {
-            std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
-            std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
-            // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
-            auto result_tuple = w->evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt);
-
-            // use std::get<index>(tuple) to retrieve individual elements of the tuple
-            std::vector<value_t> phase_velocities = std::get<0>(result_tuple);
-            std::vector<value_t> phase_velocities_derivatives = std::get<1>(result_tuple);
-
-            // separate the velocities of the two phases
-            size_t half_size_vel = phase_velocities.size() / 2;
-            std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size_vel);
-            std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size_vel, phase_velocities.end());
-
-            phase_A_veloc.insert(phase_A_veloc.end(), phase_A_vel.begin(), phase_A_vel.end());
-            phase_B_veloc.insert(phase_B_veloc.end(), phase_B_vel.begin(), phase_B_vel.end());
-
-            // separate the derivatives of velocities of the two phases
-            size_t half_size_vel_der = phase_velocities_derivatives.size() / 2;
-            std::vector<value_t> phase_A_vel_ders(phase_velocities_derivatives.begin(), phase_velocities_derivatives.begin() + half_size_vel_der);
-            std::vector<value_t> phase_B_vel_ders(phase_velocities_derivatives.begin() + half_size_vel_der, phase_velocities_derivatives.end());
-
-            size_t chunk_size = 2 * N_VARS;
-            for (size_t i = 0; i < phase_A_vel_ders.size(); i += chunk_size)
-            {
-                // Extract a chunk of size 2 * N_VARS
-                std::vector<value_t> chunk_A(phase_A_vel_ders.begin() + i, phase_A_vel_ders.begin() + i + chunk_size);
-                // Insert the chunk into phase_A_veloc_ders
-                phase_A_veloc_ders.push_back(chunk_A);
-
-                // Extract a chunk of size 2 * N_VARS
-                std::vector<value_t> chunk_B(phase_B_vel_ders.begin() + i, phase_B_vel_ders.begin() + i + chunk_size);
-                // Insert the chunk into phase_A_veloc_ders
-                phase_B_veloc_ders.push_back(chunk_B);
-            }
-        }
-        else if (w->ms_type == ms_well::MS_Type::EPM)
-        {
-            // EPM wells have only one connection. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-            phase_A_veloc.push_back(0);
-            phase_B_veloc.push_back(0);
-
-            // derivatives of phase velocities at the connection of EPM wells, which will remain unused
-            phase_A_veloc_ders.push_back(0);
-            phase_B_veloc_ders.push_back(0);
+            has_DFM = true;
+            break;
         }
     }
-    std::vector<value_t> phase_A_velocities = mesh->reverse_and_sort_wells_velocities(phase_A_veloc);
-    std::vector<value_t> phase_B_velocities = mesh->reverse_and_sort_wells_velocities(phase_B_veloc);
 
-    std::vector<MixedType> phase_A_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_A_veloc_ders);
-    std::vector<MixedType> phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
-    // --- End evaluating phase velocities and derivatives in multi-segment wells
+    std::vector<value_t> phase_A_velocities;
+    std::vector<value_t> phase_B_velocities;
 
+    using MixedType = std::variant<int, std::vector<value_t>>;
+    std::vector<MixedType> phase_A_veloc_derivatives;
+    std::vector<MixedType> phase_B_veloc_derivatives;
+    if (has_DFM)
+    {
+        // --- Start evaluating phase velocities and derivatives in DFM wells
+        std::vector<value_t> phase_A_veloc;
+        std::vector<value_t> phase_B_veloc;
+
+        std::vector<MixedType> phase_A_veloc_ders;
+        std::vector<MixedType> phase_B_veloc_ders;
+
+        // zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
+        phase_A_veloc.insert(phase_A_veloc.end(), mesh->n_res_conns / 2, 0);
+        phase_B_veloc.insert(phase_B_veloc.end(), mesh->n_res_conns / 2, 0);
+
+        // derivatives of phase velocities at reservoir connections, which will remain unused
+        phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), mesh->n_res_conns / 2, 0);
+        phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), mesh->n_res_conns / 2, 0);
+        for (ms_well* w : wells)
+        {
+            // zero velocity for perforation of each well, which will remain unused
+            index_t n_perfs = w->perforations.size();
+            phase_A_veloc.insert(phase_A_veloc.end(), n_perfs, 0);
+            phase_B_veloc.insert(phase_B_veloc.end(), n_perfs, 0);
+            /*phase_A_veloc.push_back(0);
+            phase_B_veloc.push_back(0);*/
+
+            // derivatives of phase velocities at perforation, which will remain unused
+            phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_perfs, 0);
+            phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
+            /*phase_A_veloc_ders.push_back(0);
+            phase_B_veloc_ders.push_back(0);*/
+            if (w->ms_type == ms_well::MS_Type::DFM)
+            {
+                std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
+                std::vector<value_t> X_ms_well(X.begin() + w->well_head_idx * N_VARS, X.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
+                // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of the two phases in the wellbore
+                auto result_tuple = w->evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt);
+
+                // use std::get<index>(tuple) to retrieve individual elements of the tuple
+                std::vector<value_t> phase_velocities = std::get<0>(result_tuple);
+                std::vector<value_t> phase_velocities_derivatives = std::get<1>(result_tuple);
+
+                // separate the velocities of the two phases
+                size_t half_size_vel = phase_velocities.size() / 2;
+                std::vector<value_t> phase_A_vel(phase_velocities.begin(), phase_velocities.begin() + half_size_vel);
+                std::vector<value_t> phase_B_vel(phase_velocities.begin() + half_size_vel, phase_velocities.end());
+
+                phase_A_veloc.insert(phase_A_veloc.end(), phase_A_vel.begin(), phase_A_vel.end());
+                phase_B_veloc.insert(phase_B_veloc.end(), phase_B_vel.begin(), phase_B_vel.end());
+
+                // separate the derivatives of velocities of the two phases
+                size_t half_size_vel_der = phase_velocities_derivatives.size() / 2;
+                std::vector<value_t> phase_A_vel_ders(phase_velocities_derivatives.begin(), phase_velocities_derivatives.begin() + half_size_vel_der);
+                std::vector<value_t> phase_B_vel_ders(phase_velocities_derivatives.begin() + half_size_vel_der, phase_velocities_derivatives.end());
+
+                size_t chunk_size = 2 * N_VARS;
+                for (size_t i = 0; i < phase_A_vel_ders.size(); i += chunk_size)
+                {
+                    // Extract a chunk of size 2 * N_VARS
+                    std::vector<value_t> chunk_A(phase_A_vel_ders.begin() + i, phase_A_vel_ders.begin() + i + chunk_size);
+                    // Insert the chunk into phase_A_veloc_ders
+                    phase_A_veloc_ders.push_back(chunk_A);
+
+                    // Extract a chunk of size 2 * N_VARS
+                    std::vector<value_t> chunk_B(phase_B_vel_ders.begin() + i, phase_B_vel_ders.begin() + i + chunk_size);
+                    // Insert the chunk into phase_A_veloc_ders
+                    phase_B_veloc_ders.push_back(chunk_B);
+                }
+            }
+            else if (w->ms_type == ms_well::MS_Type::EPM)
+            {
+                // EPM wells have only one connection. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
+                phase_A_veloc.push_back(0);
+                phase_B_veloc.push_back(0);
+
+                // derivatives of phase velocities at the connection of EPM wells, which will remain unused
+                phase_A_veloc_ders.push_back(0);
+                phase_B_veloc_ders.push_back(0);
+            }
+        }
+        phase_A_velocities = mesh->reverse_and_sort_wells_velocities(phase_A_veloc);
+        phase_B_velocities = mesh->reverse_and_sort_wells_velocities(phase_B_veloc);
+
+        phase_A_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_A_veloc_ders);
+        phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
+        // --- End evaluating phase velocities and derivatives in DFM wells
+    }
+    
     for (index_t i = start; i < end; ++i)
     { // loop over grid blocks
 
