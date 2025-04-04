@@ -1741,8 +1741,8 @@ int engine_pm_cpu::solve_linear_equation()
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
-				dev_p, dev_u, well_residual_last_dt,
+		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+				dev_p, dev_u, dev_g, well_residual_last_dt,
 				linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
 		n_linear_last_dt += linear_solver->get_n_iters();
