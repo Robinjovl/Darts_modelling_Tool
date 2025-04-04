@@ -974,12 +974,12 @@ class UnstructReservoir:
             Mesh.points,
             Mesh.cells,
             cell_data=cell_data)
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write("{:s}/solution{:d}.vtu".format(output_directory, ith_step), mesh)
 
         # *.pvd
         snap = self.matpvd_doc.createElement("DataSet")
         snap.setAttribute("timestep", str(time))
-        snap.setAttribute("file", 'solution{:d}.vtk'.format(ith_step))
+        snap.setAttribute("file", 'solution{:d}.vtu'.format(ith_step))
         self.matpvd_collection.appendChild(snap)
         root = self.matpvd_root
         root.appendChild(self.matpvd_collection)
@@ -1032,12 +1032,12 @@ class UnstructReservoir:
             Mesh.points,
             Mesh.cells,
             cell_data=cell_data)
-        meshio.write("{:s}/solution_fault{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write("{:s}/solution_fault{:d}.vtu".format(output_directory, ith_step), mesh)
 
         # *.pvd
         snap = self.faultpvd_doc.createElement("DataSet")
         snap.setAttribute("timestep", str(time))
-        snap.setAttribute("file", 'solution_fault{:d}.vtk'.format(ith_step))
+        snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
         self.faultpvd_collection.appendChild(snap)
         root = self.faultpvd_root
         root.appendChild(self.faultpvd_collection)
