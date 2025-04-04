@@ -184,7 +184,7 @@ def calc_slip_area(m):
             if contact.states[i] == contact_state.SLIP:
                 areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
     return areas
-def run_and_plot(config: dict, plot_analytics: bool=False):
+def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
     t = config['timesteps']
 
     ## model setup
@@ -249,11 +249,14 @@ def run_and_plot(config: dict, plot_analytics: bool=False):
     m.print_timers()
     m.print_stat()
 
-    datafile = [os.path.join(m.output_directory, 'solution_fault1.vtk')]
+    datafile = [os.path.join(m.output_directory, 'solution_fault1.vtu')]
     labels = ['DARTS: ' + config['friction_law']]
     fig_name = os.path.join(m.output_directory, 'fault_plot.png')
     plot_analytics = config['friction_law'] if plot_analytics else None
     plot_profiles(datafile=datafile, labels=labels, figfile=fig_name, analytics=plot_analytics)
+
+    if compare_with_ref:
+        pass
 
 def read_vtk(filename, props):
     import meshio
@@ -428,40 +431,31 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
     fig.savefig(figfile)
     # plt.show()
 
-def run_test(args: list = [], platform='cpu'):
-    config = {'mode': 'quasi_static',
-              'timesteps': [1.0],
-              'depletion': {'mode': 'uniform', 'value': -250.0},
-              'friction_law': 'static',
-              'mesh_file': 'meshes/new_setup_coarse.msh'}
-    run_and_plot(config=config, plot_analytics=True)
 
-    config = {'mode': 'quasi_static',
-              'timesteps': [1.0],
-              'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
-              'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse.msh'}
-    run_and_plot(config=config, plot_analytics=True)
-
-    return 0
 
 if __name__ == '__main__':
+    cases = []
+
     # config = {'mode': 'mixed',
     #           'timesteps': 5 * np.ones(4),
     #           'depletion': {'mode': 'well', 'value': -250.0},
     #           'friction_law': 'slip_weakening',
     #           'mesh_file': 'meshes/new_setup_coarse.msh'}
+    # cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -250.0},
               'friction_law': 'static',
               'mesh_file': 'meshes/new_setup_coarse.msh'}
+    cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.msh'}
+    cases += [config]
 
-    run_and_plot(config=config, plot_analytics=True)
+    for case in cases:
+        run_and_plot(config=case, plot_analytics=True, compare_with_ref=False)
