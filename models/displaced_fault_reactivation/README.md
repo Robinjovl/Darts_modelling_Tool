@@ -2,6 +2,10 @@
 ## Description
 A single fault slip model
 
+## Notes
+During the first run, the script creates a file 'cached_preprocessing.pkl' which contains processed mesh data. For next run, the script check that file existance and if it exists, 
+the mesh processing will be skipped and the data from the file will be used instead to reduce the initialization time. 
+If the reservoir geometry was changed, the file 'cached_preprocessing.pkl' should be manually deleted.
 
 ## Output
 This test outputs two groups of VTK files: one for the domain and one for the fault.
