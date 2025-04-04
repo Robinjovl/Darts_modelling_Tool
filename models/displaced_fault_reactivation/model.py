@@ -57,10 +57,14 @@ class Model(THMCModel):
         self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0,
                                            rock_density=self.rock_density0, mesh_file=self.mesh_file)
     def update_pressure(self, dt, time):
-        dp = self.depletion_value
-        p = lambda x: dp
+        if self.friction_law == 'rsf':
+            dp_rate = self.depletion_value
+            p = lambda x: dp_rate * dt
+        else:
+            dp = self.depletion_value
+            p = lambda x: dp
 
-        if time == dt:
+        if time == dt or self.friction_law == 'rsf':
             X = np.asarray(self.physics.engine.X)
             Xn = np.asarray(self.physics.engine.Xn)
             for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():
@@ -77,7 +81,10 @@ class Model(THMCModel):
         self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.max_i_newton = 8
+        if self.friction_law == 'rsf':
+            self.params.max_i_newton = 20
+        else:
+            self.params.max_i_newton = 8
 
         ls1 = linear_solver_params()
         ls1.linear_type = sim_params.cpu_superlu
@@ -146,6 +153,8 @@ class Model(THMCModel):
                     friction_model = friction.STATIC # friction.STATIC # friction.SLIP_DEPENDENT # friction.RSF
                 elif self.friction_law == 'slip_weakening':
                     friction_model = friction.SLIP_DEPENDENT # friction.STATIC # friction.SLIP_DEPENDENT # friction.RSF
+                elif self.friction_law == 'rsf':
+                    friction_model = friction.RSF  # friction.STATIC # friction.SLIP_DEPENDENT # friction.RSF
 
                 # allow to slip
                 contact.set_state(contact_state.SLIP)
@@ -170,17 +179,21 @@ class Model(THMCModel):
                 # RSF model
                 if (friction_model == friction.RSF or friction_model == friction.RSF_STAB):
                     prop = rsf_props()
-                    prop.min_vel = 1.E-14 * 86400
-                    # theta
-                    theta = 1.0 / 86400.0 * np.ones(len(contact.cell_ids))
-                    prop.theta_n = value_vector(theta)
-                    prop.theta = value_vector(theta)
+                    prop.min_vel = 1.E-13 * 86400
 
-                    prop.a = 0.0#-0.005  # 0.0008#0.0078
-                    prop.b = 0.0 #0.03
-                    prop.crit_distance = 0.01 * 1.E-3
+                    prop.a = 0.001 # 0.015#0.008#-0.001  # 0.0008#0.0078
+                    prop.b = 0.03 # 0.03
+                    prop.crit_distance = 0.02
                     prop.ref_velocity = 1.E-10 * 86400  #0.01 * 1.E-6 * 86400
                     prop.law = state_law.AGEING_LAW
+
+                    # theta
+                    theta = prop.crit_distance / prop.ref_velocity * np.ones(len(contact.cell_ids))
+                    prop.theta_n = value_vector(theta)
+                    prop.theta = value_vector(theta)
+                    prop.mu_rate = value_vector(np.zeros(len(contact.cell_ids)))
+                    prop.mu_state = value_vector(np.zeros(len(contact.cell_ids)))
+
                     contact.rsf = prop
 
                 #contact.init_friction(self.reservoir.pm, self.reservoir.mesh)

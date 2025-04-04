@@ -204,7 +204,7 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     m.min_area /= np.max(m.reservoir.unstr_discr.mesh_data.points[:,2]) - np.min(m.reservoir.unstr_discr.mesh_data.points[:,2])
     print('Min area = ' + str(m.min_area))
 
-        # control maximum contact residual
+    # control maximum contact residual
     if m.enable_dynamic_mode:
         m.cut_off_gap_residual = 0.01# if self.e.momentum_inertia else 0.01
     else:
@@ -456,6 +456,14 @@ if __name__ == '__main__':
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.msh'}
     cases += [config]
+
+    config = {'mode': 'quasi_static',
+              'timesteps': 25 * [1.0],
+              'depletion': {'mode': 'uniform', 'value': -290.6 / 25},
+              'friction_law': 'rsf',
+              'mesh_file': 'meshes/new_setup_rsf.msh'}
+    # commented because it is very long, but it must work
+    # cases += [config]
 
     for case in cases:
         run_and_plot(config=case, plot_analytics=True, compare_with_ref=False)
