@@ -87,6 +87,8 @@ class UnstructReservoir:
             # self.linear_flow()
             # self.linear_flow_grad()
             # self.initial_stage()
+        else:
+            print('reservoir cache is used')
 
         self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
                      index_vector(self.ref_contact_cells))
@@ -524,7 +526,7 @@ class UnstructReservoir:
         n_dim = 3
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init0 = 350.0
-        self.porosity = 0.15
+        self.porosity = 0.16 #0.15
         self.permx = self.permy = self.permz = 100.0
         physical_tags = {}
         physical_tags['matrix'] = [99991, 99992, 99993]
@@ -1225,19 +1227,37 @@ import json
 from hashlib import sha1
 
 def dict_hash(dict: Dict[str, Any]) -> str:
-    """MD5 hash of a dictionary."""
+    # returns a MD5 hash of a dictionary
     dhash = hashlib.md5()
     # sort arguments since {'a': 1, 'b': 2} is the same as {'b': 2, 'a': 1}
 
-    dict_wo_arrays = {}
+    dict_for_hash = {}
     for k in dict.keys():
-        try:
-            tmp = np.array(dict[k])
-            if isinstance(tmp, np.ndarray):
-                dict_wo_arrays[k] = sha1(tmp).hexdigest()  # str with a hash of an array
-        except:
-            dict_wo_arrays[k] = dict[k]
-    print(dict_wo_arrays)
-    encoded = json.dumps(dict_wo_arrays, sort_keys=True).encode()
+        if k in ['self.contacts']:
+            continue
+        elif k in ['self.pm']:
+            for kk in ['cell_m', 'cell_p', 'stencil', 'offset', 'tran', 'rhs', 'tran_biot', 'rhs_biot']:
+                dict_for_hash[k + '.' + kk] = hash_array(getattr(dict[k], kk))
+        elif k in ['self.unstr_discr']:
+            for kk in ['mat_cells_tot', 'frac_cells_tot']:
+                dict_for_hash[k + '.' + kk] = str(getattr(dict[k], kk))
+        else:
+            dict_for_hash[k] = hash_array(dict[k])
+
+    print('dict_for_hash', dict_for_hash)
+    encoded = json.dumps(dict_for_hash, sort_keys=True).encode()
     dhash.update(encoded)
     return dhash.hexdigest()
+
+def hash_array(a):
+    iv = type(index_vector())
+    vv = type(value_vector())
+    if type(a) in [iv, vv]:  # value/index_vector to numpy array
+        tmp = np.array(a)
+    else:
+        tmp = a
+    if isinstance(tmp, np.ndarray):
+        b = sha1(tmp).hexdigest()  # str with a hash of an array
+    else:
+        b = a  # or the same object
+    return b
