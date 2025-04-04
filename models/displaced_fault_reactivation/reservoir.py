@@ -51,43 +51,59 @@ class UnstructReservoir:
                             'self.u_init',
                             'self.a',
                             'self.b']
-        # Specify elastic properties, mesh & boundaries
-        if not (self.cache_discretizer and os.path.exists(self.cache_filename)):
-            self.reservoir_depletion()#linear_flow()#reservoir_depletion()#_grad() # initial_stage() # reservoir_depletion()
 
         # Discretization
         self.timer.node["discretization"] = timer_node()
         self.timer.node["discretization"].start()
 
         if self.cache_discretizer:
+            save_cache_discretizer = False
             if os.path.exists(self.cache_filename):
                 with open(self.cache_filename, "rb") as fp:
                     cached_data = pickle.load(fp)
-                    for var_name, var in cached_data.items():
-                        if var_name == 'self.rho_f':
-                            assert var == self.rho_f
-                        elif var_name == 'self.rho_s':
-                            assert var == self.rho_s
-                        exec(var_name + " = var")
-
-                self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                             index_vector(self.ref_contact_cells))
+                    # check a hash is the same
+                    cached_data_no_hash = cached_data.copy()
+                    cached_data_no_hash.pop('hash')
+                    hash = dict_hash(cached_data_no_hash)
+                    if cached_data['hash'] != hash:
+                        print('geometry was changed, ', self.cache_filename, 'will be updated')
+                        print('current hash=', hash, 'cached hash=', cached_data['hash'])
+                        save_cache_discretizer = True
             else:
-                self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                             index_vector(self.ref_contact_cells))
-                dt = 0
-                self.pm.reconstruct_gradients_per_cell(dt)
-                self.pm.calc_all_fluxes_once(dt)
+                save_cache_discretizer = True
 
-                cached_data = {var_name: eval(var_name, {'self': self}) for var_name in cached_var_names}
-                with open(self.cache_filename, "wb") as fp:
-                    pickle.dump(cached_data, fp, 4)
-        else:
-            dt = 0
-            self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                         index_vector(self.ref_contact_cells))
-            self.pm.reconstruct_gradients_per_cell(dt)
-            self.pm.calc_all_fluxes_once(dt)
+        if not save_cache_discretizer:
+            # set vars from the loaded cache
+            for var_name, var in cached_data.items():
+                if var_name == 'self.rho_f':
+                    assert var == self.rho_f
+                elif var_name == 'self.rho_s':
+                    assert var == self.rho_s
+                exec(var_name + " = var")
+
+        # Specify elastic properties, mesh & boundaries
+        if (not self.cache_discretizer) or save_cache_discretizer:
+            self.reservoir_depletion()
+            # self.linear_flow()
+            # self.linear_flow_grad()
+            # self.initial_stage()
+
+        self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                     index_vector(self.ref_contact_cells))
+        dt = 0
+        self.pm.reconstruct_gradients_per_cell(dt)
+        self.pm.calc_all_fluxes_once(dt)
+
+        if save_cache_discretizer:
+            cached_data = {var_name: eval(var_name, {'self': self}) for var_name in cached_var_names}
+
+            hash = dict_hash(cached_data)
+            cached_data.update({'hash': hash})
+            print('saving cache, hash=', hash)
+
+            with open(self.cache_filename, "wb") as fp:
+                pickle.dump(cached_data, fp, 4)
+
 
         # check sparsity of gradients
         # for cell_id in range(self.unstr_discr.mat_cells_tot):
@@ -1202,3 +1218,26 @@ class UnstructReservoir:
             self.fig.tight_layout()
             self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
             plt.close(self.fig)
+
+from typing import Dict, Any
+import hashlib
+import json
+from hashlib import sha1
+
+def dict_hash(dict: Dict[str, Any]) -> str:
+    """MD5 hash of a dictionary."""
+    dhash = hashlib.md5()
+    # sort arguments since {'a': 1, 'b': 2} is the same as {'b': 2, 'a': 1}
+
+    dict_wo_arrays = {}
+    for k in dict.keys():
+        try:
+            tmp = np.array(dictionary[k])
+            if isinstance(tmp, np.ndarray):
+                dict_wo_arrays[k] = sha1(tmp).hexdigest()  # str with a hash of an array
+        except:
+            dict_wo_arrays[k] = dict[k]
+    print(dict_wo_arrays)
+    encoded = json.dumps(dict_wo_arrays, sort_keys=True).encode()
+    dhash.update(encoded)
+    return dhash.hexdigest()
