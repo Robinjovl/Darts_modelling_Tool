@@ -115,13 +115,6 @@ class PipeVelocityEvaluator:
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter is True and flag == 1:
-            # Reshape into blocks
-            Xn_ms_well_reshaped = Xn_ms_well.reshape(-1, n_vars)
-            # Reverse the order of the blocks
-            Xn_ms_well_reversed_blocks = Xn_ms_well_reshaped[::-1]
-            # Flatten back to a 1D array
-            Xn_ms_well = Xn_ms_well_reversed_blocks.flatten()
-
             """ From here on, instead of G, use A, and instead of L, use B. A and B represent the first and second 
             phases specified by the user, respectively. """
             sG0 = np.zeros(num_segments)
@@ -155,13 +148,6 @@ class PipeVelocityEvaluator:
         xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
         """ Calculate phase props of current time step at centroids """
-        # Reshape into blocks
-        X_ms_well_reshaped = X_ms_well.reshape(-1, n_vars)
-        # Reverse the order of the blocks
-        X_ms_well_reversed_blocks = X_ms_well_reshaped[::-1]
-        # Flatten back to a 1D array
-        X_ms_well = X_ms_well_reversed_blocks.flatten()
-
         sG = np.zeros(num_segments)
         rhoG = np.zeros(num_segments)
         rhoL = np.zeros(num_segments)
@@ -303,8 +289,7 @@ class PipeVelocityEvaluator:
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
             if hasattr(self.darts_model, 'source_props'):
-                segment_idx_source = self.darts_model.source_props["segment_idx_source"]   # gives segment index based on darts convention
-                segment_idx_source = num_segments - 1 - segment_idx_source   # gives segment index based on T2Well convention
+                segment_idx_source = self.darts_model.source_props["segment_idx_source"]
                 rate_source = self.darts_model.source_props["rate_source"]
                 comp_source = self.darts_model.source_props["comp_source"]
                 Mw = self.physics.property_containers[0].Mw
@@ -358,7 +343,7 @@ class PipeVelocityEvaluator:
             self.w0 = 1 / (1 / dt + pg.perimeter * ff0 * abs(vM0) / (2 * pg.pipe_internal_A))
 
         self.rhoM_vM = (- self.w0 * (p_p - p_m) / (pg.z_p - pg.z_m)
-                        - self.w0 * self.g_cos_theta * self.rhoM_face
+                        + self.w0 * self.g_cos_theta * self.rhoM_face
                         - self.w0 * ((self.delta_p0 - self.delta_m0) / (pg.pipe_internal_A * (pg.z_p - pg.z_m)) - self.rhoM0_face * vM0 / dt))
 
         self.vM = self.rhoM_vM / self.rhoM_face
@@ -382,10 +367,10 @@ class PipeVelocityEvaluator:
                 self.vL[i] = ((1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
                          - sG_face[i] * rhoG_face[i] * self.vD0[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i]))
 
-        # concatenate phase velocities, reverse the order, and convert m/s to m/day
-        phase_velocities = np.concatenate((self.vG[::-1] * 24 * 60 * 60, self.vL[::-1] * 24 * 60 * 60))
+        # Concatenate phase velocities and convert m/s to m/day
+        phase_velocities = np.concatenate((self.vG * 24 * 60 * 60, self.vL * 24 * 60 * 60))
 
-        self.is_first_first_iter = False   # For the next iterations will be False
+        self.is_first_first_iter = False   # Only for the first iteration of the first time step is true
 
         return phase_velocities
 
@@ -587,7 +572,7 @@ class PipeVelocityEvaluator:
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
         else:
             vD0 = np.zeros(self.pipe_geometry.num_interfaces)
-        self.vD0 = vD0
+        self.vD0 = - vD0   # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
     def evaluate_phase_velocities_and_derivatives(self, Xn_ms_well, X_ms_well, dt):
         Xn_ms_well = Xn_ms_well.to_numpy()

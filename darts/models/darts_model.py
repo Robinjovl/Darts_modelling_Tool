@@ -289,13 +289,13 @@ class DartsModel:
                     end_ms_w_idx = start_ms_w_idx + well.num_segments
                 if well.model_type == "ms_well":
                     if variable == 'pressure':
-                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"][::-1]
+                        wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
                         values[start_w_idx:end_w_idx] = wells_initial_pressure_profile[start_ms_w_idx:end_ms_w_idx]
                     elif variable == 'temperature':
-                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"][::-1]
+                        wells_initial_temperature_profile = self.wells_initial_conditions["initial_temperature"]
                         values[start_w_idx:end_w_idx] = wells_initial_temperature_profile[start_ms_w_idx:end_ms_w_idx]
                     elif variable not in ['pressure', 'temperature']:
-                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction'][::-1]
+                        wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
                         values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[start_ms_w_idx:end_ms_w_idx]
 
                 start_w_idx = end_w_idx

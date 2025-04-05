@@ -11,7 +11,7 @@ class PipeGeometry:
 
         :param pipe_name: Name of the pipe
         :type pipe_name: str
-        :param segments_lengths: Lengths of the segments from bottom to top [meter]
+        :param segments_lengths: Lengths of the segments from top to bottom [meter]
         :type segments_lengths: list or numpy.ndarray
         :param pipe_ID: Internal diameter of the pipe [meter]
         :type pipe_ID: float

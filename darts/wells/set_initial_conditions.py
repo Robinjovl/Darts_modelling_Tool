@@ -29,7 +29,7 @@ class SingleAmbientTemperature:
         :param pipe_head_segment_index: The index of the segment of the pipe at which the pipe head pressure is specified. The index starts from 0.
         :type pipe_head_segment_index: int
         :param initial_fluid_conditions: Initial fluid conditions in the pipe including the names of the phases present
-        in the pipe, the composition of the phases [mole fractions], and the depth intervals of the pipe  in which those
+        in the pipe, the composition of the phases [mole fractions], and the depth intervals of the pipe in which those
         phases are present [meter].
         :type initial_fluid_conditions: dict consisting three key-value pairs: list of strings, list of lists, list of lists
         :param verbose: Whether to display extra info about SingleAmbientTemperature
@@ -52,8 +52,8 @@ class SingleAmbientTemperature:
                 "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
         self.initial_fluid_conditions = initial_fluid_conditions
 
-        self.measured_depths_segments = sum(self.pipe_geom.segments_lengths) - self.pipe_geom.z
-        self.measured_depths_interfaces = sum(self.pipe_geom.segments_lengths) - np.cumsum(self.pipe_geom.segments_lengths[:-1])
+        self.measured_depths_segments = self.pipe_geom.z
+        self.measured_depths_interfaces = self.pipe_geom.z_interfaces
         self.true_vertical_depths_segments = self.measured_depths_segments * np.cos(pipe_geom.inclination_angle_radian)
         self.true_vertical_depths_interfaces = self.measured_depths_interfaces * np.cos(pipe_geom.inclination_angle_radian)
 
@@ -69,40 +69,40 @@ class SingleAmbientTemperature:
         self.temp_init_segments = self.ambient_temperature * np.ones(num_segments)
 
     def get_initial_pressure_profile(self):
-        def dpdz(TVE, p):
+        def dpdz(TVD, p):
             for i, interval in enumerate(self.initial_fluid_conditions['pipe_intervals']):
-                if interval[0] <= TVE <= interval[1]:
+                if interval[0] <= TVD <= interval[1]:
                     phase_name = self.initial_fluid_conditions['phases_names'][i]
                     initial_phase_composition = self.initial_fluid_conditions['phases_compositions'][i]
 
             density = self.property_container.density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
 
-            return - g * density
+            return g * density
 
-        p_head2 = self.pipe_head_pressure   # Initial solution for the ODE
-        if self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:
-            TVE_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVE stands for true vertical elevation
-            TVE_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVE of the initial solution p_head2
-            TVE_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
-
-            TVE_seg_interfaces = TVE_seg_interfaces[::-1]
+        p_head1 = self.pipe_head_pressure   # Initial solution for the ODE
+        if self.pipe_head_segment_index == 0:   # This is used when the pipe-head pressure is the pressure of the top head
+            TVD_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution p_head1
+            TVD_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
 
             temp = self.ambient_temperature
             # Seg and face together
-            sol_seg_interfaces = solve_ivp(dpdz, [TVE_head2, TVE_head1], [p_head2], t_eval=TVE_seg_interfaces)
+            sol_seg_interfaces = solve_ivp(dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces)
+            p_seg_interfaces = sol_seg_interfaces.y[0]
+
+        elif self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:   # This is used when the pipe-head pressure is the pressure of the bottom head
+            TVD_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution (p_head1)
+            TVD_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
+
+            TVD_seg_interfaces = TVD_seg_interfaces[::-1]
+
+            temp = self.ambient_temperature
+            # Seg and face together
+            sol_seg_interfaces = solve_ivp(dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces)
             p_seg_interfaces = sol_seg_interfaces.y[0]
 
             p_seg_interfaces = p_seg_interfaces[::-1]
-
-        elif self.pipe_head_segment_index == 0:
-            TVE_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVE_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVE of the initial solution (p_head2)
-            TVE_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
-
-            temp = self.ambient_temperature
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(dpdz, [TVE_head2, TVE_head1], [p_head2], t_eval=TVE_seg_interfaces)
-            p_seg_interfaces = sol_seg_interfaces.y[0]
 
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5   # Convert Pa to bar
         p_init_interfaces = p_seg_interfaces[1::2] * 1e-5   # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
@@ -153,8 +153,8 @@ class LinearAmbientTemperature:
             assert len(phase_composition) == property_container.nc, "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
         self.initial_fluid_conditions = initial_fluid_conditions
 
-        self.measured_depths_segments = sum(self.pipe_geom.segments_lengths) - self.pipe_geom.z
-        self.measured_depths_interfaces = sum(self.pipe_geom.segments_lengths) - np.cumsum(self.pipe_geom.segments_lengths[:-1])
+        self.measured_depths_segments = self.pipe_geom.z
+        self.measured_depths_interfaces = self.pipe_geom.z_interfaces
         self.true_vertical_depths_segments = self.measured_depths_segments * np.cos(pipe_geom.inclination_angle_radian)
         self.true_vertical_depths_interfaces = self.measured_depths_interfaces * np.cos(pipe_geom.inclination_angle_radian)
 
@@ -168,8 +168,8 @@ class LinearAmbientTemperature:
     def get_initial_temperature_profile(self):
         print("Pipe head temperature is assumed to be the lowest temperature for the initial temperature calculation. "
               "If it's the opposite, change the sign of the temperature gradient.")
-        self.temp_init_segments = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_segments - self.true_vertical_depths_segments[-1]))
-        self.temp_init_interfaces = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_interfaces - self.true_vertical_depths_segments[-1]))  # Temperatures at interfaces are calculated even though they're not used in any part of the code.
+        self.temp_init_segments = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_segments - self.true_vertical_depths_segments[0]))
+        self.temp_init_interfaces = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_interfaces - self.true_vertical_depths_segments[0]))  # Temperatures at interfaces are calculated even though they're not used in any part of the code.
 
         temp_init_seg_interfaces = np.zeros(self.pipe_geom.num_segments + self.pipe_geom.num_interfaces)
         temp_init_seg_interfaces[0::2] = self.temp_init_segments
@@ -177,46 +177,44 @@ class LinearAmbientTemperature:
         self.temp_init_seg_interfaces = temp_init_seg_interfaces  # This is used to calculate pressures at segments and interfaces together even though the pressure values at interfaces are not used in any part of the code, but this variable is used for calculating initial pressure profile along the wellbore more easily.
 
     def get_initial_pressure_profile(self):
-        def dpdz(TVE, p):
+        def dpdz(TVD, p):
             for i, interval in enumerate(self.initial_fluid_conditions['pipe_intervals']):
-                if interval[0] <= TVE <= interval[1]:
-                    temp = temp_func(TVE)
+                if interval[0] <= TVD <= interval[1]:
+                    temp = temp_func(TVD)
                     phase_name = self.initial_fluid_conditions['phases_names'][i]
                     initial_phase_composition = self.initial_fluid_conditions['phases_compositions'][i]
 
             density = self.property_container.density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
 
-            return - g * density
+            return g * density
 
-        p_head2 = self.pipe_head_pressure   # Initial solution for the ODE
-        if self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:
-            TVE_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVE stands for true vertical elevation
-            TVE_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)  # TVE of the initial solution p_head2
-            TVE_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
+        p_head1 = self.pipe_head_pressure   # Initial solution for the ODE
+        if self.pipe_head_segment_index == 0:
+            TVD_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)  # TVD of the initial solution p_head1
+            TVD_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
 
-            TVE_seg_interfaces = TVE_seg_interfaces[::-1]
-
-            temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
-            temp_func = interp1d(TVE_seg_interfaces, temp_init_seg_interfaces, fill_value='extrapolate')
+            temp_func = interp1d(TVD_seg_interfaces, self.temp_init_seg_interfaces, fill_value='extrapolate')
 
             # Seg and face together
-            sol_seg_interfaces = solve_ivp(dpdz, [TVE_head2, TVE_head1], [p_head2], t_eval=TVE_seg_interfaces)
+            sol_seg_interfaces = solve_ivp(dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces)
+            p_seg_interfaces = sol_seg_interfaces.y[0]
+
+        elif self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:
+            TVD_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution (p_head1)
+            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
+
+            TVD_seg_interfaces = TVD_seg_interfaces[::-1]
+
+            temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
+            temp_func = interp1d(TVD_seg_interfaces, temp_init_seg_interfaces, fill_value='extrapolate')
+
+            # Seg and face together
+            sol_seg_interfaces = solve_ivp(dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces)
             p_seg_interfaces = sol_seg_interfaces.y[0]
 
             p_seg_interfaces = p_seg_interfaces[::-1]
-
-        elif self.pipe_head_segment_index == 0:
-            TVE_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVE_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVE of the initial solution (p_head2)
-            TVE_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
-
-            # These two lines for temperature are added to this elif, but I'm not sure if I need to edit it or not.
-            temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
-            temp_func = interp1d(TVE_seg_interfaces, temp_init_seg_interfaces, fill_value='extrapolate')
-
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(dpdz, [TVE_head2, TVE_head1], [p_head2], t_eval=TVE_seg_interfaces)
-            p_seg_interfaces = sol_seg_interfaces.y[0]
 
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5   # Convert Pa to bar
         p_init_interfaces = p_seg_interfaces[1::2] * 1e-5   # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.

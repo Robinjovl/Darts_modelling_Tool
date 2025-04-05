@@ -122,9 +122,9 @@ class ReservoirBase:
             assert physics is not None, "For ms_well, physics must be specified!"
             # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated or
             # non-perforated segment to the wellhead segment.
-            well.segments_volumes = value_vector(well_geometry.segments_volumes[::-1])
+            well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
-            well.segments_depths = value_vector((well_geometry.pipe_length - well_geometry.z)[::-1])
+            well.segments_depths = value_vector(well_geometry.z)
             well.num_segments = well_geometry.num_segments
             well.set_velocity_evaluator(PipeVelocityEvaluator(well_geometry, physics, darts_model))
 
