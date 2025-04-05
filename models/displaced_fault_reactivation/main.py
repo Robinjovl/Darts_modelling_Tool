@@ -249,15 +249,24 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     m.print_timers()
     m.print_stat()
 
-    datafile = [os.path.join(m.output_directory, 'solution_fault1.vtu')]
     labels = ['DARTS: ' + config['friction_law']]
-    fig_name = os.path.join(m.output_directory, 'fault_plot.png')
     plot_analytics = config['friction_law'] if plot_analytics else None
-    plot_profiles(datafile=datafile, labels=labels, figfile=fig_name, analytics=plot_analytics)
+    animate = True if len(t) > 1 else False
+    plot_profiles(data_folder=m.output_directory, labels=labels, analytics=plot_analytics, animate=animate)
 
     if compare_with_ref:
         pass
 
+def read_pvd(filename):
+    from xml.dom.minidom import parse
+    document = parse(filename)
+    elems = document.getElementsByTagName('DataSet')
+    timesteps = []
+    files = []
+    for step in elems:
+        timesteps.append(float(step.getAttribute('timestep')))
+        files.append(step.getAttribute('file'))
+    return timesteps, files
 def read_vtk(filename, props):
     import meshio
 
@@ -281,7 +290,7 @@ def read_vtk(filename, props):
             point_data[prop_name] = prop
 
     return centers, cell_data, points, point_data
-def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
+def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=False):
     from matplotlib import pyplot as plt
     ls = 13
     plt.rc('xtick', labelsize=15)
@@ -298,6 +307,11 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
     linestyles = ['-', '-', '-']
     lw = 1
     msec0 = 0
+
+    if animate:
+        datafile = [os.path.join(data_folder, 'solution_fault0.vtu')]
+    else:
+        datafile = [os.path.join(data_folder, 'solution_fault1.vtu')]
 
     n_plots = 6
     fig, stress = plt.subplots(nrows=1, ncols=n_plots, sharey=True, figsize=(18, 8))
@@ -326,7 +340,7 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
 
         ids = np.argsort(c[:,1])
         c[:, 1] = 2250 - c[:, 1]
-        l_slip, = stress[0].plot(np.abs(fault_data['g_local'][0][ids,1]), c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=label)
+        l_slip, = stress[0].plot(np.abs(fault_data['g_local'][0][ids,1]) * 1e+3, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=label)
         #stress[1].plot(fault_data['g_local'][0][:,0], c[ids,1], linewidth=1, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1, label=labels[k])
         l_shear, = stress[2].plot(fault_data['f_local'][0][ids,1] / 10, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1)
         l_normal, = stress[3].plot(-fault_data['f_local'][0][ids,0] / 10, c[ids,1], linewidth=lw, color=colors[k], linestyle=linestyles[k], marker=marker[k], markersize=1)
@@ -354,6 +368,8 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
         #     Lur = 1.158 * G * dc[k] / (1 - nu) / Wmean
         #     print('Lnuc ' + label + ' ' + str(Lur))
 
+        lines = [l_slip, l_coul, l_shear, l_normal, l_fric, l_pres]
+
     if analytics is not None:
         import pandas as pd
 
@@ -376,11 +392,10 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
             analytical_data[key] = pd.to_numeric(row, errors='coerce').to_numpy(dtype=float)
 
         k = 0
-        l_an_slip, = stress[0].plot(analytical_data['slip'], 2250 - analytical_data['y2'], linewidth=lw, color=colors[k],
+        l_an_slip, = stress[0].plot(analytical_data['slip'] * 1e+3, 2250 - analytical_data['y2'], linewidth=lw, color=colors[k],
                              linestyle='--', marker=marker[k], markersize=1, label='Analytics')
         l_an_coul, = stress[1].plot(analytical_data['coulomb'] / 1e+6, 2250 - analytical_data['y1'], linewidth=lw, color=colors[k],
                                  linestyle='--', marker=marker[k], markersize=1)
-
 
     stress[0].set_ylabel(r'depth, $y$, m', fontsize=20)
     # legend_title = 'time = ' + str(days) + 'd ' + str(hours) + 'hrs ' + str(minutes) + 'min + '
@@ -406,7 +421,8 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
         if len(labels) == 0:
             legend.set_title(legend_title, prop={'size': ls})
 
-    x_labels = [r'slip, m', r'Coulomb stress, MPa', r'shear stress, MPa', r'effective normal stress, MPa', r'friction coefficient', r'pressure, MPa']#r'friction coefficient',
+    x_labels = [r'slip, mm', r'Coulomb stress, MPa', r'shear stress, MPa', r'effective normal stress, MPa', r'friction coefficient', r'pressure, MPa']#r'friction coefficient',
+    fill_polys = []
     for i in range(n_plots):
         stress[i].axhline(y=b1, linestyle='--', color='k')
         stress[i].axhline(y=b2, linestyle='--', color='k')
@@ -415,22 +431,124 @@ def plot_profiles(datafile: list, labels: list, figfile: str, analytics=None):
 
         # stress[i].grid(True, which='both')
         alpha = 0.3
-        stress[i].set_xlabel(x_labels[i], fontsize=16)
+        stress[i].set_xlabel(x_labels[i], fontsize=15)
         # stress[i].set_ylim(list(stress[i].get_ylim()[::-1]))
-        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a1, y2=a2, color='palegoldenrod',
+        fill1 = stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a1, y2=a2, color='palegoldenrod',
                              interpolate=True, alpha=alpha)
-        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=b1, y2=a1, color='olive',
+        fill2 = stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=b1, y2=a1, color='olive',
                              interpolate=True, alpha=alpha)
-        stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a2, y2=b2, color='olive',
+        fill3 = stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a2, y2=b2, color='olive',
                              interpolate=True, alpha=alpha)
+        fill_polys.append((fill1, fill2, fill3))
 
     stress[0].invert_yaxis()
-    # stress[0].tick_params(axis='x', rotation=45)
     fig.tight_layout()
     plt.subplots_adjust(wspace=0.05)
-    fig.savefig(figfile)
-    # plt.show()
 
+    if animate:
+        import matplotlib.animation as animation
+        from matplotlib.animation import FuncAnimation
+        from matplotlib import rcParams
+        rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
+
+        times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
+        max_nt = len(files)
+        time_text = stress[0].text(0.07, 0.2, 'time = ' + str(24 * 60 * times[0]) + ' minutes', fontsize=12, rotation='horizontal', transform=fig.transFigure)
+
+        def animate(i):
+            nt = 50
+            each_ith = 1 # int(max_nt / nt)
+            if i % each_ith == 0:
+                c, fault_data, __, __ = read_vtk(filename=os.path.join(data_folder, files[i]),
+                                                 props=['f_local', 'g_local', 'mu', 'p'])
+                ids = np.argsort(c[:, 1])
+                c[:, 1] = 2250 - c[:, 1]
+                # slip
+                lines[0].set_data(fault_data['g_local'][0][ids, 1] * 1e+3, c[ids, 1])
+                xmin = 1e+3 * np.min(fault_data['g_local'][0][ids, 1])
+                xmax = 1e+3 * np.max(fault_data['g_local'][0][ids, 1])
+                stress[0].set_xlim(xmin, xmax)
+                # Coulomb stress
+                coulomb_stress = np.sqrt(fault_data['f_local'][0][:, 1] ** 2 + fault_data['f_local'][0][:, 2] ** 2) - \
+                                 fault_data['mu'][0] * np.fabs(fault_data['f_local'][0][:, 0])
+                lines[1].set_data(coulomb_stress[ids] / 10, c[ids, 1])
+                xmin = np.min(coulomb_stress[ids] / 10)
+                xmax = np.max(coulomb_stress[ids] / 10)
+                stress[1].set_xlim(-20, 0)  # (xmin, xmax)
+                # shear stress
+                lines[2].set_data(fault_data['f_local'][0][ids, 1] / 10, c[ids, 1])
+                xmin = np.min(fault_data['f_local'][0][ids, 1] / 10)
+                xmax = np.max(fault_data['f_local'][0][ids, 1] / 10)
+                stress[2].set_xlim(0, 25)  # (xmin, xmax)
+                # normal stress
+                lines[3].set_data(fault_data['f_local'][0][ids, 0] / 10, c[ids, 1])
+                xmin = np.min(fault_data['f_local'][0][ids, 0] / 10)
+                xmax = np.max(fault_data['f_local'][0][ids, 0] / 10)
+                stress[3].set_xlim(20, 45)  # (xmin, xmax)
+                # friction coefficient
+                lines[4].set_data(fault_data['mu'][0][ids], c[ids, 1])
+                xmin = np.min(fault_data['mu'][0][ids])
+                xmax = np.max(fault_data['mu'][0][ids])
+                stress[4].set_xlim(0.95 * xmin, 1.05 * xmax)
+                # pressure
+                lines[5].set_data(fault_data['p'][0][ids] / 10, c[ids, 1])
+                xmin = np.min(fault_data['p'][0][ids])
+                xmax = np.max(fault_data['p'][0][ids])
+                stress[5].set_xlim(0, 40)
+
+                days = int(times[i])
+                minutes = int(24 * 60 * times[i]) - 24 * 60 * days
+                msec = int(86400 * 1000 * times[i]) - 86400 * 1000 * days - 60000 * minutes
+                time_text.set_text('time = ' + str(days) + ' day ' + str(minutes) + ' min ' + str(msec) + ' msec')
+
+                for i in range(n_plots):
+                    depth_lims = stress[i].get_ylim()
+                    stress[i].set_ylim([max(depth_lims), min(depth_lims)])
+
+                    alpha = 0.3
+                    stress[i].set_xlabel(x_labels[i], fontsize=15)
+                    # stress[i].set_ylim(list(stress[i].get_ylim()[::-1]))
+
+                    new_vertices = [[stress[i].set_xlim()[0], a1],
+                                    [stress[i].set_xlim()[1], a1],
+                                    [stress[i].set_xlim()[1], a2],
+                                    [stress[i].set_xlim()[0], a2],
+                                    [stress[i].set_xlim()[0], a1]]  # close the loop
+                    fill_polys[i][0].set_paths([new_vertices])
+                    new_vertices = [[stress[i].set_xlim()[0], b1],
+                                    [stress[i].set_xlim()[1], b1],
+                                    [stress[i].set_xlim()[1], a1],
+                                    [stress[i].set_xlim()[0], a1],
+                                    [stress[i].set_xlim()[0], b1]]  # close the loop
+                    fill_polys[i][1].set_paths([new_vertices])
+                    new_vertices = [[stress[i].set_xlim()[0], a2],
+                                    [stress[i].set_xlim()[1], a2],
+                                    [stress[i].set_xlim()[1], b2],
+                                    [stress[i].set_xlim()[0], b2],
+                                    [stress[i].set_xlim()[0], a2]]  # close the loop
+                    fill_polys[i][2].set_paths([new_vertices])
+
+                    # stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a1, y2=a2,
+                    #                        color='palegoldenrod',
+                    #                        interpolate=True, alpha=alpha)
+                    # stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=b1, y2=a1,
+                    #                        color='olive',
+                    #                        interpolate=True, alpha=alpha)
+                    # stress[i].fill_between(x=[stress[i].set_xlim()[0], stress[i].set_xlim()[1]], y1=a2, y2=b2,
+                    #                        color='olive',
+                    #                        interpolate=True, alpha=alpha)
+
+            return lines  # not really necessary, but optional for blit algorithm
+
+        anim = FuncAnimation(fig, animate, interval=2000, frames=np.arange(max_nt))
+        writervideo = animation.FFMpegWriter(fps=2)
+        video_filename = os.path.join(data_folder, 'fault_video.mp4')
+        anim.save(video_filename, writer=writervideo)
+    else:
+        pic_filename = os.path.join(data_folder, 'fault_plot.png')
+        fig.savefig(pic_filename)
+    plt.close(fig)
+    # plt.show()
 
 
 if __name__ == '__main__':
@@ -466,4 +584,8 @@ if __name__ == '__main__':
     # cases += [config]
 
     for case in cases:
-        run_and_plot(config=case, plot_analytics=True, compare_with_ref=False)
+        if case['friction_law'] == 'static' or case['friction_law'] == 'slip_weakening':
+            plot_analytics = True
+        else:
+            plot_analytics = False
+        run_and_plot(config=case, plot_analytics=plot_analytics, compare_with_ref=False)
