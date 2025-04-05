@@ -68,17 +68,13 @@ class Model(CICDModel):
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
+        self.wells_geometry = {"Well1": well_1_geometry}
 
         # %% Set initial conditions in the pipe using SingleAmbientTemperature
         system_temperature = self.physics.property_containers[0].temperature
         pipe_head_pressure = 5   # bar
         pipe_head_segment_index = 0  # index starts from zero
 
-        # Wellhead conditions because of the constant rate control
-        # zero = self.physics.axes_min[1]
-        # well_head_segment_phase = 'gas'
-        # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
-        # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
         initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1e-5, 1 - 2 * 1e-5, 1e-5]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 

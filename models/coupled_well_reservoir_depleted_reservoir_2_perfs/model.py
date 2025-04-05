@@ -179,11 +179,6 @@ class Model(CICDModel):
         pipe_head_pressure = 20   # bar
         pipe_head_segment_index = 0  # index starts from zero
 
-        # Wellhead conditions because of the constant rate control
-        # zero = self.physics.axes_min[1]
-        # well_head_segment_phase = 'gas'
-        # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
-        # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
         initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 

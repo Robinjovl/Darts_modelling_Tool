@@ -89,6 +89,7 @@ class Model(CICDModel):
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
+        self.wells_geometry = {"Well1": well_1_geometry}
 
         # %% Set initial conditions in the pipe using SingleAmbientTemperature
         system_temperature = self.physics.property_containers[0].temperature

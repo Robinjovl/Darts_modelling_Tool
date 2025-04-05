@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 from model import Model
 from darts.engines import redirect_darts_output
-import matplotlib.pyplot as plt
+
 
 redirect_darts_output('run_log.log')
 coupled_model = Model()
