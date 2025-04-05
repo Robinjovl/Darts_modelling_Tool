@@ -62,7 +62,7 @@ class Model(CICDModel):
         well_1_type = "ms_well"
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = 50 * np.ones(20)  # From bottom to top of the wellbore
+        well_1_segments_lengths = 50 * np.ones(20)  # From top to bottom of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -75,13 +75,13 @@ class Model(CICDModel):
         # %% Set initial conditions in the pipe using SingleAmbientTemperature
         system_temperature = self.physics.property_containers[0].temperature
         pipe_head_pressure = 5   # bar
-        pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
+        pipe_head_segment_index = 0  # index starts from zero
 
         # Wellhead conditions because of the constant rate control
         # zero = self.physics.axes_min[1]
         # well_head_segment_phase = 'gas'
         # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
-        # well_head_segment_interval = [well_1_geometry.pipe_length - 50, well_1_geometry.pipe_length]
+        # well_head_segment_interval = [0, well_1_geometry.segments_lengths[0]]
         initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1e-5, 1 - 2 * 1e-5, 1e-5]],
                                     'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
 
