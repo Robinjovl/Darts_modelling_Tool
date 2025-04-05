@@ -38,10 +38,11 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, 1, 1))
+        well_ID = 0.1
+        self.reservoir.add_well("I1", 'basic_well', well_ID)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1), well_ID=well_ID)
+        self.reservoir.add_well("P1", 'basic_well', well_ID)
+        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1), well_ID=well_ID)
 
     def set_physics(self):
         """Physical properties"""

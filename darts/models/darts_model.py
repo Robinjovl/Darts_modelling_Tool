@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
+from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector, ms_well
 from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
@@ -243,7 +243,7 @@ class DartsModel:
 
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
-        if any(well.model_type == "ms_well" for well in self.reservoir.wells):
+        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
             assert hasattr(self, 'wells_initial_conditions'), \
                 "Initial conditions of the multi-segmented well/wells are not defined!"
 
@@ -282,12 +282,12 @@ class DartsModel:
             end_w_idx = start_w_idx
             start_ms_w_idx = 0
             for well in self.reservoir.wells:
-                if well.model_type == "basic_well":
+                if well.ms_type == ms_well.MS_Type.EPM:
                     end_w_idx += 2
-                elif well.model_type == "ms_well":
+                elif well.ms_type == ms_well.MS_Type.DFM:
                     end_w_idx += well.num_segments
                     end_ms_w_idx = start_ms_w_idx + well.num_segments
-                if well.model_type == "ms_well":
+                if well.ms_type == ms_well.MS_Type.DFM:
                     if variable == 'pressure':
                         wells_initial_pressure_profile = self.wells_initial_conditions["initial_pressure"]
                         values[start_w_idx:end_w_idx] = wells_initial_pressure_profile[start_ms_w_idx:end_ms_w_idx]
@@ -300,6 +300,25 @@ class DartsModel:
 
                 start_w_idx = end_w_idx
                 start_ms_w_idx += well.num_segments
+
+            # Add the conditions of the wellhead for when the wellhead of the well has a large volume
+            if hasattr(self.reservoir, "large_wellhead_volume"):
+                for w in self.reservoir.wells:
+                    if w.name in self.reservoir.large_wellhead_volume and self.reservoir.large_wellhead_volume[
+                        w.name].get("flag", False):
+                        required_keys = ["pressure", "composition"]
+                        required_keys += ["temperature"] if self.physics.thermal is True else []
+                        assert all(key in self.reservoir.large_wellhead_volume[w.name] for key in
+                                   required_keys), f"Required conditions of the wellhead of the well {w.name} not specified!"
+
+                        if variable == 'pressure':
+                            values[w.well_head_idx] = self.reservoir.large_wellhead_volume[w.name]["pressure"]
+                        elif variable == 'temperature':
+                            values[w.well_head_idx] = self.reservoir.large_wellhead_volume[w.name]["temperature"]
+                        else:
+                            values[w.well_head_idx * (self.physics.nc - 1):w.well_head_idx * (
+                                        self.physics.nc - 1) + self.physics.nc - 1] = \
+                                self.reservoir.large_wellhead_volume[w.name]["composition"]
 
         return
 
@@ -583,6 +602,7 @@ class DartsModel:
             # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
+            self.apply_well_lateral_heat_flux(dt, t)
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
@@ -614,6 +634,13 @@ class DartsModel:
 
         self.timer.node['simulation'].stop()
         return converged
+
+    def apply_well_lateral_heat_flux(self, dt, t):
+        for well in self.reservoir.wells:
+            if well.ms_type == ms_well.MS_Type.DFM and hasattr(self.reservoir, "wells_lateral_heat_flux") and (well.name in self.reservoir.wells_lateral_heat_flux):
+                well_lateral_heat_rate = self.reservoir.wells_lateral_heat_flux[well.name].evaluate(self.physics.engine.X[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars], t + dt)
+                rhs = np.array(self.physics.engine.RHS, copy=False)
+                rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """

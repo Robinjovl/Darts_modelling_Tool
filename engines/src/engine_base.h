@@ -762,7 +762,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		if (w->control != nullptr)   // if control is defined for the well, the if block will be executed.
+			w->initialize_control(X_init);
 	}
 
 	Xn = X = X_init;

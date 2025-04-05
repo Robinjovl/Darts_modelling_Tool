@@ -36,9 +36,11 @@ void pybind_ms_well(py::module &m)
 {
   using namespace pybind11::literals;
 
-  py::class_<ms_well>(
+  py::class_<ms_well> ms_well_class(
       m, "ms_well",
-      "Multisegment well, modeled as an extension of the reservoir")
+      "Multisegment well, modeled as an extension of the reservoir");
+
+  ms_well_class
       .def(py::init<>())
       // methods
       .def("init_rate_parameters", &ms_well::init_rate_parameters,
@@ -51,7 +53,7 @@ void pybind_ms_well(py::module &m)
            "thermal"_a = 0, py::keep_alive<1, 7>())
       // properties
       .def_readwrite("name", &ms_well::name)
-      .def_readwrite("model_type", &ms_well::model_type)
+      .def_readwrite("ms_type", &ms_well::ms_type)
       .def_readwrite("segments_volumes", &ms_well::segments_volumes)
       .def_readwrite("segments_depths", &ms_well::segments_depths)
       .def("set_velocity_evaluator", [](ms_well &w, py::object evaluator) {w.velocity_evaluator = make_shared<py::object>(evaluator);})
@@ -82,5 +84,10 @@ void pybind_ms_well(py::module &m)
                 self.constraint = constraint_;
               },
               py::keep_alive<1, 2>()));
+
+  py::enum_<ms_well::MS_Type>(ms_well_class, "MS_Type")
+      .value("EPM", ms_well::MS_Type::EPM)
+      .value("DFM", ms_well::MS_Type::DFM)
+      .export_values();
 }
 #endif // PYBIND11_ENABLED

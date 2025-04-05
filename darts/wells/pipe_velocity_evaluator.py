@@ -293,7 +293,7 @@ class PipeVelocityEvaluator:
                 rate_source = self.darts_model.source_props["rate_source"]
                 comp_source = self.darts_model.source_props["comp_source"]
                 Mw = self.physics.property_containers[0].Mw
-                mass_rate = sum(rate_source * comp_source * Mw) / (24 * 60 * 60)   # must be in kg/s
+                mass_rate = sum(rate_source * np.array(comp_source) * np.array(Mw)) / (24 * 60 * 60)   # must be in kg/s
 
                 pipe_internal_A = self.pipe_geometry.pipe_internal_A
 

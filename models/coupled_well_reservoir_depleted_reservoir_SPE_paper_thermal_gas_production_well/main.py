@@ -1,6 +1,9 @@
 """
+Use the SPE paper scenario, but here the reservoir has a high pressure and we want to produce CH4 via the well
+Use a large volume as the wellhead of the well to keep the pressure of the wellhead constant
+Larger time steps can be used compared to the thermal scenario of the SPE paper
+Smaller NR tolerance can be used compared to the thermal scenario of the SPE paper
 Uniform temperature in the entire reservoir
-Smaller time steps are needed for convergence compared to isothermal scenarios
 """
 
 import numpy as np
@@ -19,7 +22,13 @@ coupled_model = Model()
 coupled_model.init()
 
 if 1:
-    output_props = coupled_model.physics.property_operators[0].props_name
+    output_props = ["sat_CO2/C1_rich_phase", "sat_aqueous_phase",
+                    "mole_fraction_CO2__in_CO2/C1_rich_phase", "mole_fraction_CO2__in_aqueous_phase",
+                    "mole_fraction_CH4__in_CO2/C1_rich_phase", "mole_fraction_CH4__in_aqueous_phase",
+                    "mole_fraction_H2O__in_CO2/C1_rich_phase", "mole_fraction_H2O__in_aqueous_phase",
+                    "rho_CO2/C1_rich_phase", "rho_aqueous_phase",
+                    "miu_CO2/C1_rich_phase", "miu_aqueous_phase",
+                    "enthalpy_CO2/C1_rich_phase", "enthalpy_aqueous_phase"]
     coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial conditions
 
     time_steps = [1/24/60,   # 1 minute

@@ -15,17 +15,9 @@ coupled_model.init()
 
 if 1:
     coupled_model.run(1)
-    # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-    # n.run_python(300, restart_dt=1e-3)
-    coupled_model.print_timers()
-    coupled_model.print_stat()
     time_data = pd.DataFrame.from_dict(coupled_model.physics.engine.time_data)
     time_data.to_pickle("darts_time_data.pkl")
-    # n.save_restart_data()
     coupled_model.save_data_to_h5('solution')
-    writer = pd.ExcelWriter('time_data.xlsx')
-    time_data.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
 
     #%% Store output as .vtk files
     step = 0

@@ -83,18 +83,20 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, well_name: str, well_type: str, well_ID: float = None, well_geometry: PipeGeometry = None,
+    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = None, well_geometry: PipeGeometry = None,
                  physics=None, darts_model=None) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
 
         :param well_name: Well name
         :type well_name: str
-        :param well_type: Type of the well: "basic_well" or "ms_well"
-        :type well_type: str
-        :param well_ID: Well inside diameter. If well_type is "basic_well", this input argument must be specified.
+        :param ms_well_type: Type of the multi-segment well model:
+        ms_well.MS_Type.EPM: For the Equivalent Porous Medium model
+        ms_well.MS_Type.DFM: For the Drift-Flux model
+        :type ms_well_type: ms_well.MS_Type
+        :param well_ID: Well inside diameter. If well_ms_type is EPM, this input argument must be specified.
         :type well_ID: float
-        :param well_geometry: Geometry of the well. If well_type is "ms_well", this input argument must be specified.
+        :param well_geometry: Geometry of the well. If well_ms_type is DFM, this input argument must be specified.
         :type well_geometry: PipeGeometry
         :param physics
         :param darts_model: Instance of the class DartsModel
@@ -102,12 +104,12 @@ class ReservoirBase:
         """
         well = ms_well()
         well.name = well_name
-        well.model_type = well_type
+        well.ms_type = ms_well_type
 
-        if well.model_type == "basic_well":
-            assert well_ID is not None, "For basic_well, well_ID must be specified!"
-            assert well_geometry is None, "For basic_well, well_geometry must not be specified!"
-            assert physics is None, "For basic_well, physics must not be specified!"
+        if well.ms_type == ms_well.MS_Type.EPM:
+            assert well_ID is not None, "For EPM, well_ID must be specified!"
+            assert well_geometry is None, "For EPM, well_geometry must not be specified!"
+            assert physics is None, "For EPM, physics must not be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir.
             well.segment_volume = math.pi / 4 * well_ID ** 2
@@ -116,10 +118,10 @@ class ReservoirBase:
             well.well_body_depth = 0
             well.segment_depth_increment = 0
 
-        elif well.model_type == "ms_well":
-            assert well_ID is None, "For ms_well, well_ID must not be specified!"
-            assert well_geometry is not None, "For ms_well, well_geometry must be specified!"
-            assert physics is not None, "For ms_well, physics must be specified!"
+        elif well.ms_type == ms_well.MS_Type.DFM:
+            assert well_ID is None, "For DFM, well_ID must not be specified!"
+            assert well_geometry is not None, "For DFM, well_geometry must be specified!"
+            assert physics is not None, "For DFM, physics must be specified!"
             # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated or
             # non-perforated segment to the wellhead segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
@@ -191,6 +193,13 @@ class ReservoirBase:
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
         self.mesh.add_wells(ms_well_vector(self.wells))
+
+        # Add the conditions of the wellhead for when the wellhead has a large volume
+        if hasattr(self, "large_wellhead_volume"):
+            for w in self.wells:
+                if w.name in self.large_wellhead_volume and self.large_wellhead_volume[w.name].get("flag", False):
+                    assert "volume" in self.large_wellhead_volume[w.name], f"Volume of the wellhead of the well {w.name} is not specified!"
+                    self.mesh.volume[w.well_head_idx] = self.large_wellhead_volume[w.name]["volume"]
 
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect

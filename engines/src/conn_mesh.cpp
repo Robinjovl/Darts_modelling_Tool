@@ -2430,10 +2430,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   {
     wells[iw]->well_head_idx = well_head_idx; // well head
     wells[iw]->well_body_idx = well_head_idx + 1; // well body
-	if (wells[iw]->model_type == "ms_well")
-	{
-		wells[iw]->well_body_idx += wells[iw]->num_segments - 2;
-	}
     
     index_t n_segments = 0;
     // connections between well segments and reservoir
@@ -2447,20 +2443,20 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       n_segments = max(n_segments, i_w + 1);
     }
 	// this if-block can affect the number of segments if the well is of the ms_well type and there is or are unperforated segments below the lowermost perforated segment of the well.
-	if (wells[iw]->model_type == "ms_well")
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		n_segments = max(n_segments, wells[iw]->num_segments - 1);
 	}
     // connections between segments of basic_well
-	if (wells[iw]->model_type == "basic_well")
+	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
 	{
 		for (index_t p = 0; p < n_segments; p++)
 		{
 			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0); // connection between them
 		}
 	}
-	// connections between segments of ms_well
-	if (wells[iw]->model_type == "ms_well")
+	// connections between segments of DFM well
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		for (index_t seg = 0; seg < (wells[iw]->num_segments-1); seg++)
 		{
@@ -2498,7 +2494,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-	if (wells[iw]->model_type == "basic_well")
+	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
 	{
 		// depth of the wellhead segment - well controls work at this depth
 		depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
@@ -2524,14 +2520,14 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 			}
 		}
 	}
-	if (wells[iw]->model_type == "ms_well")
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		std::copy(wells[iw]->segments_depths.begin(), wells[iw]->segments_depths.end(), depth.begin() + wells[iw]->well_head_idx);
 		std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
 		std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
 		std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
 		std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
-		// The following lines are not applied to ms_well yet.
+		// The following lines are not applied to DFM-MS yet.
 		//for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		//{
 		//	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;

@@ -1689,7 +1689,7 @@ engine_base::calc_well_residual_L2()
 	for (ms_well *w : wells)
 	{
 		// first sum up RHS for well segments which have perforations
-		if (w->model_type == "basic_well")
+		if (w->ms_type == ms_well::MS_Type::EPM)
 		{
 			int nperf = w->perforations.size();
 			for (int ip = 0; ip < nperf; ip++)
@@ -1711,7 +1711,7 @@ engine_base::calc_well_residual_L2()
 				res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 			}
 		}
-		else if (w->model_type == "ms_well")
+		else if (w->ms_type == ms_well::MS_Type::DFM)
 		{
 			for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
 			{
@@ -2724,7 +2724,7 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		for (ms_well *w : wells)
 		{
-			if (w->model_type == "basic_well")
+			if (w->ms_type == ms_well::MS_Type::EPM)
 			{
 				w->calc_rates(X, op_vals_arr, time_data);
 			}
