@@ -36,7 +36,8 @@ time_steps = [1/24/60,   # 1 minute
               49.99 - 30.002,   # 50 day
               100.02 - 49.99,   # 100 day
               200.001 - 100.02,   # 200 day
-              365 - 200.001]   # 365 day
+              365 - 200.001,   # 365 day
+              ]
 
 for i, dt in enumerate(time_steps):
     coupled_model.run(dt)
