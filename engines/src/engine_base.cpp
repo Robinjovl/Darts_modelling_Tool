@@ -1688,9 +1688,9 @@ engine_base::calc_well_residual_L2()
 
 	for (ms_well *w : wells)
 	{
-		// first sum up RHS for well segments which have perforations
 		if (w->ms_type == ms_well::MS_Type::EPM)
 		{
+			// first sum up RHS for well segments which have perforations
 			int nperf = w->perforations.size();
 			for (int ip = 0; ip < nperf; ip++)
 			{
