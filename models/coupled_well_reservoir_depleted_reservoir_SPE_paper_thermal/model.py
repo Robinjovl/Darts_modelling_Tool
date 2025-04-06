@@ -223,7 +223,7 @@ class Model(CICDModel):
         c_rock = library.mats_thermal_props['Rock']['c']
         K_rock = library.mats_thermal_props['Rock']['K']
         rho_rock = library.mats_thermal_props['Rock']['rho']
-        earth_thermal_props = {'T': well_1_initial_conditions.temp_init_segments[::-1], 'c': c_rock, 'K': K_rock,
+        earth_thermal_props = {'T': well_1_initial_conditions.temp_init_segments, 'c': c_rock, 'K': K_rock,
                                'rho': rho_rock}
         pipe_wall_thickness = 5e-3   # Thickness of the outermost layer of the wellbore in meters
         outermost_layer_OD = well_1_geometry.pipe_ID + 2 * pipe_wall_thickness
