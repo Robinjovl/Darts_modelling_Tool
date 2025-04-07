@@ -1,6 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params
+from darts.engines import sim_params, ms_well
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -39,7 +39,7 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        well_type = "basic_well"
+        well_type = ms_well.MS_Type.EPM
         well_ID = 0.1
         self.reservoir.add_well("I1", well_type, well_ID=well_ID)
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1), well_ID=well_ID)
