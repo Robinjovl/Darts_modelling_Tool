@@ -1177,15 +1177,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
       // + rock energy (no rock compressibility included in these computations)
       if (THERMAL && !FIND_EQUILIBRIUM)
       {
-        RHS[i * N_VARS + T_VAR] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + TEMP_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+        RHS[i * N_VARS + NC] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + TEMP_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
         for (v = 0; v < NE; v++)
         {
-          Jac[diag_idx + T_VAR * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
+          Jac[diag_idx + NC * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
         } // end of fill offdiagonal part + contribute to diagonal
 
-		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
-		Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
+		Jac[diag_idx + NC * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
+		Jac[diag_idx + NC * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
       }
 
       // calc CFL for reservoir cells, not connected with wells
