@@ -29,11 +29,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
     def get_reservoir_pressure(self, depths):
-        return 290. + 0.0 * depths
-        #return 1. + 0.1 * depths  # bars/m
+        #return 290. + 0.0 * depths
+        return 1. + 0.1 * depths  # bars/m
 
     def get_reservoir_temperature(self, depths):
-        return 273.15 + 90. * depths
+        return 273.15 + 0. * depths
         #return 273.15 + 10 + 30. / 1000 * depths
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
@@ -45,9 +45,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_mech_discretizer(idata=idata)
 
         self.grav = 9.80665e-5
-        #self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
+        self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         #self.init_gravity(gravity_on=True, gravity_coeff=0.)
-        self.init_gravity(gravity_on=False)
+        # self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
         self.p_init = self.get_reservoir_pressure(self.depths[:self.n_matrix])

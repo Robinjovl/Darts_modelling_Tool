@@ -3,6 +3,7 @@ from reservoir import UnstructReservoirCustom
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
+from scipy.interpolate import interp1d
 
 import numpy as np
 import os
@@ -308,18 +309,99 @@ class Model(THMCModel):
         return 0
 
     def set_initial_conditions(self):
-        input_distribution = {'pressure': self.reservoir.p_init}
-        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
-        if self.reservoir.thermoporoelasticity:
-            input_distribution['temperature'] = self.reservoir.t_init
-            input_displacement = [0.0, 0.0, 0.0]
-        else:
-            input_displacement = self.reservoir.u_init
 
-        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
-                                                       input_distribution=input_distribution,
-                                                       input_displacement=input_displacement)
+        if True:
+            from darts.physics.super.initialize import Initialize
+
+            boundary_state = {var: props.x[0, c] for c, var in enumerate(self.physics.components[:-1])}
+            boundary_state['temperature'] = 350.
+            boundary_state['pressure'] = 1 # np.min(self.reservoir.p_init)
+            init = Initialize(physics=self.physics, algorithm='multilinear', mode='adaptive',
+                              is_barycentric=False)
+
+            nb = 100
+            nc = self.physics.nc
+            z = np.zeros((nb, nc))
+            z[:, 0] = 1 - self.idata.obl.zero  # liquid is below GOC
+            primary_specs = {var: z[:, i] for i, var in enumerate(self.physics.components[:-1])}
+            # run initialization
+            min_depth = self.reservoir.depths.min()
+            max_depth = self.reservoir.depths.max()
+            X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
+                           nb=nb, primary_specs=primary_specs, boundary_state=boundary_state,
+                           dTdh=0.).reshape((nb, self.physics.n_vars))
+            input_distribution = {var: X[:, i] for i, var in enumerate(self.physics.vars)}
+            set_initial_conditions_from_depth_table(self=self.physics, mesh=self.reservoir.mesh, input_depth=init.depths,
+                                                                 input_distribution=input_distribution,
+                                                                 input_displacement=self.reservoir.u_init,
+                                                            depths=self.reservoir.depths[:self.reservoir.mesh.n_blocks])
+        else:
+            input_distribution = {'pressure': self.reservoir.p_init}
+            input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
+            if self.reservoir.thermoporoelasticity:
+                input_distribution['temperature'] = self.reservoir.t_init
+                input_displacement = [0.0, 0.0, 0.0]
+            else:
+                input_displacement = self.reservoir.u_init
+
+            self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                           input_distribution=input_distribution,
+                                                           input_displacement=input_displacement)
         return 0
+
+
+def set_initial_conditions_from_depth_table(self, mesh, input_distribution: dict, input_displacement: dict,
+                                            input_depth, depths):
+    """
+    Function to set initial conditions from given distribution of properties over depth.
+
+    :param mesh: conn_mesh object
+    :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                               and each entry is scalar or array of length equal to depths
+    :param input_depth: Array of depths over which depth table has been specified
+    """
+    # Assertions of consistent depth table specification
+    assert np.all([variable in input_distribution.keys() for variable in self.vars[1:self.nc]]), \
+        "Initial state for must be specified for all primary variables"
+    assert not self.thermal or ('temperature' in input_distribution.keys() or
+                                'enthalpy' in input_distribution.keys()), \
+        "Temperature or enthalpy must be specified for thermal models"
+    input_depth = input_depth if hasattr(input_depth, "__len__") else np.array([input_depth])
+    for key, input_values in input_distribution.items():
+        input_values = input_values if hasattr(input_values, "__len__") else np.ones(len(input_depth)) * input_values
+        assert len(input_values) == len(input_depth)
+
+    # Get depths and primary variable arrays from mesh object
+    #depths = np.asarray(mesh.depth)[:mesh.n_blocks]
+
+    # adjust the size of initial_state array in c++
+    mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+
+    # Loop over variables to fill initial_state vector in c++
+    for ith_var, variable in enumerate(self.vars):
+        if variable == "enthalpy" and "enthalpy" not in input_distribution.keys():
+            # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
+            p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
+            pressure = p_itor(depths)
+
+            t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+            temperature = t_itor(depths)
+
+            values = np.empty(mesh.n_blocks)
+            for j in range(mesh.n_blocks):
+                state = np.array([pressure[j], temperature[j]])
+                values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+        else:
+            # Else, interpolate primary variable
+            itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+            values = itor(depths)
+
+        np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
+
+    # set initial displacements
+    for i in range(self.n_dim):
+        np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, min_z=1e-11):
