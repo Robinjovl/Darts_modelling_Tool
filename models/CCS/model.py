@@ -1,10 +1,11 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
+from darts.engines import ms_well
 
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-from darts.physics.operators_base import PropertyOperators
+from darts.physics.base.operators_base import PropertyOperators
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -37,13 +38,16 @@ class Model(DartsModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, self.reservoir.nz), well_index=100, well_indexD=100)
+        well_type = ms_well.MS_Type.EPM
+        well_ID = 0.1
+        self.reservoir.add_well("I1", well_type, well_ID=well_ID)
+        self.reservoir.add_perforation("I1", res_cell_idx = (1, 1, self.reservoir.nz),
+                                       well_ID = well_ID, well_index=100, well_indexD=100)
 
-        self.reservoir.add_well("P1")
+        self.reservoir.add_well("P1", well_type, well_ID=well_ID)
         for k in range(self.reservoir.nz):
-            self.reservoir.add_perforation("P1", cell_index=(self.reservoir.nx, self.reservoir.ny, k+1),
-                                           well_index=100, well_indexD=100)
+            self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, self.reservoir.ny, k+1),
+                                           well_ID = well_ID, well_index=100, well_indexD=100)
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
