@@ -148,6 +148,8 @@ class StructReservoir(ReservoirBase):
         i, j, k = res_cell_idx
         if well.ms_type == ms_well.MS_Type.EPM:
             assert well_seg_idx is None, "If the well is of the EPM type, well_seg_idx must not be specified!"
+            if well_index is not None:
+                well_ID = 1.   # Assign a dummy well_ID to avoid errors in calc_well_index, even though well_ID here is not used when well_index is provided
             res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
                                                                         segment_direction=segment_direction, skin=skin)
         elif well.ms_type == ms_well.MS_Type.DFM:

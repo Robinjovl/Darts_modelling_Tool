@@ -42,12 +42,12 @@ class Model(DartsModel):
         well_ID = 0.1
         self.reservoir.add_well("I1", well_type, well_ID=well_ID)
         self.reservoir.add_perforation("I1", res_cell_idx = (1, 1, self.reservoir.nz),
-                                       well_ID = well_ID, well_index=100, well_indexD=100)
+                                       well_index=100, well_indexD=100)
 
         self.reservoir.add_well("P1", well_type, well_ID=well_ID)
         for k in range(self.reservoir.nz):
             self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, self.reservoir.ny, k+1),
-                                           well_ID = well_ID, well_index=100, well_indexD=100)
+                                           well_index=100, well_indexD=100)
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""

@@ -78,13 +78,13 @@ class Model(CICDModel, OptModuleSettings):
             self.reservoir.add_well('I' + str(i + 1), well_type, well_ID=well_ID)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1), well_ID=well_ID, well_index=WI)
+                self.reservoir.add_perforation('I' + str(i + 1), res_cell_idx=(inj[0], inj[1], k + 1), well_index=WI)
 
         for p, prod in enumerate(self.prod_list):
             self.reservoir.add_well('P' + str(p + 1), well_type, well_ID=well_ID)
 
             for k in range(n_perf):
-                self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1), well_ID=well_ID, well_index=WI)
+                self.reservoir.add_perforation('P' + str(p + 1), res_cell_idx=(prod[0], prod[1], k + 1), well_index=WI)
 
     def set_physics(self):
         """Physical properties"""
