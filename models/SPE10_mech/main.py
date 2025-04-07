@@ -245,7 +245,9 @@ if __name__ == '__main__':
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
     #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=True)
-    run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=False)
+    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=False)
+
+    run(model_folder='data_6_6_5', physics_type='single_phase', uniform_props=False)
 
     #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=True)
     #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=False)

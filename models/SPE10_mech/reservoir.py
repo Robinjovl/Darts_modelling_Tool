@@ -82,8 +82,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
+        if True:  # free Z-
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE }
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER}
+        else:     # free Z+
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
 
         if self.thermoporoelasticity:
             for key, bc in self.boundary_conditions.items():
@@ -263,8 +267,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #xs = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
         # 22x22
         xs = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
-        ys = xs
         zs = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
+
+        # for debug
+        xs = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
+        zs = np.array([0, 1000, 2000, 2100, 2120, 3000])
+
+        ys = xs
 
         # centers
         xs = (xs[1:] + xs[:-1]) * 0.5
@@ -313,6 +322,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         :param output_directory:
         :return:
         '''
+        return
         import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
