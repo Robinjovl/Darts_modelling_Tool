@@ -154,8 +154,6 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    m.reservoir.write_to_vtk(m.output_directory, 1, m.physics.engine)
-
     sim_time = 30 * 365 # 10 years
     m.time_steps = []
     data = []
@@ -163,7 +161,7 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
     ith_step = 0
     while m.physics.engine.t < sim_time:
         run_python(m=m, days=size_report_step)
-        m.reservoir.write_to_vtk(m.output_directory, ith_step + 2, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
         ith_step += 1
         m.time_steps.append(m.physics.engine.t)
         data.append(m.get_performance_data(is_last_ts=(m.physics.engine.t >= sim_time)))
