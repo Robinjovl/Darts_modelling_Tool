@@ -186,13 +186,15 @@ def calc_slip_area(m):
             if contact.states[i] == contact_state.SLIP:
                 areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
     return areas
+def get_output_folder(config):
+    return 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
 def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
     t = config['timesteps']
 
     ## model setup
     m = Model(config=config)
     m.init()
-    m.output_directory = 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
+    m.output_directory = get_output_folder(config)
     redirect_darts_output(os.path.join(m.output_directory, 'log.txt'))
     m.timer.node["update"] = timer_node()
     m.ith_step = 0  # Store initial conditions as ../solution0.vtk

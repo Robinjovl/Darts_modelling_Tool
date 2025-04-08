@@ -131,7 +131,7 @@ def for_each_model_adjoint(root_path, model_procedure, accepted_paths=[], exclud
     return n_fails
 
 def run_single_test(dir, module_name, args, ret_value, platform):
-    args_str = '_'.join(args[:-1]) #except last arg (overwrite flag)
+
     # step in target folder
     os.chdir(dir)
 
@@ -141,6 +141,10 @@ def run_single_test(dir, module_name, args, ret_value, platform):
     # import model and run it for default time
     try:
         mod = importlib.import_module(module_name)
+        try: # if there is a function defined
+            args_str = mod.get_output_folder()
+        except:
+            args_str = '_'.join(args[:-1])  # except last arg (overwrite flag)
         # perform required procedures
         print("Running {:<30}".format(dir + ': ' + args_str), flush=True)
         log_file = os.path.join(os.path.join(os.path.abspath(os.pardir), '_logs'),
@@ -196,7 +200,8 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             abort_redirection(log_stream)
             ending_time = time.time()
             str_status = 'OK' if not ret_value.value else 'FAIL'
-            print('Test ' + dir + ' ' + '_'.join(arg) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
+            arg_1 = arg if type(arg) == list else map(str,list(arg.values())) # do nothing if a list or convert to a list of str if a dict
+            print('Test ' + dir + ' ' + '_'.join(arg_1) + ': ' + str_status + ', \t%.2f s' % (ending_time - starting_time))
 
             n_failed += ret_value.value
             n_tot += 1
