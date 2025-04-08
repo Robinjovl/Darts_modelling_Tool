@@ -1,3 +1,5 @@
+from darts.models.darts_model import DartsModel
+
 from model import Model
 from darts.engines import *
 import numpy as np
@@ -254,8 +256,57 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     animate = True if len(t) > 1 else False
     plot_profiles(data_folder=m.output_directory, labels=labels, analytics=plot_analytics, animate=animate)
 
+    ret_flag = 0
     if compare_with_ref:
-        pass
+        ret_flag = compare_solution_with_ref(m)
+    return ret_flag
+
+
+def compare_solution_with_ref(m : DartsModel, verbose = True):
+    ith_step = 1  # compare only the last timestep result
+    ith_step = str(ith_step)
+
+    vtk_fname = 'solution_fault' + ith_step + '.vtu'  # a filename to read and compare (fault data)
+    vtk_ref_fname = os.path.join(os.path.join('ref', m.output_directory), vtk_fname)
+    vtk_cur_fname = os.path.join(m.output_directory, vtk_fname)
+
+    props=['f_local', 'g_local', 'mu', 'p']  # property list (need for printing purposes)
+
+    ref = read_vtk(vtk_ref_fname, props)  # the reference solution
+    cur = read_vtk(vtk_cur_fname, props)  # the current solution
+    names = ['centers', 'cell_data', 'points', 'point_data']  # object names to be compared
+
+    rel_diff_tolerance = 1e-6
+    eps_div = 1e-15  # to avoid division by zero
+    ret_flag = 0
+    for n, r, c in zip(names, ref, cur):
+        if type(r) == dict: # cell_data is a dict, so check each item there
+            if len(r) == 0:  # point_data is empty, skip it
+                continue
+            ns, rs, cs = r.keys(), r.values(), c.values()  # dict to list
+        else:
+            ns, rs, cs =  [n], [r], [c]  # create a list just to have a loop below for both cases
+        for ni, ri, ci in zip(ns, rs, cs):
+            r1 = np.array(ri)
+            c1 = np.array(ci)
+            diff = np.fabs(r1 - c1) / (np.fabs(r1) + eps_div) # relative difference
+            diff_max = diff.max()
+            if diff_max > rel_diff_tolerance:
+                ret_flag = 1
+                print('There is a rel.difference', diff_max, 'for', ni)
+            else:
+                if verbose:
+                    print('Comparing', ni, 'diff', diff_max)
+    print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
+    return ret_flag
+
+
+def run_test(args: list = [], platform='cpu'):
+    if len(args) == 1:
+        return run_and_plot(config=args[0], compare_with_ref=True), 0.0
+    else:
+        print('Wrong number of arguments provided to the run_test:', args)
+        return 1, 0.0
 
 def read_pvd(filename):
     from xml.dom.minidom import parse
@@ -588,4 +639,4 @@ if __name__ == '__main__':
             plot_analytics = True
         else:
             plot_analytics = False
-        run_and_plot(config=case, plot_analytics=plot_analytics, compare_with_ref=False)
+        run_and_plot(config=case, plot_analytics=plot_analytics)

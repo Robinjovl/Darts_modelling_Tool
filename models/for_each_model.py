@@ -188,7 +188,8 @@ def run_tests(root_path, test_dirs=[], test_args=[], overwrite='0', platform='cp
             f.close()
             log_stream = redirect_all_output(log_file)
             starting_time = time.time()
-            p = Process(target=run_single_test, args=(dir, 'main', arg + [overwrite], ret_value, platform), )
+            arg_o = arg + [overwrite] if type(arg) == list else arg  # add overwrite [pkl] flag if a list
+            p = Process(target=run_single_test, args=(dir, 'main', arg_o, ret_value, platform), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
