@@ -96,7 +96,7 @@ class Model(CICDModel):
         phases = ['gas', 'oil', 'wat']
         components = ['g', 'o', 'w']
 
-        self.inj_stream = [1 - 2e-8, 1e-8]
+        self.inj_composition = [1 - 2e-8, 1e-8]
         # initial composition should be backtracked from saturations
         self.ini_stream = [0.001225901537, 0.7711341309]
 
@@ -141,7 +141,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=180., inj_stream=self.inj_stream)
+                                               is_inj=True, target=180., inj_composition=self.inj_composition)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=150.)
@@ -164,7 +164,7 @@ class Model(CICDModel):
             for i, w in enumerate(self.reservoir.wells):
                 if 'I' in w.name:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=175., inj_stream=self.inj_stream)
+                                                   is_inj=True, target=175., inj_composition=self.inj_composition)
                 else:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=125.)

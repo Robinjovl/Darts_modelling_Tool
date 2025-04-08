@@ -185,14 +185,14 @@ class Model(CICDModel):
             if self.well_is_inj(w.name):
                 if inj_rate is None:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=inj_bhp, inj_stream=[], inj_temp=inj_temp)
+                                                   is_inj=True, target=inj_bhp, inj_composition=[], inj_temp=inj_temp)
                 else:
                     # Control
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                   is_inj=True, target=inj_rate, phase_name='water', inj_stream=[], inj_temp=inj_temp)
+                                                   is_inj=True, target=inj_rate, phase_name='water', inj_composition=[], inj_temp=inj_temp)
                     # Constraint
                     self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=wctrl.inj_bhp_constraint, inj_stream=[],
+                                                   is_inj=True, target=wctrl.inj_bhp_constraint, inj_composition=[],
                                                    inj_temp=inj_temp)
             else:
                 if prod_rate is None:

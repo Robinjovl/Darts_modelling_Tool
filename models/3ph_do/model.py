@@ -47,7 +47,7 @@ class Model(CICDModel):
         components = ['g', 'o', 'w']
         phases = ['gas', 'oil', 'wat']
         Mw = [1, 1, 1]
-        self.inj_stream = [1 - 2 * zero, zero]
+        self.inj_composition = [1 - 2 * zero, zero]
         self.ini_stream = [0.05, 0.2 - zero]
 
         """ properties correlations """
@@ -85,7 +85,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=120., inj_stream=self.inj_stream)
+                                               is_inj=True, target=120., inj_composition=self.inj_composition)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=60.)

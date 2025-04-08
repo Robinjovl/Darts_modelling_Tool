@@ -91,8 +91,8 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=self.well_rate, phase_name='wat', inj_stream=self.inj[:-1],
-                                               inj_temp=self.inj[-1])
+                                               is_inj=True, target=self.well_rate, phase_name='wat',
+                                               inj_composition=self.inj[:-1], inj_temp=self.inj[-1])
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=False, target=-self.well_rate, phase_name='wat')

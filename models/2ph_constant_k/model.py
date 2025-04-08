@@ -50,7 +50,7 @@ class Model(DartsModel):
                 self.physics.vars[0]: self.p_init,
                 **{self.physics.vars[i + 1]: self.ini_comp[i] for i in range(len(self.physics.vars) - 1)} }
         
-        self.inj_stream = self.inj_comp[:self.physics.nc-1]
+        self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
 
     def set_reservoir(self):
@@ -292,12 +292,12 @@ class Model(DartsModel):
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
             self.physics.set_well_controls(well=injector, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                           is_inj=True, target=1., phase_name='gas', inj_stream=self.inj_stream)
+                                           is_inj=True, target=1., phase_name='gas', inj_composition=self.inj_composition)
             self.physics.set_well_controls(well=producer, is_control=True, control_type=well_control_iface.BHP,
                                            is_inj=False, target=50.)
         elif self.reservoir_type == '2D':
             self.physics.set_well_controls(well=injector, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                           is_inj=True, target=300., phase_name='gas', inj_stream=self.inj_stream)
+                                           is_inj=True, target=300., phase_name='gas', inj_composition=self.inj_composition)
             self.physics.set_well_controls(well=producer, is_control=True, control_type=well_control_iface.BHP,
                                            is_inj=False, target=50.)
 

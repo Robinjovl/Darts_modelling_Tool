@@ -100,7 +100,7 @@ class Model(CICDModel):
             if i == 0:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=True, target=205, phase_name='water',
-                                               inj_stream=[], inj_temp=300.)
+                                               inj_composition=[], inj_temp=300.)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=195., phase_name='water')

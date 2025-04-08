@@ -59,14 +59,14 @@ class ModelGeothermal(Model_CPG):
                     # Control
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                    is_inj=True, target=wctrl.rate, phase_name='water',
-                                                   inj_stream=[], inj_temp=wctrl.inj_bht)
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
                     # Constraint
                     self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=wctrl.bhp_constraint,
-                                                   inj_stream=[], inj_temp=wctrl.inj_bht)
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
                 elif wctrl.mode == 'bhp': # BHP control
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=wctrl.bhp, inj_stream=[],
+                                                   is_inj=True, target=wctrl.bhp, inj_composition=[],
                                                    inj_temp=wctrl.inj_bht)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)

@@ -158,7 +158,7 @@ class Model(CICDModel):
                                                is_inj=False, target=self.p_init-10.)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=self.p_init+10., inj_stream=self.inj[:-1],
+                                               is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
                                                inj_temp=self.inj[-1])
 
 

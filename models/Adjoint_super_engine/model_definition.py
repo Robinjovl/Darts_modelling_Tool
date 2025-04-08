@@ -94,7 +94,7 @@ class Model(CICDModel, OptModuleSettings):
         Mw = [44.01, 16.04, 18.015]
         nc = len(components)
 
-        self.inj_stream = [1.0 - 2 * zero, zero]
+        self.inj_composition = [1.0 - 2 * zero, zero]
         self.ini_stream = [0.1, 0.2]
 
         """ properties correlations """
@@ -131,7 +131,7 @@ class Model(CICDModel, OptModuleSettings):
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=140., inj_stream=self.inj_stream)
+                                               is_inj=True, target=140., inj_composition=self.inj_composition)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
@@ -195,10 +195,10 @@ class Model(CICDModel, OptModuleSettings):
             for i, w in enumerate(self.reservoir.wells):
                 if "I1" in w.name:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                                   is_inj=True, target=40., phase_name='gas', inj_stream=self.inj_stream)
+                                                   is_inj=True, target=40., phase_name='gas', inj_composition=self.inj_composition)
                 elif "I" in w.name:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=140., inj_stream=self.inj_stream)
+                                                   is_inj=True, target=140., inj_composition=self.inj_composition)
                 else:
                     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=50.)

@@ -147,7 +147,8 @@ class Model(CICDModel, OptModuleSettings):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=self.init_pressure + 30., inj_stream=[], inj_temp=308.15)
+                                               is_inj=True, target=self.init_pressure + 30., inj_composition=[],
+                                               inj_temp=308.15)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=self.init_pressure - 10.)

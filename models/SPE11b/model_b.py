@@ -553,7 +553,7 @@ class Model(DartsModel):
                                                    is_inj = True,
                                                    target = 0.01,
                                                    phase_name = 'V',
-                                                   inj_stream = self.inj_stream[:-1],
+                                                   inj_composition = self.inj_stream[:-1],
                                                    inj_temp = 273.15+T_inj)
                 
                 else:
@@ -563,7 +563,7 @@ class Model(DartsModel):
                                                    is_inj = True,
                                                    target = self.inj_rate[i],
                                                    phase_name = 'V',
-                                                   inj_stream = self.inj_stream[:-1],
+                                                   inj_composition = self.inj_stream[:-1],
                                                    inj_temp = 273.15 + T_inj)
                     
                     print(f'Set well {w.name} to {self.inj_rate[i]} kg/day at 10°C')

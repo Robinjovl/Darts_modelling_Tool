@@ -256,7 +256,7 @@ class Model(THMCModel):
                 inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
             self.physics.set_well_controls(well=self.reservoir.wells[1], is_control=True,
                                            control_type=well_control_iface.MOLAR_RATE,
-                                           is_inj=True, target=0., phase_name='wat', inj_stream=inj, inj_temp=inj_temp)
+                                           is_inj=True, target=0., phase_name='wat', inj_composition=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         """
@@ -282,7 +282,7 @@ class Model(THMCModel):
                     inj = [1.0 - self.idata.obl.zero]
                     inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - 25
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=np.max(p_cell) + 50., inj_stream=inj,
+                                               is_inj=True, target=np.max(p_cell) + 50., inj_composition=inj,
                                                inj_temp=inj_temp)
         return 0
 

@@ -48,7 +48,7 @@ class Model(CICDModel):
     def set_physics(self, idata: InputData):
         self.physics = BlackOil(idata, self.timer, thermal=False)
         zero = 1e-12
-        self.inj_stream = [1 - 2 * zero, zero]
+        self.inj_composition = [1 - 2 * zero, zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
 
     def set_initial_conditions(self):
@@ -64,7 +64,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=400., inj_stream=self.inj_stream)
+                                               is_inj=True, target=400., inj_composition=self.inj_composition)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=70.)

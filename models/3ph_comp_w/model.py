@@ -50,7 +50,7 @@ class Model(CICDModel):
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        self.inj_stream = [1.0 - 2 * zero, zero, zero]
+        self.inj_composition = [1.0 - 2 * zero, zero, zero]
         self.ini_stream = [0.1, 0.2, 0.6 - zero]
 
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)
@@ -90,7 +90,7 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=20., phase_name='gas', inj_stream=self.inj_stream)
+                                               is_inj=True, target=20., phase_name='gas', inj_composition=self.inj_composition)
             else:
                 self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
