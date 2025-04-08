@@ -238,7 +238,7 @@ class PhysicsBase:
         return
 
     def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
-                          target: float, phase_name: str = None, inj_stream: list = None, inj_temp: float = None,
+                          target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None,
                           is_control: bool = True):
         """
         Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
@@ -250,12 +250,12 @@ class PhysicsBase:
         :param is_inj: Is injection well (true) or production well (false)
         :param target: Target BHP or rate, consistent with well control type
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
-        :param inj_stream: Composition of the injected phase. This input is required if it is an injection well.
+        :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
         :param is_control: Is control (true) or constraint (false), default is true
         """
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
-        inj_stream = value_vector(inj_stream) if inj_stream is not None else value_vector(
+        inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(
             np.zeros(self.nc - 1))  # for BHP controlled production well, pass dummy variables
         inj_temp = inj_temp if inj_temp is not None else 0.  # for isothermal case or production well, pass dummy variables
         phase_idx = self.phases.index(
@@ -264,17 +264,17 @@ class PhysicsBase:
         # Pass controls specification to ms_well object
         if control_type == well_control_iface.BHP:
             if is_control:
-                well.set_bhp_control(is_inj, target, inj_stream, inj_temp)
+                well.set_bhp_control(is_inj, target, inj_composition, inj_temp)
             else:
-                well.set_bhp_constraint(is_inj, target, inj_stream, inj_temp)
+                well.set_bhp_constraint(is_inj, target, inj_composition, inj_temp)
         else:
             # Injection/production rate
             target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
 
             if is_control:
-                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
             else:
-                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_stream, inj_temp)
+                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
 
         return
 
