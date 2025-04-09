@@ -436,7 +436,7 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
         elif analytics == 'slip_weakening':
             names = slip_weakening_names
 
-        df = pd.read_excel('Data_GGGG_NovikovEtAl2024.xlsx')
+        df = pd.read_excel('Data_GGGG_NovikovEtAl2024_corrected.xlsx')
         df['identifier'] = df.iloc[:, 0].astype(str) + df.iloc[:, 1].astype(str)
 
         analytical_data = {}
