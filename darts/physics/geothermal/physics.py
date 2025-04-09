@@ -179,10 +179,10 @@ class Geothermal(PhysicsBase):
                                    and each entry is scalar or array of length equal to number of cells
         """
         for variable, values in input_distribution.items():
-            if not np.isscalar(values) and not len(values) == mesh.n_blocks:
+            if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
                 warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
-                              format(variable, len(values), mesh.n_blocks))
-                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_blocks)
+                              format(variable, len(values), mesh.n_res_blocks))
+                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_res_blocks)
 
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
