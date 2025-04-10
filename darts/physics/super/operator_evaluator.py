@@ -46,6 +46,7 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
+        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("POROSITY", values[self.PORO_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
