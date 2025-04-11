@@ -295,10 +295,6 @@ class Model(DartsModel):
         elif self.reservoir_type == '2D':
             injector.control = self.physics.new_rate_inj(300., self.inj_stream, 0)
             producer.control = self.physics.new_bhp_prod(50.)
-        # else:
-        #     injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-        #     p_ref = np.asarray(self.reservoir.mesh.pressure).min()
-        #     producer.control = self.physics.new_bhp_prod(p_ref - 50.)
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
