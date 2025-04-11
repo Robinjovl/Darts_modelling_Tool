@@ -50,7 +50,7 @@ class Model_CPG(CICDModel):
                                property_dictionary=arrays,
                                burden_layer_prop_value=self.idata.rock.burden_prop)
 
-        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv, faultfile=self.idata.geom.faultfile)
         self.reservoir.discretize()
 
         # store modified arrrays (with burden layers) for output to grdecl
