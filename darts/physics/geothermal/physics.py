@@ -147,7 +147,7 @@ class Geothermal(PhysicsBase):
         depths = np.asarray(mesh.depth)
 
         # adjust the size of initial_state array in c++
-        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
         # Loop over variables to fill initial_state vector in c++
         for ith_var, variable in enumerate(self.vars):
@@ -159,8 +159,8 @@ class Geothermal(PhysicsBase):
                 t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
                 temperature = t_itor(depths)
 
-                values = np.empty(mesh.n_blocks)
-                for j in range(mesh.n_blocks):
+                values = np.empty(mesh.n_res_blocks)
+                for j in range(mesh.n_res_blocks):
                     state = np.array([pressure[j], temperature[j]])
                     values[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
             else:
@@ -181,23 +181,23 @@ class Geothermal(PhysicsBase):
         for variable, values in input_distribution.items():
             if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
                 warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
-                              format(variable, len(values), mesh.n_res_blocks))
+                              format(variable, len(values), mesh.n_res_blocks), stacklevel=2)
                 input_distribution[variable] = np.resize(np.asarray(values), mesh.n_res_blocks)
 
         # adjust the size of initial_state array in c++
-        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
 
         # interpolate pressure and temperature to compute enthalpies
-        enthalpy = np.empty(mesh.n_blocks)
+        enthalpy = np.empty(mesh.n_res_blocks)
         if 'enthalpy' in input_distribution.keys():
-            enth = np.ones(mesh.n_blocks) * input_distribution['enthalpy'] if not np.isscalar(input_distribution['enthalpy']) else input_distribution['enthalpy']
+            enth = np.ones(mesh.n_res_blocks) * input_distribution['enthalpy'] if not np.isscalar(input_distribution['enthalpy']) else input_distribution['enthalpy']
             enthalpy[:] = enth
         elif not np.isscalar(input_distribution['pressure']):
             # Pressure specified as an array
-            for j in range(mesh.n_blocks):
+            for j in range(mesh.n_res_blocks):
                 state = value_vector([input_distribution['pressure'][j], 0])
                 temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
                 enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
