@@ -275,20 +275,12 @@ public:
                                         
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
-  /// [n_blocks] array of initial pressure values
-  std::vector<value_t> pressure;     
   /// [n_blocks] array of reference pressure values
   std::vector<value_t> ref_pressure;
   /// [n_blocks] array of reference temperature values
   std::vector<value_t> ref_temperature;
   /// [n_blocks] array of reference volumetric strain
   std::vector<value_t> ref_eps_vol;
-  /// [n_blocks] array of initial composition values                        
-  std::vector<value_t> composition;     
-  /// [n_blocks] array of initial temperature values                          
-  std::vector<value_t> temperature;     
-  /// [n_blocks] array of initial enthalpy values                        
-  std::vector<value_t> enthalpy;      
   /// [n_dim * n_blocks] array of initial displacements values
   std::vector<value_t> displacement;
   /// [(1 + n_dim) * n_bounds] array of boundary conditions

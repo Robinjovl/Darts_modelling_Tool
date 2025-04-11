@@ -32,10 +32,6 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   poro.resize(n_blocks);
   volume.resize(n_blocks);
   initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
   op_num.assign(n_blocks, 0);
   depth.assign(n_blocks, 0);
   heat_capacity.assign(n_blocks, 0);
@@ -79,10 +75,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
     poro.resize(n_blocks);
     volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-    pressure.resize(n_blocks);
-    composition.resize(n_blocks);
-    temperature.resize(n_blocks);
-    enthalpy.resize(n_blocks);
     op_num.assign(n_blocks, 0);
     depth.assign(n_blocks + n_bounds, 0);
     heat_capacity.assign(n_blocks, 0);
@@ -130,10 +122,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
 	op_num.assign(n_blocks, 0);
 	depth.assign(n_blocks + n_bounds, 0);
 	heat_capacity.assign(n_blocks, 0);
@@ -180,10 +168,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
 	op_num.assign(n_blocks, 0);
 	depth.assign(n_blocks + n_bounds, 0);
 	heat_capacity.assign(n_blocks, 0);
@@ -303,10 +287,6 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
 	displacement.resize(3 * n_blocks);
 	op_num.assign(n_blocks, 0);
 	depth.assign(n_blocks, 0);
@@ -354,12 +334,8 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
 	ref_pressure.resize(n_blocks);
 	ref_eps_vol.resize(n_matrix);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
 	displacement.resize(3 * n_blocks);
 	op_num.assign(n_blocks, 0);
 	depth.assign(n_blocks + n_bounds, 0);
@@ -412,12 +388,8 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	poro.resize(n_blocks);
 	volume.resize(n_blocks);
 	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
 	ref_pressure.resize(n_blocks);
 	ref_eps_vol.resize(n_matrix);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
 	displacement.resize(3 * n_blocks);
 	op_num.assign(n_blocks, 0);
 	depth.assign(n_blocks + n_bounds, 0);
@@ -473,12 +445,8 @@ conn_mesh::init_pm_mech_discretizer(
   poro.resize(n_blocks);
   volume.resize(n_blocks);
   initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
   ref_pressure.resize(n_blocks, 0.0);
   ref_eps_vol.resize(n_matrix, 0.0);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
   displacement.resize(3 * n_blocks);
   op_num.assign(n_blocks, 0);
   depth.assign(n_blocks + n_bounds, 0);
@@ -538,13 +506,9 @@ conn_mesh::init_pme_mech_discretizer(
   poro.resize(n_blocks);
   volume.resize(n_blocks);
   initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
   ref_pressure.resize(n_blocks, 0.0);
   ref_temperature.resize(n_blocks, 0.0);
   ref_eps_vol.resize(n_matrix, 0.0);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
   displacement.resize(3 * n_blocks);
   op_num.assign(n_blocks, 0);
   depth.assign(n_blocks + n_bounds, 0);
@@ -1891,11 +1855,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   volume.resize(well_head_idx);
   poro.resize(well_head_idx);
   initial_state.resize(well_head_idx * n_vars);
-  pressure.resize(well_head_idx);
-  temperature.resize(well_head_idx);
-  enthalpy.resize(well_head_idx);
-  int nc_1 = composition.size() / n_blocks;
-  composition.resize(well_head_idx * nc_1);
   op_num.resize(well_head_idx);
   depth.resize(well_head_idx + n_bounds);
 
@@ -1920,12 +1879,9 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
         int w_i = wells[iw]->well_head_idx + p;
         // copy properties for the well blocks from the reservoir blocks
-        pressure[w_i] = pressure[r_i];
-        temperature[w_i] = temperature[r_i];
         rock_cond[w_i] = rock_cond[r_i];
         // depth of well segments
         depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-        std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
       }
     }
   }
@@ -1969,11 +1925,6 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	volume.resize(volume.size() + dofs_num);
 	poro.resize(poro.size() + dofs_num);
 	initial_state.resize(initial_state.size() + dofs_num * n_vars);
-	pressure.resize(pressure.size() + dofs_num);
-	temperature.resize(temperature.size() + dofs_num);
-	enthalpy.resize(enthalpy.size() + dofs_num);
-	int nc_1 = composition.size() / n_blocks;
-	composition.resize(composition.size() + dofs_num * nc_1);
 	op_num.resize(op_num.size() + dofs_num);
 	//depth.resize(depth.size() + dofs_num);
 	if (displacement.size())
@@ -2033,11 +1984,8 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 			{
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
 				int w_i = wells[iw]->well_head_idx + p;
-				pressure[w_i] = pressure[r_i];
-				temperature[w_i] = temperature[r_i];
 				// depth of well segments
 				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-				std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
 			}
 		}
 	}
