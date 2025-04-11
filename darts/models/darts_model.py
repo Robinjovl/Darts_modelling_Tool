@@ -243,10 +243,6 @@ class DartsModel:
 
         self.reservoir.mesh.composition.resize(self.reservoir.mesh.n_blocks * (self.physics.nc - 1))
 
-        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
-            assert hasattr(self, 'wells_initial_conditions'), \
-                "Initial conditions of the multi-segmented well/wells are not defined!"
-
         for i, variable in enumerate(self.physics.vars):
             # Check if variable exists in initial values dictionary
             if variable not in initial_values.keys():
@@ -278,6 +274,26 @@ class DartsModel:
                 # Else, assign constant value to each cell in array
                 values.fill(initial_value)
 
+        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
+            self.set_initial_conditions_DFM_wells()
+
+        return
+
+    def set_initial_conditions_DFM_wells(self):
+        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
+            assert hasattr(self, 'wells_initial_conditions'), \
+                "Initial conditions of the multi-segmented well/wells are not defined!"
+
+        for i, variable in enumerate(self.physics.vars):
+            if variable == 'pressure':
+                values = np.array(self.reservoir.mesh.pressure, copy=False)
+            elif variable == 'temperature':
+                values = np.array(self.reservoir.mesh.temperature, copy=False)
+            elif variable == 'enthalpy':
+                values = np.array(self.reservoir.mesh.enthalpy, copy=False)
+            else:
+                values = np.array(self.reservoir.mesh.composition, copy=False)
+
             start_w_idx = self.reservoir.mesh.n_res_blocks
             end_w_idx = start_w_idx
             start_ms_w_idx = 0
@@ -296,7 +312,9 @@ class DartsModel:
                         values[start_w_idx:end_w_idx] = wells_initial_temperature_profile[start_ms_w_idx:end_ms_w_idx]
                     elif variable not in ['pressure', 'temperature']:
                         wells_initial_c_mole_fraction_profile = self.wells_initial_conditions['initial_' + variable + '_mole_fraction']
-                        values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[start_ms_w_idx:end_ms_w_idx]
+                        c = i - 1
+                        values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(
+                                self.physics.nc - 1)] = wells_initial_c_mole_fraction_profile[start_ms_w_idx:end_ms_w_idx]
 
                 start_w_idx = end_w_idx
                 start_ms_w_idx += well.num_segments
@@ -304,8 +322,7 @@ class DartsModel:
             # Add the conditions of the wellhead for when the wellhead of the well has a large volume
             if hasattr(self.reservoir, "large_wellhead_volume"):
                 for w in self.reservoir.wells:
-                    if w.name in self.reservoir.large_wellhead_volume and self.reservoir.large_wellhead_volume[
-                        w.name].get("flag", False):
+                    if w.name in self.reservoir.large_wellhead_volume and self.reservoir.large_wellhead_volume[w.name].get("flag", False):
                         required_keys = ["pressure", "composition"]
                         required_keys += ["temperature"] if self.physics.thermal is True else []
                         assert all(key in self.reservoir.large_wellhead_volume[w.name] for key in
@@ -317,8 +334,7 @@ class DartsModel:
                             values[w.well_head_idx] = self.reservoir.large_wellhead_volume[w.name]["temperature"]
                         else:
                             values[w.well_head_idx * (self.physics.nc - 1):w.well_head_idx * (
-                                        self.physics.nc - 1) + self.physics.nc - 1] = \
-                                self.reservoir.large_wellhead_volume[w.name]["composition"]
+                                    self.physics.nc - 1) + self.physics.nc - 1] = self.reservoir.large_wellhead_volume[w.name]["composition"]
 
         return
 
