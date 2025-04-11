@@ -48,7 +48,8 @@ class Geothermal(PhysicsBase):
         # Define OBL axes
         self.axes_min = value_vector([min_p, min_e])
         self.axes_max = value_vector([max_p, max_e])
-        self.min_t, self.max_t = 273.15, 273.15 + 300.
+        self.PT_axes_min = value_vector([min_p, 273.15])
+        self.PT_axes_max = value_vector([max_p, 273.15 + 300.])
         n_axes_points = index_vector([n_points] * len(variables))
 
         # Define number of operators:
@@ -64,10 +65,8 @@ class Geothermal(PhysicsBase):
                              min_t: float = None, max_t: float = None,
                              state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH):
         """
-        Overload determine_obl_bounds() method to hardcode OBL axes of enthalpy
+        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for WellInitOperators
         """
-        self.PT_axes_min = value_vector([min_p, self.min_t])
-        self.PT_axes_max = value_vector([max_p, self.max_t])
         return self.axes_min, self.axes_max
 
     def set_operators(self):
