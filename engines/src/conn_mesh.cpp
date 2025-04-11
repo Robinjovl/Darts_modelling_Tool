@@ -30,7 +30,6 @@ conn_mesh::init_const_1d(double trans_const, index_t nb)
   n_blocks = nb;
 
   n_res_blocks = n_blocks;
-  n_res_well_blocks = n_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
@@ -104,7 +103,6 @@ conn_mesh::init (std::string conn2p_filename)
     n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
     n_res_blocks = n_blocks;
-    n_res_well_blocks = n_blocks;
     n_one_way_conns = n_conns;
     n_one_way_conns_res = n_conns;
 
@@ -150,7 +148,6 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
   n_res_blocks = n_blocks;
-  n_res_well_blocks = n_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
@@ -198,7 +195,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	n_bounds = _n_bounds;
 
     n_res_blocks = n_blocks;
-    n_res_well_blocks = n_blocks;
     n_one_way_conns = n_conns;
     n_one_way_conns_res = n_conns;
 
@@ -250,7 +246,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	n_bounds = _n_bounds;
 
 	n_res_blocks = n_blocks;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -301,7 +296,6 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	n_bounds = _n_bounds;
 
 	n_res_blocks = n_blocks;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -348,7 +342,6 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	n_bounds = _n_bounds;
 	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -388,7 +381,6 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	n_bounds = _n_bounds;
 	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -427,7 +419,6 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_fracs = _n_fracs;
 	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -479,7 +470,6 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_fracs = _n_fracs;
 	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -538,7 +528,6 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_fracs = _n_fracs;
 	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
@@ -600,7 +589,6 @@ conn_mesh::init_pm_mech_discretizer(
   n_fracs = _n_fracs;
   n_blocks = n_matrix + n_fracs;
   n_res_blocks = n_matrix + n_fracs;
-  n_res_well_blocks = n_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
@@ -666,7 +654,6 @@ conn_mesh::init_pme_mech_discretizer(
   n_fracs = _n_fracs;
   n_blocks = n_matrix + n_fracs;
   n_res_blocks = n_matrix + n_fracs;
-  n_res_well_blocks = n_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 

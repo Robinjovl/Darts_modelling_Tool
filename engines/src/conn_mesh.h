@@ -47,7 +47,6 @@ public:
 
 public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)
-  index_t n_res_well_blocks;                                // number of reservoir and well blocks in the mesh   (R+W)
   index_t n_blocks;                                         // number of all blocks in the mesh including ghost  (R+W+G)
   index_t n_conns;                                          // number of connections between the blocks
   index_t n_perfs;                                          // number of well perforations
