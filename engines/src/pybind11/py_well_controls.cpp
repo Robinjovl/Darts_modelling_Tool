@@ -86,8 +86,6 @@ public:
 #endif
 void pybind_well_controls(py::module &m)
 {
-#if 1
-
   py::class_<well_control_iface, py_well_control_iface /* <--- trampoline*/> well_control_iface(m, "well_control_iface");
   well_control_iface
     .def(py::init<index_t, index_t, bool, operator_set_gradient_evaluator_iface*, operator_set_gradient_evaluator_iface*>())
@@ -105,85 +103,6 @@ void pybind_well_controls(py::module &m)
     .value("VOLUMETRIC_RATE", well_control_iface::WellControlType::VOLUMETRIC_RATE)
     .value("ADVECTIVE_HEAT_RATE", well_control_iface::WellControlType::ADVECTIVE_HEAT_RATE)
 	.export_values();
-
-#endif
-
-  // py::class_<well_controls>(m, "well_controls", well_control_iface)
-  //   .def(py::init<std::string, operator_set_gradient_evaluator_iface*>())
-  //   ;
-
-#if 0
-  //  py::class_<bhp_inj_well_control>(m, "bhp_inj_well_control", well_control_iface)
-  py::class_<bhp_inj_well_control>(m, "bhp_inj_well_control", well_control_iface)
-    .def(py::init<value_t, std::vector<value_t> &>())
-    .def_readwrite("injection_stream", &bhp_inj_well_control::injection_stream)
-    .def_readwrite("target_pressure", &bhp_inj_well_control::target_pressure);
-
-  py::class_<bhp_prod_well_control>(m, "bhp_prod_well_control", well_control_iface)
-    .def(py::init<value_t>())
-    .def_readwrite("target_pressure", &bhp_prod_well_control::target_pressure);
-
-  py::class_<rate_inj_well_control>(m, "rate_inj_well_control", well_control_iface)
-    .def(py::init<std::vector <std::string>, std::string, index_t, index_t, index_t,
-         value_t, std::vector <value_t> &,
-         operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 9>())
-    .def_readwrite("injection_stream", &rate_inj_well_control::injection_stream)
-    .def_readwrite("target_rate", &rate_inj_well_control::target_rate);
-
-  py::class_<rate_inj_well_control_mass_balance>(m, "rate_inj_well_control_mass_balance", well_control_iface)
-    .def(py::init<std::vector <std::string>, index_t, index_t, index_t,
-         value_t, std::vector <value_t> &,
-         operator_set_evaluator_iface*, operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 8>(), py::keep_alive<1, 9>())
-    .def_readwrite("injection_stream", &rate_inj_well_control_mass_balance::injection_stream)
-    .def_readwrite("target_rate", &rate_inj_well_control_mass_balance::target_rate);
-
-  py::class_<rate_prod_well_control>(m, "rate_prod_well_control", well_control_iface)
-    .def(py::init<std::vector <std::string>, std::string, index_t, index_t, index_t,
-         value_t, 
-         operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 8>())
-    .def_readwrite("target_rate", &rate_prod_well_control::target_rate);
-
-
-  py::class_<rate_prod_well_control_mass_balance>(m, "rate_prod_well_control_mass_balance", well_control_iface)
-    .def(py::init<std::vector <std::string>, index_t, index_t, index_t,
-         value_t, 
-         operator_set_evaluator_iface*, operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 7>(), py::keep_alive<1, 8>())
-    .def_readwrite("target_rate", &rate_prod_well_control_mass_balance::target_rate);
-
-  py::class_<gt_bhp_temp_inj_well_control>(m, "gt_bhp_temp_inj_well_control", well_control_iface)
-	.def(py::init<std::vector<std::string>, index_t, value_t, value_t, std::vector<value_t>, operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 2>(), py::keep_alive<1, 3>(), py::keep_alive<1, 4>(), py::keep_alive<1, 5>())
-    .def_readwrite("target_temperature", &gt_bhp_temp_inj_well_control::target_temperature)
-	.def_readwrite("target_pressure", &gt_bhp_temp_inj_well_control::target_pressure);
-
-  py::class_<gt_bhp_prod_well_control>(m, "gt_bhp_prod_well_control", well_control_iface)
-	.def(py::init<value_t>(), py::keep_alive<1, 2>())
-	.def_readwrite("target_pressure", &gt_bhp_prod_well_control::target_pressure);
-
-  py::class_<gt_rate_temp_inj_well_control>(m, "gt_rate_temp_inj_well_control", well_control_iface)
-	  .def(py::init<std::vector <std::string>, index_t, index_t,
-		  value_t, value_t, std::vector <value_t>&,
-		  operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 8>())
-	  .def_readwrite("target_rate", &gt_rate_temp_inj_well_control::target_rate)
-	  .def_readwrite("target_temperature", &gt_rate_temp_inj_well_control::target_temperature);
-
-  py::class_<gt_rate_prod_well_control>(m, "gt_rate_prod_well_control", well_control_iface)
-	  .def(py::init<std::vector<std::string>, index_t, index_t, value_t,
-		  operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 6>())
-	  .def_readwrite("target_rate", &gt_rate_prod_well_control::target_rate);
-
-  py::class_<gt_mass_rate_enthalpy_inj_well_control>(m, "gt_mass_rate_enthalpy_inj_well_control", well_control_iface)
-	  .def(py::init<std::vector <std::string>, index_t, index_t, std::vector <value_t>,
-		  value_t, value_t, 
-		  operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 8>())
-	  .def_readwrite("target_rate", &gt_mass_rate_enthalpy_inj_well_control::target_rate)
-	  .def_readwrite("target_enthalpy", &gt_mass_rate_enthalpy_inj_well_control::target_enthalpy);
-
-  py::class_<gt_mass_rate_prod_well_control>(m, "gt_mass_rate_prod_well_control", well_control_iface)
-	  .def(py::init<std::vector<std::string>, index_t, index_t, value_t,
-		  operator_set_gradient_evaluator_iface*>(), py::keep_alive<1, 6>())
-	  .def_readwrite("target_rate", &gt_mass_rate_prod_well_control::target_rate);
-
-#endif
 }
 
 #endif //PYBIND11_ENABLED
