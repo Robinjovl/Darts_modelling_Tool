@@ -15,13 +15,7 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-
-  int init_poro (std::string poro_filename);                // init mesh porosity by reading PORO keyword file
-
   int init_grav_coef(value_t grav_const = 9.80665e-5);      // discretize ms wells into reservoir
-
-  int save_keyword_compressed (std::string filename, 
-    std::string keyword, value_t* data, index_t length);    // dump keyword in compressed (like 2*50 3*100) format
 
   int get_res_tran(std::vector<value_t> &res_tran, 
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part
@@ -32,18 +26,6 @@ public:
   int get_wells_tran(std::vector<value_t> &wells_tran);     // get trans for wells part (well indexes)
 
   int set_wells_tran(std::vector<value_t> &wells_tran);     // set trans for wells part (well indexes)
-
-  int save_volume (std::string filename);                   // dump VOLUME
-  int save_poro (std::string filename);                     // dump PORO
-
-  int save_pressure (std::string filename);                 // dump PRESSURE
-  int save_zmf (std::string filename);                      // dump ZMF
-  int save_temperature (std::string filename);              // dump TEMPERATURE
-  int save_enthalpy (std::string filename);                 // dump ENTHALPY
-
-  int save_wells (std::string filename, 
-    std::vector <block_well> &well_list, 
-    sim_params &params);                                    // dump wells and timestepping params
 
 public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)
@@ -66,9 +48,6 @@ public:
    *  Parameters and methods in mesh class exposed to Python
    *  @{
    */
-
-  /// @brief init mesh by reading TPFACONNS keyword file
-  int init(std::string conn2p_filename);                   
 
   /// @brief init mesh by reading array of left/right neighbours 
   int init(std::vector<index_t> &block_m,
