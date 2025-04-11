@@ -46,7 +46,6 @@ void pybind_mesh_conn(py::module &m)
 		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&,
 		std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, 
 		index_t, index_t, index_t)) & conn_mesh::init_pme_mech_discretizer)
-	  .def("init_const_1d", &conn_mesh::init_const_1d)
 	  .def("add_conn", &conn_mesh::add_conn)
 	  //.def("add_conn_mpfa", &conn_mesh::add_conn_mpfa)
 	  .def("reverse_and_sort", &conn_mesh::reverse_and_sort)

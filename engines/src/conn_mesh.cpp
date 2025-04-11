@@ -10,54 +10,6 @@
 
 using namespace std;
 int
-conn_mesh::init_const_1d(double trans_const, index_t nb)
-{
-  n_conns = nb-1;
-
-  one_way_block_m.resize(n_conns);
-  one_way_block_p.resize(n_conns);
-  one_way_tran.resize(n_conns);
-  one_way_tranD.resize(n_conns);
-
-  for (index_t i = 0; i < n_conns; ++i)
-  {
-    one_way_block_m[i] = i;
-    one_way_block_p[i] = i + 1;
-    one_way_tran[i] = trans_const;
-    one_way_tranD[i] = trans_const;
-  }
-
-  n_blocks = nb;
-
-  n_res_blocks = n_blocks;
-  n_one_way_conns = n_conns;
-  n_one_way_conns_res = n_conns;
-
-  poro.resize(n_blocks);
-  volume.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
-  op_num.assign(n_blocks, 0);
-  depth.assign(n_blocks, 0);
-  // thermal properties
-  heat_capacity.assign(n_blocks, 0);
-  rock_cond.assign(n_blocks, 0);
-
-  // kinetic property
-  kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
-
-  // mobility multiplier
-  mob_multiplier.assign(n_blocks * 2, 1);   // assume two phases present and default multiplier 1
-
-  return 0;
-
-}
-
-using namespace std;
-int
 conn_mesh::init (std::string conn2p_filename)
 {
   string tmpString;

@@ -186,9 +186,6 @@ public:
 	std::vector<value_t>& _fourier,
 	index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
 
-  /// @brief init mesh for 1D reservoir with 'nb' blocks
-  int init_const_1d(double trans_const, index_t nb);     
-
   /// @brief add a new connection to connection list
   int add_conn(index_t block_m, index_t block_p,
     value_t trans, value_t transD);
