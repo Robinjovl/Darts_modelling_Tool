@@ -56,8 +56,6 @@ void pybind_operator_set_interpolator_super(py::module &m)
     /*  engine_super_elastic_*
         N_OPS = NC * (2 * NP + 2) + 4 * NP + 4
     */
-    ABPair<2, 0>,     // poroelasticity, single-component problem
-
     // NP = 1: A =  4, B =  8
     ABPair<4, 8>,     // poroelasticity, single-phase
 
