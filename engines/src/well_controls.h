@@ -66,10 +66,10 @@ public:
   std::string get_well_control_type_str();
 
   virtual int add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-	  index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
+	  uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS);
   
   virtual int check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
-    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
+    uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X);
 
   virtual int initialize_well_block(std::vector<value_t>& state_block, const std::vector<value_t>& state_neighbour);
 };

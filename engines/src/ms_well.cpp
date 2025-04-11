@@ -16,7 +16,7 @@ using namespace opendarts::linear_solvers;
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
   if (constraint.get_well_control_type() < well_control_iface::WellControlType::NONE)
-    if (constraint.check_constraint_violation(dt, well_head_idx, segment_transmissibility, n_vars, n_block_size, P_VAR, X))
+    if (constraint.check_constraint_violation(dt, well_head_idx, segment_transmissibility, n_block_size, P_VAR, X))
     {
       // constraint violation occured, switch control and constrain
       std::swap(control, constraint);
@@ -30,7 +30,7 @@ int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 int ms_well::add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS)
 {
 
-  control.add_to_jacobian(dt, well_head_idx, segment_transmissibility, n_vars, n_block_size, P_VAR, X, jac_well_head, RHS);
+  control.add_to_jacobian(dt, well_head_idx, segment_transmissibility, n_block_size, P_VAR, X, jac_well_head, RHS);
 
   return 0;
 }

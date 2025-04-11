@@ -75,9 +75,8 @@ std::string well_control_iface::get_well_control_type_str()
 }
 
 int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value_t segment_trans,
-                                  	    index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
+                                  	    uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t> &X, value_t *jacobian_row, std::vector<value_t> &RHS)
 {
-  (void) n_state_size;
   // n_vars is number of flow variables
   // n_block_size is size of block which includes flow and mechanics variables
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
@@ -169,9 +168,8 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 }
 
 int well_control_iface::check_constraint_violation(value_t dt, index_t well_head_idx, value_t segment_trans, 
- 										     	   index_t n_state_size, uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
+ 										     	   uint8_t n_block_size, uint8_t P_VAR, std::vector<value_t>& X)
 {
-  (void) n_state_size;
   value_t *X_well_head = &X[n_block_size * well_head_idx + P_VAR];
   value_t *X_well_body = X_well_head + n_block_size;
   value_t p_diff = X_well_head[0] - X_well_body[0];
@@ -214,7 +212,7 @@ int well_control_iface::initialize_well_block(std::vector<value_t>& state_block,
 	else
 	{
 		// Rate-controlled: initialize with pressure of neighbouring cell ensuring the correct flow direction
-		target_state[0] = (this->target > 0.) ? state_neighbour[0] * 1.01 : state_neighbour[0] * 0.99;
+		target_state[0] = (this->target > 0.) ? state_neighbour[0] + 0.001 : state_neighbour[0] * 0.99;
 	}
 
 	// Other state specifications
