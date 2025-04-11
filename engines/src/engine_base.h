@@ -702,7 +702,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	z_var = get_z_var();
 	nc_fl = get_n_comps();
 
-	X_init.resize(n_vars * mesh->n_blocks);
+	X_init.resize(n_vars * mesh->n_res_blocks);
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
@@ -711,7 +711,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	old_z_fl.resize(nc_fl);
 	new_z_fl.resize(nc_fl);
 
-	X_init = mesh->initial_state;
+	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
+	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
 		PV[i] = mesh->volume[i] * mesh->poro[i];

@@ -316,11 +316,18 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+	for (index_t i = 0; i < mesh->n_res_blocks; i++)
 	{
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
+
+	  PV[i] = mesh->volume[i] * mesh->poro[i];
+	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	}
+
+	for (index_t i = 0; i < mesh->n_res_blocks; i++)
+	{
 	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
 		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
@@ -329,10 +336,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  {
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
-
-	  PV[i] = mesh->volume[i] * mesh->poro[i];
-	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
+	X_init.resize(n_vars * mesh->n_blocks);
+
 	if (THERMAL)
 	{
 	  for (index_t i = 0; i < mesh_->n_blocks; i++)

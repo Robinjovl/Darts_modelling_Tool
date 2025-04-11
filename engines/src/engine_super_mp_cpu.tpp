@@ -266,7 +266,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	z_var = get_z_var();
 	nc_fl = get_n_comps();
 
-	X_init.resize(n_vars * mesh->n_blocks);
+	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
@@ -278,8 +278,9 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	fluxes.resize(n_vars * mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
-	Xn = X = X_init;
 	X_init = mesh->initial_state;
+	X_init.resize(n_vars * mesh->n_blocks);
+	Xn = X = X_init;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
 		PV[i] = mesh->volume[i] * mesh->poro[i];
