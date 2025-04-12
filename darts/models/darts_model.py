@@ -280,9 +280,8 @@ class DartsModel:
         return
 
     def set_initial_conditions_DFM_wells(self):
-        if any(well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells):
-            assert hasattr(self, 'wells_initial_conditions'), \
-                "Initial conditions of the multi-segmented well/wells are not defined!"
+        assert hasattr(self, 'wells_initial_conditions'), \
+            "Initial conditions of the multi-segmented well/wells are not defined!"
 
         for i, variable in enumerate(self.physics.vars):
             if variable == 'pressure':
