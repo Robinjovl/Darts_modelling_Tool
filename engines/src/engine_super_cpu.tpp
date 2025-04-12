@@ -114,38 +114,39 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         }
     }
 
-    std::vector<value_t> phase_A_velocities;
-    std::vector<value_t> phase_B_velocities;
+    std::vector<value_t> phase_A_vels;
+    std::vector<value_t> phase_B_vels;
 
     using MixedType = std::variant<int, std::vector<value_t>>;
-    std::vector<MixedType> phase_A_veloc_derivatives;
-    std::vector<MixedType> phase_B_veloc_derivatives;
+    std::vector<MixedType> phase_A_vels_ders;
+    std::vector<MixedType> phase_B_vels_ders;
     if (has_DFM)
     {
         // --- Start evaluating phase velocities and derivatives in DFM wells
-        std::vector<value_t> phase_A_veloc;
-        std::vector<value_t> phase_B_veloc;
+        std::vector<value_t> one_way_phase_A_vels;
+        std::vector<value_t> one_way_phase_B_vels;
 
-        std::vector<MixedType> phase_A_veloc_ders;
-        std::vector<MixedType> phase_B_veloc_ders;
+        std::vector<MixedType> one_way_phase_A_vels_ders;
+        std::vector<MixedType> one_way_phase_B_vels_ders;
 
         // zero velocities at reservoir connections, which will remain unused. These velocities won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
-        phase_A_veloc.insert(phase_A_veloc.end(), mesh->n_res_conns / 2, 0);
-        phase_B_veloc.insert(phase_B_veloc.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), mesh->n_res_conns / 2, 0);
 
         // derivatives of phase velocities at reservoir connections, which will remain unused
-        phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), mesh->n_res_conns / 2, 0);
-        phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), mesh->n_res_conns / 2, 0);
+        one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), mesh->n_res_conns / 2, 0);
         for (ms_well* w : wells)
         {
-            // zero velocity for perforation of each well, which will remain unused
             index_t n_perfs = w->perforations.size();
-            phase_A_veloc.insert(phase_A_veloc.end(), n_perfs, 0);
-            phase_B_veloc.insert(phase_B_veloc.end(), n_perfs, 0);
+            // zero velocity for perforation of each well, which will remain unused
+            one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), n_perfs, 0);
+            one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), n_perfs, 0);
 
             // derivatives of phase velocities at perforation, which will remain unused
-            phase_A_veloc_ders.insert(phase_A_veloc_ders.end(), n_perfs, 0);
-            phase_B_veloc_ders.insert(phase_B_veloc_ders.end(), n_perfs, 0);
+            one_way_phase_A_vels_ders.insert(one_way_phase_A_vels_ders.end(), n_perfs, 0);
+            one_way_phase_B_vels_ders.insert(one_way_phase_B_vels_ders.end(), n_perfs, 0);
+
             if (w->ms_type == ms_well::MS_Type::DFM)
             {
                 std::vector<value_t> Xn_ms_well(Xn.begin() + w->well_head_idx * N_VARS, Xn.begin() + (w->well_head_idx + w->num_segments) * N_VARS);
@@ -154,52 +155,52 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 auto result_tuple = w->evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt);
 
                 // use std::get<index>(tuple) to retrieve individual elements of the tuple
-                std::vector<value_t> phase_v = std::get<0>(result_tuple);
-                std::vector<value_t> phase_v_d = std::get<1>(result_tuple);
+                std::vector<value_t> well_phase_v = std::get<0>(result_tuple);
+                std::vector<value_t> well_phase_v_d = std::get<1>(result_tuple);
 
                 // separate the velocities of the two phases
-                size_t half_size_vel = phase_v.size() / 2;
-                std::vector<value_t> phase_A_v(phase_v.begin(), phase_v.begin() + half_size_vel);
-                std::vector<value_t> phase_B_v(phase_v.begin() + half_size_vel, phase_v.end());
+                size_t half_size_vel = well_phase_v.size() / 2;
+                std::vector<value_t> well_phase_A_v(well_phase_v.begin(), well_phase_v.begin() + half_size_vel);
+                std::vector<value_t> well_phase_B_v(well_phase_v.begin() + half_size_vel, well_phase_v.end());
 
-                phase_A_veloc.insert(phase_A_veloc.end(), phase_A_v.begin(), phase_A_v.end());
-                phase_B_veloc.insert(phase_B_veloc.end(), phase_B_v.begin(), phase_B_v.end());
+                one_way_phase_A_vels.insert(one_way_phase_A_vels.end(), well_phase_A_v.begin(), well_phase_A_v.end());
+                one_way_phase_B_vels.insert(one_way_phase_B_vels.end(), well_phase_B_v.begin(), well_phase_B_v.end());
 
                 // separate the derivatives of velocities of the two phases
-                size_t half_size_vel_der = phase_v_d.size() / 2;
-                std::vector<value_t> phase_A_v_d(phase_v_d.begin(), phase_v_d.begin() + half_size_vel_der);
-                std::vector<value_t> phase_B_v_d(phase_v_d.begin() + half_size_vel_der, phase_v_d.end());
+                size_t half_size_vel_der = well_phase_v_d.size() / 2;
+                std::vector<value_t> well_phase_A_v_d(well_phase_v_d.begin(), well_phase_v_d.begin() + half_size_vel_der);
+                std::vector<value_t> well_phase_B_v_d(well_phase_v_d.begin() + half_size_vel_der, well_phase_v_d.end());
 
                 size_t chunk_size = 2 * N_VARS;
-                for (size_t i = 0; i < phase_A_v_d.size(); i += chunk_size)
+                for (size_t i = 0; i < well_phase_A_v_d.size(); i += chunk_size)
                 {
                     // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_A(phase_A_v_d.begin() + i, phase_A_v_d.begin() + i + chunk_size);
+                    std::vector<value_t> chunk_A(well_phase_A_v_d.begin() + i, well_phase_A_v_d.begin() + i + chunk_size);
                     // Insert the chunk into phase_A_veloc_ders
-                    phase_A_veloc_ders.push_back(chunk_A);
+                    one_way_phase_A_vels_ders.push_back(chunk_A);
 
                     // Extract a chunk of size 2 * N_VARS
-                    std::vector<value_t> chunk_B(phase_B_v_d.begin() + i, phase_B_v_d.begin() + i + chunk_size);
+                    std::vector<value_t> chunk_B(well_phase_B_v_d.begin() + i, well_phase_B_v_d.begin() + i + chunk_size);
                     // Insert the chunk into phase_A_veloc_ders
-                    phase_B_veloc_ders.push_back(chunk_B);
+                    one_way_phase_B_vels_ders.push_back(chunk_B);
                 }
             }
             else if (w->ms_type == ms_well::MS_Type::EPM)
             {
                 // EPM wells have only one connection. This zero velocity won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
-                phase_A_veloc.push_back(0);
-                phase_B_veloc.push_back(0);
+                one_way_phase_A_vels.push_back(0);
+                one_way_phase_B_vels.push_back(0);
 
                 // derivatives of phase velocities at the connection of EPM wells, which will remain unused
-                phase_A_veloc_ders.push_back(0);
-                phase_B_veloc_ders.push_back(0);
+                one_way_phase_A_vels_ders.push_back(0);
+                one_way_phase_B_vels_ders.push_back(0);
             }
         }
-        phase_A_velocities = mesh->reverse_and_sort_wells_velocities(phase_A_veloc);
-        phase_B_velocities = mesh->reverse_and_sort_wells_velocities(phase_B_veloc);
+        phase_A_vels = mesh->reverse_and_sort_wells_velocities(one_way_phase_A_vels);
+        phase_B_vels = mesh->reverse_and_sort_wells_velocities(one_way_phase_B_vels);
 
-        phase_A_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_A_veloc_ders);
-        phase_B_veloc_derivatives = mesh->reverse_and_sort_wells_velocities_derivatives(phase_B_veloc_ders);
+        phase_A_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_A_vels_ders);
+        phase_B_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_B_vels_ders);
         // --- End evaluating phase velocities and derivatives in DFM wells
     }
 
@@ -362,85 +363,97 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     {
                         if (p == 0)
                         {
-                            if (phase_A_velocities[conn_idx] >= 0)
+                            if (phase_A_vels[conn_idx] >= 0)
                             {
                                 phase_p_diff = -1;   // nagative (its value is not important)
-                                phase_A_velocities[conn_idx] = -phase_A_velocities[conn_idx];
+                                phase_A_vels[conn_idx] = -phase_A_vels[conn_idx];
 
                                 std::visit([&](auto& element) {
                                     using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
-                                        for (auto& val : element) {
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) 
+                                    {
+                                        for (auto& val : element) 
+                                        {
                                             val = -val;
                                         }
                                     }
-                                    else {
-                                        throw std::runtime_error("Unexpected type in phase_A_veloc_derivatives");
+                                    else 
+                                    {
+                                        throw std::runtime_error("Unexpected type in phase_A_vels_ders");
                                     }
-                                    }, phase_A_veloc_derivatives[conn_idx]);
+                                    }, phase_A_vels_ders[conn_idx]);
 
 
-                                //phase_A_veloc_derivatives[conn_idx] = - phase_A_veloc_derivatives[conn_idx];
+                                //phase_A_vels_ders[conn_idx] = - phase_A_vels_ders[conn_idx];
                             }
-                            else if (phase_A_velocities[conn_idx] < 0)
+                            else if (phase_A_vels[conn_idx] < 0)
                             {
                                 phase_p_diff = 1;   // positive (its value is not important)
-                                phase_A_velocities[conn_idx] = -phase_A_velocities[conn_idx];
+                                phase_A_vels[conn_idx] = -phase_A_vels[conn_idx];
 
                                 std::visit([&](auto& element) {
                                     using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
-                                        for (auto& val : element) {
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) 
+                                    {
+                                        for (auto& val : element) 
+                                        {
                                             val = -val;
                                         }
                                     }
-                                    else {
-                                        throw std::runtime_error("Unexpected type in phase_A_veloc_derivatives");
+                                    else 
+                                    {
+                                        throw std::runtime_error("Unexpected type in phase_A_vels_ders");
                                     }
-                                    }, phase_A_veloc_derivatives[conn_idx]);
+                                    }, phase_A_vels_ders[conn_idx]);
 
-                                //phase_A_veloc_derivatives[conn_idx] = - phase_A_veloc_derivatives[conn_idx];
+                                //phase_A_vels_ders[conn_idx] = - phase_A_vels_ders[conn_idx];
                             }
                         }
                         else if (p == 1)
                         {
-                            if (phase_B_velocities[conn_idx] >= 0)
+                            if (phase_B_vels[conn_idx] >= 0)
                             {
                                 phase_p_diff = -1;   // nagative (its value is not important)
-                                phase_B_velocities[conn_idx] = -phase_B_velocities[conn_idx];
+                                phase_B_vels[conn_idx] = -phase_B_vels[conn_idx];
 
                                 std::visit([&](auto& element) {
                                     using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
-                                        for (auto& val : element) {
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) 
+                                    {
+                                        for (auto& val : element) 
+                                        {
                                             val = -val;
                                         }
                                     }
-                                    else {
-                                        throw std::runtime_error("Unexpected type in phase_B_veloc_derivatives");
+                                    else 
+                                    {
+                                        throw std::runtime_error("Unexpected type in phase_B_vels_ders");
                                     }
-                                    }, phase_B_veloc_derivatives[conn_idx]);
+                                    }, phase_B_vels_ders[conn_idx]);
 
-                                //phase_B_veloc_derivatives[conn_idx] = - phase_B_veloc_derivatives[conn_idx];
+                                //phase_B_vels_ders[conn_idx] = - phase_B_vels_ders[conn_idx];
                             }
-                            else if (phase_B_velocities[conn_idx] < 0)
+                            else if (phase_B_vels[conn_idx] < 0)
                             {
                                 phase_p_diff = 1;   // positive (its value is not important)
-                                phase_B_velocities[conn_idx] = -phase_B_velocities[conn_idx];
+                                phase_B_vels[conn_idx] = -phase_B_vels[conn_idx];
 
                                 std::visit([&](auto& element) {
                                     using T = std::decay_t<decltype(element)>;
-                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) {
-                                        for (auto& val : element) {
+                                    if constexpr (std::is_same_v<T, std::vector<value_t>>) 
+                                    {
+                                        for (auto& val : element) 
+                                        {
                                             val = -val;
                                         }
                                     }
-                                    else {
-                                        throw std::runtime_error("Unexpected type in phase_B_veloc_derivatives");
+                                    else 
+                                    {
+                                        throw std::runtime_error("Unexpected type in phase_B_vels_ders");
                                     }
-                                    }, phase_B_veloc_derivatives[conn_idx]);
+                                    }, phase_B_vels_ders[conn_idx]);
 
-                                //phase_B_veloc_derivatives[conn_idx] = - phase_B_veloc_derivatives[conn_idx];
+                                //phase_B_vels_ders[conn_idx] = - phase_B_vels_ders[conn_idx];
                             }
                         }
                     }
@@ -449,22 +462,22 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     {
                         if (p == 0)
                         {
-                            if (phase_A_velocities[conn_idx] >= 0)
+                            if (phase_A_vels[conn_idx] >= 0)
                             {
                                 phase_p_diff = 1;   // positive (its value is not important)
                             }
-                            else if (phase_A_velocities[conn_idx] < 0)
+                            else if (phase_A_vels[conn_idx] < 0)
                             {
                                 phase_p_diff = -1;   // nagative (its value is not important)
                             }
                         }
                         else if (p == 1)
                         {
-                            if (phase_B_velocities[conn_idx] >= 0)
+                            if (phase_B_vels[conn_idx] >= 0)
                             {
                                 phase_p_diff = 1;   // positive (its value is not important)
                             }
-                            else if (phase_B_velocities[conn_idx] < 0)
+                            else if (phase_B_vels[conn_idx] < 0)
                             {
                                 phase_p_diff = -1;   // nagative (its value is not important)
                             }
@@ -497,9 +510,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         // The multi-segment well only works for a maximum of two phases.
                         value_t phase_velocity;
                         if (p == 0)
-                            phase_velocity = phase_A_velocities[conn_idx];
+                            phase_velocity = phase_A_vels[conn_idx];
                         else if (p == 1)
-                            phase_velocity = phase_B_velocities[conn_idx];
+                            phase_velocity = phase_B_vels[conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
 
@@ -510,7 +523,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             value_t phase_velocity_der_j;
                             if (p == 0)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_veloc_derivatives[conn_idx]))
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_vels_ders[conn_idx]))
                                 {
                                     index_t a = (i < j) ? 0 : N_VARS;
                                     index_t b = (i < j) ? N_VARS : 0;
@@ -523,7 +536,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             }
                             else if (p == 1)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_veloc_derivatives[conn_idx]))
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
                                 {
                                     index_t a = (i < j) ? 0 : N_VARS;
                                     index_t b = (i < j) ? N_VARS : 0;
@@ -597,9 +610,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         // The multi-segment well only works for a maximum of two phases.
                         value_t phase_velocity;
                         if (p == 0)
-                            phase_velocity = phase_A_velocities[conn_idx];
+                            phase_velocity = phase_A_vels[conn_idx];
                         else if (p == 1)
-                            phase_velocity = phase_B_velocities[conn_idx];
+                            phase_velocity = phase_B_vels[conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
 
@@ -610,7 +623,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             value_t phase_velocity_der_j;
                             if (p == 0)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_veloc_derivatives[conn_idx]))
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_A_vels_ders[conn_idx]))
                                 {
                                     index_t a = (i < j) ? 0 : N_VARS;
                                     index_t b = (i < j) ? N_VARS : 0;
@@ -623,7 +636,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             }
                             else if (p == 1)
                             {
-                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_veloc_derivatives[conn_idx]))
+                                if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
                                 {
                                     index_t a = (i < j) ? 0 : N_VARS;
                                     index_t b = (i < j) ? N_VARS : 0;
