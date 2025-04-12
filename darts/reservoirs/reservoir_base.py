@@ -122,8 +122,8 @@ class ReservoirBase:
             assert well_ID is None, "For DFM, well_ID must not be specified!"
             assert well_geometry is not None, "For DFM, well_geometry must be specified!"
             assert physics is not None, "For DFM, physics must be specified!"
-            # segments_volumes are the volumes of all the segments of the wellbore from the lowermost perforated or
-            # non-perforated segment to the wellhead segment.
+            # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
+            # the lowermost perforated or non-perforated segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector(well_geometry.z)
