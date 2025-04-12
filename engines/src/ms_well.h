@@ -48,9 +48,6 @@ public:
   ms_well()
   {
     segment_volume = 0;
-    segments_volumes = {};
-    segments_depths = {};
-    num_segments = 0;
     well_transmissibility = 100000;   // used for multi-segment wells of the type EPM
     control = 0;
     constraint = 0;
@@ -60,6 +57,10 @@ public:
     segment_diameter = 0;
     segment_roughness = 0;
     well_type = PRODUCER;
+
+    segments_volumes = {};
+    segments_depths = {};
+    num_segments = 0;
     ms_type = MS_Type::EPM;
   };
 
@@ -120,9 +121,6 @@ public:
 
   // These properties are only used in discretization, before simulation starts
   std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
-  std::vector<value_t> segments_depths;
-  std::vector<value_t> segments_volumes;
-  index_t num_segments;
   value_t segment_volume;
   value_t well_transmissibility;
   value_t well_head_depth;
@@ -130,6 +128,10 @@ public:
   value_t segment_depth_increment;
   value_t segment_diameter;
   value_t segment_roughness;
+
+  std::vector<value_t> segments_depths;
+  std::vector<value_t> segments_volumes;
+  index_t num_segments;
 
   // Properties for simulation
 
@@ -141,6 +143,9 @@ public:
 
   well_control_iface *control;
   well_control_iface *constraint;
+
+  std::vector<value_t> phase_vels;           // phase velocities for DFM wells
+  std::vector<value_t> phase_vels_ders;      // phase velocities derivatives for DFM wells
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method
@@ -183,9 +188,6 @@ public:
   }
 
   WellType well_type;          // type to be producer or injector
-  
-  std::shared_ptr<void> velocity_evaluator;  // pointer to py object
-  std::tuple<std::vector<value_t>, std::vector<value_t>> evaluate_phase_velocities_and_derivatives(std::vector<value_t> Xn_ms_well, std::vector<value_t> X_ms_well, value_t dt);
 };
 
 #endif

@@ -21,7 +21,7 @@ from dartsflash.components import CompData
 
 from darts.wells.define_pipe_geometry import PipeGeometry
 from darts.wells.set_initial_conditions import LinearAmbientTemperature
-from darts.wells.check_initial_conditions import check_initial_conditions
+from darts.wells.pipe import Pipe
 from darts.wells.add_lateral_heat_exchange import WellLateralHeatTransfer
 from darts.wells.interfacial_tension import IFT_multicomponent_MCM
 import darts.wells.library as library
@@ -186,8 +186,6 @@ class Model(CICDModel):
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
                                        well_1_wall_roughness, verbose)
-        # This stored geometry information is only used for post-processing (plotting)
-        self.wells_geometry = {well_1_name: well_1_geometry}
 
         #%% Set initial conditions in the pipe using SingleAmbientTemperature
         pipe_head_pressure = 20  # bar
@@ -206,14 +204,14 @@ class Model(CICDModel):
         initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
         initial_C1_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][1]] * well_1_geometry.num_segments
 
-        self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
-                                         'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
-                                         'initial_C1_mole_fraction': initial_C1_mole_fraction,
-                                         'initial_temperature': well_1_initial_conditions.temp_init_segments}
-        check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
-                                 not self.physics.property_containers[0].thermal)
+        well_initial_conditions = {'pressure': well_1_initial_conditions.p_init_segments,
+                                   'CO2_mole_fraction': initial_CO2_mole_fraction,
+                                   'C1_mole_fraction': initial_C1_mole_fraction,
+                                   'temperature': well_1_initial_conditions.temp_init_segments}
 
-        self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
+        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, well_initial_conditions)}
+
+        self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with single perforation
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
@@ -232,24 +230,24 @@ class Model(CICDModel):
         well_1_lateral_heat_transfer = WellLateralHeatTransfer(well_1_name, well_1_geometry, earth_thermal_props,
                                                                outermost_layer_OD, Ui, time_function_name="Chiu&Thakur",
                                                                verbose=verbose)
-        self.reservoir.wells_lateral_heat_flux = {well_1_name: well_1_lateral_heat_transfer}
+        self.wells["I1"].lateral_heat_flux = well_1_lateral_heat_transfer
 
     def set_well_controls(self):
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
         inj_segment_idx = 0
         inj_rate = 58895.98   # kmol/day
         inj_comp = np.array([1.0 - 2 * self.zero, self.zero, self.zero])
-        self.source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
+        self.wells["I1"].source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        inj_segment_idx = self.source_props["segment_idx_source"]
+        inj_segment_idx = self.wells["I1"].source_props["segment_idx_source"]
 
         # Calc ramp-up injection rate
         ramp_up_period = 4 / (24 * 60)   # 4 minutes
-        inj_rate = self.calc_ramp_up_rate(self.source_props["rate_source"], ramp_up_period, t)
+        inj_rate = self.calc_ramp_up_rate(self.wells["I1"].source_props["rate_source"], ramp_up_period, t)
 
-        inj_comp = self.source_props["comp_source"]
+        inj_comp = self.wells["I1"].source_props["comp_source"]
         inj_flux = inj_rate * inj_comp
 
         injected_fluid_pressure = 20

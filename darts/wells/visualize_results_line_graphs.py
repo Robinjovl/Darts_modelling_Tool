@@ -15,7 +15,8 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
-    well_geom = next(iter(coupled_model.wells_geometry.values()))
+    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary and assigns it to well_geom.
+    well_geom = next(iter(coupled_model.wells.values())).geometry
     num_segments = well_geom.num_segments
 
     components_names = coupled_model.physics.property_containers[0].components_name

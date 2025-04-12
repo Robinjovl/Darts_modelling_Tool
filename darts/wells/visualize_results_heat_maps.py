@@ -29,7 +29,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # x_axis = "time_step_index"
     x_axis = "simulation_time"
 
-    well_geom = next(iter(coupled_model.wells_geometry.values()))
+    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary and assigns it to well_geom.
+    well_geom = next(iter(coupled_model.wells.values())).geometry
 
     if y_axis == "segment_depth":
         measured_depths_segments = (sum(well_geom.segments_lengths) - well_geom.z)

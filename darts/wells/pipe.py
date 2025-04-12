@@ -1,24 +1,24 @@
 import math
-import numpy as np
-
-from darts.engines import value_vector
-# from darts.models.darts_model import DartsModel
 
 from darts.wells.define_pipe_geometry import PipeGeometry
 from darts.wells.units import *
 
-
-class PipeVelocityEvaluator:
-    g = 9.80665 * meter() / second()**2   # Gravitational acceleration
+class Pipe:
+    g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
     Cku = 142
     Cw = 0.008
 
-    def __init__(self, pipe_geometry: PipeGeometry, physics, darts_model, Cmax: float = 1.2, Fv: float = 1,
-                 eps_p: float = 1e-4, eps_temp: float = 0.1, eps_z: float = 0.00001, verbose: bool = False):
+    def __init__(self, pipe_name: str, pipe_geometry: PipeGeometry, physics, initial_conditions: dict,
+                 Cmax: float = 1.2, Fv: float = 1, eps_p: float = 1e-4, eps_temp: float = 0.1, eps_z: float = 0.00001,
+                 verbose: bool = False):
         """
+        :param pipe_name: Name of the pipe
+        :type pipe_name: str
         :param pipe_geometry: Pipe geometry object
         :type pipe_geometry: PipeGeometry
         :param physics: Physics object for the pipe
+        :param initial_conditions: Initial conditions of the wellbore/pipe
+        :type initial_conditions: dict
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
         could have a value between 1.0 and 1.5. It is set to:
         --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -36,10 +36,16 @@ class PipeVelocityEvaluator:
         :param verbose: Whether to display extra info about PipeModel
         :type verbose: boolean
         """
-        self.pipe_geometry = pipe_geometry
-
+        assert pipe_name == pipe_geometry.pipe_name, "Pipe names in pipe_name and pipe_geometry are not identical!"
+        self.name = pipe_name
+        self.geometry = pipe_geometry
+        self.initial_conditions = initial_conditions
         self.physics = physics
+
         self.isothermal = not physics.thermal
+
+        self.check_initial_conditions()
+
         if self.isothermal:
             assert self.physics.property_containers[0].temperature is not None, \
                 "If model is isothermal, system_temperature must be specified!"
@@ -83,7 +89,7 @@ class PipeVelocityEvaluator:
             raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
 
         self.m = m0 * ((math.cos(pipe_geometry.inclination_angle_radian)) ** n1) * (
-                    1 + math.sin(pipe_geometry.inclination_angle_radian)) ** n2
+                1 + math.sin(pipe_geometry.inclination_angle_radian)) ** n2
 
         self.a1 = a1
         self.a2 = a2
@@ -95,19 +101,40 @@ class PipeVelocityEvaluator:
         self.eps_temp = eps_temp
         self.eps_z = eps_z
 
-        self.darts_model = darts_model
+        self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
-        self.is_first_first_iter = True   # first_iter_in_first_ts_identifier
+        self.source_props = {}
+        self.lateral_heat_flux = None
 
         if verbose:
-            print("** Model of the pipe \"%s\" is created!" % self.pipe_geometry.pipe_name)
+            print("** Model of the pipe \"%s\" is created!" % self.geometry.pipe_name)
 
-    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, flag):
-        iter_counter = self.darts_model.iter_counter
+    def check_initial_conditions(self):
+        """
+        This function checks if all the required initial conditions of the wellbore/pipe are specified by the user.
+        The required initial conditions are:
+        Pressure profile of the fluid in the wellbore/pipe
+        Overall mole fractions profiles of the components specified in components_names except the last component
+        If the system is not isothermal, temperature profile of the fluid in the wellbore/pipe
+        """
+        assert 'pressure' in self.initial_conditions, \
+            'Initial pressure is not specified in initial conditions!'
 
+        for component_name in self.physics.property_containers[0].components_name[:-1]:
+            assert component_name + '_mole_fraction' in self.initial_conditions, (
+                   component_name + '_mole_fraction is not specified in initial conditions!')
+
+        if not self.isothermal:
+            assert 'temperature' in self.initial_conditions, \
+                'Initial temperature is not specified in initial conditions!'
+        elif self.isothermal:
+            assert 'temperature' not in self.initial_conditions, \
+                'Initial temperature must not be specified if the model is isothermal!'
+
+    def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
         dt = dt * 24 * 60 * 60   # convert day to second
 
-        num_segments = self.pipe_geometry.num_segments
+        num_segments = self.geometry.num_segments
         nc = self.physics.nc
         n_vars = self.physics.n_vars
 
@@ -278,7 +305,7 @@ class PipeVelocityEvaluator:
 
         self.calc_mixture_densities(iter_counter, flag)
 
-        pg = self.pipe_geometry
+        pg = self.geometry
 
         if iter_counter == 0 and flag == 1:
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
@@ -288,14 +315,14 @@ class PipeVelocityEvaluator:
 
             """ Add momentum boundary conditions """
             momentum_at_first_last_exterfaces = [0, 0]
-            if hasattr(self.darts_model, 'source_props'):
-                segment_idx_source = self.darts_model.source_props["segment_idx_source"]
-                rate_source = self.darts_model.source_props["rate_source"]
-                comp_source = self.darts_model.source_props["comp_source"]
+            if self.source_props:
+                segment_idx_source = self.source_props["segment_idx_source"]
+                rate_source = self.source_props["rate_source"]
+                comp_source = self.source_props["comp_source"]
                 Mw = self.physics.property_containers[0].Mw
                 mass_rate = sum(rate_source * np.array(comp_source) * np.array(Mw)) / (24 * 60 * 60)   # must be in kg/s
 
-                pipe_internal_A = self.pipe_geometry.pipe_internal_A
+                pipe_internal_A = self.geometry.pipe_internal_A
 
                 # The props of the fluid of the segment on which the constant mass rate source is defined are used.
                 sG0_source = sG0[segment_idx_source]
@@ -349,20 +376,20 @@ class PipeVelocityEvaluator:
         self.vM = self.rhoM_vM / self.rhoM_face
 
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
-            self.vD0 = np.zeros(self.pipe_geometry.num_interfaces)
+            self.vD0 = np.zeros(self.geometry.num_interfaces)
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is False:
             self.calc_drift_velocity()
 
         # Gas velocity at wellbore interfaces
         # self.vG = self.C00 * self.rhoM_vM / self.rhoM_adjusted_face + rhoL_face * self.vD0 / self.rhoM_adjusted_face
-        self.vG = np.zeros(self.pipe_geometry.num_interfaces)
-        for i in range(self.pipe_geometry.num_interfaces):
+        self.vG = np.zeros(self.geometry.num_interfaces)
+        for i in range(self.geometry.num_interfaces):
             if sG_face[i] != 0:
                 self.vG[i] = self.C00[i] * self.rhoM_vM[i] / self.rhoM_adjusted_face[i] + rhoL_face[i] * self.vD0[i] / self.rhoM_adjusted_face[i]
 
         # Liquid velocity at wellbore interfaces
-        self.vL = np.zeros(self.pipe_geometry.num_interfaces)
-        for i in range(self.pipe_geometry.num_interfaces):
+        self.vL = np.zeros(self.geometry.num_interfaces)
+        for i in range(self.geometry.num_interfaces):
             if sG_face[i] != 1:
                 self.vL[i] = ((1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
                          - sG_face[i] * rhoG_face[i] * self.vD0[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i]))
@@ -399,11 +426,11 @@ class PipeVelocityEvaluator:
             self.calc_profile_parameter()
         elif iter_counter == 0 and flag == 1 and self.is_first_first_iter is True:
             # At the beginning, there is no flow, so C00 is considered 1 everywhere.
-            self.C00 = np.ones(self.pipe_geometry.num_interfaces)
+            self.C00 = np.ones(self.geometry.num_interfaces)
         self.rhoM_adjusted_face = self.C00 * sG_face * rhoG_face + (1 - self.C00 * sG_face) * rhoL_face
 
     def calc_Fanning_friction_factor(self):
-        pg = self.pipe_geometry
+        pg = self.geometry
         Re0 = self.calc_Reynolds_number()
         ff0 = []
         for i in range(pg.num_interfaces):
@@ -455,14 +482,14 @@ class PipeVelocityEvaluator:
         # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
         self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
 
-        pg = self.pipe_geometry
+        pg = self.geometry
 
         self.Re0 = self.rhoM0_face * abs(vM0) * pg.pipe_ID / self.miuM0
 
         return self.Re0
 
     def calc_profile_parameter(self):
-        pg = self.pipe_geometry
+        pg = self.geometry
         [rhoM0_vM0, _, _, _] = self.velocities0
         [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face] = self.iter_phases_props0_face
 
@@ -499,8 +526,8 @@ class PipeVelocityEvaluator:
             eta0 = (beta0 - self.B) / (1 - self.B)   # B is calculated in the constructor
             C00_filtered = self.Cmax / (1 + (self.Cmax - 1) * eta0 ** 2)
 
-            C00 = np.ones(self.pipe_geometry.num_interfaces)   # C00 all ones first
-            self.C00 = np.ones(self.pipe_geometry.num_interfaces)
+            C00 = np.ones(self.geometry.num_interfaces)   # C00 all ones first
+            self.C00 = np.ones(self.geometry.num_interfaces)
             self.C00_filtered = np.ones(len(indices))
 
             for i, idx in enumerate(indices):
@@ -509,18 +536,18 @@ class PipeVelocityEvaluator:
             self.C00_filtered = C00_filtered
             self.C00 = C00
             # Set all profile parameters equal to 1
-            # self.C00 = np.ones(self.pipe_geometry.num_interfaces)
+            # self.C00 = np.ones(self.geometry.num_interfaces)
 
         else:
             self.C00_filtered = 1
-            # self.C00 = np.ones(self.pipe_geometry.num_interfaces)
+            # self.C00 = np.ones(self.geometry.num_interfaces)
 
     def calc_drift_velocity(self):
         # if np.all(self.C00 == 1):
-        #     vD0 = np.zeros(self.pipe_geometry.num_interfaces)
+        #     vD0 = np.zeros(self.geometry.num_interfaces)
         # else:
         if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            pg = self.pipe_geometry
+            pg = self.geometry
             [_, _, sG0_face, rhoG0_face, rhoL0_face] = self.iter_phases_props0_face
             [_, vM0, _, _] = self.velocities0
 
@@ -565,52 +592,49 @@ class PipeVelocityEvaluator:
             f0 = np.maximum(0, 1 - np.minimum(1, G0/Gm1) * np.exp(-lambdaa * Dm*abs(Dm)))
 
             # Calculate drift velocity
-            vD0 = np.zeros(self.pipe_geometry.num_interfaces)   # vD0 all zeros first
+            vD0 = np.zeros(self.geometry.num_interfaces)   # vD0 all zeros first
             for index, value in enumerate(indices):
                 # Ignore the consideration of the adjustment function for the mist flow regime for now
                 vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m * f0[index] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
         else:
-            vD0 = np.zeros(self.pipe_geometry.num_interfaces)
+            vD0 = np.zeros(self.geometry.num_interfaces)
         self.vD0 = - vD0   # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
-    def evaluate_phase_velocities_and_derivatives(self, Xn_ms_well, X_ms_well, dt):
-        Xn_ms_well = Xn_ms_well.to_numpy()
-        X_ms_well = X_ms_well.to_numpy()
-
-        num_segments = self.pipe_geometry.num_segments
-        num_conn = self.pipe_geometry.num_interfaces
+    def evaluate_phase_velocities_and_derivatives(self, Xn_ms_well, X_ms_well, dt, iter_counter):
+        num_segments = self.geometry.num_segments
+        num_conn = self.geometry.num_interfaces
         num_phase_velocities = num_conn * 2
         num_primary_vars = len(Xn_ms_well)
         n_vars = self.physics.n_vars
 
         jac = np.zeros((num_phase_velocities, num_primary_vars))
 
-        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=1)
+        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=1)
 
         # Construct the Jacobian matrix
         for i in range(num_segments):
             # Derivatives of all the phase velocities with respect to the pressure of segment i
             X_ms_well[i * n_vars] += self.eps_p
-            jac[:, i * n_vars] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_p
+            jac[:, i * n_vars] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=0) - phase_velocities) / self.eps_p
             X_ms_well[i * n_vars] -= self.eps_p
 
             for j in range(self.physics.nc - 1):
                 # Derivatives of all the phase velocities with respect to the mole fraction of component j in segment i
                 X_ms_well[i * n_vars + j + 1] += self.eps_z
-                jac[:, i * n_vars + j + 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0)
+                jac[:, i * n_vars + j + 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=0)
                                               - phase_velocities) / self.eps_z
                 X_ms_well[i * n_vars + j + 1] -= self.eps_z
 
             if not self.isothermal:
                 # Derivatives of all the phase velocities with respect to the temperature of segment i
                 X_ms_well[i * n_vars + n_vars - 1] += self.eps_temp
-                jac[:, i * n_vars + n_vars - 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=0) - phase_velocities) / self.eps_temp
+                jac[:, i * n_vars + n_vars - 1] = (self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=0) - phase_velocities) / self.eps_temp
                 X_ms_well[i * n_vars + n_vars - 1] -= self.eps_temp
 
         # Update properties at the current time step with the original primary variables (original X_ms_well)
         # unaffected by eps_p, eps_temp, and eps_z
-        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, flag=-1)
+        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=-1)
 
         jac_phase_A = jac[:num_phase_velocities // 2, :]
         jac_phase_B = jac[num_phase_velocities // 2:, :]
@@ -623,4 +647,4 @@ class PipeVelocityEvaluator:
         # Flatten and concatenate both arrays
         phase_velocities_derivatives = np.concatenate((jac_phase_A_clean_flat.flatten(), jac_phase_B_clean_flat.flatten()))
 
-        return value_vector(phase_velocities), value_vector(phase_velocities_derivatives)
+        return phase_velocities, phase_velocities_derivatives

@@ -7,30 +7,6 @@
 
 namespace py = pybind11;
 
-// Function to convert the `void` pointer to `py::object`
-py::object &get_py_object(std::shared_ptr<void> ptr) 
-{
-  if (!ptr) 
-  {
-    throw std::runtime_error("Tried to use an unset py object.");
-  }
-
-  return *static_pointer_cast<py::object>(ptr);
-}
-
-tuple<vector<value_t>, vector<value_t>>
-ms_well::evaluate_phase_velocities_and_derivatives(vector<value_t> Xn_ms_well, vector<value_t> X_ms_well, value_t dt)
-{
-  py::gil_scoped_acquire gil;  // Acquire the GIL
-
-  // method evaluate_phase_velocities_and_derivatives of the Python object returns the velocities of the two phases and derivatives of velocities of  the two phases in the wellbore
-  py::object result = get_py_object(velocity_evaluator).attr("evaluate_phase_velocities_and_derivatives")(Xn_ms_well, X_ms_well, dt);
-  //// convert the py::object into a C++ tuple
-  auto result_tuple = result.cast<std::tuple<std::vector<value_t>, std::vector<value_t>>>();
-
-  return result_tuple;
-}
-
 void pybind_ms_well(py::module &m)
 
 {
@@ -53,12 +29,7 @@ void pybind_ms_well(py::module &m)
            "thermal"_a = 0, py::keep_alive<1, 7>())
       // properties
       .def_readwrite("name", &ms_well::name)
-      .def_readwrite("ms_type", &ms_well::ms_type)
-      .def_readwrite("segments_volumes", &ms_well::segments_volumes)
-      .def_readwrite("segments_depths", &ms_well::segments_depths)
-      .def("set_velocity_evaluator", [](ms_well &w, py::object evaluator) {w.velocity_evaluator = make_shared<py::object>(evaluator);})
-      //.def_readwrite("velocity_evaluator", &ms_well::velocity_evaluator)
-      .def_readwrite("num_segments", &ms_well::num_segments)
+      
       .def_readwrite("perforations", &ms_well::perforations)
       .def_readwrite("segment_volume", &ms_well::segment_volume)
       .def_readwrite("well_transmissibility", &ms_well::well_transmissibility)
@@ -70,6 +41,15 @@ void pybind_ms_well(py::module &m)
       .def_readwrite("segment_roughness", &ms_well::segment_roughness)
       .def_readonly("well_body_idx", &ms_well::well_body_idx)
       .def_readonly("well_head_idx", &ms_well::well_head_idx)
+
+      // only used for DFM wells
+      .def_readwrite("ms_type", &ms_well::ms_type)
+      .def_readwrite("segments_volumes", &ms_well::segments_volumes)
+      .def_readwrite("segments_depths", &ms_well::segments_depths)
+      .def_readwrite("num_segments", &ms_well::num_segments)
+      .def_readwrite("phase_vels", &ms_well::phase_vels)
+      .def_readwrite("phase_vels_ders", &ms_well::phase_vels_ders)
+
       .def_property(
           "control", [](ms_well &self) { return self.control; },
           py::cpp_function(

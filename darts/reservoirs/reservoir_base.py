@@ -8,7 +8,6 @@ from typing import Union
 from darts.engines import conn_mesh, timer_node, ms_well_vector, ms_well, value_vector
 
 from darts.wells.define_pipe_geometry import PipeGeometry
-from darts.wells.pipe_velocity_evaluator import PipeVelocityEvaluator
 
 
 class ReservoirBase:
@@ -83,8 +82,8 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = None, well_geometry: PipeGeometry = None,
-                 physics=None, darts_model=None) -> None:
+    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = None,
+                 well_geometry: PipeGeometry = None) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
 
@@ -98,9 +97,6 @@ class ReservoirBase:
         :type well_ID: float
         :param well_geometry: Geometry of the well. If well_ms_type is DFM, this input argument must be specified.
         :type well_geometry: PipeGeometry
-        :param physics
-        :param darts_model: Instance of the class DartsModel
-        :type darts_model: DartsModel
         """
         well = ms_well()
         well.name = well_name
@@ -109,7 +105,6 @@ class ReservoirBase:
         if well.ms_type == ms_well.MS_Type.EPM:
             assert well_ID is not None, "For EPM, well_ID must be specified!"
             assert well_geometry is None, "For EPM, well_geometry must not be specified!"
-            assert physics is None, "For EPM, physics must not be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir.
             well.segment_volume = math.pi / 4 * well_ID ** 2
@@ -121,14 +116,12 @@ class ReservoirBase:
         elif well.ms_type == ms_well.MS_Type.DFM:
             assert well_ID is None, "For DFM, well_ID must not be specified!"
             assert well_geometry is not None, "For DFM, well_geometry must be specified!"
-            assert physics is not None, "For DFM, physics must be specified!"
             # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
             # the lowermost perforated or non-perforated segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector(well_geometry.z)
             well.num_segments = well_geometry.num_segments
-            well.set_velocity_evaluator(PipeVelocityEvaluator(well_geometry, physics, darts_model))
 
             # will be updated in add_perforation
             # well.well_head_depth = well_geometry.pipe_length - well_geometry.z[-1]

@@ -21,7 +21,7 @@ from dartsflash.components import CompData
 
 from darts.wells.define_pipe_geometry import PipeGeometry
 from darts.wells.set_initial_conditions import SingleAmbientTemperature
-from darts.wells.check_initial_conditions import check_initial_conditions
+from darts.wells.pipe import Pipe
 from darts.wells.interfacial_tension import IFT_multicomponent_MCM
 from darts.wells.units import *
 
@@ -128,13 +128,13 @@ class Model(CICDModel):
         initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
         initial_C1_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][1]] * well_1_geometry.num_segments
 
-        self.wells_initial_conditions = {'initial_pressure': well_1_initial_conditions.p_init_segments,
-                                         'initial_CO2_mole_fraction': initial_CO2_mole_fraction,
-                                         'initial_C1_mole_fraction': initial_C1_mole_fraction}
-        check_initial_conditions(self.wells_initial_conditions, self.physics.property_containers[0].components_name,
-                                 not self.physics.property_containers[0].thermal)
+        well_initial_conditions = {'pressure': well_1_initial_conditions.p_init_segments,
+                                   'CO2_mole_fraction': initial_CO2_mole_fraction,
+                                   'C1_mole_fraction': initial_C1_mole_fraction}
 
-        self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry, physics=self.physics, darts_model=self)
+        self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, well_initial_conditions)}
+
+        self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
         reservoir_middle_cell_index = int(self.reservoir.nx / 2)
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=20, well_geometry=well_1_geometry)
 
@@ -157,13 +157,13 @@ class Model(CICDModel):
         inj_segment_idx = 0
         inj_rate = 58895.98  # kmol/day
         inj_comp = np.array([1.0 - 2 * 1e-5, 1e-5, 1e-5])
-        self.source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
+        self.wells["I1"].source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        inj_segment_idx = self.source_props["segment_idx_source"]
-        inj_rate = self.source_props["rate_source"]
-        inj_comp = self.source_props["comp_source"]
+        inj_segment_idx = self.wells["I1"].source_props["segment_idx_source"]
+        inj_rate = self.wells["I1"].source_props["rate_source"]
+        inj_comp = self.wells["I1"].source_props["comp_source"]
         inj_flux = inj_rate * inj_comp
         well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
         rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
