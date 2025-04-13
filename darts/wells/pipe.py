@@ -1,6 +1,8 @@
 import math
+from typing import Union
 
 from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.wells.set_initial_conditions import SingleAmbientTemperature, LinearAmbientTemperature
 from darts.wells.units import *
 
 class Pipe:
@@ -8,7 +10,8 @@ class Pipe:
     Cku = 142
     Cw = 0.008
 
-    def __init__(self, pipe_name: str, pipe_geometry: PipeGeometry, physics, initial_conditions: dict,
+    def __init__(self, pipe_name: str, pipe_geometry: PipeGeometry, physics,
+                 initial_conditions: Union[SingleAmbientTemperature, LinearAmbientTemperature],
                  Cmax: float = 1.2, Fv: float = 1, eps_p: float = 1e-4, eps_temp: float = 0.1, eps_z: float = 0.00001,
                  verbose: bool = False):
         """
@@ -17,8 +20,8 @@ class Pipe:
         :param pipe_geometry: Pipe geometry object
         :type pipe_geometry: PipeGeometry
         :param physics: Physics object for the pipe
-        :param initial_conditions: Initial conditions of the wellbore/pipe
-        :type initial_conditions: dict
+        :param initial_conditions: Object containing the initial conditions of the wellbore/pipe
+        :type initial_conditions: SingleAmbientTemperature or LinearAmbientTemperature
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
         could have a value between 1.0 and 1.5. It is set to:
         --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -39,12 +42,12 @@ class Pipe:
         assert pipe_name == pipe_geometry.pipe_name, "Pipe names in pipe_name and pipe_geometry are not identical!"
         self.name = pipe_name
         self.geometry = pipe_geometry
-        self.initial_conditions = initial_conditions
         self.physics = physics
 
         self.isothermal = not physics.thermal
 
-        self.check_initial_conditions()
+        self.initial_conditions = {}
+        self.store_initial_conditions(initial_conditions)
 
         if self.isothermal:
             assert self.physics.property_containers[0].temperature is not None, \
@@ -108,6 +111,21 @@ class Pipe:
 
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.geometry.pipe_name)
+
+    def store_initial_conditions(self, initial_conditions):
+        self.initial_conditions['pressure'] = initial_conditions.p_init_segments
+
+        if len(initial_conditions.initial_fluid_conditions['phases_compositions']) > 1:
+            raise Exception("store_initial_conditions still does not support pipe intervals with different initial composition!")
+
+        for c, comp_name in enumerate(self.physics.property_containers[0].components_name[:-1]):
+            initial_c_mole_fraction = [initial_conditions.initial_fluid_conditions['phases_compositions'][0][c]] * self.geometry.num_segments
+            self.initial_conditions[comp_name + '_mole_fraction'] = initial_c_mole_fraction
+
+        if not self.isothermal:
+            self.initial_conditions['temperature'] = initial_conditions.temp_init_segments
+
+        self.check_initial_conditions()
 
     def check_initial_conditions(self):
         """

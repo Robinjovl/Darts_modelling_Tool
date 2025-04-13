@@ -45,11 +45,7 @@ class SingleAmbientTemperature:
         self.pipe_head_pressure = pipe_head_pressure * 1e5   # Convert bar to Pa
         self.pipe_head_segment_index = pipe_head_segment_index
 
-        for phase_composition in initial_fluid_conditions['phases_compositions']:
-            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
-                "Summation of initial fluid mole fractions must be equal to 1!"
-            assert len(phase_composition) == property_container.nc, \
-                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+        self.check_initial_fluid_conditions(initial_fluid_conditions)
         self.initial_fluid_conditions = initial_fluid_conditions
 
         self.measured_depths_segments = self.pipe_geom.z
@@ -63,6 +59,20 @@ class SingleAmbientTemperature:
 
         if verbose:
             print("** Initial conditions (SingleAmbientTemperature) of the pipe \"%s\" are set!" % pipe_name)
+
+    def check_initial_fluid_conditions(self, initial_fluid_conditions):
+        for phase_composition in initial_fluid_conditions['phases_compositions']:
+            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
+                "Summation of initial fluid mole fractions must be equal to 1!"
+            assert len(phase_composition) == self.property_container.nc, \
+                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+
+        num_phase_compositions = len(initial_fluid_conditions['phases_compositions'])
+        num_phase_names = len(initial_fluid_conditions['phases_names'])
+        num_pipe_intervals = len(initial_fluid_conditions['pipe_intervals'])
+
+        assert num_pipe_intervals == num_phase_names == num_phase_compositions, \
+            "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
 
     def get_initial_temperature_profile(self):
         num_segments = self.pipe_geom.num_segments
@@ -148,9 +158,7 @@ class LinearAmbientTemperature:
         self.temp_grad = temp_grad
         self.pipe_head_segment_index = pipe_head_segment_index
 
-        for phase_composition in initial_fluid_conditions['phases_compositions']:
-            assert sum(phase_composition) == 1, "Summation of initial fluid mole fractions must be equal to 1!"
-            assert len(phase_composition) == property_container.nc, "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+        self.check_initial_fluid_conditions(initial_fluid_conditions)
         self.initial_fluid_conditions = initial_fluid_conditions
 
         self.measured_depths_segments = self.pipe_geom.z
@@ -164,6 +172,20 @@ class LinearAmbientTemperature:
 
         if verbose:
             print("** Initial conditions (LinearAmbientTemperature) of the pipe \"%s\" are set!" % pipe_name)
+
+    def check_initial_fluid_conditions(self, initial_fluid_conditions):
+        for phase_composition in initial_fluid_conditions['phases_compositions']:
+            assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
+                "Summation of initial fluid mole fractions must be equal to 1!"
+            assert len(phase_composition) == self.property_container.nc, \
+                "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
+
+        num_phase_compositions = len(initial_fluid_conditions['phases_compositions'])
+        num_phase_names = len(initial_fluid_conditions['phases_names'])
+        num_pipe_intervals = len(initial_fluid_conditions['pipe_intervals'])
+
+        assert num_pipe_intervals == num_phase_names == num_phase_compositions, \
+            "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
 
     def get_initial_temperature_profile(self):
         print("Pipe head temperature is assumed to be the lowest temperature for the initial temperature calculation. "
