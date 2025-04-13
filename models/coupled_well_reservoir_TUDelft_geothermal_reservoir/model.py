@@ -181,7 +181,7 @@ class Model(CICDModel):
         pipe_head_pressure = 10  # bar
         pipe_head_temperature = 25 + 273.15  # Kelvin
         temp_grad = 0.025  # deg C/meter
-        pipe_head_segment_index = well_1_geometry.num_segments - 1  # index starts from zero
+        pipe_head_segment_index = 0  # index starts from zero
 
         # Wellhead conditions because of the constant rate control
         # zero = self.physics.axes_min[1]
