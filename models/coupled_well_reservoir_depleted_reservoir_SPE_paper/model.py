@@ -198,7 +198,7 @@ class Model(CICDModel):
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
-        # Well with single perforation
+        # Well with a single perforation
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
 
     def set_well_controls(self):
