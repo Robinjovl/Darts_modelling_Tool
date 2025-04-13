@@ -132,7 +132,6 @@ class Model(CICDModel):
                                                              pipe_head_pressure, pipe_head_segment_index,
                                                              initial_fluid_conditions, verbose)
 
-        # %% Put initial conditions in wells_initial_conditions
         initial_CO2_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][0]] * well_1_geometry.num_segments
         initial_C1_mole_fraction = [initial_fluid_conditions['phases_compositions'][0][1]] * well_1_geometry.num_segments
 
@@ -140,6 +139,7 @@ class Model(CICDModel):
                                    'CO2_mole_fraction': initial_CO2_mole_fraction,
                                    'C1_mole_fraction': initial_C1_mole_fraction}
 
+        # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, well_initial_conditions)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
