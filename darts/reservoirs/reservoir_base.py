@@ -7,7 +7,7 @@ from typing import Union
 
 from darts.engines import conn_mesh, timer_node, ms_well_vector, ms_well, value_vector
 
-from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
 class ReservoirBase:

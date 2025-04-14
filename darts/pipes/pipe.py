@@ -1,9 +1,9 @@
 import math
 from typing import Union
 
-from darts.wells.define_pipe_geometry import PipeGeometry
-from darts.wells.set_initial_conditions import SingleAmbientTemperature, LinearAmbientTemperature
-from darts.wells.units import *
+from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.set_initial_conditions import SingleAmbientTemperature, LinearAmbientTemperature
+from darts.pipes.units import *
 
 class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration

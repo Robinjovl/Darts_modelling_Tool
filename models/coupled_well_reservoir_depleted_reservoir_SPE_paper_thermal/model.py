@@ -19,13 +19,13 @@ from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
 from dartsflash.components import CompData
 
-from darts.wells.define_pipe_geometry import PipeGeometry
-from darts.wells.set_initial_conditions import LinearAmbientTemperature
-from darts.wells.pipe import Pipe
-from darts.wells.add_lateral_heat_exchange import WellLateralHeatTransfer
-from darts.wells.interfacial_tension import IFT_multicomponent_MCM
-import darts.wells.library as library
-from darts.wells.units import *
+from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.set_initial_conditions import LinearAmbientTemperature
+from darts.pipes.pipe import Pipe
+from darts.pipes.add_lateral_heat_exchange import WellLateralHeatTransfer
+from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
+import darts.pipes.library as library
+from darts.pipes.units import *
 
 class Model(CICDModel):
     def __init__(self):

@@ -1,4 +1,4 @@
-from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.pipes.define_pipe_geometry import PipeGeometry
 
 import numpy as np
 

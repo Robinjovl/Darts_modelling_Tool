@@ -2,10 +2,10 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 
-from darts.wells.define_pipe_geometry import PipeGeometry
+from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.physics.super.property_container import PropertyContainer
 
-from darts.wells.units import *
+from darts.pipes.units import *
 
 g = 9.80665 * meter() / second()**2  # Gravitational acceleration
 

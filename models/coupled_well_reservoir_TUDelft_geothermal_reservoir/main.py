@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 from model import Model
 from darts.engines import redirect_darts_output
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.wells.save_results import save_segments_primary_vars_and_phase_props
-from darts.wells.visualize_results_heat_maps import visualize_results_heat_maps
-from darts.wells.visualize_results_line_graphs import visualize_results_line_graphs
+from darts.pipes.save_results import save_segments_primary_vars_and_phase_props
+from darts.pipes.visualize_results_heat_maps import visualize_results_heat_maps
+from darts.pipes.visualize_results_line_graphs import visualize_results_line_graphs
 
 redirect_darts_output('run_log.log')
 coupled_model = Model()

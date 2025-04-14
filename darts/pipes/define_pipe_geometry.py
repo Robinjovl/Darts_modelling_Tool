@@ -1,5 +1,5 @@
 import math
-from darts.wells.units import *
+from darts.pipes.units import *
 
 class PipeGeometry:
     def __init__(self, pipe_name: str, segments_lengths, pipe_ID: float, inclination_angle: float = 0,
