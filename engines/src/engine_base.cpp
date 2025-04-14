@@ -1599,7 +1599,7 @@ engine_base::calc_newton_residual_L2()
 	std::vector<value_t> res(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 
-	for (int i = 0; i < mesh->n_res_blocks; i++)
+	for (int i = 0; i < mesh->n_blocks; i++)
 	{
 		for (int c = 0; c < n_vars; c++)
 		{
@@ -1711,20 +1711,20 @@ engine_base::calc_well_residual_L2()
 				res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 			}
 		}
-		else if (w->ms_type == ms_well::MS_Type::DFM)
-		{
-			for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
-			{
-				for (int c = 0; c < n_vars; c++)
-				{
-					res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
-				}
-			}
-			for (int c = 0; c < n_vars; c++)   ///////////////////////////////////////
-			{
-				norm[c] = 1;                   ///////////////////////////////////////   This works only if we have ms_well
-			}                                  ///////////////////////////////////////
-		}
+		//else if (w->ms_type == ms_well::MS_Type::DFM)
+		//{
+		//	for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
+		//	{
+		//		for (int c = 0; c < n_vars; c++)
+		//		{
+		//			res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
+		//		}
+		//	}
+		//	for (int c = 0; c < n_vars; c++)   ///////////////////////////////////////
+		//	{
+		//		norm[c] = 1;                   ///////////////////////////////////////   This works only if we have ms_well
+		//	}                                  ///////////////////////////////////////
+		//}
 	}
 
 	for (int v = 0; v < n_vars; v++)
