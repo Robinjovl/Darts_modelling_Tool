@@ -73,7 +73,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), p_matrix, cmap=cmap, shading='auto')
 
@@ -145,7 +145,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('viridis')
+        cmap = plt.get_cmap('jet')
         if x_axis == "time_step_index" and y_axis == "segment_index":
             cax = ax.pcolormesh(time_step_idx_range, range(num_segments), z_c_matrix, cmap=cmap, shading='auto')
 
@@ -210,7 +210,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('viridis')
+        cmap = plt.get_cmap('jet')
         if x_axis == "time_step_index" and y_axis == "segment_index":
             cax = ax.pcolormesh(time_step_idx_range, range(num_segments), T_matrix, cmap=cmap, shading='auto')
 
@@ -274,7 +274,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
@@ -339,7 +339,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('viridis')
+        cmap = plt.get_cmap('jet')
         if x_axis == "time_step_index" and y_axis == "segment_index":
             cax = ax.pcolormesh(time_step_idx_range, range(num_segments), xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
@@ -405,7 +405,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('viridis')
+        cmap = plt.get_cmap('jet')
         if x_axis == "time_step_index" and y_axis == "segment_index":
             cax = ax.pcolormesh(time_step_idx_range, range(num_segments), xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
@@ -472,7 +472,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), rhoG_matrix_masked, cmap=cmap, shading='auto')
 
@@ -540,7 +540,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), rhoL_matrix_masked, cmap=cmap, shading='auto')
 
@@ -607,7 +607,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), miuG_matrix_masked, cmap=cmap, shading='auto')
 
@@ -675,7 +675,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
 
     # Create the heatmap
-    cmap = plt.get_cmap('viridis')
+    cmap = plt.get_cmap('jet')
     if x_axis == "time_step_index" and y_axis == "segment_index":
         cax = ax.pcolormesh(time_step_idx_range, range(num_segments), miuL_matrix_masked, cmap=cmap, shading='auto')
 
@@ -743,7 +743,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #
     #
     # # Create the heatmap
-    # cmap = plt.get_cmap('viridis')
+    # cmap = plt.get_cmap('jet')
     # if x_axis == "time_step_index" and y_axis == "segment_index":
     #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vG_matrix_masked, cmap=cmap, shading='auto')
     #
@@ -812,7 +812,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #
     #
     # # Create the heatmap
-    # cmap = plt.get_cmap('viridis')
+    # cmap = plt.get_cmap('jet')
     # if x_axis == "time_step_index" and y_axis == "segment_index":
     #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vL_matrix_masked, cmap=cmap, shading='auto')
     #
