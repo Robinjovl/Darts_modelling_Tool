@@ -1,10 +1,11 @@
 import math
 import pandas as pd
+import numpy
 
 from darts.pipes.units import *
 
 class PipeGeometry:
-    def __init__(self, pipe_name: str, segments_lengths, pipe_ID: float, inclination_angle: float = 0,
+    def __init__(self, pipe_name: str, segments_lengths, pipe_ID: float, inclination_angle=0,
                  wall_roughness: float = 5e-5*meter(), verbose: bool = False):
         """
         Class constructor to define the geometry of a pipe
@@ -18,7 +19,7 @@ class PipeGeometry:
         :param pipe_ID: Internal diameter of the pipe [meter]
         :type pipe_ID: float
         :param inclination_angle: Inclination angle of the pipe relative to vertical direction [degree]
-        :type inclination_angle: float
+        :type inclination_angle: float or list or numpy.ndarray
         :param wall_roughness: Wall roughness of the pipe [meter]
         :type wall_roughness: float
         :param verbose: Whether to display extra info about PipeGeometry
@@ -31,6 +32,13 @@ class PipeGeometry:
             self.segments_lengths = np.array(segments_lengths)
         elif isinstance(segments_lengths, np.ndarray):
             self.segments_lengths = segments_lengths
+        else:
+            raise TypeError(f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!")
+
+        if isinstance(inclination_angle, list):
+            self.inclination_angle = np.array(inclination_angle)
+        elif isinstance(inclination_angle, (float, numpy.ndarray)):
+            self.inclination_angle = inclination_angle
         else:
             raise TypeError(f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!")
 
@@ -122,15 +130,15 @@ class PETREL_PipeGeometry(PipeGeometry):
 
             inclination_angles.append(theta_deg)
 
-        #TODO: The base class still works with a single inclination angle
-        inclination_angle = inclination_angles
+            inclination_angles = np.array(inclination_angles)
+            conn_inclination_angles = (inclination_angles[:-1] + inclination_angles[1:]) / 2
 
         # Create the result DataFrame. This is not used in any part of the code.
-        self.segment_info = pd.DataFrame({
-                "Segment": range(1, num_segments + 1),
-                "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
-                "End_MD": [min_MD + (i + 1) * segments_length for i in range(num_segments)],
-                "Inclination_Degrees": inclination_angles
+        self.segments_info = pd.DataFrame({
+                 "Segment": range(1, num_segments + 1),
+                 "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
+                 "End_MD": [min_MD + (i + 1) * segments_length for i in range(num_segments)],
+                 "Inclination_Degrees": inclination_angles
         })
 
-        super().__init__(pipe_name, segments_lengths, pipe_ID, inclination_angle, wall_roughness, verbose)
+        super().__init__(pipe_name, segments_lengths, pipe_ID, conn_inclination_angles, wall_roughness, verbose)
