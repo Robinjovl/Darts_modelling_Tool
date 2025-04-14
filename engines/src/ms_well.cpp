@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "ms_well.h"
-#include "globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/csr_matrix.hpp"
@@ -13,9 +12,6 @@
 using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
-
-
-using namespace std;
 
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {

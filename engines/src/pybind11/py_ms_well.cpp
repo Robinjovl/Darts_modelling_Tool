@@ -1,9 +1,8 @@
 #ifdef PYBIND11_ENABLED
+
 #include "py_globals.h"
-#include "pybind11/stl.h"
-#include <memory>
-#include <stdexcept>
 #include "ms_well.h"
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 

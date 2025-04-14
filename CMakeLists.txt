@@ -2,11 +2,6 @@ cmake_minimum_required (VERSION 3.21)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# Set DARTS installation folder
-set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/darts/")
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
-
 # Load cmake modules -----------------------------------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/settings/cmake/modules/")
 
@@ -102,7 +97,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   message(STATUS "  Setting GNU compiler and linker flags")
   # Compiler flags 
   # We can also switch -fno-lto to -flto to compile everything with this flag.
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
   
   # Linker flags
   set(opendarts_cxx_linker_flags "")

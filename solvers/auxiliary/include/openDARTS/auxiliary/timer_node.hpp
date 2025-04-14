@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <time.h>
 
 #ifdef _OPENMP
 #include <omp.h>

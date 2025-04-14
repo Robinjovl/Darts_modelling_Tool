@@ -1,7 +1,6 @@
 #ifndef MS_WELL_H
 #define MS_WELL_H
 
-#include <memory>
 #include <vector>
 #include <tuple>
 #include <unordered_map>

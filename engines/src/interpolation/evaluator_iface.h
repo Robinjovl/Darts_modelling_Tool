@@ -1,13 +1,11 @@
-#pragma once
+#ifndef B7CB6645_948A_4B50_A7D5_980BEFD16090
+#define B7CB6645_948A_4B50_A7D5_980BEFD16090
 
-#include <cstdint>
 #include <vector>
+#include "globals.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/auxiliary/timer_node.hpp"
 using namespace opendarts::auxiliary;
-#else
-#include "timer_node.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 
@@ -249,4 +247,6 @@ public:
                                          std::vector<double> &values, std::vector<double> &derivatives) final;
 };
 #endif
+
+#endif /* B7CB6645_948A_4B50_A7D5_980BEFD16090 */
 

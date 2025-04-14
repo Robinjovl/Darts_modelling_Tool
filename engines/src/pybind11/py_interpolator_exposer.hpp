@@ -1,5 +1,3 @@
-#pragma once
-
 #ifdef PYBIND11_ENABLED
 #include <pybind11/pybind11.h>
 #include "py_globals.h"

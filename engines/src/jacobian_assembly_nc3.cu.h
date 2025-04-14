@@ -1,5 +1,3 @@
-#pragma once
-
 // One thread per cell (per jacobian row)
 template<typename IndexType, typename ValueType, typename InterpValueType,
   int _BLOCK_SIZE>
