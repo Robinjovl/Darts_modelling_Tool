@@ -126,7 +126,7 @@ class Model(CICDModel):
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
         well_1_segments_lengths = 50 * np.ones(20)  # From top to bottom of the wellbore
         well_1_ID = 0.1
-        well_1_inclination_angle = 0  # in degrees relative to the vertical direction
+        well_1_inclination_angle = 0.  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
         verbose = True
         well_1_geometry = PipeGeometry(well_1_name, well_1_segments_lengths, well_1_ID, well_1_inclination_angle,
