@@ -26,7 +26,7 @@ writer.close()
 
 string = 'PRD : temperature'
 ax1 = td.plot(x='time', y=[col for col in td.columns if string in col])
-ax1.plot([0, 3650],[348, 348])
+ax1.plot([0, runtime],[348, 348])
 ax1.tick_params(labelsize=14)
 ax1.set_xlabel('Days', fontsize=14)
 ax1.legend(['temp', 'limit'], fontsize=14)

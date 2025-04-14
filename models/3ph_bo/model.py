@@ -24,11 +24,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 330.,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1]
-                               }
-
     def set_reservoir(self):
         """Reservoir"""
         (nx, ny, nz) = (10, 10, 3)
@@ -55,6 +50,14 @@ class Model(CICDModel):
         zero = 1e-12
         self.inj_stream = [1 - 2 * zero, zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
+
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 330.,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):

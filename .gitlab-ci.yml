@@ -1,4 +1,5 @@
 stages:
+    - build images
     - build
     - test
     - deploy
@@ -200,7 +201,7 @@ build-windows-3.9-ODLS:
 .build-linux-dockcross:
     extends: .build-linux
     # Dockcross is an image specifically made for building Python wheels, based on CentOS 7 with old glibc - it will run on even old systems
-    image: dockcross/manylinux2014-x64:latest
+    image: "${CI_REGISTRY_IMAGE}/linux-builder"
     # Install samba client to upload build results to shared folder TODO remove
     before_script:
         - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
@@ -230,6 +231,23 @@ build-windows-3.9-ODLS:
         - '*.log'
       expire_in: 1 week
       when: always
+
+build-linux-builder:
+  stage: build images
+  tags:
+    - linux
+  image: 
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor 
+      --context "${CI_PROJECT_DIR}/.cicd/build-linux"
+      --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}/linux-builder:${CI_COMMIT_TAG}"
+  rules:
+    - changes:
+        - .cicd/build-linux/Dockerfile
+        - .cicd/build-linux/Toolchain.cmake
       
 ###################################################################################
      
@@ -534,16 +552,16 @@ test-windows-3.9-ODLS:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
-        - python run_test_suite2.py LOG
+        - darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
         # test interpolators
         - cd tests/engines/src/interpolation
-        - python test_interpolation.py
+        - darts test_interpolation.py
         - cd ../../../..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
-        - python main.py
+        - darts main.py
         - cd ../../..
         #
         - echo "test finished"
@@ -574,12 +592,11 @@ test-windows-3.9-ODLS:
         - python -m pip install --upgrade pip
         - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
         - pip install ./dist/*.whl
-        - export LD_LIBRARY_PATH=`python -c "import os;import darts;print(os.path.dirname(darts.__file__))"`:$LD_LIBRARY_PATH  # help to find discretizer.so when import engines
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument LOG to trigger verbose check performance
-        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  python run_test_suite2.py LOG
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
         # test discretizer
@@ -623,7 +640,7 @@ test-windows-3.9-ODLS:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
-        - python run_test_suite2.py LOG
+        - darts run_test_suite2.py LOG
         - cd ..
         # test interpolators
         - cd tests\engines\src\interpolation
@@ -643,7 +660,6 @@ test-windows-3.9-ODLS:
         - '.\models\pkl_win.zip'
       when: always
       expire_in: 1 week
-      when: always
 
 ###################################################################################
 

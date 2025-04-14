@@ -1847,7 +1847,13 @@ int engine_base::apply_newton_update(value_t dt)
 		apply_obl_axis_local_correction(X, dX);
 
 	// make newton update
-	std::transform(X.begin(), X.end(), dX.begin(), X.begin(), std::minus<double>());
+	auto newton_update_coefficient_copy = this->newton_update_coefficient;
+	std::transform(X.begin(), X.end(), dX.begin(), X.begin(), 
+	  [newton_update_coefficient_copy](double x, double dx) {
+		return x - newton_update_coefficient_copy * dx;
+	  });
+	this->newton_update_coefficient = 1.0;
+
 	return 0;
 }
 

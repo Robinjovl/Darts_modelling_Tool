@@ -95,16 +95,21 @@ class THMCModel(DartsModel):
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+
+            thermal = True
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                          thermal=True, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
+                                          min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t, state_spec=state_spec,
                                           discretizer=self.discretizer_name)
         else:
+            thermal = False
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                          discretizer=self.discretizer_name)
+                                          state_spec=state_spec, discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
@@ -165,17 +170,14 @@ class THMCModel(DartsModel):
                                            well_index=self.reservoir.well_index)
 
     def set_initial_conditions(self):
+        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_temperature=self.reservoir.t_init,
-                                                        uniform_displacement=self.reservoir.u_init)
-        else:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_displacement=self.reservoir.u_init)
+            input_distribution['temperature'] = self.reservoir.t_init
+
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                       input_distribution=input_distribution,
+                                                       input_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):

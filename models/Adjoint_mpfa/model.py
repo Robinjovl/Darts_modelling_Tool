@@ -132,9 +132,10 @@ class Model(DartsModel, OptModuleSettings):
 
         # create physics
         thermal = True
-        self.physics = Compositional(components, phases, self.timer,
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200, thermal=thermal)
+                                     min_t=273.15 + 20, max_t=273.15 + 200)
         self.physics.add_property_region(property_container)
 
         self.runtime = 1000
@@ -146,8 +147,13 @@ class Model(DartsModel, OptModuleSettings):
         return
 
     def set_initial_conditions(self):
-        self.physics.set_uniform_initial_conditions(self.reservoir.mesh, uniform_pressure=self.p_init,
-                                                      uniform_composition=self.ini, uniform_temp=self.init_temp)
+        input_distribution = {'pressure': self.p_init}
+        input_distribution.update({comp: self.ini[i] for i, comp in enumerate(self.physics.components[:-1])})
+        if self.physics.thermal:
+            input_distribution['temperature'] = self.init_temp
+
+        return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
         for i, w in enumerate(self.reservoir.wells):
@@ -275,6 +281,7 @@ class ModelProperties(PropertyContainer):
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
     def run_flash(self, pressure, temperature, zc):
+        self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):
             self.x[i, i] = 1

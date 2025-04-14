@@ -70,6 +70,8 @@ class Model(DartsModel):
     def set_physics(self, corey: dict = {}, zero: float = 1e-12, temperature: float = None, n_points: int = 10001,
                     diff = 1e-9):
         """Physical properties"""
+        self.zero = zero
+
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         phases = ["V", "Aq"]
@@ -168,7 +170,56 @@ class Model(DartsModel):
             dispersivity_d = self.physics.engine.get_dispersivity_d()
             allocate_device_data(self.physics.engine.dispersivity, dispersivity_d)
             copy_data_to_device(self.physics.engine.dispersivity, dispersivity_d)
-    
+
+    def set_initial_conditions(self):
+        if 1:
+            # define initial pressure, composition and temperature of the reservoir
+            pres_in = 212
+            input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
+            input_distribution = {"pressure": [pres_in, pres_in + input_depths[1] * 0.09775],
+                                  "H2O": [1. - self.zero, 1. - self.zero],
+                                  "temperature": [323.15, 323.15]
+                                  }
+
+        else:
+            # get depths
+            depths = np.asarray(self.reservoir.mesh.depth)
+            min_depth = np.min(depths)
+            max_depth = np.max(depths)
+
+            # calculate phase equilibrium for given uniform composition
+            props = self.physics.reservoir_operators[0].property
+            state = [np.mean(self.p_init)] + self.ini_comp
+            props.evaluate(state)
+
+            # run initialization over depth with specified GOC, pure liquid above, pure vapour under
+            from darts.physics.super.initialize import Initialize
+            nc = self.physics.nc
+            # top boundary
+            boundary_state = {var: props.x[0, c] for c, var in enumerate(self.physics.components[:-1])}
+            boundary_state['temperature'] = 350.
+            boundary_state['pressure'] = np.min(self.p_init)
+            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
+                              is_barycentric=self.is_barycentric)
+            # GOC
+            nb = 100
+            mid_depth = (min_depth + max_depth) / 2
+            z = np.zeros((nb, nc - 1))
+            init_depths = np.linspace(start=min_depth, stop=max_depth, num=nb)
+
+            z[init_depths < mid_depth, :] = props.x[0, :-1]  # vapour is above GOC
+            z[init_depths >= mid_depth, :] = props.x[1, :-1]  # liquid is below GOC
+            primary_specs = {var: z[:, i] for i, var in enumerate(self.physics.components[:-1])}
+            # run initialization
+            X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
+                           nb=nb, primary_specs=primary_specs, boundary_state=boundary_state,
+                           dTdh=0.).reshape((nb, self.physics.n_vars))
+            input_depth = init.depths
+            input_distribution = {var: X[:, i] for i, var in enumerate(self.physics.vars)}
+
+        # assign initial condition with evaluated initialized properties
+        self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=input_depths,
+                                                             input_distribution=input_distribution)
 
     def output_properties_old(self):
         """

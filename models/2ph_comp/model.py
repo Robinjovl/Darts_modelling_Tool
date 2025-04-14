@@ -27,11 +27,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 50,
-                               self.physics.vars[1]: 0.1,
-                               self.physics.vars[2]: 0.2
-                               }
-
     def set_reservoir(self):
         nz, ny, nx = 50, 1, 50
         dz, dy, dx = 2, 1, 2
@@ -68,7 +63,9 @@ class Model(CICDModel):
                                                ('oil', PhaseRelPerm("oil"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         property_container.output_props = {
             "sat0": lambda: property_container.sat[0],
@@ -82,6 +79,14 @@ class Model(CICDModel):
 
 
         return
+
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 50,
+                              self.physics.vars[1]: 0.1,
+                              self.physics.vars[2]: 0.2
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
 
     def set_well_controls(self):
         zero = self.physics.axes_min[1]

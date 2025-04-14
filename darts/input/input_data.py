@@ -354,7 +354,7 @@ class InputData():
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            if k in ['initial', 'mesh', 'sim']:  # do not check initial currently #TODO
+            if k in ['initial', 'mesh', 'sim', 'other']:  # do not check initial currently #TODO
                 continue
             for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
