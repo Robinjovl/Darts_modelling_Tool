@@ -130,8 +130,7 @@ class PETREL_PipeGeometry(PipeGeometry):
 
             inclination_angles.append(theta_deg)
 
-            inclination_angles = np.array(inclination_angles)
-            conn_inclination_angles = (inclination_angles[:-1] + inclination_angles[1:]) / 2
+            conn_inclination_angles = (np.array(inclination_angles[:-1]) + np.array(inclination_angles[1:])) / 2
 
         # Create the result DataFrame. This is not used in any part of the code.
         self.segments_info = pd.DataFrame({
