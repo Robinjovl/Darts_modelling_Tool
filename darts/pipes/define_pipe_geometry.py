@@ -52,7 +52,7 @@ class PipeGeometry:
         self.pipe_internal_A = math.pi * self.pipe_IR ** 2
         self.perimeter = 2 * math.pi * self.pipe_IR
         self.segments_volumes = self.pipe_internal_A * self.segments_lengths
-        self.inclination_angle_radian = math.radians(self.inclination_angle_degree)
+        self.inclination_angle_radian = np.radians(self.inclination_angle_degree)
         self.num_segments = len(self.segments_lengths)
         self.num_interfaces = self.num_segments - 1
 
