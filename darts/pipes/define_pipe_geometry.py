@@ -87,8 +87,26 @@ class PipeGeometry:
             print("** Geometry of the pipe \"%s\" is defined!" % self.pipe_name)
 
 class PETREL_PipeGeometry(PipeGeometry):
+    """
+    This class is used to get the geometry of the well from a PETREL well trajectory file. The number of segments
+    of the well is specified by the user and the lengths of all the segments are considered equal.
+    """
     def __init__(self, pipe_name: str, csv_file_name: str, num_segments: int, pipe_ID: float,
                  wall_roughness: float = 5e-5*meter(), verbose: bool = False):
+        """
+        :param pipe_name: Name of the pipe
+        :type pipe_name: str
+        :param csv_file_name: Name of the PETREL well trajectory CSV file
+        :type csv_file_name: str
+        :param num_segments: Number of segments of the pipe
+        :type num_segments: int
+        :param pipe_ID: Internal diameter of the pipe [meter]
+        :type pipe_ID: float
+        :param wall_roughness: Wall roughness of the pipe [meter]
+        :type wall_roughness: float
+        :param verbose: Whether to display extra info about PipeGeometry
+        :type verbose: boolean
+        """
         df = pd.read_csv(csv_file_name, delim_whitespace=True, comment="#")
 
         # Extract the MD column and get min and max MDs
