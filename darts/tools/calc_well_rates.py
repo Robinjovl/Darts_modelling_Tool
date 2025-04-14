@@ -39,7 +39,11 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
         rates = np.zeros((num_ts, len(conn_ids), pc.nph))
     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
-        rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
+        try:
+            rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
+        except:
+            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
+
     elif rate_type == 'heat_rate':
         if thermal:
             rates = np.zeros((num_ts, len(conn_ids), pc.nph))
@@ -98,7 +102,10 @@ def phase_molar_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        try:
+            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        except:
+            values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -115,7 +122,11 @@ def phase_mass_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
+        try:
+            values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
+        except:
+            values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+
 
     return values
 
@@ -132,7 +143,10 @@ def phase_volumetric_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        values[j] = pc.kr[j] / pc.mu[j]
+        try:
+            values[j] = pc.kr[j] / pc.mu[j]
+        except:
+            values[j] = pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -147,10 +161,18 @@ def components_molar_rates_operators(state, pc):
     """
     pc.evaluate(state)
 
-    values = np.zeros(pc.nph * pc.nc_fl)
+    try:
+        values = np.zeros(pc.nph * pc.nc_fl)
+    except:
+        values = np.zeros(pc.nph)
+
     for j in pc.ph:
-        for i in range(pc.nc_fl):
-            values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        try:
+            for i in range(pc.nc_fl):
+                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        except:
+            for i in range(1):
+                values[1 * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -168,7 +190,10 @@ def components_mass_rates_operators(state, pc):
     values = np.zeros(pc.nph * pc.nc_fl)
     for j in pc.ph:
         for i in range(pc.nc_fl):
-            values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
+            try:
+                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
+            except:
+                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 

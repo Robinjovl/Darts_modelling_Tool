@@ -696,8 +696,17 @@ class Output:
         property_container = self.physics.property_containers
         pc = property_container[0]
 
+        try: # should refer to the name of the physics
+            pc.phases_name = self.physics.phases[:pc.nph]
+            pc.nc_fl = 1
+            pc.components_name = pc.phases_name
+            self.physics.thermal = True
+        except:
+            pass
+
         types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
                                "components_molar_rates", "components_mass_rates", "advective_heat_rate"]
+
         for rate_type in types_of_well_rates:
             if rate_type == 'advective_heat_rate':
                 continue
@@ -829,9 +838,16 @@ class Output:
                     perf_counter += len(well.perforations)
 
             """ Store total rates for each well (by calculation at wellhead connection) """
-            total_rates_at_wellhead_conn = calc_rates_at_connections(h5_well_data, well_head_conn_ids,
-                                                                     well_head_conn_trans,
-                                                                     self.physics.thermal, pc, rate_type)
+            try:
+                total_rates_at_wellhead_conn = calc_rates_at_connections(h5_well_data, well_head_conn_ids,
+                                                                         well_head_conn_trans,
+                                                                         self.physics.thermal, pc, rate_type)
+            except:
+                total_rates_at_wellhead_conn = calc_rates_at_connections(h5_well_data, well_head_conn_ids,
+                                                                         well_head_conn_trans,
+                                                                         True, pc, rate_type)
+
+
             if rate_type == 'phases_molar_rates':
                 for wh_counter, well in enumerate(self.reservoir.wells):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
@@ -882,9 +898,15 @@ class Output:
                 p = h5_well_data['dynamic']['X'][i, :, id_pres]
                 BHP[i] = p[cell_idx]
                 if self.physics.thermal:
-                    id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')
-                    T = h5_well_data['dynamic']['X'][i, :, id_temp]
-                    BHT[i] = T[cell_idx]
+                    try:
+                        id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')
+                        T = h5_well_data['dynamic']['X'][i, :, id_temp]
+                        BHT[i] = T[cell_idx]
+                    except:
+                        id_enthalpy = h5_well_data['dynamic']['variable_names'].index('enthalpy')
+                        E = h5_well_data['dynamic']['X'][i, cell_idx, id_enthalpy]
+                        state = [BHP[i], E[0]]
+                        BHT[i] = pc.temperature_ev.evaluate(state)
 
             well_output_dict[f'well_{well.name}_BHP'] = BHP
             well_output_dict[f'well_{well.name}_BHT'] = BHT
