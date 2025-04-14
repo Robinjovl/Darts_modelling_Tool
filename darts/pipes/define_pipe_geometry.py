@@ -40,7 +40,7 @@ class PipeGeometry:
         elif isinstance(inclination_angle, (float, numpy.ndarray)):
             self.inclination_angle = inclination_angle
         else:
-            raise TypeError(f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!")
+            raise TypeError(f"inclination_angle of the pipe {pipe_name} is neither a list nor a numpy array nor a float!")
 
         self.inclination_angle_degree = inclination_angle   # 0 for a vertical pipe, 90 for a horizontal pipe for now
         self.pipe_ID = pipe_ID
