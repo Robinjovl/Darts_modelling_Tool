@@ -188,22 +188,22 @@ class Output:
         return 0 
         
         
-     def load_property_array(self, file_directory="property_array.h5"):
-        
-        property_array = {}
+    def load_property_array(self, file_directory="property_array.h5"):
 
-        with h5py.File(file_directory, "r") as h5f:
-            # Load time vector
-            time_vector = np.array(h5f["time_vector"])
-            
-            # Load each property array
-            for key in h5f.keys():
-                if key != "time_vector":  # Skip time vector in property dictionary
-                    property_array[key] = np.array(h5f[key])
+       property_array = {}
 
-        print(f"{filename} loaded successfully.")
-        
-        return time_vector, property_array
+       with h5py.File(file_directory, "r") as h5f:
+           # Load time vector
+           time_vector = np.array(h5f["time_vector"])
+
+           # Load each property array
+           for key in h5f.keys():
+               if key != "time_vector":  # Skip time vector in property dictionary
+                   property_array[key] = np.array(h5f[key])
+
+       print(f"{filename} loaded successfully.")
+
+       return time_vector, property_array
         
     def print_simulation_parameters(self):
         filename = 'simulation_input_parameters.txt'
