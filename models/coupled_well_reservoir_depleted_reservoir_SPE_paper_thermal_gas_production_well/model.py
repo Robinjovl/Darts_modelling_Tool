@@ -208,7 +208,7 @@ class Model(CICDModel):
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with a single perforation
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_ID=well_1_geometry.pipe_ID)
 
         # Add large boundary volume for well
         self.reservoir.large_wellhead_volume = {well_1_name: {"flag": True,

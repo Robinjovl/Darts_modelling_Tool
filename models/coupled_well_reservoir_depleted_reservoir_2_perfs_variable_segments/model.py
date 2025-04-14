@@ -192,8 +192,8 @@ class Model(CICDModel):
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with two perforations
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 4), well_seg_idx=59, well_geometry=well_1_geometry)
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 7), well_seg_idx=62, well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 4), well_seg_idx=59, well_ID=well_1_geometry.pipe_ID)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 7), well_seg_idx=62, well_ID=well_1_geometry.pipe_ID)
 
     def set_well_controls(self):
         # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator

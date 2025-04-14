@@ -8,8 +8,6 @@ from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from scipy.interpolate import griddata
 
-from darts.pipes.define_pipe_geometry import PipeGeometry
-
 
 class StructReservoir(ReservoirBase):
     def __init__(self, timer: timer_node, nx: int, ny: int, nz: int, dx, dy, dz, permx, permy, permz, poro, depth=None, start_z=0,
@@ -137,7 +135,7 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None, well_ID: float = None, well_geometry: PipeGeometry=None,
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None, well_ID: float = None,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = None, verbose: bool = False):
         """
@@ -155,7 +153,7 @@ class StructReservoir(ReservoirBase):
         elif well.ms_type == ms_well.MS_Type.DFM:
             assert well_seg_idx is not None, "If the well is of the DFM type, well_seg_idx must be specified!"
             assert multi_segment is None, "If the well is of the DFM type, multi_segment must not be specified!"
-            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_geometry.pipe_ID,
+            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
                                                                         segment_direction=segment_direction, skin=skin)
 
         if well_index is None:

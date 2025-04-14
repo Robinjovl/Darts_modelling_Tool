@@ -144,8 +144,8 @@ class Model(CICDModel):
 
         # Well with two perforations
         reservoir_middle_cell_index = int(self.reservoir.nx / 2)
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=19, well_geometry=well_1_geometry)
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 2), well_seg_idx=20, well_geometry=well_1_geometry)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 1), well_seg_idx=19, well_ID=well_1_geometry.pipe_ID)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(reservoir_middle_cell_index, 1, 2), well_seg_idx=20, well_ID=well_1_geometry.pipe_ID)
 
         """================================================= Well 2 ================================================="""
         # well_2_name = "P1"
