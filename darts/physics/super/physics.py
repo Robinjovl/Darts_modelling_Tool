@@ -122,10 +122,10 @@ class Compositional(PhysicsBase):
             self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
             self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region], self.thermal)
 
-        if self.thermal:
-            self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
-        else:
-            self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+        # if self.thermal:
+        #     self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)   # This works well for the non-isothermal scenarios with basic wells.
+        # else:
+        self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)  # This works well for the non-isothermal scenarios with multi-segment wells.
 
         self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
 

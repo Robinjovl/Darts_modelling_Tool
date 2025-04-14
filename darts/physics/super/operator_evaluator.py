@@ -276,7 +276,9 @@ class WellOperators(OperatorsSuper):
 
         density_tot = np.sum(self.property.sat[:self.np_fl] * self.property.dens_m[:self.np_fl])
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-        self.phi_f = 1.
+        # self.phi_f = 1.
+        self.phi_s = np.sum(zc[self.nc_fl:])
+        self.phi_f = 1. - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -328,7 +330,58 @@ class WellOperators(OperatorsSuper):
         return 0
 
     def evaluate_thermal(self, state, values):
-        return
+        """
+        Method to evaluate operators for energy conservation equation
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+        pressure = state[0]
+        temperature = state[-1]
+
+        # Evaluate thermal properties at current state
+        self.property.evaluate_thermal(state)
+        # rock_energy = self.property.rock_energy_ev.evaluate(temperature=temperature)
+
+        """ Alpha operator represents accumulation term: """
+        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        values[self.ACC_OP + self.nc] += self.phi_f * np.sum(self.property.sat[self.property.ph] *
+                                                             self.property.dens_m[self.property.ph] *
+                                                             self.property.enthalpy[
+                                                                 self.property.ph])  # fluid enthalpy (kJ/m3)
+        # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        values[self.ACC_OP + self.nc] += self.phi_s * np.sum(self.property.sat[self.np_fl:self.np_fl + self.ns] *
+                                                             self.property.dens_m[self.np_fl:self.np_fl + self.ns] *
+                                                             self.property.enthalpy[self.np_fl:self.np_fl + self.ns])
+        # Enthalpy to internal energy conversion
+        values[self.ACC_OP + self.nc] -= 100 * pressure
+
+        """ Beta operator represents flux term: """
+        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
+        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * \
+                                                                      self.property.dens_m[self.property.ph]
+
+        """ Chi operator for temperature in conduction """
+        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
+        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = temperature * self.property.cond[self.property.ph]
+
+        """ Delta operator for reaction """
+        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
+        values[self.KIN_OP + self.nc] = self.property.energy_source
+
+        """ Additional energy operators """
+        # E1-> rock internal energy
+        # values[self.RE_INTER_OP] = rock_energy / self.compr  # (T-T_0), multiplied by rock hcap inside engine
+        # E2-> rock temperature
+        values[self.RE_TEMP_OP] = temperature
+        # E3-> rock conduction
+        # values[self.ROCK_COND] = 1 / self.compr  # multiplied by rock cond inside engine
+        # Phase enthalpy
+        for j in range(self.nph):
+            values[self.ENTH_OP + j] = self.property.enthalpy[j]
+
+        return 0
 
 
 class SinglePhaseGeomechanicsOperators(OperatorsBase):
