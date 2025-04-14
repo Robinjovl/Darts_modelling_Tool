@@ -160,7 +160,6 @@ class Model(CICDModel):
                     w.control = self.physics.new_rate_prod(8000, 0)
                 else:
                     w.control = self.physics.new_rate_water_prod(8000)
-
                 # w.control = self.physics.new_bhp_prod(180)
 
     def compute_temperature(self, X):
