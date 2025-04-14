@@ -91,27 +91,27 @@ struct engine_super_elastic_exposer
 void pybind_engine_super_elastic_cpu(py::module &m)
 {
   // single-phase isothermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, false> re;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC-4, 1, false> re;
   re.expose(m);
   
   // two-phase isothermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, false> re1;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC-4, 2, false> re1;
   re1.expose(m);
 
   // three-phase isothermal
-  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, false> re2;
+  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC-4, 3, false> re2;
   //re2.expose(m);
 
   // single-phase thermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, true> re3;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC-4, 1, true> re3;
   re3.expose(m);
 
   // two-phase thermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, true> re4;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC-4, 2, true> re4;
   re4.expose(m);
 
   // three-phase thermal
-  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, true> re5;
+  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC-4, 3, true> re5;
   //re5.expose(m);
 }
 

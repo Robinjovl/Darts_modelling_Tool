@@ -7,16 +7,18 @@ import numpy as np
 
 
 m = Model(iapws_physics=True)
-
 m.init()#(platform='gpu')
-m.output_to_vtk(ith_step=0, output_directory='vtk')
+m.set_output()
+
 m.run(365)
 m.print_timers()
 m.print_stat()
-m.output_to_vtk(ith_step=1, output_directory='vtk')
 
+output_props = m.physics.vars + m.output.properties
+m.output.output_to_vtk(output_properties=output_props) # output all saved time steps to vtk
 
-td = pd.DataFrame.from_dict(m.physics.engine.time_data)
+td = m.output.store_well_time_data()
+# td = pd.DataFrame.from_dict(m.physics.engine.time_data)
 td.to_pickle("darts_time_data.pkl")
 writer = pd.ExcelWriter('time_data.xlsx')
 td.to_excel(writer, sheet_name='Sheet1')

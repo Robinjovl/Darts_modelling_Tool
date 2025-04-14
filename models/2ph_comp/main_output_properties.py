@@ -81,9 +81,9 @@ time, property_array1 = n.output.output_properties(filepath = None, output_prope
 # prop_plot(n.output_folder, property_array4)
 
 #%% Well output
+
 well_time_data = n.output.store_well_time_data()
-types_of_well_time_data = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
-                           "components_molar_rates", "components_mass_rates", "advective_heat_rate", "BHP", "BHT"]
+types_of_well_time_data = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates", "components_molar_rates", "components_mass_rates", "advective_heat_rate", "BHP", "BHT"]
 n.output.plot_well_time_data(types_of_well_time_data)
 
 plt.figure()

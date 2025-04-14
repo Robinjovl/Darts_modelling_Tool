@@ -147,7 +147,7 @@ class DartsModel:
         self.output.save_data_to_h5(kind='reservoir')
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5', well_filename: str = 'well_data.h5',
-                   save_initial: bool = True, all_phase_props : bool = True, precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
+                   save_initial: bool = True, all_phase_props : bool = False, precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
         """
        Function to initialize output class
 
