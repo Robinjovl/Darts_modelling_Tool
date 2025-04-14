@@ -1,4 +1,6 @@
 import math
+import pandas as pd
+
 from darts.pipes.units import *
 
 class PipeGeometry:
@@ -75,3 +77,60 @@ class PipeGeometry:
 
         if verbose:
             print("** Geometry of the pipe \"%s\" is defined!" % self.pipe_name)
+
+class PETREL_PipeGeometry(PipeGeometry):
+    def __init__(self, pipe_name: str, csv_file_name: str, num_segments: int, pipe_ID: float,
+                 wall_roughness: float = 5e-5*meter(), verbose: bool = False):
+        df = pd.read_csv(csv_file_name, delim_whitespace=True, comment="#")
+
+        # Extract the MD column and get min and max MDs
+        min_MD = df["MD"].min()
+        max_MD = df["MD"].max()
+
+        # Compute segment length
+        segments_length = np.abs(max_MD - min_MD) / num_segments
+        segments_lengths = segments_length * np.ones(num_segments)
+
+        # Initialize list for inclination angles
+        inclination_angles = []
+
+        # Loop through segments
+        for i in range(num_segments):
+            start_MD = min_MD + i * segments_length
+            end_MD = start_MD + segments_length
+
+            # Filter points within the segment range
+            segment_df = df[(df["MD"] >= start_MD) & (df["MD"] <= end_MD)]
+            if segment_df.empty:
+                inclination_angles.append(np.nan)
+                continue
+
+            # Get the start and end point
+            start_point = segment_df.iloc[0]
+            end_point = segment_df.iloc[-1]
+
+            # Calculate displacement vector components
+            dx = end_point["X"] - start_point["X"]
+            dy = end_point["Y"] - start_point["Y"]
+            dz = end_point["Z"] - start_point["Z"]
+
+            # Inclination angle calculation
+            vector_magnitude = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
+            cos_theta = dz / vector_magnitude if vector_magnitude != 0 else np.nan
+            theta_rad = np.arccos(np.clip(cos_theta, -1.0, 1.0))  # avoid domain errors
+            theta_deg = np.degrees(theta_rad)
+
+            inclination_angles.append(theta_deg)
+
+        #TODO: The base class still works with a single inclination angle
+        inclination_angle = inclination_angles
+
+        # Create the result DataFrame. This is not used in any part of the code.
+        self.segment_info = pd.DataFrame({
+                "Segment": range(1, num_segments + 1),
+                "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
+                "End_MD": [min_MD + (i + 1) * segments_length for i in range(num_segments)],
+                "Inclination_Degrees": inclination_angles
+        })
+
+        super().__init__(pipe_name, segments_lengths, pipe_ID, inclination_angle, wall_roughness, verbose)
