@@ -59,6 +59,7 @@ class Output:
         self.timer.node["output_reservoir"] = timer_node()
         self.timer.node["output_well"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
+        self.timer.node["well_rates"] = timer_node()
 
         self.output_folder = output_folder
         self.sol_filename = sol_filename
@@ -205,18 +206,88 @@ class Output:
 
        return time_vector, property_array
         
-    def print_simulation_parameters(self):
-        filename = 'simulation_input_parameters.txt'
-        
-        obj = [self.params, self.reservoir, self.physics]
-        
-        for obj in obj_list:
-            with open(filename, "w") as file:
-                for key, value in vars(obj).items():
-                    file.write(f"{key}: {value}\n")
-                    
-        return 0 
-    
+    def print_simulation_parameters(self, mode = 'table'):
+        """
+        Function that dumps all the class variables into a .txt file
+        """
+        filepath = os.path.join(self.output_folder, 'simulation_input_parameters.txt')
+
+        if mode == 'dump':
+            obj_list = [self.params, self.reservoir, self.physics]
+            with open(filepath, 'w') as f:
+                for i, obj in enumerate(obj_list):
+                    f.write(f"------- {i + 1}: {obj.__class__.__name__} -------\n")
+                    for attr in dir(obj):
+                        if not attr.startswith('_'):
+                            try:
+                                value = getattr(obj, attr)
+                                f.write(f"{attr}: {value}\n")
+                            except Exception as e:
+                                f.write(f"{attr}: <error: {e}>\n")
+                    f.write('\n')  # Add a blank line between objects
+        else:
+            with open(filepath, 'w') as f:
+                f.write("-----------------------------PHYSICS------------------------\n")
+                f.write("-- Physics:\n")
+                f.write(f"{type(self.physics)}\n")
+
+                f.write("-- Components:\n")
+                f.write(f"{self.physics.components}\n")
+
+                f.write("-- Phases:\n")
+                f.write(f"{self.physics.phases}\n")
+
+                f.write("-- Numerical variables:\n")
+                f.write(f"{self.physics.vars}\n")
+
+                f.write("-- Thermal:\n")
+                f.write(f"{self.physics.thermal}\n")
+
+                f.write("-- State specification:\n")
+                f.write(f"{self.physics.state_spec}\n")
+
+                f.write("-- OBL axes minimums:\n")
+                f.write(f"{self.physics.axes_min[:]}\n")
+
+                f.write("-- OBL axes maximums:\n")
+                f.write(f"{self.physics.axes_max[:]}\n")
+
+                f.write("-- OBL axes maximums:\n")
+                f.write(f"{self.physics.n_axes_points[:]}\n")
+
+                f.write("-- Regions:\n")
+                f.write(f"{self.physics.regions}\n")
+
+                f.write("------------------------RESERVOIR-----------------------\n")
+                f.write("-- Reservoir:\n")
+                f.write(f"{type(self.reservoir)}\n")
+
+                f.write("-- n_blocks:\n")
+                f.write(f"{self.reservoir.mesh.n_blocks}\n")
+
+                f.write("-- n_res_blocks:\n")
+                f.write(f"{self.reservoir.mesh.n_res_blocks}\n")
+
+                f.write("------------------------WELLS-----------------------\n")
+                f.write("-- wells and perforations:\n")
+                for i, w in enumerate(self.reservoir.wells):
+                    if 'I' in w.name:  # Injector well
+                        if hasattr(w.control, 'target_pressure'):
+                            f.write(
+                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure} and injection stream {w.control.injection_stream}.\n")
+                        elif hasattr(w.control, 'target_rate'):
+                            f.write(
+                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate} and injection stream {w.control.injection_stream}.\n")
+                    else:  # Producer well
+                        if hasattr(w.control, 'target_pressure'):
+                            f.write(
+                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure}.\n")
+                        elif hasattr(w.control, 'target_rate'):
+                            f.write(
+                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate}.\n")
+
+        return 0
+
     def filter_phase_props(self, new_prop_keys):
         """
         Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
@@ -272,7 +343,7 @@ class Output:
 
             # add dynamic data group
             dynamic_group = f.create_group('dynamic')
-            dynamic_group.create_dataset('time', shape=(0,), maxshape=(None,))
+            dynamic_group.create_dataset('time', shape=(0,), maxshape=(None,), dtype=self.precision_map[self.precision])
 
             # add solution
             if self.reservoir.mesh.n_blocks > 0 and self.physics.n_vars > 0:
@@ -373,19 +444,15 @@ class Output:
 
         if kind == 'well':
             path = os.path.join(self.output_folder, self.well_filename)
-            self.timer.start()
-            self.timer.node['output_well'].start()
+            self.timer.start(); self.timer.node['output_well'].start()
             self.save_specific_data(path)
-            self.timer.node['output_well'].stop()
-            self.timer.stop()
+            self.timer.node['output_well'].stop(); self.timer.stop()
 
         elif kind == 'reservoir':
             path = os.path.join(self.output_folder, self.sol_filename)
-            self.timer.start()
-            self.timer.node['output_reservoir'].start()
+            self.timer.start(); self.timer.node['output_reservoir'].start()
             self.save_specific_data(path)
-            self.timer.node['output_reservoir'].stop()
-            self.timer.stop()
+            self.timer.node['output_reservoir'].stop(); self.timer.stop()
 
         else:
             print("Please use either kind='well' or kind='solution' in save_data_to_h5")
@@ -630,29 +697,31 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def output_to_vtk(self, filepath: str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
+    def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
         Function to export results at timestamp t into `.vtk` format.
 
+
         :param ith_step: i'th reporting step
         :type ith_step: int
+
         :param output_directory: Name to save .vtk file
         :type output_directory: str
-        :param output_properties: List of properties to include in .vtk file, default is None which will pass all
+
+        :param output_properties: List of properties to include in .vtk file, default is None in which case only primary (state) variables are evaluated
         :type output_properties: list
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
 
-        # Set default output directory
         if output_directory is None:
-            output_directory = self.output_folder
+            # Set default output directory
+            filepath = os.path.join(self.output_folder, 'vtk_files')
+            os.makedirs(filepath, exist_ok=True)
+        else:
+            # Set user specified directory
+            os.makedirs(output_directory, exist_ok=True)
 
-        main_dir = os.path.join(output_directory, 'vtk_files')
-        if not os.path.exists(main_dir):
-            os.makedirs(main_dir, exist_ok=True)
-
-        # timesteps, property_array = self.output_properties(output_properties=list(prop_idxs.keys()), timestep=ith_step)
-        timesteps, property_array = self.output_properties(filepath, output_properties, ith_step, engine)
+        timesteps, property_array = self.output_properties(self.sol_filepath, output_properties, ith_step, engine)
         prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
 
         for t, time in enumerate(timesteps):
@@ -660,11 +729,10 @@ class Output:
             for i, name in enumerate(property_array.keys()):
                 data[i, :] = property_array[name][t]
 
-            # Pass to Reservoir.output_to_vtk() method
             if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, main_dir, prop_names, data)
+                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
             else:
-                self.reservoir.output_to_vtk(ith_step, time, main_dir, prop_names, data)
+                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
 
         self.timer.node["vtk_output"].stop(); self.timer.stop()
 
@@ -677,6 +745,9 @@ class Output:
         two different methods: 1- summing up the rates of perforations 2- calculating the rates directly at the
         wellhead connection
         """
+
+        self.timer.start(); self.timer.node["well_rates"].start()
+
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
 
         well_output_dict = {}
@@ -696,12 +767,12 @@ class Output:
         property_container = self.physics.property_containers
         pc = property_container[0]
 
-        try: # should refer to the name of the physics
+        if type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
             pc.phases_name = self.physics.phases[:pc.nph]
             pc.nc_fl = 1
             pc.components_name = pc.phases_name
             self.physics.thermal = True
-        except:
+        else:
             pass
 
         types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
@@ -918,6 +989,8 @@ class Output:
         # Store the well time data in an Excel file
         with pd.ExcelWriter(os.path.join(self.output_folder, 'well_time_data.xlsx')) as writer:
             td.to_excel(writer, sheet_name='Sheet1')
+
+        self.timer.node["well_rates"].stop(); self.timer.stop()
 
         return well_output_dict
 

@@ -50,20 +50,28 @@ if __name__ == '__main__':
     n = Model()
     #n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.set_output()
 
     if True:
         n.run(100)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run(300, restart_dt=1e-3)
         n.print_timers()
-        n.print_stat()
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
+
+        # compute well rates
+        well_rates_dict = n.output.store_well_time_data()
+
+        # save dataframe of well rates
+        td = pd.DataFrame.from_dict(well_rates_dict)
+        td.to_pickle(n.output_folder + "/darts_time_data.pkl")  # as a pickle file
+        writer = pd.ExcelWriter(n.output_folder + "/darts_time_data.xlsx")  # as an excel file
+        td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
+
+        td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])
+        td.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_water_at_wh'])
+        plt.show()
+
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')
