@@ -57,14 +57,14 @@ class Model(THMCModel):
         self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0,
                                            rock_density=self.rock_density0, mesh_file=self.mesh_file)
     def update_pressure(self, dt, time):
-        if self.friction_law == 'rsf':
+        if self.enable_dynamic_mode or self.friction_law == 'rsf':
             dp_rate = self.depletion_value
             p = lambda x: dp_rate * dt
         else:
             dp = self.depletion_value
             p = lambda x: dp
 
-        if time == dt or self.friction_law == 'rsf':
+        if time == dt or self.enable_dynamic_mode or self.friction_law == 'rsf':
             X = np.asarray(self.physics.engine.X)
             Xn = np.asarray(self.physics.engine.Xn)
             for cell_id, cell in self.reservoir.unstr_discr.mat_cell_info_dict.items():

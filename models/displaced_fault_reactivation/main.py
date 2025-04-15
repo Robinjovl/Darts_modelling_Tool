@@ -302,7 +302,6 @@ def compare_solution_with_ref(m : DartsModel, verbose = True):
     print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
     return ret_flag
 
-
 def run_test(args: list = [], platform='cpu'):
     if len(args) == 1:
         return run_and_plot(config=args[0], compare_with_ref=True), 0.0
@@ -603,15 +602,15 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
     plt.close(fig)
     # plt.show()
 
-
 if __name__ == '__main__':
     cases = []
 
-    # config = {'mode': 'mixed',
-    #           'timesteps': 5 * np.ones(4),
-    #           'depletion': {'mode': 'well', 'value': -250.0},
-    #           'friction_law': 'slip_weakening',
-    #           'mesh_file': 'meshes/new_setup_coarse.msh'}
+    config = {'mode': 'mixed',
+              'timesteps': np.ones(25),
+              'depletion': {'mode': 'uniform', 'value': -290.6 / 25},
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse_longer.msh'}
+    # commented because it is very long
     # cases += [config]
 
     config = {'mode': 'quasi_static',
@@ -633,12 +632,16 @@ if __name__ == '__main__':
               'depletion': {'mode': 'uniform', 'value': -290.6 / 25},
               'friction_law': 'rsf',
               'mesh_file': 'meshes/new_setup_rsf.msh'}
-    # commented because it is very long, but it must work
+    # commented because it is very long
     # cases += [config]
 
     for case in cases:
-        if case['friction_law'] == 'static' or case['friction_law'] == 'slip_weakening':
+        if case['mode'] == 'quasi_static' and (case['friction_law'] == 'static' or case['friction_law'] == 'slip_weakening'):
             plot_analytics = True
         else:
             plot_analytics = False
         run_and_plot(config=case, plot_analytics=plot_analytics)
+
+    # labels = ['DARTS: slip_weakening']
+    # output_directory = 'sol_mixed_uniform_slip_weakening'
+    # plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
