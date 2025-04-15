@@ -83,6 +83,18 @@ class PipeGeometry:
         self.z_seg_interfaces[0::2] = self.z
         self.z_seg_interfaces[1::2] = self.z_interfaces
 
+        if isinstance(self.inclination_angle_radian, float):
+            self.TVD_segments = self.z * np.cos(self.inclination_angle_radian)
+            self.TVD_interfaces = self.z_interfaces * np.cos(self.inclination_angle_radian)
+        elif isinstance(self.inclination_angle_radian, numpy.ndarray):
+            # This condition is satisfied when class PETREL_PipeGeometry is used where we could have multiple
+            # inclination angles and these variables are evaluated in the constructor of that class.
+            pass
+
+        self.TVD_seg_interfaces = np.zeros(self.num_segments + self.num_interfaces)
+        self.TVD_seg_interfaces[0::2] = self.TVD_segments
+        self.TVD_seg_interfaces[1::2] = self.TVD_interfaces
+
         if verbose:
             print("** Geometry of the pipe \"%s\" is defined!" % self.pipe_name)
 
@@ -127,13 +139,17 @@ class PETREL_PipeGeometry(PipeGeometry):
 
             # Filter points within the segment range
             segment_df = df[(df["MD"] >= start_MD) & (df["MD"] <= end_MD)]
-            if segment_df.empty:
-                inclination_angles.append(np.nan)
-                continue
 
             # Get the start and end point
-            start_point = segment_df.iloc[0]
-            end_point = segment_df.iloc[-1]
+            if segment_df.shape[0] < 2:
+                start_point = self._interpolate_point(df, start_MD)
+                end_point = self._interpolate_point(df, end_MD)
+
+                if start_point is None or end_point is None:
+                    raise Exception("start_point or end_point is None!")
+            else:
+                start_point = segment_df.iloc[0]
+                end_point = segment_df.iloc[-1]
 
             # Calculate displacement vector components
             dx = end_point["X"] - start_point["X"]
@@ -151,6 +167,17 @@ class PETREL_PipeGeometry(PipeGeometry):
         inclination_angles = np.array(inclination_angles)
         conn_inclination_angles = (inclination_angles[:-1] + inclination_angles[1:]) / 2
 
+        # Segments vertical lengths
+        vertical_lengths_segments = segments_length * np.cos(np.radians(inclination_angles))
+
+        # TVD at each interface: cumulative sum starting from the top
+        TVD_faces = np.zeros(num_segments + 1)
+        TVD_faces[1:] = np.cumsum(vertical_lengths_segments)
+        # Only internal faces: exclude top (0) and bottom (-1)
+        self.TVD_interfaces = TVD_faces[1:-1]
+
+        self.TVD_segments = 0.5 * (TVD_faces[:-1] + TVD_faces[1:])
+
         # Create the result DataFrame. This is not used in any part of the code.
         self.segments_info = pd.DataFrame({
                  "Segment": range(1, num_segments + 1),
@@ -160,3 +187,21 @@ class PETREL_PipeGeometry(PipeGeometry):
         })
 
         super().__init__(pipe_name, segments_lengths, pipe_ID, conn_inclination_angles, wall_roughness, verbose)
+
+    def _interpolate_point(self, df, target_MD):
+        lower = df[df["MD"] <= target_MD].tail(1)
+        upper = df[df["MD"] >= target_MD].head(1)
+
+        if lower.empty or upper.empty:
+            return None  # Cannot interpolate outside bounds
+
+        if lower["MD"].values[0] == upper["MD"].values[0]:
+            return lower.iloc[0]  # Exact match
+
+        # Linear interpolation
+        frac = (target_MD - lower["MD"].values[0]) / (upper["MD"].values[0] - lower["MD"].values[0])
+        interpolated = {}
+        for col in ["X", "Y", "Z"]:
+            interpolated[col] = lower[col].values[0] + frac * (upper[col].values[0] - lower[col].values[0])
+        interpolated["MD"] = target_MD
+        return pd.Series(interpolated)

@@ -120,7 +120,7 @@ class ReservoirBase:
             # the lowermost perforated or non-perforated segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
-            well.segments_depths = value_vector(well_geometry.z)
+            well.segments_depths = value_vector(well_geometry.TVD_segments)
             well.num_segments = well_geometry.num_segments
 
             # will be updated in add_perforation

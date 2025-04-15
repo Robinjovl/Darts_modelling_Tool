@@ -5,7 +5,9 @@ from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
 
-def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict, coupled_model: DartsModel, max_ts_idx: int = None):
+def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
+                                coupled_model: DartsModel, max_ts_idx: int = None,
+                                x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap: str = "jet"):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -17,26 +19,17 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     :param max_ts_idx: If specified, the heat map will be shown until the specified maximum time step index. If not
     specified, the heat map will be shown for all the time steps.
     :type max_ts_idx: int
+    :param x_axis: "simulation_time" or "time_step_index"
+    :type x_axis: str
+    :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     """
-    # y axis: standard direction and segment depths in meters
-    y_axis_convention = "standard"
-    y_axis = "segment_depth"
-
-    # y axis: T2Well direction and segment indices
-    # y_axis_convention = "T2Well"
-    # y_axis = "segment_index"
-
-    # x_axis = "time_step_index"
-    x_axis = "simulation_time"
-
-    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary and assigns it to well_geom.
+    # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
+    # and assigns it to well_geom.
     well_geom = next(iter(coupled_model.wells.values())).geometry
 
-    if y_axis == "segment_depth":
-        measured_depths_segments = (sum(well_geom.segments_lengths) - well_geom.z)
-        true_vertical_depths_segments = measured_depths_segments * np.cos(well_geom.inclination_angle_radian)
-        if y_axis_convention == "standard":
-            true_vertical_depths_segments = true_vertical_depths_segments[::-1]
+    segments_MD = well_geom.z
+    if y_axis == "segments_TVD":
+        segments_TVD = well_geom.TVD_segments
 
     # Get components names
     components_names = coupled_model.physics.property_containers[0].components_name
@@ -59,6 +52,23 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     time_step_idx_range = range(max_ts_idx)
     num_selected_ts = len(time_step_idx_range)
 
+    if x_axis == "time_step_index":
+        x = time_step_idx_range
+        x_label = 'Time step [-]'
+    elif x_axis == "simulation_time":
+        x = simulation_time
+        x_label = 'Simulation time [second]'
+
+    if y_axis == "segment_index":
+        y = range(num_segments)
+        y_label = 'Segment index [-]'
+    elif y_axis == "segments_MD":
+        y = segments_MD
+        y_label = "MD [meter]"
+    elif y_axis == "segments_TVD":
+        y = segments_TVD
+        y_label = "TVD [meter]"
+
     #%% Pressure profile
 
     # Initialize the pressure matrix
@@ -73,45 +83,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), p_matrix, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y, p_matrix, cmap=cmap, shading='auto')
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), p_matrix, cmap=cmap, shading='auto')
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, p_matrix, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, p_matrix, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Pressure profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -145,45 +128,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('jet')
-        if x_axis == "time_step_index" and y_axis == "segment_index":
-            cax = ax.pcolormesh(time_step_idx_range, range(num_segments), z_c_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(x, y, z_c_matrix, cmap=cmap, shading='auto')
 
-            # Set the y-axis ticks
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_label, fontsize=14)
 
-        elif x_axis == "simulation_time" and y_axis == "segment_index":
-            cax = ax.pcolormesh(simulation_time, range(num_segments), z_c_matrix, cmap=cmap, shading='auto')
-
-            # Set the y-axis ticks
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
-
-        elif x_axis == "time_step_index" and y_axis == "segment_depth":
-            cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, z_c_matrix, cmap=cmap, shading='auto')
-
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        elif x_axis == "simulation_time" and y_axis == "segment_depth":
-            cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, z_c_matrix, cmap=cmap, shading='auto')
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        if y_axis_convention == "standard":
-            # Reverse the y-axis
-            ax.invert_yaxis()
-
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add title
         ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=14, fontweight='bold')
@@ -203,51 +159,25 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Fill the temperature matrix
         for ts_counter in time_step_idx_range:
-            T = data_frame["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-            T_matrix[:, ts_counter] = T - 273.15
+            T = data_frame["Temperature"][ts_counter * num_segments:(ts_counter + 1) * num_segments] - 273.15
+            T_matrix[:, ts_counter] = T
 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('jet')
-        if x_axis == "time_step_index" and y_axis == "segment_index":
-            cax = ax.pcolormesh(time_step_idx_range, range(num_segments), T_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(x, y, T_matrix, cmap=cmap, shading='auto')
 
-            # Set the y-axis ticks
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_label, fontsize=14)
 
-        elif x_axis == "simulation_time" and y_axis == "segment_index":
-            cax = ax.pcolormesh(simulation_time, range(num_segments), T_matrix, cmap=cmap, shading='auto')
-
-            # Set the y-axis ticks
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
-
-        elif x_axis == "time_step_index" and y_axis == "segment_depth":
-            cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, T_matrix, cmap=cmap, shading='auto')
-
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        elif x_axis == "simulation_time" and y_axis == "segment_depth":
-            cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, T_matrix, cmap=cmap, shading='auto')
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        if y_axis_convention == "standard":
-            # Reverse the y-axis
-            ax.invert_yaxis()
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add title
         ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -272,46 +202,19 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+    cax = ax.pcolormesh(x, y, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Gas saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -339,45 +242,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('jet')
-        if x_axis == "time_step_index" and y_axis == "segment_index":
-            cax = ax.pcolormesh(time_step_idx_range, range(num_segments), xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+        cax = ax.pcolormesh(x, y, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
-            # Set the y-axis ticks
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_label, fontsize=14)
 
-        elif x_axis == "simulation_time" and y_axis == 'segment_index':
-            cax = ax.pcolormesh(simulation_time, range(num_segments), xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Set the y-axis ticks
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
-
-        elif x_axis == "time_step_index" and y_axis == 'segment_depth':
-            cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        elif x_axis == "simulation_time" and y_axis == 'segment_depth':
-            cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-
-        if y_axis_convention == "standard":
-            # Reverse the y-axis
-            ax.invert_yaxis()
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add title
         ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=14, fontweight='bold')
@@ -405,44 +281,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cmap = plt.get_cmap('jet')
-        if x_axis == "time_step_index" and y_axis == "segment_index":
-            cax = ax.pcolormesh(time_step_idx_range, range(num_segments), xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+        cax = ax.pcolormesh(x, y, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
-            # Set the y-axis ticks
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_label, fontsize=14)
 
-        elif x_axis == "simulation_time" and y_axis == 'segment_index':
-            cax = ax.pcolormesh(simulation_time, range(num_segments), xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Set the y-axis ticks
-            ax.yaxis.set_major_locator(MultipleLocator(1))
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('Segment index [-]', fontsize=14)
-
-        elif x_axis == "time_step_index" and y_axis == 'segment_depth':
-            cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Add axes labels
-            ax.set_xlabel('Time step [-]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        elif x_axis == "simulation_time" and y_axis == 'segment_depth':
-            cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
-
-            # Add axes labels
-            ax.set_xlabel('Simulation time [second]', fontsize=14)
-            ax.set_ylabel('TVD [meter]', fontsize=14)
-
-        if y_axis_convention == "standard":
-            # Reverse the y-axis
-            ax.invert_yaxis()
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add title
         ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
@@ -472,44 +322,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), rhoG_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y, rhoG_matrix_masked, cmap=cmap, shading='auto')
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), rhoG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, rhoG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, rhoG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Gas density profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -538,46 +362,19 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), rhoL_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y, rhoL_matrix_masked, cmap=cmap, shading='auto')
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), rhoL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Liquid density profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -607,44 +404,18 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), miuG_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y, miuG_matrix_masked, cmap=cmap, shading='auto')
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), miuG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, miuG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, miuG_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -673,46 +444,19 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-
     # Create the heatmap
-    cmap = plt.get_cmap('jet')
-    if x_axis == "time_step_index" and y_axis == "segment_index":
-        cax = ax.pcolormesh(time_step_idx_range, range(num_segments), miuL_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y, miuL_matrix_masked, cmap=cmap, shading='auto')
 
-        # Set the y-axis ticks
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
 
-    elif x_axis == "simulation_time" and y_axis == "segment_index":
-        cax = ax.pcolormesh(simulation_time, range(num_segments), miuL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(1))
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('Segment index [-]', fontsize=14)
-
-    elif x_axis == "time_step_index" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Time step [-]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    elif x_axis == "simulation_time" and y_axis == "segment_depth":
-        cax = ax.pcolormesh(simulation_time, true_vertical_depths_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
-
-        # Add axes labels
-        ax.set_xlabel('Simulation time [second]', fontsize=14)
-        ax.set_ylabel('TVD [meter]', fontsize=14)
-
-    if y_axis_convention == "standard":
-        # Reverse the y-axis
-        ax.invert_yaxis()
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add title
     ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
@@ -743,7 +487,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #
     #
     # # Create the heatmap
-    # cmap = plt.get_cmap('jet')
     # if x_axis == "time_step_index" and y_axis == "segment_index":
     #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vG_matrix_masked, cmap=cmap, shading='auto')
     #
@@ -764,21 +507,20 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #     ax.set_xlabel('Simulation time [second]', fontsize=14)
     #     ax.set_ylabel('Interface index [-]', fontsize=14)
     #
-    # elif x_axis == "time_step_index" and y_axis == "segment_depth":
-    #     cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
+    # elif x_axis == "time_step_index" and y_axis == "segments_TVD":
+    #     cax = ax.pcolormesh(time_step_idx_range, TVD_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
     #
     #     # Add axes labels
     #     ax.set_xlabel('Time step [-]', fontsize=14)
     #     ax.set_ylabel('TVD [meter]', fontsize=14)
     #
-    # elif x_axis == "simulation_time" and y_axis == "segment_depth":
-    #     cax = ax.pcolormesh(simulation_time, true_vertical_depths_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
+    # elif x_axis == "simulation_time" and y_axis == "segments_TVD":
+    #     cax = ax.pcolormesh(simulation_time, TVD_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
     #
     #     # Add axes labels
     #     ax.set_xlabel('Simulation time [second]', fontsize=14)
     #     ax.set_ylabel('TVD [meter]', fontsize=14)
     #
-    # if y_axis_convention == "standard":
     #     # Reverse the y-axis
     #     ax.invert_yaxis()
     #
@@ -812,7 +554,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #
     #
     # # Create the heatmap
-    # cmap = plt.get_cmap('jet')
     # if x_axis == "time_step_index" and y_axis == "segment_index":
     #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vL_matrix_masked, cmap=cmap, shading='auto')
     #
@@ -833,21 +574,20 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     #     ax.set_xlabel('Simulation time [second]', fontsize=14)
     #     ax.set_ylabel('Interface index [-]', fontsize=14)
     #
-    # elif x_axis == "time_step_index" and y_axis == "segment_depth":
-    #     cax = ax.pcolormesh(time_step_idx_range, true_vertical_depths_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
+    # elif x_axis == "time_step_index" and y_axis == "segments_TVD":
+    #     cax = ax.pcolormesh(time_step_idx_range, TVD_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
     #
     #     # Add axes labels
     #     ax.set_xlabel('Time step [-]', fontsize=14)
     #     ax.set_ylabel('TVD [meter]', fontsize=14)
     #
-    # elif x_axis == "simulation_time" and y_axis == "segment_depth":
-    #     cax = ax.pcolormesh(simulation_time, true_vertical_depths_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
+    # elif x_axis == "simulation_time" and y_axis == "segments_TVD":
+    #     cax = ax.pcolormesh(simulation_time, TVD_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
     #
     #     # Add axes labels
     #     ax.set_xlabel('Simulation time [second]', fontsize=14)
     #     ax.set_ylabel('TVD [meter]', fontsize=14)
     #
-    # if y_axis_convention == "standard":
     #     # Reverse the y-axis
     #     ax.invert_yaxis()
     #

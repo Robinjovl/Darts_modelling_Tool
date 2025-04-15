@@ -48,11 +48,6 @@ class SingleAmbientTemperature:
         self.check_initial_fluid_conditions(initial_fluid_conditions)
         self.initial_fluid_conditions = initial_fluid_conditions
 
-        self.measured_depths_segments = self.pipe_geom.z
-        self.measured_depths_interfaces = self.pipe_geom.z_interfaces
-        self.true_vertical_depths_segments = self.measured_depths_segments * np.cos(pipe_geom.inclination_angle_radian)
-        self.true_vertical_depths_interfaces = self.measured_depths_interfaces * np.cos(pipe_geom.inclination_angle_radian)
-
         # Get initial conditions
         self.get_initial_temperature_profile()
         self.get_initial_pressure_profile()
@@ -91,9 +86,9 @@ class SingleAmbientTemperature:
 
         p_head1 = self.pipe_head_pressure   # Initial solution for the ODE
         if self.pipe_head_segment_index == 0:   # This is used when the pipe-head pressure is the pressure of the top head
-            TVD_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution p_head1
-            TVD_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_head1 = self.pipe_geom.TVD_segments[0]   # TVD of the initial solution p_head1
+            TVD_head2 = self.pipe_geom.TVD_segments[-1]
+            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces
 
             temp = self.ambient_temperature
             # Seg and face together
@@ -101,11 +96,9 @@ class SingleAmbientTemperature:
             p_seg_interfaces = sol_seg_interfaces.y[0]
 
         elif self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:   # This is used when the pipe-head pressure is the pressure of the bottom head
-            TVD_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution (p_head1)
-            TVD_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
-
-            TVD_seg_interfaces = TVD_seg_interfaces[::-1]
+            TVD_head1 = self.pipe_geom.TVD_segments[-1]   # TVD of the initial solution (p_head1)
+            TVD_head2 = self.pipe_geom.TVD_segments[0]
+            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces[::-1]
 
             temp = self.ambient_temperature
             # Seg and face together
@@ -161,11 +154,6 @@ class LinearAmbientTemperature:
         self.check_initial_fluid_conditions(initial_fluid_conditions)
         self.initial_fluid_conditions = initial_fluid_conditions
 
-        self.measured_depths_segments = self.pipe_geom.z
-        self.measured_depths_interfaces = self.pipe_geom.z_interfaces
-        self.true_vertical_depths_segments = self.measured_depths_segments * np.cos(pipe_geom.inclination_angle_radian)
-        self.true_vertical_depths_interfaces = self.measured_depths_interfaces * np.cos(pipe_geom.inclination_angle_radian)
-
         # Get initial conditions
         self.get_initial_temperature_profile()
         self.get_initial_pressure_profile()
@@ -190,8 +178,8 @@ class LinearAmbientTemperature:
     def get_initial_temperature_profile(self):
         print("Pipe head temperature is assumed to be the lowest temperature for the initial temperature calculation. "
               "If it's the opposite, change the sign of the temperature gradient.")
-        self.temp_init_segments = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_segments - self.true_vertical_depths_segments[0]))
-        self.temp_init_interfaces = np.array(self.pipe_head_temperature + self.temp_grad * (self.true_vertical_depths_interfaces - self.true_vertical_depths_segments[0]))  # Temperatures at interfaces are calculated even though they're not used in any part of the code.
+        self.temp_init_segments = np.array(self.pipe_head_temperature + self.temp_grad * (self.pipe_geom.TVD_segments - self.pipe_geom.TVD_segments[0]))
+        self.temp_init_interfaces = np.array(self.pipe_head_temperature + self.temp_grad * (self.pipe_geom.TVD_interfaces - self.pipe_geom.TVD_segments[0]))  # Temperatures at interfaces are calculated even though they're not used in any part of the code.
 
         temp_init_seg_interfaces = np.zeros(self.pipe_geom.num_segments + self.pipe_geom.num_interfaces)
         temp_init_seg_interfaces[0::2] = self.temp_init_segments
@@ -212,9 +200,9 @@ class LinearAmbientTemperature:
 
         p_head1 = self.pipe_head_pressure   # Initial solution for the ODE
         if self.pipe_head_segment_index == 0:
-            TVD_head1 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)  # TVD of the initial solution p_head1
-            TVD_head2 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
+            TVD_head1 = self.pipe_geom.TVD_segments[0]  # TVD of the initial solution p_head1
+            TVD_head2 = self.pipe_geom.TVD_segments[-1]
+            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces
 
             temp_func = interp1d(TVD_seg_interfaces, self.temp_init_seg_interfaces, fill_value='extrapolate')
 
@@ -223,11 +211,9 @@ class LinearAmbientTemperature:
             p_seg_interfaces = sol_seg_interfaces.y[0]
 
         elif self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:
-            TVD_head1 = self.pipe_geom.z[-1] * np.cos(self.pipe_geom.inclination_angle_radian)
-            TVD_head2 = self.pipe_geom.z[0] * np.cos(self.pipe_geom.inclination_angle_radian)   # TVD of the initial solution (p_head1)
-            TVD_seg_interfaces = self.pipe_geom.z_seg_interfaces * np.cos(self.pipe_geom.inclination_angle_radian)
-
-            TVD_seg_interfaces = TVD_seg_interfaces[::-1]
+            TVD_head1 = self.pipe_geom.TVD_segments[-1]
+            TVD_head2 = self.pipe_geom.TVD_segments[0]   # TVD of the initial solution (p_head1)
+            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces[::-1]
 
             temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
             temp_func = interp1d(TVD_seg_interfaces, temp_init_seg_interfaces, fill_value='extrapolate')

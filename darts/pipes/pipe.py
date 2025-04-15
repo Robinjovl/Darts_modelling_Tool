@@ -91,13 +91,17 @@ class Pipe:
         else:
             raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
 
-        self.m = m0 * ((math.cos(pipe_geometry.inclination_angle_radian)) ** n1) * (
-                1 + math.sin(pipe_geometry.inclination_angle_radian)) ** n2
+        if isinstance(pipe_geometry.inclination_angle_radian, float):
+            self.m = m0 * ((np.cos(pipe_geometry.inclination_angle_radian)) ** n1) * (
+                    1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2 * np.ones(pipe_geometry.num_interfaces)
+        elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
+            self.m = m0 * ((np.cos(pipe_geometry.inclination_angle_radian)) ** n1) * (
+                    1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
 
         self.a1 = a1
         self.a2 = a2
 
-        self.g_cos_theta = self.g * math.cos(pipe_geometry.inclination_angle_radian)
+        self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
 
         # Epsilon values for numerical differentiation with respect to pressure, temperature, and overall composition
         self.eps_p = eps_p
@@ -613,7 +617,7 @@ class Pipe:
             vD0 = np.zeros(self.geometry.num_interfaces)   # vD0 all zeros first
             for index, value in enumerate(indices):
                 # Ignore the consideration of the adjustment function for the mist flow regime for now
-                vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m * f0[index] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
+                vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m[value] * f0[index] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
         else:
             vD0 = np.zeros(self.geometry.num_interfaces)
