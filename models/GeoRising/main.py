@@ -8,7 +8,7 @@ m = Model(iapws_physics=True)
 m.init() #(platform='gpu')
 m.set_output()
 
-m.run(36.5)
+m.run(365)
 m.print_timers()
 m.print_stat()
 
@@ -25,8 +25,8 @@ writer = pd.ExcelWriter(m.output_folder + "/darts_time_data.xlsx") # as an excel
 td.to_excel(writer, sheet_name='Sheet1')
 writer.close()
 
-td.plot(x='time', y=['well_INJ_volumetric_rate_water_at_wh', 'well_PRD_volumetric_rate_water_at_wh'])
-plt.show()
+td.plot(x='time', y=['well_INJ_volumetric_rate_water_at_wh', 'well_PRD_volumetric_rate_water_at_wh'])\
+    .get_figure().savefig(m.output_folder + '/rates.png', dpi=100, bbox_inches='tight')
 
 ax = td.plot(x='time', y=['well_INJ_BHP', 'well_PRD_BHP'], style=['-b', '-r'], label=['INJ BHP', 'PRD BHP'])
 ax.set_ylabel('BHP [bar]')
@@ -37,16 +37,5 @@ lines1, labels1 = ax.get_legend_handles_labels()
 lines2, labels2 = ax2.get_legend_handles_labels()
 ax.legend(lines1 + lines2, labels1 + labels2, loc='best')
 plt.tight_layout()
+plt.savefig('BH.png')
 plt.show()
-
-# td = pd.DataFrame.from_dict(m.physics.engine.time_data)
-# td.to_pickle("darts_time_data.pkl")
-# string = 'PRD : temperature'
-# ax1 = td.plot(x='time', y=[col for col in td.columns if string in col])
-# ax1.plot([0, runtime],[348, 348])
-# ax1.tick_params(labelsize=14)
-# ax1.set_xlabel('Days', fontsize=14)
-# ax1.legend(['temp', 'limit'], fontsize=14)
-# plt.grid()
-# # plt.show()
-# plt.savefig('out.png')

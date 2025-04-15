@@ -172,7 +172,8 @@ def components_molar_rates_operators(state, pc):
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         except:
             for i in range(1):
-                values[1 * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+                # values[1 * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+                values[1 * j + i] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -193,7 +194,8 @@ def components_mass_rates_operators(state, pc):
             try:
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
             except:
-                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
+                # values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
+                values[pc.nc_fl * j + i] = pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 

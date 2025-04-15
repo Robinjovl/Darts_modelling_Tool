@@ -208,7 +208,7 @@ class Output:
         
     def print_simulation_parameters(self, mode = 'table'):
         """
-        Function that dumps all the class variables into a .txt file
+        Function that prints all the class variables into a .txt file
         """
         filepath = os.path.join(self.output_folder, 'simulation_input_parameters.txt')
 
@@ -697,7 +697,7 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def output_to_vtk(self, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
+    def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
         Function to export results at timestamp t into `.vtk` format.
 
@@ -713,15 +713,15 @@ class Output:
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
 
+        # Set default output directory
         if output_directory is None:
-            # Set default output directory
-            filepath = os.path.join(self.output_folder, 'vtk_files')
-            os.makedirs(filepath, exist_ok=True)
-        else:
-            # Set user specified directory
-            os.makedirs(output_directory, exist_ok=True)
+            output_directory = os.path.join(self.output_folder, 'vtk_files')
+        os.makedirs(output_directory, exist_ok=True)
 
-        timesteps, property_array = self.output_properties(self.sol_filepath, output_properties, ith_step, engine)
+        timesteps, property_array = self.output_properties(self.sol_filepath if sol_filepath is None else sol_filepath,
+                                                           output_properties,
+                                                           ith_step,
+                                                           engine)
         prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
 
         for t, time in enumerate(timesteps):
@@ -767,7 +767,8 @@ class Output:
         property_container = self.physics.property_containers
         pc = property_container[0]
 
-        if type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
+        # physics_name = type(self.physics).__name__
+        if type(self.physics).__name__ is "Geothermal" or type(self.physics).__name__ is "GeothermalPH":
             pc.phases_name = self.physics.phases[:pc.nph]
             pc.nc_fl = 1
             pc.components_name = pc.phases_name
