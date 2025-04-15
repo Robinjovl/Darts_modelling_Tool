@@ -1,3 +1,9 @@
+"""
+Injection of CH4 into a wellbore full of water with variable inclination perforated into an aquifer
+
+For defining the well geometry, a PETREL well trajectory file is used.
+
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
