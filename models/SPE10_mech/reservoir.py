@@ -197,6 +197,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         engine.eval_stresses_and_velocities()
         total_stresses = np.array(engine.total_stresses, copy=False)
 
+        if not hasattr(self, 'displs_initial'):
+            self.displs_initial = dict()
+
         # Matrix
         cells = []
         cell_data = {}
@@ -205,8 +208,15 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 cells.append(cell_block)
                 cell_ids = np.array(self.discr_mesh.elem_type_map[available_matrix_geometries[cell_block.type]], dtype=np.int64)
                 for i in range(props_num):
+                    if self.cell_property[i] in ['ux', 'uy', 'uz']:
+                        if self.cell_property[i] not in self.displs_initial:
+                            self.displs_initial[self.cell_property[i]] = property_array[props_num * cell_ids + i]
+
                     if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
-                    cell_data[self.cell_property[i]].append(property_array[props_num * cell_ids + i])
+                    if self.cell_property[i] in ['ux', 'uy', 'uz']:
+                        cell_data[self.cell_property[i]].append(property_array[props_num * cell_ids + i] - self.displs_initial[self.cell_property[i]])
+                    else:
+                        cell_data[self.cell_property[i]].append(property_array[props_num * cell_ids + i])
 
                 if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
                 cell_data['tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))

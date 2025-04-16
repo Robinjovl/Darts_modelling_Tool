@@ -125,7 +125,7 @@ def run_geomech_proxy(case):
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
         upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
-        uz_proxy = -upz1[0]
+        uz_proxy = upz1[0]
         return uz_proxy
 
     point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point

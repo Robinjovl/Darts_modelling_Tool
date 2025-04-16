@@ -203,7 +203,7 @@ class Model(THMCModel):
         return
 
     def set_wells(self):
-        return
+        #return
         well_init_depth = 2150.
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
@@ -250,7 +250,7 @@ class Model(THMCModel):
                 #exit()
 
     def set_boundary_conditions(self):
-        return
+        #return
         self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
         if len(self.reservoir.wells) > 1:
             inj = []
@@ -263,7 +263,7 @@ class Model(THMCModel):
             self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, inj, 0)
 
     def set_boundary_conditions_after_initialization(self):
-        return
+        #return
         """
         Class method called in the init() class method of parents class
         :return:
