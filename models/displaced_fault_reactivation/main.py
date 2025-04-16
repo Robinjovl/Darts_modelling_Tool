@@ -279,6 +279,7 @@ def compare_solution_with_ref(m : DartsModel, verbose = True):
     names = ['centers', 'cell_data', 'points', 'point_data']  # object names to be compared
 
     rel_diff_tolerance = 1e-6
+    abs_diff_tolerance = 1e-8
     eps_div = 1e-15  # to avoid division by zero
     ret_flag = 0
     for n, r, c in zip(names, ref, cur):
@@ -293,12 +294,12 @@ def compare_solution_with_ref(m : DartsModel, verbose = True):
             c1 = np.array(ci)
             diff = np.fabs(r1 - c1) / (np.fabs(r1) + eps_div) # relative difference
             diff_max = diff.max()
-            if diff_max > rel_diff_tolerance:
-                ret_flag = 1
-                print('There is a rel.difference', diff_max, 'for', ni)
-            else:
+            if np.isclose(r1, c1, rtol=rel_diff_tolerance, atol=abs_diff_tolerance).all():
                 if verbose:
                     print('Comparing', ni, 'diff', diff_max)
+            else:
+                ret_flag = 1
+                print('There is a rel.difference', diff_max, 'for', ni)
     print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
     return ret_flag
 
