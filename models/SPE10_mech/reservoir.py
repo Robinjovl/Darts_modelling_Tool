@@ -47,7 +47,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.grav = 9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
         #self.init_gravity(gravity_on=True, gravity_coeff=0.)
-        # self.init_gravity(gravity_on=False)
+        #self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
         self.p_init = self.get_reservoir_pressure(self.depths[:self.n_matrix])
@@ -315,6 +315,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability_xyz
 
         idata.rock.E = E  # bars
+
+    def decouple_geomech(self):
+        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+        vol_strain_tran[:] = 0.0
+        vol_strain_rhs[:] = 0.0
 
     def create_vtk_wells(self, output_directory: str, prolongation=-3000, tube_radius=20):
         '''

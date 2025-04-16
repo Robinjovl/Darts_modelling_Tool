@@ -122,6 +122,7 @@ def run_timestep_python(m, dt, t):
 def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props)
     m.params.finalize_mpi = is_finalize
+    #m.reservoir.decouple_geomech()
     m.init()
 
     #redirect_darts_output('log.txt')
