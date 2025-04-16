@@ -136,7 +136,8 @@ def run_single_test(dir, module_name, args, ret_value, platform):
     os.chdir(dir)
 
     # add it also to system path to load modules
-    sys.path.append(os.path.abspath(r'.'))
+    # sys.path.append(os.path.abspath(r'.'))
+    sys.path.insert(0, os.path.abspath(r'.'))
 
     # import model and run it for default time
     try:

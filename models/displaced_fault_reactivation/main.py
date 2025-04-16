@@ -186,7 +186,7 @@ def calc_slip_area(m):
             if contact.states[i] == contact_state.SLIP:
                 areas.append(m.reservoir.unstr_discr.faces[cell_ids[i]][4].area / dz)
     return areas
-def get_output_folder(config):
+def get_output_folder(config={'mode': 'quasi_static', 'depletion': {'mode': 'uniform'}, 'friction_law': 'static'}):
     return 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
 def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
     t = config['timesteps']
@@ -303,12 +303,8 @@ def compare_solution_with_ref(m : DartsModel, verbose = True):
     print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
     return ret_flag
 
-def run_test(args: list = [], platform='cpu'):
-    if len(args) == 1:
-        return run_and_plot(config=args[0], compare_with_ref=True), 0.0
-    else:
-        print('Wrong number of arguments provided to the run_test:', args)
-        return 1, 0.0
+def run_test(args: dict, platform='cpu'):
+    return run_and_plot(config=args, compare_with_ref=True), 0.0
 
 def read_pvd(filename):
     from xml.dom.minidom import parse
