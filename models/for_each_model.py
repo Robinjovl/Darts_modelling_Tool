@@ -143,7 +143,7 @@ def run_single_test(dir, module_name, args, ret_value, platform):
     try:
         mod = importlib.import_module(module_name)
         try: # if there is a function defined
-            args_str = mod.get_output_folder()
+            args_str = mod.get_output_folder(args)
         except:
             args_str = '_'.join(args[:-1])  # except last arg (overwrite flag)
         # perform required procedures
