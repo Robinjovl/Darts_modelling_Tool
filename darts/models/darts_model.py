@@ -453,6 +453,8 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
+        return 0
+
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """

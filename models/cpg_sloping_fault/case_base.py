@@ -24,7 +24,7 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.time_steps = np.zeros(n_time_steps) + dt
 
     # time stepping and convergence parameters
-    idata.sim.first_ts = 0.01
+    idata.sim.first_ts = 1e-3
     idata.sim.mult_ts = 2
     idata.sim.max_ts = 92
     idata.sim.runtime = None
