@@ -766,11 +766,11 @@ class Output:
 
         if types_of_well_rates is None:
             types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
-                                   "components_molar_rates", "components_mass_rates", "advective_heat_rate"]
+                                   "components_molar_rates", "components_mass_rates"]
+            # if self.physics.thermal is True:
+                # types_of_well_rates += ["advective_heat_rate"]
 
-        for rate_type in types_of_well_rates :
-            if rate_type == 'advective_heat_rate':
-                continue
+        for rate_type in types_of_well_rates:
             rates_perfs = self.compute_rates(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, pc)
             self.store_perf_rates(well_output_dict, rates_perfs, rate_type, pc)
             self.store_well_rates_sums(well_output_dict, rates_perfs, rate_type, pc)

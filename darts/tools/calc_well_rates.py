@@ -44,11 +44,11 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
         except:
             rates = np.zeros((num_ts, len(conn_ids), 1 * pc.nph))
 
-    elif rate_type == 'heat_rate':
+    elif rate_type == 'advective_heat_rate':
         if thermal:
             rates = np.zeros((num_ts, len(conn_ids), pc.nph))
         else:
-            raise Exception('The model is isothermal, so heat rate cannot be calculated for it!')
+            raise Exception('The model is isothermal, so advective heat rate cannot be calculated for it!')
     else:
         raise Exception("The rate type is not entered correctly or is not supported!")
     id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
