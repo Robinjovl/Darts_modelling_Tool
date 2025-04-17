@@ -96,6 +96,8 @@ public:
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
+
+  void enable_flux_output();
 };
 
 #include "engine_super_cpu.tpp"

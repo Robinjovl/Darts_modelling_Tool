@@ -82,7 +82,6 @@ class StructReservoir(ReservoirBase):
         self.timer.node['connection list generation'].stop()
 
         volume = self.discretizer.calc_volumes()
-        self.global_data['volume'] = volume
 
         if self.global_data['depth'] is None: # pick z coordinates from the centers, and change the order from KJI to IJK
             self.global_data['depth'] = self.discretizer.centroids_all_cells[:, 2].flatten(order='F')
@@ -112,6 +111,8 @@ class StructReservoir(ReservoirBase):
         np.array(mesh.op_num, copy=False)[:] = op_num
 
         self.set_boundary_volume(self.boundary_volumes)
+        # copy the values of mesh.volume instead of using the pointer
+        self.global_data['volume'] = np.array(mesh.volume, copy=True)
 
         return mesh
 

@@ -90,6 +90,10 @@ class Model(THMCModel):
         bnd_tags['BND_Z+'] = 996
         self.idata.mesh.matrix_tags = [99991]
 
+        self.idata.fluid.compressibility = 1.e-5
+        if 'rect' in self.mesh:
+            self.idata.fluid.compressibility = 1.e-10
+
         if case == 'mandel':
             self.idata.rock.porosity = 0.375
             self.idata.rock.perm = 10.0 / 9.81
@@ -99,9 +103,7 @@ class Model(THMCModel):
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
-
             self.idata.other.Fa = -100.0  # bar * m
 
             self.idata.boundary = {}
@@ -121,7 +123,6 @@ class Model(THMCModel):
             self.idata.rock.compressibility = get_rock_compressibility(
                 kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
                 biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-            self.idata.fluid.compressibility = 1.e-5
             self.idata.fluid.viscosity = 1.0
 
             self.idata.other.F = -100.0 # bar * m

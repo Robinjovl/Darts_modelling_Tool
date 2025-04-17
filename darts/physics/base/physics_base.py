@@ -9,6 +9,7 @@ from enum import Enum
 from functools import total_ordering
 
 from darts.engines import *
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators
 
 
 class PhysicsBase:
@@ -19,7 +20,7 @@ class PhysicsBase:
 
     The Physics object is composed of :class:`PropertyContainer` objects for each of the regions and a set of operators.
     The operators consist of :class:`ReservoirOperators` objects for each of the regions, a :class:`WellOperators`,
-    a :class:`RateOperators` and a :class:`PropertyOperators` object.
+    a :class:`WellControlOperators`, a :class:`WellInitOperators` and a :class:`PropertyOperators` object.
     For each set of operators (evaluators, etor), an interpolator (itor) object is created for use in the :class:`engine`.
 
     :ivar engine: Engine object
@@ -30,17 +31,19 @@ class PhysicsBase:
     :type reservoir_operators: dict
     :ivar property_operators: :class:`PropertyOperators` object for evaluation and interpolation of properties
     :type property_operators: dict
-    :ivar wellbore_operators: :class:`WellOperators` object for evaluation of well cell states
-    :type wellbore_operators: dict
-    :ivar rate_operators: :class:`RateOperators` object for evaluation of fluxes
-    :type rate_operators: dict
+    :ivar well_operators: :class:`WellOperators` object for evaluation of well cell states
+    :type well_operators: dict
+    :ivar well_ctrl_operators: :class:`WellControlOperators` object for well control
+    :type well_ctrl_operators: WellControlOperators
+    :ivar well_init_operators: :class:`WellInitOperators` object for generic state well initialization
+    :type well_init_operators: WellInitOperators
     :ivar regions: List of property regions
     :type regions: list
     """
     engine: engine_base
-    wellbore_operators: operator_set_evaluator_iface
-    rate_operators: operator_set_evaluator_iface
-    mass_flux_operators: operator_set_evaluator_iface
+    well_operators: operator_set_evaluator_iface
+    well_ctrl_operators: WellControlOperators
+    well_init_operators: WellInitOperators
 
     @total_ordering
     class StateSpecification(Enum):
@@ -84,13 +87,14 @@ class PhysicsBase:
 
         self.components = components
         self.nc = len(components)
+        self.thermal = self.n_vars - self.nc
         self.phases = phases
         self.nph = len(phases)
         self.n_ops = n_ops
 
-        # Define OBL grid
-        self.axes_min = axes_min
-        self.axes_max = axes_max
+        # Define PTz bounds for OBL grid
+        self.PT_axes_min = axes_min
+        self.PT_axes_max = axes_max
         self.n_axes_points = n_axes_points
 
         # Initialize timer for simulation and caching
@@ -106,7 +110,6 @@ class PhysicsBase:
         self.property_containers = {}
         self.reservoir_operators = {}
         self.property_operators = {}
-        self.mass_flux_operators = {}
 
     def init_physics(self, discr_type: str = 'tpfa', platform: str = 'cpu',
                      itor_type: str = 'multilinear', itor_mode: str = 'adaptive',
@@ -129,11 +132,17 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
-        # Define operators, set engine, set interpolators and define well controls
+        # Define OBL axes
+        self.axes_min, self.axes_max = self.determine_obl_bounds(min_p=self.PT_axes_min[0], max_p=self.PT_axes_max[0],
+                                                                 min_t=self.PT_axes_min[-1], max_t=self.PT_axes_max[-1],
+                                                                 min_z=self.PT_axes_min[1:self.nc],
+                                                                 max_z=self.PT_axes_max[1:self.nc],
+                                                                 state_spec=self.state_spec)
+
+        # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
         self.set_operators()
         self.set_interpolators(platform, itor_type, itor_mode, itor_precision, is_barycentric)
-        self.define_well_controls()
         return
 
     def add_property_region(self, property_container, region: int = 0):
@@ -193,49 +202,123 @@ class PhysicsBase:
         # self.n_ops = self.engine.get_n_ops()
         self.acc_flux_itor = {}
         self.property_itor = {}
-        self.mass_flux_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region] = self.create_interpolator(self.reservoir_operators[region], n_ops=self.n_ops,
+                                                                  axes_min=self.axes_min, axes_max=self.axes_max,
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='reservoir %d interpolation' % region, region=str(region),
+                                                                  timer_name='reservoir %d interpolation' % region,
+                                                                  region=str(region),
                                                                   is_barycentric=is_barycentric)
 
             self.property_itor[region] = self.create_interpolator(self.property_operators[region], n_ops=self.n_ops,
+                                                                  axes_min=self.axes_min, axes_max=self.axes_max,
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
-                                                                  timer_name='property %d interpolation' % region, region=str(region))
+                                                                  timer_name='property %d interpolation' % region,
+                                                                  region=str(region))
 
-            self.mass_flux_itor[region] = self.create_interpolator(self.mass_flux_operators[region], n_ops=self.n_ops,
-                                                                   platform=platform, algorithm=itor_type,
-                                                                   mode=itor_mode, precision=itor_precision,
-                                                                   timer_name='Mass flux %d interpolation' % region,
-                                                                   region=str(region))
-
-        self.acc_flux_w_itor = self.create_interpolator(self.wellbore_operators, n_ops=self.n_ops,
-                                                        timer_name='wellbore interpolation',
+        self.acc_flux_w_itor = self.create_interpolator(self.well_operators, n_ops=self.n_ops,
+                                                        axes_min=self.axes_min, axes_max=self.axes_max,
+                                                        timer_name='well interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
                                                         precision=itor_precision, region='-1')
 
-        self.rate_itor = self.create_interpolator(self.rate_operators, n_ops=self.nph,
-                                                  timer_name='well controls interpolation',
-                                                  platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                  precision=itor_precision)
+        self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
+                                                       axes_min=self.axes_min, axes_max=self.axes_max,
+                                                       timer_name='well controls interpolation',
+                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                       precision=itor_precision)
+        self.well_init_itor = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
+                                                       axes_min=value_vector(self.PT_axes_min),
+                                                       axes_max=value_vector(self.PT_axes_max),
+                                                       timer_name='well initialization',
+                                                       platform=platform, algorithm=itor_type, mode=itor_mode,
+                                                       precision=itor_precision)
         return
 
-    def determine_obl_bounds(self, state_min: list, state_max: list, state_spec: StateSpecification = StateSpecification.PH):
+    def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
+                          target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None,
+                          is_control: bool = True):
         """
-        Function to compute minimum and maximum enthalpy (kJ/kmol)
+        Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
+        well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
-        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        :param well: ms_well object on which the control/constraint is defined
+        :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
+                             0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
+        :param is_inj: Is injection well (true) or production well (false)
+        :param target: Target BHP or rate, consistent with well control type
+        :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
+        :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
+        :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
+        :param is_control: Is control (true) or constraint (false), default is true
         """
-        if state_spec == PhysicsBase.StateSpecification.PH:
-            self.axes_min[-1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[-1])
-            self.axes_max[-1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[-1])
+        # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
+        inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(
+            np.zeros(self.nc - 1))  # for BHP controlled production well, pass dummy variables
+        inj_temp = inj_temp if inj_temp is not None else 0.  # for isothermal case or production well, pass dummy variables
+        phase_idx = self.phases.index(
+            phase_name) if phase_name is not None else 0  # for BHP controlled production well, pass dummy variables
+
+        # Pass controls specification to ms_well object
+        if control_type == well_control_iface.BHP:
+            if is_control:
+                well.set_bhp_control(is_inj, target, inj_composition, inj_temp)
+            else:
+                well.set_bhp_constraint(is_inj, target, inj_composition, inj_temp)
+        else:
+            # Injection/production rate
+            target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
+
+            if is_control:
+                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
+            else:
+                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
+
+        return
+
+    def determine_obl_bounds(self, min_p: float, max_p: float, min_z: float = None, max_z: float = None,
+                             min_t: float = None, max_t: float = None,
+                             state_spec: StateSpecification = StateSpecification.PH):
+        """
+        Function to compute bounds of OBL grid for different state specifications
+
+        :param min_p: Minimum pressure [bar]
+        :param max_p: Maximum pressure [bar]
+        :param min_z: Minimum composition, can be scalar or list
+        :param max_z: Maximum composition, can be scalar or list
+        :param min_t: Minimum temperature [K]
+        :param max_t: Maximum temperature [K]
+        :param state_spec: StateSpecification, P, PT or PH
+        """
+        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, "min_z must be a scalar or a vector of length nc-1."
+        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, "max_z must be a scalar or a vector of length nc-1."
+
+        if state_spec <= PhysicsBase.StateSpecification.PT:
+            axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(self.PT_axes_max)
+
+        elif state_spec == PhysicsBase.StateSpecification.PH:
+            pz_axes_min = [min_p] + ([min_z for i in range(self.nc - 1)] if np.isscalar(min_z) else list(min_z))
+            pz_axes_max = [max_p] + ([max_z for i in range(self.nc - 1)] if np.isscalar(max_z) else list(max_z))
+
+            zi = np.append(np.zeros(self.nc - 1), np.array([1.]))
+            min_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
+            max_h = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
+            for i in range(self.nc - 1):
+                zi = np.array([1. if i == ii else 0. for ii in range(self.nc)])
+                min_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([max_p] + list(zi) + [min_t]))
+                min_h = min_hi if min_hi < min_h else min_h
+                max_hi = self.property_containers[0].compute_total_enthalpy(state_pt=np.array([min_p] + list(zi) + [max_t]))
+                max_h = max_hi if max_hi > max_h else max_h
+
+            axes_min = value_vector(pz_axes_min + [min_h])
+            axes_max = value_vector(pz_axes_max + [max_h])
+
         else:
             raise RuntimeError(f"Unknown state specification: {state_spec}")
-        return
+
+        return axes_min, axes_max
 
     @abc.abstractmethod
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
@@ -261,10 +344,6 @@ class PhysicsBase:
         """
         pass
 
-    @abc.abstractmethod
-    def define_well_controls(self):
-        pass
-
     def init_wells(self, wells):
         """
         Function to initialize the well rates for each well.
@@ -273,10 +352,10 @@ class PhysicsBase:
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.well_ctrl_itor, self.well_init_itor, self.thermal)
 
-    def create_interpolator(self, evaluator: operator_set_evaluator_iface, timer_name: str, n_ops: int,
-                            algorithm: str = 'multilinear', mode: str = 'adaptive',
+    def create_interpolator(self, evaluator: operator_set_evaluator_iface, axes_min: value_vector, axes_max: value_vector,
+                            timer_name: str, n_ops: int, algorithm: str = 'multilinear', mode: str = 'adaptive',
                             platform: str = 'cpu', precision: str = 'd', region: str = '',
                             is_barycentric: bool = False):
         """
@@ -304,14 +383,14 @@ class PhysicsBase:
         :type precision: str
         :type region: str
         :param region: str(region index) for reservoir operator, str(-1) for well operator, '' for others
-        needed to make different filenames for cache as self.wellbore_operators has the same type ReservoirOperators
+        needed to make different filenames for cache as self.well_operators has the same type ReservoirOperators
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
         # verify then inputs are valid
         assert len(self.n_axes_points) == self.n_vars
-        assert len(self.axes_min) == self.n_vars
-        assert len(self.axes_max) == self.n_vars
+        assert len(axes_min) == self.n_vars
+        assert len(axes_max) == self.n_vars
         for n_p in self.n_axes_points:
             assert n_p > 1
 
@@ -329,9 +408,9 @@ class PhysicsBase:
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
             if algorithm == 'linear':
-                itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max, is_barycentric)
+                itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric)
             else:
-                itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max)
+                itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max)
         except (ValueError, NameError):
             # 32-bit index type did not succeed: either total amount of points is out of range or has not been compiled
             # try 64 bit now raising exception this time if goes wrong:
@@ -341,25 +420,26 @@ class PhysicsBase:
                 itor_name = itor_name.replace('interpolator_i', 'interpolator_ll')
             try:
                 if algorithm == 'linear':
-                    itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max, is_barycentric)
+                    itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric)
                 else:
-                    itor = eval(itor_name)(evaluator, self.n_axes_points, self.axes_min, self.axes_max)
+                    itor = eval(itor_name)(evaluator, self.n_axes_points, axes_min, axes_max)
             except (ValueError, NameError):
                 raise ValueError("Number of operators is incorrect, no templatized interpolator exists")
                 # if 64-bit index also failed, probably the combination of required n_ops and n_dims
                 # was not instantiated/exposed. In this case substitute general implementation of interpolator
                 itor = eval("multilinear_adaptive_cpu_interpolator_general")(evaluator, self.n_axes_points,
-                                                                             self.axes_min, self.axes_max, n_dims, n_ops)
+                                                                             axes_min, axes_max, n_dims, n_ops)
                 general = True
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (type(evaluator).__name__, mode, precision, n_dims, n_ops, region)
+            itor_cache_signature = "%s_%s_%s_%d_%d_%s" % (
+            type(evaluator).__name__, mode, precision, n_dims, n_ops, region)
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
             for dim in range(n_dims):
-                itor_cache_signature += "_%d_%e_%e" % (self.n_axes_points[dim], self.axes_min[dim], self.axes_max[dim])
+                itor_cache_signature += "_%d_%e_%e" % (self.n_axes_points[dim], axes_min[dim], axes_max[dim])
             # compute signature hash to uniquely identify itor parameters and load correct cache
             itor_cache_signature_hash = str(hashlib.md5(itor_cache_signature.encode()).hexdigest())
             itor_cache_filename = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
@@ -421,7 +501,7 @@ class PhysicsBase:
         for itor, fname in self.created_itors:
             filename = fname
             if hasattr(self, 'cache_dir'):
-                if os.path.basename(fname) == fname: # could already have a folder in fname
+                if os.path.basename(fname) == fname:  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
             with open(filename, "wb") as fp:
                 print("Writing point data for ", type(itor).__name__, 'to', filename)

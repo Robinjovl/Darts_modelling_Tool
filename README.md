@@ -21,7 +21,7 @@ To build openDARTS please check the [instructions in our wiki](https://gitlab.co
 
 ## Tutorials
 
-Check the [tutorial section in the documentation](https://open-darts.gitlab.io/open-darts/getting_started/tutorial.html) and a [crash-course on openDARTS](https://gitlab.com/open-darts/open-darts-workshop).
+Check the [tutorial section in the documentation](https://open-darts.gitlab.io/open-darts/getting_started/tutorial.html) and Jupyter Notebooks with basic [Geothermal](https://gitlab.com/open-darts/darts-models/-/tree/main/teaching/EAGE?ref_type=heads) and [GCS](https://gitlab.com/open-darts/darts-models/-/tree/main/teaching/CCS_workshop?ref_type=heads) models.
 
 Also to get started take a look at the different examples in [models](https://gitlab.com/open-darts/open-darts/-/tree/development/models?ref_type=heads).
 

@@ -5,7 +5,6 @@
 #include <string>
 #include "globals.h"
 #include "ms_well.h"
-#include "block_well.h"
 
 
 /// This class defines mesh and corresponding arrays

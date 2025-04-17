@@ -43,6 +43,7 @@ class ModelGeothermal(Model_CPG):
         :param time: simulation time, [days]
         :return:
         '''
+        from darts.engines import well_control_iface
         eps_time = 1e-15  # threshold between the current time and the time for the well control
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
@@ -55,32 +56,45 @@ class ModelGeothermal(Model_CPG):
                 continue
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.bhp_constraint, wctrl.inj_bht)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=True, target=wctrl.rate, phase_name='water',
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.bhp_constraint,
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_water_inj(wctrl.bhp, wctrl.inj_bht)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.bhp, inj_composition=[],
+                                                   inj_temp=wctrl.inj_bht)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_prod(wctrl.rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name='water')
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.bhp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             else:
                 print('Unknown well ctrl.type', wctrl.type)
                 exit(1)
-            if verbose:
-                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
+            # if verbose:
+            #     print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
         # check
-        for w in self.reservoir.wells:
-            assert w.control is not None, 'well control is not initialized for the well ' + w.name
-            if verbose and w.constraint is None and 'rate' in str(type(w.control)):
-                print('A constraint for the well ' + w.name + ' is not initialized!')
+        # for w in self.reservoir.wells:
+        #     assert w.control is not None, 'well control is not initialized for the well ' + w.name
+        #     if verbose and w.constraint is None and 'rate' in str(type(w.control)):
+        #         print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def get_arrays(self):
         '''

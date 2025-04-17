@@ -31,6 +31,11 @@ class OperatorsSuper(OperatorsBase):
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
+        # Operator names
+        self.op_names = [(self.ACC_OP, "ACC"), (self.FLUX_OP, "FLUX"), (self.UPSAT_OP, "UPSAT"), (self.GRAD_OP, "GRAD"),
+                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.PORO_OP, "PORO"), (self.ENTH_OP, "ENTH"),
+                         (self.TEMP_OP, "TEMP"), (self.PRES_OP, "PRES")]
+
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         print("================================================")
@@ -46,6 +51,7 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
+        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("POROSITY", values[self.PORO_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
@@ -123,7 +129,7 @@ class ReservoirOperators(OperatorsSuper):
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
-        # self.print_operators(state, values)
+        self.print_operators(state, values)
 
         return 0
 
@@ -174,31 +180,6 @@ class ReservoirOperators(OperatorsSuper):
         values[self.TEMP_OP] = temperature
 
         return 0
-
-
-class MassFluxOperators(OperatorsSuper):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
-
-        self.n_ops = self.nph * self.nc_fl
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
-
-        self.property.evaluate(vec_state_as_np)
-
-        """ Beta operator here represents mass flux term: """
-        for j in self.property.ph:
-            vec_values_as_np[self.nc_fl * j:self.nc_fl * j + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens[j] * self.property.kr[j] / self.property.mu[j]
 
 
 class GeomechanicsReservoirOperators(ReservoirOperators):
@@ -318,52 +299,4 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         vec_values_as_np[0] = self.property.dens[0]
         vec_values_as_np[1] = self.property.dens[0] / self.property.mu[0]
 
-        return 0
-
-
-class RateOperators(operator_set_evaluator_iface):
-    def __init__(self, property_container):
-        super().__init__()
-
-        self.nc = property_container.nc
-        self.nc_fl = property_container.nc_fl
-        self.nph = property_container.nph
-        self.np_fl = property_container.np_fl
-        self.n_ops = property_container.nph
-
-        self.property = property_container
-
-    def evaluate(self, state, values):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]: value_vector in open-darts, pylvarray.Array in GEOS
-        :param values: values of the operators (used for storing the operator values): value_vector in open-darts, pylvarray.Array in GEOS
-        :return: updated value for operators, stored in values
-        """
-        vec_state_as_np = state.to_numpy()
-        vec_values_as_np = values.to_numpy()
-        vec_values_as_np[:] = 0
-
-        self.property.evaluate(vec_state_as_np)
-
-        flux = np.zeros(self.nc_fl)
-        # step-1
-        for j in self.property.ph:
-            for i in range(self.nc_fl):
-                flux[i] += self.property.dens_m[j] * self.property.kr[j] * self.property.x[j][i] / self.property.mu[j]
-        # step-2
-        flux_sum = np.sum(flux)
-
-        # (sat_sc, dens_m_sc) = self.property.evaluate_at_cond(1, self.flux/flux_sum)
-        sat_sc = self.property.sat[:self.np_fl]
-        dens_m_sc = self.property.dens_m[:self.np_fl]
-
-        # step-3
-        total_density = np.sum(sat_sc * dens_m_sc)
-        # step-4
-        for j in self.property.ph:
-            vec_values_as_np[j] = self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]  # reservoir condition control
-            # vec_values_as_np[j] = sat_sc[j] * flux_sum / total_density  # surface condition control
-
-        # print(state, values)
         return 0

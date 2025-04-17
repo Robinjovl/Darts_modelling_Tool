@@ -151,14 +151,15 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_prod(self.p_init - 10)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.p_init-10.)
             else:
-                # w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                # w.control = self.physics.new_rate_inj(5, self.inj, 0)
-                # w.control = self.physics.new_bhp_inj(450, self.inj)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
 
 
 class ModelProperties(PropertyContainer):

@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import value_vector, redirect_darts_output
+from darts.engines import value_vector, redirect_darts_output, well_control_iface
 from darts.models.opt.opt_module_settings import model_modifier_aggregator, transmissibility_modifier, well_index_modifier
 from model_definition import Model
 
@@ -41,8 +41,8 @@ optimization = False  # switch off to compare the adjoint and numerical gradient
 apply_adjoint_method = True  # switch off to apply numerical method
 
 add_prod_rate_to_objfun = True
-add_inj_rate_to_objfun = False
-add_BHP_to_objfun = False
+add_inj_rate_to_objfun = True
+add_BHP_to_objfun = True
 add_well_tempr_to_objfun = False
 add_temperature_to_objfun = False
 add_customized_op_to_objfun = True
@@ -277,6 +277,9 @@ def process_adjoint(history_matching=False):
             inj_well_name.append(w.name)
     inj_phase_name = [proxy_model.physics.phases[0]]
 
+    inj_well_name = ["I2"]
+    inj_phase_name = ['oil', 'gas']
+
     proxy_model.objfun_inj_phase_rate = add_inj_rate_to_objfun
     proxy_model.inj_well_name = inj_well_name
     proxy_model.inj_phase_name = inj_phase_name
@@ -293,6 +296,8 @@ def process_adjoint(history_matching=False):
         BHP_well_name.append(w.name)
         # if "I" in w.name:
         #     BHP_well_name.append(w.name)
+
+    BHP_well_name = ["I1"]
 
     proxy_model.objfun_BHP = add_BHP_to_objfun
     proxy_model.BHP_well_name = BHP_well_name
@@ -332,6 +337,10 @@ def process_adjoint(history_matching=False):
         op_coef = 1
         proxy_model.customized_op_weights = op_coef * np.ones(
             (Training_report, np.size(time_data_report_customized, 1)))
+
+    # choose the type of observation rate
+    # todo: in the future, we will add more observation rate options, e.g. mass rate. By fefault, we use volumetric rate.
+    proxy_model.observation_rate_type = well_control_iface.VOLUMETRIC_RATE
 
     # activate optimization options--------------------------------
     proxy_model.activate_opt_options()
@@ -488,11 +497,12 @@ def process_adjoint(history_matching=False):
             obj_func = proxy_model.make_opt_step_adjoint_method
             grad_func = proxy_model.grad_adjoint_method_all
 
+            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
+                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
+
             opt_num = minimize(obj_func, x0, method='SLSQP', bounds=bounds,
                                options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True, 'eps': eps})
 
-            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
-                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
 
             adjoint_gradient = array(opt_adjoint.jac)
 

@@ -236,6 +236,7 @@ if __name__ == '__main__':
     cases_list = []
     cases_list += ['generate_5x3x4']
     #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
     #cases_list += ['brugge']

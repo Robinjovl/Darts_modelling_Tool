@@ -18,6 +18,73 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nph = property_container.nph
 
 
+class WellControlOperators(OperatorsBase):
+    """
+    Set of operators for well controls. It contains the pressure, composition and temperature of the wellhead,
+    plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
+    heat rate controls
+    """
+    def __init__(self, property_container: PropertyBase, thermal: bool):
+        super().__init__(property_container, thermal)
+
+        self.n_ops = 2 + self.nph * 4
+
+    def evaluate(self, state, values):
+        vec_state_as_np = state.to_numpy()
+        vec_values_as_np = values.to_numpy()
+        vec_values_as_np[:] = 0
+
+        self.property.evaluate(vec_state_as_np)
+
+        # Store rate controls
+        mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+
+        # Molar rate
+        idx = 0
+        vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
+
+        # Mass rate
+        idx += self.nph
+        vec_values_as_np[idx + self.property.ph] = self.property.dens[self.property.ph] * mobility
+
+        # Volumetric rate
+        idx += self.nph
+        vec_values_as_np[idx + self.property.ph] = mobility
+
+        # Advective heat rate
+        idx += self.nph
+        if self.thermal:
+            vec_values_as_np[idx + self.property.ph] = \
+                    self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
+
+        # Store P, T and composition of current state
+        idx += self.nph
+        vec_values_as_np[idx + 0] = state[0]
+        vec_values_as_np[idx + 1] = self.property.temperature
+
+        return 0
+
+
+class WellInitOperators(OperatorsBase):
+    def __init__(self, property_container: PropertyBase, thermal: bool, is_pt: bool = True):
+        super().__init__(property_container, thermal)
+
+        self.n_ops = 1
+        self.is_pt = is_pt
+
+    def evaluate(self, state_pt, values):
+        vec_values_as_np = values.to_numpy()
+        vec_values_as_np[:] = 0
+
+        if self.is_pt:
+            vec_values_as_np[0] = state_pt[-1]
+        else:
+            state_pt = np.array(list(state_pt[:self.nc]) + [state_pt[-1] if self.thermal else self.temperature])
+            vec_values_as_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
+
+        return 0
+
+
 class PropertyOperators(OperatorsBase):
     """
     This class contains a set of operators for evaluation of output properties.

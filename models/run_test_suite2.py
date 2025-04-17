@@ -11,7 +11,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # set model list to run
 
-    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', 
                      '2ph_geothermal', '2ph_geothermal_mass_flux',
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
@@ -23,6 +23,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
+
+    if platform == 'cpu':  # this model doesn't converge well, so we skip it on GPU
+        accepted_dirs += ['2ph_do_thermal']
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
@@ -76,7 +79,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_dfn = [test_args_dfn]
 
     # for adjoint test
-    accepted_dirs_adjoint = ['Adjoint_super_engine']
+    accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 

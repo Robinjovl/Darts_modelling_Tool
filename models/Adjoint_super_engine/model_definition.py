@@ -43,8 +43,12 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
-        nx = 20
-        ny = 10
+        # nx = 20
+        # ny = 10
+        # nz = 2
+
+        nx = 5
+        ny = 5
         nz = 2
 
         # reservoir geometry： for realistic case, one just needs to load the data and input it
@@ -54,11 +58,11 @@ class Model(CICDModel, OptModuleSettings):
         return
 
     def set_wells(self):
-        self.inj_list = [[5, 5]]
-        self.prod_list = [[15, 3], [15, 8]]
+        # self.inj_list = [[5, 5]]
+        # self.prod_list = [[15, 3], [15, 8]]
 
-        # self.inj_list = [[2, 2]]
-        # self.prod_list = [[1, 2], [3, 2]]
+        self.inj_list = [[1, 5], [5, 1]]
+        self.prod_list = [[1, 1], [5, 5]]
 
         # well index setting
         if self.Peaceman_WI:
@@ -90,7 +94,7 @@ class Model(CICDModel, OptModuleSettings):
         Mw = [44.01, 16.04, 18.015]
         nc = len(components)
 
-        self.inj_stream = [1.0 - 2 * zero, zero]
+        self.inj_composition = [1.0 - 2 * zero, zero]
         self.ini_stream = [0.1, 0.2]
 
         """ properties correlations """
@@ -123,16 +127,24 @@ class Model(CICDModel, OptModuleSettings):
 
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
-                w.control = self.physics.new_bhp_inj(140, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=140., inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def set_op_list(self):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
-            customized_component_itor = self.physics.create_interpolator(customized_component_etor, n_ops=1,
+            axes_min = self.physics.axes_min
+            axes_max = self.physics.axes_max
+            customized_component_itor = self.physics.create_interpolator(customized_component_etor,
+                                                                         axes_min=self.physics.axes_min,
+                                                                         axes_max=self.physics.axes_max,
+                                                                         n_ops=1,
                                                                          platform='cpu', algorithm='multilinear',
                                                                          mode='adaptive', precision='d',
                                                                          timer_name='customized component interpolation')
@@ -179,11 +191,17 @@ class Model(CICDModel, OptModuleSettings):
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
         for ts in time_step_arr:
+            from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
-                if "I" in w.name:
-                    w.control = self.physics.new_bhp_inj(140, self.inj_stream)
+                if "I1" in w.name:
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                                   is_inj=True, target=40., phase_name='gas', inj_composition=self.inj_composition)
+                elif "I" in w.name:
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=140., inj_composition=self.inj_composition)
                 else:
-                    w.control = self.physics.new_bhp_prod(50)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=50.)
 
             CICDModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
@@ -203,6 +221,8 @@ class customized_etor_specific_component(operator_set_evaluator_iface):
         """
 
         # temp = self.temperature.evaluate(state)
+        vec_values_as_np = values.to_numpy()
+        vec_values_as_np[:] = 0
 
         # values[0] = state[0]  # pressure
         values[0] = 1 - state[1]  # comp_1

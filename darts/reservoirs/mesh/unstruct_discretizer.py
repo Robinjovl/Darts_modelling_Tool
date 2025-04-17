@@ -691,6 +691,12 @@ class UnstructDiscretizer:
         tran = {}
         tran_thermal = {}
 
+        sorted_cells = {}
+        for geometry in ['quad', 'triangle']:
+            if geometry not in self.mesh_data.cells_dict.keys():
+                continue
+            sorted_cells[geometry] = {tuple(sorted(cell)) for cell in self.mesh_data.cells_dict[geometry]}
+
         for ith_frac, dummy in enumerate(self.frac_cell_info_dict):
             # Loop over all faces of fracture cell and determine intersections based on
             # nodes belonging to fracture (inter)face:
@@ -764,6 +770,7 @@ class UnstructDiscretizer:
         start_time_module = time.time()
         if self.verbose:
             print('Start calculation connection list for matrix-matrix and matrix-fracture (if present) connections...')
+
         # Loop over all matrix-matrix connection and incidental matrix-fracture connections:
         for ith_cell, dummy in enumerate(self.mat_cell_info_dict):
             for key, nodes_to_face in self.mat_cell_info_dict[ith_cell].nodes_to_faces.items():  # for every face
@@ -798,13 +805,15 @@ class UnstructDiscretizer:
                             # Check if there exists a fracture on the currently investigated
                             # interface:
                             try:
+                                nodes_to_face_sorted = tuple(sorted(nodes_to_face))
+
                                 for geometry in ['quad', 'triangle']:
                                     if geometry not in self.mesh_data.cells_dict.keys():
                                         continue
                                     # todo: this is most likely the reason why models with a lot of fractures are
                                     #  extremely slow, check after holiday if this can be done in another way!!!
-                                    if any(np.equal(np.sort(self.mesh_data.cells_dict[geometry], axis=1),
-                                                    np.sort(nodes_to_face)).all(1)):
+                                    match_found = nodes_to_face_sorted in sorted_cells[geometry]
+                                    if match_found:
                                         '''
                                         I am sorting here because I checking the nodes of the face belonging to the cell,
                                         which can be in any order, versus the nodes belonging to all the fracture cell
