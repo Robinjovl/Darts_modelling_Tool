@@ -789,13 +789,13 @@ class DartsModel:
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
-                i = 0
-                for region, prop_itor in self.physics.property_itor.items():
-                    prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
-                    i += 1
 
-                for prop_name, prop_idx in secondary_prop_idxs.items():
-                    property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
+                for region, prop_itor in self.physics.property_itor.items():
+                    block_idx = np.where(self.op_num == region)[0].astype(np.int32)
+                    prop_itor.evaluate_with_derivatives(state,  index_vector(block_idx), values, dvalues)
+
+                    for prop_name, prop_idx in secondary_prop_idxs.items():
+                        property_array[prop_name][k][block_idx] =  values_numpy[block_idx * n_ops + prop_idx]
 
         return timesteps, property_array
 

@@ -31,6 +31,11 @@ class OperatorsSuper(OperatorsBase):
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
+        # Operator names
+        self.op_names = [(self.ACC_OP, "ACC"), (self.FLUX_OP, "FLUX"), (self.UPSAT_OP, "UPSAT"), (self.GRAD_OP, "GRAD"),
+                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.PORO_OP, "PORO"), (self.ENTH_OP, "ENTH"),
+                         (self.TEMP_OP, "TEMP"), (self.PRES_OP, "PRES")]
+
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         print("================================================")
@@ -124,7 +129,7 @@ class ReservoirOperators(OperatorsSuper):
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
-        # self.print_operators(state, values)
+        self.print_operators(state, values)
 
         return 0
 

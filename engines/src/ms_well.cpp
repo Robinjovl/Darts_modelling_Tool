@@ -53,7 +53,7 @@ int ms_well::calc_rates(std::vector<value_t>& X, std::vector<value_t>& op_vals_a
   // Energy and volumetric rates
   value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
-  { 
+  {
     time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * p_diff * segment_transmissibility);
     total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * segment_transmissibility;
   }
@@ -137,12 +137,12 @@ int ms_well::calc_rates_velocity(std::vector<value_t>& X, std::vector<value_t>& 
   // Energy and volumetric rates
   value_t total_energy = 0.;
   for (int i = 0; i < n_phases; i++)
-  { 
+  {
     time_data[name + " : " + phase_names[i] + " rate (m3/day)"].push_back(rates[well_control_iface::VOLUMETRIC_RATE * n_phases + i] * velocity);
     total_energy += rates[well_control_iface::ADVECTIVE_HEAT_RATE * n_phases + i] * p_diff * segment_transmissibility;
   }
   time_data[name + " : energy (kJ/day)"].push_back(total_energy);
-  
+
   // Component molar rates
   index_t nc = n_vars - thermal;
   for (index_t c = 0; c < nc; c++)
@@ -206,7 +206,7 @@ int ms_well::initialize_control(std::vector<value_t>& X)
     std::cout << "Well " << name << " has uninitialized well control\n";
     exit(1);
   }
-  std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;  
+  std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
 
   // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
   for (auto &p : perforations)
