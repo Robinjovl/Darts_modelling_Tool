@@ -21,7 +21,7 @@ rcParams["text.usetex"]=False
 # rcParams["font.serif"] = ["Liberation Serif"]
 
 class UnstructReservoir:
-    def __init__(self, timer, fluid_density, rock_density, mesh_file):
+    def __init__(self, timer, fluid_density, rock_density, mesh_file, cache_discretizer: bool = True):
         self.timer = timer
         self.rho_s = rock_density
         self.rho_f = fluid_density
@@ -29,7 +29,7 @@ class UnstructReservoir:
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         self.mesh = conn_mesh()
 
-        self.cache_discretizer = True
+        self.cache_discretizer = cache_discretizer
         self.cache_filename = 'cached_preprocessing.pkl'
         cached_var_names = ['self.unstr_discr',
                             'self.pm',
@@ -57,6 +57,7 @@ class UnstructReservoir:
         self.timer.node["discretization"].start()
 
         if self.cache_discretizer:
+            # flag checking if update of saved cache needed
             save_cache_discretizer = False
             if os.path.exists(self.cache_filename):
                 with open(self.cache_filename, "rb") as fp:
@@ -72,40 +73,46 @@ class UnstructReservoir:
             else:
                 save_cache_discretizer = True
 
-        if not save_cache_discretizer:
-            # set vars from the loaded cache
-            for var_name, var in cached_data.items():
-                if var_name == 'self.rho_f':
-                    assert var == self.rho_f
-                elif var_name == 'self.rho_s':
-                    assert var == self.rho_s
-                exec(var_name + " = var")
+            # update needed, re-do discretization
+            if save_cache_discretizer:
+                self.reservoir_depletion()
 
-        # Specify elastic properties, mesh & boundaries
-        if (not self.cache_discretizer) or save_cache_discretizer:
-            self.reservoir_depletion()
-            # self.linear_flow()
-            # self.linear_flow_grad()
-            # self.initial_stage()
+                self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                             index_vector(self.ref_contact_cells))
+                dt = 0
+                self.pm.reconstruct_gradients_per_cell(dt)
+                self.pm.calc_all_fluxes_once(dt)
+
+                cached_data = {var_name: eval(var_name, {'self': self}) for var_name in cached_var_names}
+
+                hash = dict_hash(cached_data)
+                cached_data.update({'hash': hash})
+                print('saving cache, hash=', hash)
+
+                with open(self.cache_filename, "wb") as fp:
+                    pickle.dump(cached_data, fp, 4)
+
+            # update not needed, just load and use
+            else:
+                print('discretizer cache is used')
+                for var_name, var in cached_data.items():
+                    if var_name == 'self.rho_f':
+                        assert var == self.rho_f
+                    elif var_name == 'self.rho_s':
+                        assert var == self.rho_s
+                    exec(var_name + " = var")
+
+                self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                             index_vector(self.ref_contact_cells))
         else:
-            print('reservoir cache is used')
+            self.reservoir_depletion()
 
-        self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
-                     index_vector(self.ref_contact_cells))
-        dt = 0
-        self.pm.reconstruct_gradients_per_cell(dt)
-        self.pm.calc_all_fluxes_once(dt)
-
-        if save_cache_discretizer:
-            cached_data = {var_name: eval(var_name, {'self': self}) for var_name in cached_var_names}
-
-            hash = dict_hash(cached_data)
-            cached_data.update({'hash': hash})
-            print('saving cache, hash=', hash)
-
-            with open(self.cache_filename, "wb") as fp:
-                pickle.dump(cached_data, fp, 4)
-
+            # initialize and run discretizer
+            dt = 0
+            self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
+                         index_vector(self.ref_contact_cells))
+            self.pm.reconstruct_gradients_per_cell(dt)
+            self.pm.calc_all_fluxes_once(dt)
 
         # check sparsity of gradients
         # for cell_id in range(self.unstr_discr.mat_cells_tot):

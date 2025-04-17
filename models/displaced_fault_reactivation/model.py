@@ -19,6 +19,10 @@ class Model(THMCModel):
         self.depletion_value = config['depletion']['value']
         self.friction_law = config['friction_law']
         self.mesh_file = config['mesh_file']
+        if 'cache_discretizer' in config:
+            self.cache_discretizer = config['cache_discretizer']
+        else:
+            self.cache_discretizer = True
         super().__init__(n_points=256, discretizer=self.discretizer_name)
     def set_physics(self):
         self.fluid_compressibility = 1.e-6
@@ -55,7 +59,8 @@ class Model(THMCModel):
         return
     def set_reservoir(self):
         self.reservoir = UnstructReservoir(timer=self.timer, fluid_density=self.fluid_density0,
-                                           rock_density=self.rock_density0, mesh_file=self.mesh_file)
+                                           rock_density=self.rock_density0, mesh_file=self.mesh_file,
+                                           cache_discretizer=self.cache_discretizer)
     def update_pressure(self, dt, time):
         if self.enable_dynamic_mode or self.friction_law == 'rsf':
             dp_rate = self.depletion_value
