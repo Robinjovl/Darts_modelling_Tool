@@ -333,12 +333,13 @@ class DartsModel:
         # Newton tolerance is relatively high because of L2-norm for residual and well segments
         self.params.tolerance_newton = tol_newton if tol_newton is not None else self.params.tolerance_newton
         self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
-        #self.params.max_i_newton = it_newton if it_newton is not None else self.params.max_i_newton
+        self.params.max_i_newton = it_newton if it_newton is not None else self.params.max_i_newton
         self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
 
         self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
         self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
 
+        self.params.line_search = line_search
 
     def run_simple(self, physics, params, days):
         """
@@ -434,7 +435,7 @@ class DartsModel:
         stop_time = t + days
 
         # same logic as in engine.run
-        if fabs(t) < 1e-15:
+        if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
             dt = data_ts.dt_min
         elif restart_dt > 0.:
             dt = restart_dt
@@ -448,7 +449,11 @@ class DartsModel:
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
         max_x = np.zeros(nc)
-        omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
+        
+        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+            omega = 0.
+        else:
+            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         while t < stop_time:
             xn = np.array(self.physics.engine.Xn[:nb * nc])
@@ -486,9 +491,9 @@ class DartsModel:
                 dt /= data_ts.dt_mult
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
-                if dt < data_ts.dt_min:
-                    break
-
+                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(data_ts.dt_min) + ' dt=' + str(dt))
+                    
         # update current engine time
         self.physics.engine.t = stop_time
 
@@ -544,10 +549,28 @@ class DartsModel:
                     self.physics.engine.n_newton_last_dt == max_newt):
                 if i > 0:  # min_i_newton
                     break
-            r_code = self.physics.engine.solve_linear_equation()
-            self.timer.node["newton update"].start()
-            self.physics.engine.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
+                    
+            # line search
+            if self.params.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:
+                coef = np.array([0.0, 1.0])
+                history = np.array([residual_history[-2], residual_history[-1]])
+                residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
+                max_residual[i] = residual_history[-1][0]
+
+                # check stationary point after line search
+                counter = 0
+                for j in range(i):
+                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.params.stationary_point_tolerance:
+                        counter += 1
+                if counter > 2:
+                    if verbose:
+                        print("Stationary point detected!")
+                    break
+            else:
+                r_code = self.physics.engine.solve_linear_equation()
+                self.timer.node["newton update"].start()
+                self.physics.engine.apply_newton_update(dt)
+                self.timer.node["newton update"].stop()
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 
