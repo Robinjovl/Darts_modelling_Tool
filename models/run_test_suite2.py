@@ -21,6 +21,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'CoaxWell'
                      ]       
 
+
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
 

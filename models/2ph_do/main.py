@@ -71,8 +71,9 @@ if __name__ == '__main__':
         writer.close()
 
         td['well_I1_mass_rate_o_at_wh'] = td['well_I1_mass_rate_o_at_wh'].round(2)
-        td.plot(x='time', y=['well_I1_mass_rate_o_at_wh'], style='-o')
-        plt.show()
+        td.plot(x='time', y=['well_I1_mass_rate_o_at_wh'], style='-o')\
+            .get_figure().savefig(n.output_folder + '/rates.png', dpi=100, bbox_inches='tight')
+        # plt.show()
 
         ########################## DEPRECIATED
         # time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)

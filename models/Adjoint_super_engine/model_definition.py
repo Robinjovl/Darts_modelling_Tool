@@ -41,6 +41,8 @@ class Model(CICDModel, OptModuleSettings):
 
         self.timer.node["initialization"].stop()
 
+        # self.set_output()
+
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
         nx = 20

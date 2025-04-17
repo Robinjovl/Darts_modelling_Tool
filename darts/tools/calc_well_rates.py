@@ -21,7 +21,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
     :type trans: numpy.ndarray
     :param thermal: If the model is thermal or not
     :type thermal: bool
-    :param pc: An instance of the class PropertyContainer
+    :param pc: An instance of the class PropertyContainer()
     :type pc: PropertyContainer
     :param rate_type: Type of well rate to calculate
     :type rate_type: str
@@ -103,7 +103,7 @@ def phase_molar_rate_operators(state, pc):
     values = np.zeros(pc.nph)
     for j in pc.ph:
         try:
-            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j] # compositional
         except:
             values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
@@ -125,7 +125,7 @@ def phase_mass_rate_operators(state, pc):
         try:
             values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
         except:
-            values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+            values[j] = pc.density[j] * pc.relperm[j] / pc.viscosity[j]
 
 
     return values

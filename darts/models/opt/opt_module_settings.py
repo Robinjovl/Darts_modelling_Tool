@@ -213,7 +213,7 @@ class OptModuleSettings:
             self.run(start_opt=args[0],stop_opt=args[1])
         else:
             self.physics.engine.clear_previous_adjoint_assembly()
-            self.run(export_to_vtk=False)
+            self.run(export_to_vtk=False, save_well_data=False, save_reservoir_data=False)
             # self.run_python()opt_history_matching
         # self.run()
         self.sim_time += time.time()
