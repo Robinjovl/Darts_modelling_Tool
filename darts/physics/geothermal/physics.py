@@ -48,8 +48,6 @@ class Geothermal(PhysicsBase):
         # Define OBL axes
         self.axes_min = value_vector([min_p, min_e])
         self.axes_max = value_vector([max_p, max_e])
-        self.PT_axes_min = value_vector([min_p, 273.15])
-        self.PT_axes_max = value_vector([max_p, 273.15 + 300.])
         n_axes_points = index_vector([n_points] * len(variables))
 
         # Define number of operators:
@@ -60,6 +58,8 @@ class Geothermal(PhysicsBase):
         # Call PhysicsBase constructor
         super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=self.axes_min, axes_max=self.axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
+        self.PT_axes_min = value_vector([min_p, 273.15])
+        self.PT_axes_max = value_vector([max_p, 273.15 + 300.])
 
     def determine_obl_bounds(self, min_p: float, max_p: float, min_z: float = None, max_z: float = None,
                              min_t: float = None, max_t: float = None,
