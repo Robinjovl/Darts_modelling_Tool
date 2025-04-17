@@ -321,13 +321,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-
-	  PV[i] = mesh->volume[i] * mesh->poro[i];
-	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
-
-	for (index_t i = 0; i < mesh->n_res_blocks; i++)
-	{
+	
 	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
 		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
@@ -338,6 +332,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  }
 	}
 	X_init.resize(n_vars * mesh->n_blocks);
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		PV[i] = mesh->volume[i] * mesh->poro[i];
+	  	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	}
 
 	if (THERMAL)
 	{
