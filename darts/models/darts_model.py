@@ -331,7 +331,7 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_reservoir_data : bool = True,
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_well_data_after_run : bool = False, save_reservoir_data : bool = True,
             log_3d_body_path: bool = False, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -395,7 +395,8 @@ class DartsModel:
                 if log_3d_body_path:
                     self.physics.body_path_add_bodys(output_folder=self.output_folder, time=t)
 
-                if save_well_data:
+                # save well data at every converged time step
+                if save_well_data and save_well_data_after_run is False:
                     self.output.save_data_to_h5(kind='well')
 
             else:
@@ -405,9 +406,12 @@ class DartsModel:
                 assert dt > self.params.min_ts, ('Stop simulation. Reason: reached min. timestep '
                                                  + str(self.params.min_ts) + ' dt=' + str(dt))
 
-
         # update current engine time
         self.physics.engine.t = stop_time
+
+        # save well data after run
+        if save_well_data and save_well_data_after_run is True:
+            self.output.save_data_to_h5(kind='well')
 
         # save solution vector
         if save_reservoir_data:

@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
 from darts.tools.flux_tools import get_molar_well_rates, get_phase_volumetric_well_rates, get_mass_well_rates
-
 import numpy as np
 import pandas as pd
 import pickle

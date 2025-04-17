@@ -72,8 +72,8 @@ if __name__ == '__main__':
         td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
-        td.plot(x='time', y=['well_I1_volumetric_rate_gas_at_wh'])
-        plt.show()
+        td.plot(x='time', y=['well_I1_volumetric_rate_gas_at_wh'])\
+            .get_figure().savefig(n.output_folder + '/rates.png', dpi=100, bbox_inches='tight')
 
         # time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
         # time_data.to_pickle("darts_time_data.pkl")

@@ -70,6 +70,7 @@ def prepare_synthetic_observation_data():
         true_model = Model(T, report_step=report_step, perm=perm, poro=poro,
                            customize_new_operator=customize_new_operator)
         true_model.init()
+        true_model.set_output()
         true_model.run(export_to_vtk=False)
         true_model.print_timers()
         true_model.print_stat()

@@ -68,9 +68,11 @@ if __name__ == '__main__':
         td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
-        td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])
-        td.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_water_at_wh'])
-        plt.show()
+        td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
+            .get_figure().savefig(m.output_folder + '/BHP.png', dpi=100, bbox_inches='tight')
+        td.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_water_at_wh'])\
+            .get_figure().savefig(m.output_folder + '/volumetric_rates.png', dpi=100, bbox_inches='tight')
+        # plt.show()
 
     else:
         # n.load_restart_data()

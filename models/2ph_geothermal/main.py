@@ -72,15 +72,14 @@ if __name__ == '__main__':
         writer.close()
 
         td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        td.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')
-        plt.show()
+        td.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
+            .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
 
-        td.plot(x='time', y=['well_P1_BHP'], style='-o')
-        plt.show()
+        td.plot(x='time', y=['well_P1_BHP'], style='-o')\
+            .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
 
-        td.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh',
-                             'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))
-        plt.show()
+        td.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
+            .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
 
     else:
         # n.load_restart_data()

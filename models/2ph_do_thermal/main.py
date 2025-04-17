@@ -49,12 +49,12 @@ def plot_sol(n):
 if __name__ == '__main__':
 
     redirect_darts_output('run.log')
-    time_data_filename = "darts_time_data.pkl"
 
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
     n.set_output()
+    time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
         n.run(1000)
@@ -68,28 +68,21 @@ if __name__ == '__main__':
 
         # save dataframe of well rates
         td = pd.DataFrame.from_dict(well_rates_dict)
-        td.to_pickle(n.output_folder + "/darts_time_data.pkl")  # as a pickle file
+        td.to_pickle(time_data_filename)  # as a pickle file
         writer = pd.ExcelWriter(n.output_folder + "/darts_time_data.xlsx")  # as an excel file
         td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
         td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        td.plot(x='time',
-                y=[# 'well_I1_volumetric_rate_wat_at_wh',
-                   # 'well_I1_mass_rate_wat_at_wh',
-                   'well_I1_molar_rate_wat_at_wh'
-                   ],
-                style='-o')
-        plt.show()
-
-        td.plot(x='time', y=['well_P1_BHP'], style='-o')
-        plt.show()
+        td.plot(x='time', y='well_I1_molar_rate_wat_at_wh', style='-o')\
+            .get_figure().savefig(n.output_folder + '/prd_molar_rate_water.png', dpi=100, bbox_inches='tight')
+        td.plot(x='time', y=['well_P1_BHP'], style='-o')\
+            .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
 
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle(time_data_filename)
-
 
     if True:
         Xn = np.array(n.physics.engine.X, copy=False)
