@@ -96,6 +96,14 @@ class Geothermal(PhysicsBase):
         """
         return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
 
+    def init_wells(self, wells):
+        """
+        :param wells: List of :class:`ms_well` objects
+        """
+        for w in wells:
+            assert isinstance(w, ms_well)
+            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor, True)
+
     def define_well_controls(self):
         # create well controls
         # water stream

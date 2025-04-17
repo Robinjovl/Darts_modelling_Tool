@@ -1,4 +1,4 @@
-# 1.3.0 [28-02-2025]
+# 1.3.0 [-2025]
 - Unify set_initial_conditions():
   - 1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_from_array()
   - 2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth to self.physics.set_initial_conditions_from_depth_table() 
@@ -10,8 +10,35 @@
   - Unifies P (isothermal), PT (pressure-temperature) and PH (pressure-enthalpy)
   - Compositional constructor contains state_spec variable rather than thermal (bool)
   - Geothermal is PH by default
+- The GPU configuration is supported in cmake. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/179)
+- C++ standart was changed to C++20. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182)
+  - a custom dockerfile usage with gcc-13 compiler for open-DARTS compilation in gitlab pipelines (Linux only).
+  - libstc++ added to the wheels (for Linux).
+  - DARTS command line interface (CLI) added.
+- The required cmake version changed to 3.26.
+- The BCSR jacobain matrix class exposed to Python. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=766b876deb925ffeba1d6971402c93b80256b5a7)
+- Row-wise jacobian scaling for Geothermal engine. Turned off by default [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?file=611eddccefa3651138d3f99d5c57b29072c40eed#611eddccefa3651138d3f99d5c57b29072c40eed_414_492)
+- Line search for Newton iterations. Turned off by default, can be enabled with model.params.line_search = True. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?file=4111fc0a9161b7a085b99b1cd0ac668b08efcff7#4111fc0a9161b7a085b99b1cd0ac668b08efcff7_585_613)
+- Fluxes storage in arrays. Turned off by default, can be enabled by a call `engine.enable_flux_output()`. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=23fd4fdfb9cbcbce7f0f72e0874c83bccae0be73)
+- No-flow boundary conditions in reconstruction of velocities on structured grid. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=cbdd7d97937c1c44b4ed5c947f46357dc72fa2cf)
+- Convergence tests for geomechanical models [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184) 
+- Unstructured mesh generation script [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184)
+- SPE10_mech model is enabled in pipelines.
+- CPG Reservoir:
+  - Fault transmissibility multiplier application fixed.
+  - A test case with a fault transmissibility multiplacator [added](https://gitlab.com/open-darts/open-darts/-/blob/development/models/cpg_sloping_fault/main.py?ref_type=heads#L239).
+  - The heat capacity and rock conduction storage to vtk file in the cpg model fixed.
+  - Slides with the description [added](https://gitlab.com/open-darts/open-darts/-/blob/development/models/cpg_sloping_fault/model_description.pptx?ref_type=heads).
+- CPG and struct reservoirs: fixed a check for perforations in the inactive block.
+- Mesh processing for DFN model with the Python discretizer [optimized](https://gitlab.com/open-darts/open-darts/-/merge_requests/194).
+- Breaking changes:\
+	For open-DARTS wheels installed from pip or gitlab pipelines running command was changed: \
+	{- Before, `python main.py` }\
+	{+ Now, `darts main.py`}\
+	This is neccessary to ensure the libstdc++ provided with open-DARTS is loaded first. This doesn't impact Windows runs.
+	However, DARTS command line interface (CLI) can also be used on Windows. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182).
 
-# 1.2.2 [26-01-2025]
+# 1.2.2 [27-01-2025]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
 - Temperature and pressure operators are added
 - Add enthalpy operators to elastic super engine

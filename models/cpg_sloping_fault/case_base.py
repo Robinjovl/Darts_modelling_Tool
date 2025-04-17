@@ -27,7 +27,7 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.first_ts = 0.01
     idata.sim.mult_ts = 2
     idata.sim.max_ts = 92
-    idata.sim.runtime = 300
+    idata.sim.runtime = None
     idata.sim.tol_newton = 1e-2
     idata.sim.tol_linear = 1e-4
     # use direct linear solver:
@@ -50,6 +50,8 @@ def input_data_base(idata: InputData, case: str):
 
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
+
+    geom.faultfile = None  # a text file with fault locations and multipliers
 
     if idata.generate_grid:
         idata.rock.poro = 0.2
