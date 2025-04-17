@@ -232,7 +232,7 @@ build-windows-3.9-ODLS:
       expire_in: 1 week
       when: always
 
-.build-linux-builder:
+build-linux-builder:
   stage: build images
   tags:
     - linux
