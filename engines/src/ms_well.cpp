@@ -15,7 +15,7 @@ using namespace opendarts::linear_solvers;
 
 int ms_well::check_constraints(double dt, std::vector<value_t> &X)
 {
-  if (constraint.get_well_control_type() < well_control_iface::WellControlType::NONE)
+  if (constraint.get_well_control_type() > well_control_iface::WellControlType::NONE)
     if (constraint.check_constraint_violation(dt, well_head_idx, segment_transmissibility, n_block_size, P_VAR, X))
     {
       // constraint violation occured, switch control and constrain
