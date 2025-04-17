@@ -291,6 +291,55 @@ class DartsModel:
         self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
 
 
+    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
+                       tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
+                       newton_type=None, newton_params=None):
+        """
+        Function to set simulation parameters.
+
+        :param first_ts: First timestep
+        :type first_ts: float
+        :param mult_ts: Timestep multiplier
+        :type mult_ts: float
+        :param max_ts: Maximum timestep
+        :type max_ts: float
+        :param runtime: Total runtime in days, default is 1000
+        :type runtime: float
+        :param tol_newton: Tolerance for Newton iterations
+        :type tol_newton: float
+        :param tol_linear: Tolerance for linear iterations
+        :type tol_linear: float
+        :param it_newton: Maximum number of Newton iterations
+        :type it_newton: int
+        :param it_linear: Maximum number of linear iterations
+        :type it_linear: int
+        :param newton_type:
+        :param newton_params:
+        """
+        self.data_ts = DataTS(self.physics.n_vars)
+
+        self.data_ts.dt_min = first_ts if first_ts is not None else self.data_ts.dt_min
+        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
+        self.data_ts.max_it_nonlin = it_newton if it_newton is not None else self.data_ts.max_it_nonlin
+        self.data_ts.tol_res = tol_newton if tol_newton is not None else self.data_ts.tol_res
+        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
+
+
+        self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
+        self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
+        self.params.max_ts = max_ts if max_ts is not None else self.params.max_ts
+        self.runtime = runtime
+
+        # Newton tolerance is relatively high because of L2-norm for residual and well segments
+        self.params.tolerance_newton = tol_newton if tol_newton is not None else self.params.tolerance_newton
+        self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
+        #self.params.max_i_newton = it_newton if it_newton is not None else self.params.max_i_newton
+        self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
+
+        self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
+        self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
+
+
     def run_simple(self, physics, params, days):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -504,56 +553,6 @@ class DartsModel:
 
         self.timer.node['simulation'].stop()
         return converged
-
-
-    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
-                       tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
-                       newton_type=None, newton_params=None):
-        """
-        Function to set simulation parameters.
-
-        :param first_ts: First timestep
-        :type first_ts: float
-        :param mult_ts: Timestep multiplier
-        :type mult_ts: float
-        :param max_ts: Maximum timestep
-        :type max_ts: float
-        :param runtime: Total runtime in days, default is 1000
-        :type runtime: float
-        :param tol_newton: Tolerance for Newton iterations
-        :type tol_newton: float
-        :param tol_linear: Tolerance for linear iterations
-        :type tol_linear: float
-        :param it_newton: Maximum number of Newton iterations
-        :type it_newton: int
-        :param it_linear: Maximum number of linear iterations
-        :type it_linear: int
-        :param newton_type:
-        :param newton_params:
-        """
-        self.data_ts = DataTS(self.physics.n_vars)
-
-        self.data_ts.dt_min = first_ts if first_ts is not None else self.data_ts.dt_min
-        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
-        self.data_ts.max_it_nonlin = it_newton if it_newton is not None else self.data_ts.max_it_nonlin
-        self.data_ts.tol_res = tol_newton if tol_newton is not None else self.data_ts.tol_res
-        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
-
-
-        self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
-        self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
-        self.params.max_ts = max_ts if max_ts is not None else self.params.max_ts
-        self.runtime = runtime
-
-        # Newton tolerance is relatively high because of L2-norm for residual and well segments
-        self.params.tolerance_newton = tol_newton if tol_newton is not None else self.params.tolerance_newton
-        self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
-        #self.params.max_i_newton = it_newton if it_newton is not None else self.params.max_i_newton
-        self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
-
-        self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
-        self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
-
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
         """
