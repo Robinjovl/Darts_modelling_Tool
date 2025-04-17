@@ -79,7 +79,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
                 values = components_molar_rates_operators(state, pc)
             elif rate_type == 'components_mass_rates':
                 values = components_mass_rates_operators(state, pc)
-            elif rate_type == 'heat_rate':
+            elif rate_type == 'advective_heat_rate':
                 values = heat_rate_operators(state, pc)
             else:
                 raise Exception("Rate type is entered incorrectly!")
