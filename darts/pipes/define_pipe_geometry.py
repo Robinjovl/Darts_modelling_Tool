@@ -119,7 +119,7 @@ class PETREL_PipeGeometry(PipeGeometry):
         :param verbose: Whether to display extra info about PipeGeometry
         :type verbose: boolean
         """
-        df = pd.read_csv(well_traj_file_name, delim_whitespace=True, comment="#")
+        df = pd.read_csv(well_traj_file_name, sep=r'\s+', comment="#")
 
         # Get min and max MDs
         min_MD = df["MD"].min()
