@@ -130,7 +130,7 @@ class PETREL_PipeGeometry(PipeGeometry):
         segments_lengths = segments_length * np.ones(num_segments)
 
         # Initialize list for inclination angles
-        inclination_angles = []
+        inclination_angles_deg = []
 
         # Loop through segments
         for i in range(num_segments):
@@ -158,13 +158,13 @@ class PETREL_PipeGeometry(PipeGeometry):
             theta_rad = np.arccos(np.clip(cos_theta, -1.0, 1.0))  # avoid domain errors
             theta_deg = np.degrees(theta_rad)
 
-            inclination_angles.append(theta_deg)
+            inclination_angles_deg.append(theta_deg)
 
-        inclination_angles = np.array(inclination_angles)
-        conn_inclination_angles = (inclination_angles[:-1] + inclination_angles[1:]) / 2
+        inclination_angles_deg = np.array(inclination_angles_deg)
+        conn_inclination_angles_deg = (inclination_angles_deg[:-1] + inclination_angles_deg[1:]) / 2
 
         # Segments vertical lengths
-        vertical_lengths_segments = segments_length * np.cos(np.radians(inclination_angles))
+        vertical_lengths_segments = segments_length * np.cos(np.radians(inclination_angles_deg))
 
         # TVD at each interface: cumulative sum starting from the top
         TVD_faces = np.zeros(num_segments + 1)
@@ -179,10 +179,10 @@ class PETREL_PipeGeometry(PipeGeometry):
                  "Segment": range(1, num_segments + 1),
                  "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
                  "End_MD": [min_MD + (i + 1) * segments_length for i in range(num_segments)],
-                 "Inclination_Degrees": inclination_angles
+                 "Inclination_Degrees": inclination_angles_deg
         })
 
-        super().__init__(pipe_name, segments_lengths, pipe_ID, conn_inclination_angles, wall_roughness, verbose)
+        super().__init__(pipe_name, segments_lengths, pipe_ID, conn_inclination_angles_deg, wall_roughness, verbose)
 
     def _interpolate_point(self, df, target_MD):
         lower = df[df["MD"] <= target_MD].tail(1)
