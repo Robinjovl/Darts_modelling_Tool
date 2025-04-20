@@ -131,7 +131,7 @@ class Model(CICDModel):
         # well_head_segment_composition = [1.0 - 2 * zero*10, zero*10, zero*10]
         # well_head_segment_interval = [0, well_1_geometry.segments_lengths[0]]
         initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[1e-5, 1 - 2 * 1e-5, 1e-5]],
-                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe
+                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = SingleAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0], system_temperature,
                                                              pipe_head_pressure, pipe_head_segment_index,

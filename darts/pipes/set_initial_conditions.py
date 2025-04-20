@@ -29,8 +29,8 @@ class SingleAmbientTemperature:
         :param pipe_head_segment_index: The index of the segment of the pipe at which the pipe head pressure is specified. The index starts from 0.
         :type pipe_head_segment_index: int
         :param initial_fluid_conditions: Initial fluid conditions in the pipe including the names of the phases present
-        in the pipe, the composition of the phases [mole fractions], and the depth intervals of the pipe in which those
-        phases are present [meter].
+        in the pipe, the composition of the phases [mole fractions], and the true vertical depth (TVD) intervals of the
+        pipe in which those phases are present [meter].
         :type initial_fluid_conditions: dict consisting three key-value pairs: list of strings, list of lists, list of lists
         :param verbose: Whether to display extra info about SingleAmbientTemperature
         :type verbose: boolean
@@ -134,8 +134,8 @@ class LinearAmbientTemperature:
         :param pipe_head_segment_index: The index of the segment of the pipe at which the pipe head pressure is specified. The index starts from 0.
         :type pipe_head_segment_index: int
         :param initial_fluid_conditions: Initial fluid conditions in the pipe including the names of the phases present
-        in the pipe, the composition of the phases [mole fractions], and the depth intervals of the pipe  in which those
-        phases are present [meter].
+        in the pipe, the composition of the phases [mole fractions], and the true vertical depth (TVD) intervals of the
+        pipe in which those phases are present [meter].
         :type initial_fluid_conditions: dict consisting three key-value pairs: list of strings, list of lists, list of lists
         :param verbose: Whether to display extra info about LinearAmbientTemperature
         :type verbose: boolean
