@@ -36,7 +36,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=5/(24*60*60), tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=5/(24*60*60), tol_newton=1e-6, tol_linear=1e-3,
                             it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -92,7 +92,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         self.physics = Compositional(components_names, phases_names, self.timer,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=200, min_p=1, max_p=500, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
         property_container.output_props = {"sat_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].sat[0],

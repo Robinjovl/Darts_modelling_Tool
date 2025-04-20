@@ -22,8 +22,8 @@ coupled_model.init()
 if 1:
     minute = 1 / 24 / 60
     time_steps = [10 * minute, 4 * 60 * minute]
-    for dt in time_steps:
-        if dt > time_steps[0]:
+    for i, dt in enumerate(time_steps):
+        if i > 0:
             coupled_model.params.max_ts = 2 * minute
         coupled_model.run(dt)
     time_data = pd.DataFrame.from_dict(coupled_model.physics.engine.time_data)
