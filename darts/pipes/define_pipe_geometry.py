@@ -10,7 +10,7 @@ class PipeGeometry:
         """
         Class constructor to define the geometry of a pipe
         Assumptions:
-        The pipe has constant diameter, inclination angle, and wall roughness.
+        The pipe has constant diameter and wall roughness.
 
         :param pipe_name: Name of the pipe
         :type pipe_name: str
