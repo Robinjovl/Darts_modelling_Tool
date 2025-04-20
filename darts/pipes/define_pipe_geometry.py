@@ -121,7 +121,7 @@ class PETREL_PipeGeometry(PipeGeometry):
         """
         df = pd.read_csv(well_traj_file_name, delim_whitespace=True, comment="#")
 
-        # Extract the MD column and get min and max MDs
+        # Get min and max MDs
         min_MD = df["MD"].min()
         max_MD = df["MD"].max()
 
@@ -136,9 +136,6 @@ class PETREL_PipeGeometry(PipeGeometry):
         for i in range(num_segments):
             start_MD = min_MD + i * segments_length
             end_MD = start_MD + segments_length
-
-            # Filter points within the segment range
-            segment_df = df[(df["MD"] >= start_MD) & (df["MD"] <= end_MD)]
 
             # Get the start and end point
             start_point = self._interpolate_point(df, start_MD)
