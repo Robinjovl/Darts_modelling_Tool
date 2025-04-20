@@ -141,15 +141,11 @@ class PETREL_PipeGeometry(PipeGeometry):
             segment_df = df[(df["MD"] >= start_MD) & (df["MD"] <= end_MD)]
 
             # Get the start and end point
-            if segment_df.shape[0] < 2:
-                start_point = self._interpolate_point(df, start_MD)
-                end_point = self._interpolate_point(df, end_MD)
+            start_point = self._interpolate_point(df, start_MD)
+            end_point = self._interpolate_point(df, end_MD)
 
-                if start_point is None or end_point is None:
-                    raise Exception("start_point or end_point is None!")
-            else:
-                start_point = segment_df.iloc[0]
-                end_point = segment_df.iloc[-1]
+            if start_point is None or end_point is None:
+                raise Exception("start_point or end_point is None!")
 
             # Calculate displacement vector components
             dx = end_point["X"] - start_point["X"]
