@@ -63,6 +63,7 @@ if 1:
             coupled_model.params.max_ts = 6000 / (24 * 60 * 60)
         elif i == 16:
             coupled_model.params.max_ts = 60000 / (24 * 60 * 60)
+
         coupled_model.run(dt)
         coupled_model.output_to_vtk(ith_step=i+1, output_properties=output_props)
 
