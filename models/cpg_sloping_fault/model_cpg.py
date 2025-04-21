@@ -18,7 +18,7 @@ class Model_CPG(CICDModel):
     def __init__(self):
         super().__init__()
 
-    def init_reservoir(self):
+    def init_input_arrays(self):
         if self.idata.generate_grid:
             if self.idata.grid_out_dir is None:
                 self.idata.gridname = None
@@ -36,12 +36,15 @@ class Model_CPG(CICDModel):
         else:
             # read grid and rock properties
             arrays = read_arrays(self.idata.gridfile, self.idata.propfile)
-            check_arrays(arrays)
-            if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
-                arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
-            elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
-                for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-                    arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+        return arrays
+
+    def init_reservoir(self, arrays):
+        check_arrays(arrays)
+        if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
+            arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
+        elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
+            for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
+                arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
 
         if self.idata.geom.burden_layers > 0:
             # add over- and underburden layers
@@ -51,6 +54,7 @@ class Model_CPG(CICDModel):
                                burden_layer_prop_value=self.idata.rock.burden_prop)
 
         self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv, faultfile=self.idata.geom.faultfile)
+        # discretize right away to be able to modify the boundary volume
         self.reservoir.discretize()
 
         # store modified arrrays (with burden layers) for output to grdecl
@@ -77,17 +81,6 @@ class Model_CPG(CICDModel):
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l) })
-
-        self.set_physics()
-
-        # time stepping and convergence parameters
-        sim = self.idata.sim  # short name
-        self.set_sim_params(first_ts=sim.first_ts, mult_ts=sim.mult_ts, max_ts=sim.max_ts, runtime=sim.runtime,
-                            tol_newton=sim.tol_newton, tol_linear=sim.tol_linear)
-        if hasattr(sim, 'linear_type'):
-            self.params.linear_type = sim.linear_type
-
-        self.timer.node["initialization"].stop()
 
     def set_wells(self):
         # read perforation data from a file

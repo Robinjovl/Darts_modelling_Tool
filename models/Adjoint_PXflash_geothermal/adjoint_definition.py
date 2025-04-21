@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import value_vector, redirect_darts_output, well_control_iface
+from darts.engines import value_vector, redirect_darts_output
 from darts.models.opt.opt_module_settings import model_modifier_aggregator, transmissibility_modifier, well_index_modifier
 from model_definition import Model
 
@@ -17,8 +17,8 @@ import pickle
 generate_true_data = True
 plot_and_check = False  # plot and check the "true" model (observation data); plot and update kernel size, EM data, etc.
 true_realization = "real"
+iapws_physics = False
 
-training_based_on_report = True
 
 
 # year = 4
@@ -41,11 +41,11 @@ optimization = False  # switch off to compare the adjoint and numerical gradient
 apply_adjoint_method = True  # switch off to apply numerical method
 
 add_prod_rate_to_objfun = True
-add_inj_rate_to_objfun = True
-add_BHP_to_objfun = True
+add_inj_rate_to_objfun = False
+add_BHP_to_objfun = False
 add_well_tempr_to_objfun = False
 add_temperature_to_objfun = False
-add_customized_op_to_objfun = True
+add_customized_op_to_objfun = False
 
 # if switch on, the customized operator should be defined in "set_op_list", e.g. temperature
 # customize_new_operator = add_temperature_to_objfun
@@ -67,8 +67,7 @@ def prepare_synthetic_observation_data():
     # --------------------------------------------------------------------------------------------------------------
 
     if generate_true_data:
-        true_model = Model(T, report_step=report_step, perm=perm, poro=poro,
-                           customize_new_operator=customize_new_operator)
+        true_model = Model(T, report_step=report_step, perm=perm, poro=poro, iapws_physics=iapws_physics)
         true_model.init()
         true_model.run(export_to_vtk=False)
         true_model.print_timers()
@@ -147,7 +146,7 @@ def process_adjoint(history_matching=False):
     # ---------------------------------------------------------------------------------------------------------------
 
 
-    proxy_model = Model(T=training_time, report_step=report_step, perm=perm, poro=poro, customize_new_operator=customize_new_operator)
+    proxy_model = Model(T=training_time, report_step=report_step, perm=perm, poro=poro, iapws_physics=iapws_physics)
 
     if training_model:
         redirect_darts_output('')
@@ -164,7 +163,7 @@ def process_adjoint(history_matching=False):
     opt_function_tolerance = 1e-7
     tol = opt_function_tolerance * scale_function_value
     # eps = 1e-9
-    eps = 1e-7
+    eps = 1e-5
 
     t = value_vector([])
     t_D = value_vector([])
@@ -258,7 +257,9 @@ def process_adjoint(history_matching=False):
     # prod_phase_name = [proxy_model.physics.phases[0]]  # water phase
     # prod_phase_name = [proxy_model.physics.phases[1]]  # oil phase
     # prod_phase_name = proxy_model.physics.phases  # all phases
-    prod_phase_name = ['oil', 'gas']  # disordered phase names
+    # prod_phase_name = ['wat', 'gas']  # disordered phase names
+    prod_phase_name = ['water', 'steam']
+
 
     proxy_model.objfun_prod_phase_rate = add_prod_rate_to_objfun
     proxy_model.prod_well_name = prod_well_name
@@ -277,9 +278,6 @@ def process_adjoint(history_matching=False):
             inj_well_name.append(w.name)
     inj_phase_name = [proxy_model.physics.phases[0]]
 
-    inj_well_name = ["I2"]
-    inj_phase_name = ['oil', 'gas']
-
     proxy_model.objfun_inj_phase_rate = add_inj_rate_to_objfun
     proxy_model.inj_well_name = inj_well_name
     proxy_model.inj_phase_name = inj_phase_name
@@ -296,8 +294,6 @@ def process_adjoint(history_matching=False):
         BHP_well_name.append(w.name)
         # if "I" in w.name:
         #     BHP_well_name.append(w.name)
-
-    BHP_well_name = ["I1"]
 
     proxy_model.objfun_BHP = add_BHP_to_objfun
     proxy_model.BHP_well_name = BHP_well_name
@@ -337,10 +333,6 @@ def process_adjoint(history_matching=False):
         op_coef = 1
         proxy_model.customized_op_weights = op_coef * np.ones(
             (Training_report, np.size(time_data_report_customized, 1)))
-
-    # choose the type of observation rate
-    # todo: in the future, we will add more observation rate options, e.g. mass rate. By fefault, we use volumetric rate.
-    proxy_model.observation_rate_type = well_control_iface.VOLUMETRIC_RATE
 
     # activate optimization options--------------------------------
     proxy_model.activate_opt_options()
@@ -497,12 +489,11 @@ def process_adjoint(history_matching=False):
             obj_func = proxy_model.make_opt_step_adjoint_method
             grad_func = proxy_model.grad_adjoint_method_all
 
-            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
-                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
-
             opt_num = minimize(obj_func, x0, method='SLSQP', bounds=bounds,
                                options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True, 'eps': eps})
 
+            opt_adjoint = minimize(obj_func, x0, method='SLSQP', jac=grad_func, bounds=bounds,
+                                   options={'maxiter': 0, 'ftol': tol, 'iprint': 100, 'disp': True})
 
             adjoint_gradient = array(opt_adjoint.jac)
 

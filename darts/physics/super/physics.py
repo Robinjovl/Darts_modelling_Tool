@@ -5,8 +5,8 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
 
-from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators, RateOperators, MassFluxOperators
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
+from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
 class Compositional(PhysicsBase):
@@ -73,20 +73,16 @@ class Compositional(PhysicsBase):
         # axes_min
         if axes_min is None:
             if self.thermal:
-                axes_min = value_vector([min_p] + [min_z] * (nc - 1) + [min_t])
+                axes_min = [min_p] + [min_z] * (nc - 1) + [min_t]
             else:
-                axes_min = value_vector([min_p] + [min_z] * (nc - 1))
-        else:
-            axes_min = value_vector(axes_min)
+                axes_min = [min_p] + [min_z] * (nc - 1)
 
         # axes_max
         if axes_max is None:
             if self.thermal:
-                axes_max = value_vector([max_p] + [max_z] * (nc - 1) + [max_t])
+                axes_max = [max_p] + [max_z] * (nc - 1) + [max_t]
             else:
-                axes_max = value_vector([max_p] + [max_z] * (nc - 1))
-        else:
-            axes_max = value_vector(axes_max)
+                axes_max = [max_p] + [max_z] * (nc - 1)
 
         # n_axes_points
         if n_axes_points is None:
@@ -121,34 +117,22 @@ class Compositional(PhysicsBase):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
+        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
             self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
-            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region], self.thermal)
 
         if self.thermal:
-            self.wellbore_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
         else:
-            self.wellbore_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
-        self.rate_operators = RateOperators(self.property_containers[self.regions[0]])
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
-        return
-
-    def define_well_controls(self):
-        # define well control factories
-        # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
-        self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
-        self.new_rate_inj = lambda rate, inj_stream, iph: rate_inj_well_control(self.phases, iph, self.n_vars,
-                                                                                self.n_vars, rate, value_vector(inj_stream),
-                                                                                self.rate_itor)
-        # Production wells:
-        self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_prod = lambda rate, iph: rate_prod_well_control(self.phases, iph, self.n_vars,
-                                                                      self.n_vars, rate, self.rate_itor)
         return
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
@@ -186,7 +170,8 @@ class Compositional(PhysicsBase):
                 p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
                 pressure = p_itor(depths)
 
-                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear',
+                                  fill_value='extrapolate')
                 temperature = t_itor(depths)
 
                 z_itors = [interp1d(input_depth, input_distribution[comp], kind='linear', fill_value='extrapolate') for
@@ -196,8 +181,9 @@ class Compositional(PhysicsBase):
                 values = np.empty(mesh.n_res_blocks)
                 for j in range(mesh.n_res_blocks):
                     zc = np.append(np.asarray(zi[:, j]), 1. - np.sum(zi[:, j])) if self.nc > 1 else np.array([1.])
+                    state_pt = np.array([pressure[j]] + list(zc) + [temperature[j]])
 
-                    values[j] = self.property_containers[0].compute_total_enthalpy(pressure[j], temperature[j], zc)
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
             else:
                 # Else, interpolate primary variable
                 itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
@@ -236,27 +222,18 @@ class Compositional(PhysicsBase):
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
                     for j in range(mesh.n_blocks):
-                        state = value_vector([input_distribution['pressure'][j], 0])
                         temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
-                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temp)
+                        
+                        state_pt = np.array([input_distribution['pressure'][j], temp])
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
                 else:
-                    state = value_vector([input_distribution['pressure'], 0])  # enthalpy is dummy variable
-                    enth = self.property_containers[0].compute_total_enthalpy(state, input_distribution['temperature'])
+                    state_pt = value_vector([input_distribution['pressure'], input_distribution['temperature']])  # enthalpy is dummy variable
+                    enth = self.property_containers[0].compute_total_enthalpy(state_pt)
                     enthalpy[:] = enth
 
-                np.asarray(mesh.initial_state)[(self.n_vars-1)::self.n_vars] = enthalpy
+                np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
 
         # set initial composition
-        for c in range(self.nc-1):
-            np.asarray(mesh.initial_state)[(c+1)::self.n_vars] = input_distribution[self.vars[c+1]] \
-                if np.isscalar(input_distribution[self.vars[c+1]]) else input_distribution[self.vars[c+1]][:]
-
-    def init_wells(self, wells):
-        """
-        Function to initialize the well rates for each well.
-
-        :param wells: List of :class:`ms_well` objects
-        """
-        for w in wells:
-            assert isinstance(w, ms_well)
-            w.init_rate_parameters(self.n_vars, self.n_ops, self.phases, self.rate_itor, self.thermal)
+        for c in range(self.nc - 1):
+            np.asarray(mesh.initial_state)[(c + 1)::self.n_vars] = input_distribution[self.vars[c + 1]] \
+                if np.isscalar(input_distribution[self.vars[c + 1]]) else input_distribution[self.vars[c + 1]][:]

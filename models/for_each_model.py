@@ -21,7 +21,7 @@ def spawn_process_function(model_path, model_procedure, ret_value):
     os.chdir(model_path)
 
     # add it also to system path to load modules
-    sys.path.append(os.path.abspath(r'.'))
+    sys.path.insert(0, os.path.abspath(r'.'))
 
     # import model and run it for default time
     try:

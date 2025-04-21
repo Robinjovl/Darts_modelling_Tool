@@ -152,6 +152,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("is_mp", &engine_base::is_mp) \
 		.def_readwrite("flux_multiplier", &engine_base::flux_multiplier) \
 		
+		.def_readwrite("observation_rate_type", &engine_base::observation_rate_type) \
 		;
 
 }

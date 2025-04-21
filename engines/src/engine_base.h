@@ -17,11 +17,14 @@
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
+#include "openDARTS/linear_solvers/csr_matrix.hpp"
+using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
+#include "csr_matrix.h"
 #endif // OPENDARTS_LINEAR_SOLVERS 
 
 #ifdef WITH_GPU
@@ -600,7 +603,7 @@ public:
 	std::vector<value_t> test_value_vec;
 	std::vector<index_t> test_index_vec;
 
-
+	well_control_iface::WellControlType observation_rate_type;
 };
 
 template <uint8_t N_VARS>

@@ -156,14 +156,15 @@ class Model(DartsModel, OptModuleSettings):
                                                               input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_prod(self.p_init - 10)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.p_init-10.)
             else:
-                # w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                # w.control = self.physics.new_rate_inj(5, self.inj, 0)
-                # w.control = self.physics.new_bhp_inj(450, self.inj)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
 
     def set_op_list(self):
         """
@@ -179,7 +180,8 @@ class Model(DartsModel, OptModuleSettings):
             # customize your own operator, e.g. the Temperature
             temperature_etor = geothermal_customized_etor()
 
-            temperature_itor = self.physics.create_interpolator(temperature_etor,
+            temperature_itor = self.physics.create_interpolator(temperature_etor, axes_min=self.physics.axes_min,
+                                                                axes_max=self.physics.axes_max,
                                                                 timer_name="customized operator interpolation",
                                                                 n_ops=1, platform='cpu', algorithm='multilinear',
                                                                 mode='adaptive', precision='d')
@@ -220,14 +222,15 @@ class Model(DartsModel, OptModuleSettings):
             time_step_arr = np.append(time_step_arr, self.T - even_end)
 
         for ts in time_step_arr:
+            from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if i == 0:
-                    w.control = self.physics.new_bhp_prod(self.p_init - 10)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=self.p_init-10.)
                 else:
-                    # w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                    w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                    # w.control = self.physics.new_rate_inj(5, self.inj, 0)
-                    # w.control = self.physics.new_bhp_inj(450, self.inj)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
+                                                   inj_temp=self.inj[-1])
 
             DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
@@ -280,7 +283,9 @@ class ModelProperties(PropertyContainer):
         Mw = np.ones(self.nph)
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
+        
         self.temperature = temperature
         self.nu = zc
         for i in range(self.nph):

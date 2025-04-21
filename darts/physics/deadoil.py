@@ -78,7 +78,7 @@ class DeadOilProperties(PropertyContainer):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          rock_comp=rock_comp, temperature=temperature)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
         ph = np.array([j for j in range(self.nph)])
 
         for i in range(self.nc):

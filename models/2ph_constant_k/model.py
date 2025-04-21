@@ -50,7 +50,7 @@ class Model(DartsModel):
                 self.physics.vars[0]: self.p_init,
                 **{self.physics.vars[i + 1]: self.ini_comp[i] for i in range(len(self.physics.vars) - 1)} }
         
-        self.inj_stream = self.inj_comp[:self.physics.nc-1]
+        self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
 
     def set_reservoir(self):
@@ -285,20 +285,21 @@ class Model(DartsModel):
                                                                  input_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
 
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
-            injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
+            self.physics.set_well_controls(well=injector, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=1., phase_name='gas', inj_composition=self.inj_composition)
+            self.physics.set_well_controls(well=producer, is_control=True, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=50.)
         elif self.reservoir_type == '2D':
-            injector.control = self.physics.new_rate_inj(300., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
-        # else:
-        #     injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-        #     p_ref = np.asarray(self.reservoir.mesh.pressure).min()
-        #     producer.control = self.physics.new_bhp_prod(p_ref - 50.)
+            self.physics.set_well_controls(well=injector, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=300., phase_name='gas', inj_composition=self.inj_composition)
+            self.physics.set_well_controls(well=producer, is_control=True, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=50.)
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
@@ -312,6 +313,7 @@ class Model(DartsModel):
                 for c in range(len(self.components)):
                     rhs_flux[ids * nv + c] += self.inj_rate[k] * self.inj_comp[c] / Mw[c]
         return rhs_flux
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11, temperature = 1.):

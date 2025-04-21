@@ -66,9 +66,9 @@ class Model(CICDModel):
         zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
         self.ini_stream = [x * (1 - solid_init) for x in zc_fl_init]
 
-        zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+        zc_fl_inj_composition_gas = zc_fl_inj_composition_gas + [1 - sum(zc_fl_inj_composition_gas)]
+        self.inj_composition = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
         """Physical properties"""
         # Create property containers:
@@ -108,12 +108,15 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(0.2, self.inj_stream, 0)
-                #w.control = self.physics.new_bhp_inj(150, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=0.2, phase_name='gas',
+                                               inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def print_and_plot(self, filename):
         import matplotlib.pyplot as plt
