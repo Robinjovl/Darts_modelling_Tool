@@ -293,7 +293,7 @@ class DartsModel:
 
     def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
-                       newton_type=None, newton_params=None):
+                       newton_type=None, newton_params=None, line_search: bool=False):
         """
         Function to set simulation parameters.
 
