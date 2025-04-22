@@ -1,17 +1,28 @@
 # 1.3.0 [-2025]
-- Unify set_initial_conditions():
+- (Breaking) Unify well controls:
+  - A single C++ class well_control_iface class has been generalized to handle bhp and different rate controls (inj/prod) for all engines
+  - An instance of well_control_iface is created for every ms_well object upon init_rate_parameters()
+  - Well controls and constraints are accessed through setters, with the aid of the PhysicsBase.set_well_controls() method  
+  - The set of WellControlOperators calculates BHP, BHT and each phase's volumetric, mass and molar rates
+  - An enum of class well_control_iface specifies the control/constraint type: -1) BHP, 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
+  - API of set_well_controls(): control_type: well_control_iface.WellControlType, is_inj: bool, target: float, 
+                                phase_name: str, inj_composition: list, inj_temp: float, is_control: bool
+  - A WellInitOperator translates PT-based controls to the given state specification (PT, PH, ...)
+- (Breaking) Unify set_initial_conditions():
   - 1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_from_array()
   - 2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth to self.physics.set_initial_conditions_from_depth_table() 
   - DartsModel.set_uniform_conditions(): forces user to overload this method in Model() and set initial conditions according to 1) or 2)
   - PhysicsBase.set_initial_conditions_from_array() to set initial conditions uniformly/with array
   - PhysicsBase.set_initial_conditions_from_depth_table() to interpolate/calculate properties based on depth table
   - On the C++ level, there is an array initial_state that lives in the conn_mesh class, which is to be filled with the initial state of all the primary variables in PhysicsBase.set_initial_conditions_from_*()
-- PhysicsBase class constructor contains StateSpecification enum to define state variables
+  - The method set_initial_conditions() initializes the mesh for **RESERVOIR BLOCKS ONLY**. Well cell initialization is done inside the engine
+- (Breaking) PhysicsBase class constructor contains StateSpecification enum to define state variables
   - Unifies P (isothermal), PT (pressure-temperature) and PH (pressure-enthalpy)
   - Compositional constructor contains state_spec variable rather than thermal (bool)
   - Geothermal is PH by default
+  - All engines have a WellInitOperator to translate PT-based well controls to the given state specification
 - The GPU configuration is supported in cmake. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/179)
-- C++ standart was changed to C++20. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182)
+- C++ standard was changed to C++20. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182)
   - a custom dockerfile usage with gcc-13 compiler for open-DARTS compilation in gitlab pipelines (Linux only).
   - libstc++ added to the wheels (for Linux).
   - DARTS command line interface (CLI) added.
