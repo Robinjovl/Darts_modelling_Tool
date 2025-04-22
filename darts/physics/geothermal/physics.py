@@ -117,7 +117,7 @@ class Geothermal(PhysicsBase):
             assert len(input_values) == len(input_depth)
 
         # Get depths and primary variable arrays from mesh object
-        depths = np.asarray(mesh.depth)
+        depths = np.asarray(mesh.depth)[:mesh.n_res_blocks]
 
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
