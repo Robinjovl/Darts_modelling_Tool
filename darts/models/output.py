@@ -55,11 +55,12 @@ class Output:
         self.well_perf_conn_ids = well_perf_conn_ids
         self.verbose = verbose
 
+        self.master_timer = timer
         self.timer = timer.node['output']
-        self.timer.node["output_reservoir"] = timer_node()
-        self.timer.node["output_well"] = timer_node()
-        self.timer.node["vtk_output"] = timer_node()
-        self.timer.node["well_rates"] = timer_node()
+        self.timer.node["output_reservoir"] = timer_node() # time taken for saving reservoir data
+        self.timer.node["output_well"] = timer_node() # time taken for saving well data
+        self.timer.node["vtk_output"] = timer_node() # time taken for outputting to .vtk
+        self.timer.node["well_rates"] = timer_node() # time takes for processing well rates
 
         self.output_folder = output_folder
         self.sol_filename = sol_filename
@@ -97,9 +98,7 @@ class Output:
                             temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
                             self.unit_dict[f"{name}_{self.physics.phases[j]}"] = phase_props_units[i]
 
-
-
-                    # Add partitioning coefficients
+                    # Add molar phase fractions
                     for i in range(pc.x.shape[1]):
                         for j in range(pc.x.shape[0]):
                             temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda i=i, j=j: pc.x[j, i]
@@ -116,13 +115,13 @@ class Output:
                     # Assign the temporary dictionary to output_props for the region
                     self.physics.property_containers[region].output_props = temp_dict
 
-                # Initialize physics and engine settings
+                # # Initialize physics and engine settings
                 # self.physics.init_physics()
                 # self.physics.engine.init(self.reservoir.mesh,
                 #                          ms_well_vector(self.reservoir.wells),
-                #                          op_vector(op_list),
-                #                          params,
-                #                          timer.node["simulation"])
+                #                          op_vector(self.op_list),
+                #                          self.params,
+                #                          self.master_timer.node["simulation"])
 
             elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
 
@@ -187,8 +186,7 @@ class Output:
                 h5f.create_dataset(key, data=array, compression="gzip", compression_opts=compression_level)
         
         return 0 
-        
-        
+
     def load_property_array(self, file_directory="property_array.h5"):
 
        property_array = {}
@@ -309,6 +307,21 @@ class Output:
                         f"Choose properties from: {prop_keys}"
                     )
 
+            for key in prop_keys:
+                if key not in new_prop_keys:
+                    del output_dictionary[key]
+
+            self.physics.property_containers[region].output_props = output_dictionary
+
+            # Initialize physics and engine settings
+            self.physics.init_physics()
+            self.physics.engine.init(self.reservoir.mesh,
+                                     ms_well_vector(self.reservoir.wells),
+                                     op_vector(self.op_list),
+                                     self.params,
+                                     self.master_timer.node["simulation"])
+
+            """
             # Create a new dictionary with only the available keys from new_prop_keys
             new_output_dictionary = {}
             for name in new_prop_keys:
@@ -317,10 +330,15 @@ class Output:
 
             # Update the output properties and reinitialize physics
             self.physics.property_containers[region].output_props = new_output_dictionary
-            self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells),
-                                     op_vector(self.op_list), self.params, self.timerr.node["simulation"])
-            self.properties = list(new_output_dictionary.keys())
+            # self.physics.init_physics()
+            # self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list), self.params, self.timer.node["simulation"])
+
+            
+            """
+
+            self.properties = list(output_dictionary.keys())
+
+        return 0
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
         """
@@ -631,10 +649,14 @@ class Output:
             data[prop] = array.reshape(array_shape)
 
         # Initialize coords and data_vars for Xarray Dataset
-        dx, dy, dz = self.reservoir.global_data['dx'], self.reservoir.global_data['dy'], self.reservoir.global_data['dz']
-        x = np.cumsum(dx[:, 0, 0]) - dx[0, 0, 0] * 0.5
-        y = np.cumsum(dy[0, :, 0]) - dy[0, 0, 0] * 0.5
-        z = np.cumsum(dz[0, 0, :]) - dz[0, 0, 0] * 0.5
+        if type(self.reservoir).__name__ == 'StructReservoir':
+            dx, dy, dz = self.reservoir.global_data['dx'], self.reservoir.global_data['dy'], self.reservoir.global_data['dz']
+            x = np.cumsum(dx[:, 0, 0]) - dx[0, 0, 0] * 0.5
+            y = np.cumsum(dy[0, :, 0]) - dy[0, 0, 0] * 0.5
+            z = np.cumsum(dz[0, 0, :]) - dz[0, 0, 0] * 0.5
+        else:
+            raise ValueError('Reservoir type is not supported.')
+
         coords = {'time': time, 'z': z, 'y': y, 'x': x}
         data_vars = {prop: (list(coords.keys()), data[prop]) for prop in props}
         dataset = xr.Dataset(data_vars=data_vars, coords=coords)
@@ -644,7 +666,9 @@ class Output:
             encoding = {prop: {'dtype': 'float32'} for prop in data.keys()}
 
         # Save to NetCDF with specified encoding
-        dataset.to_netcdf(os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'), engine='netcdf4', encoding=encoding)
+        dataset.to_netcdf(os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'),
+                          engine='netcdf4',
+                          encoding=encoding)
 
         return dataset
 

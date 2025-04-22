@@ -40,13 +40,11 @@ accepted_dirs = [
     # '2ph_geothermal_mass_flux',
     # '3ph_comp_w',
     # '3ph_do',
-    #  '3ph_bo',
-
+    # '3ph_bo',
     # 'Uniform_Brugge',
-
-    'Chem_benchmark_new',
+    # 'Chem_benchmark_new',
     # 'CO2_foam_CCS',
-    # 'GeoRising',
+    'GeoRising',
     # 'CoaxWell'
     ]
 
@@ -68,19 +66,45 @@ for mdir in accepted_dirs:
     n = model.Model()
     n.init()
     output_folder = os.path.join(os.getcwd(), 'data/n')
-    n.set_output(output_folder=output_folder, sol_filename='reservoir_solution.h5', save_initial=True, all_phase_props=True, precision='d', verbose=False)
-    # n.reset()
+    n.set_output(output_folder=output_folder,
+                 sol_filename='reservoir_solution.h5',
+                 save_initial=True,
+                 all_phase_props=True,
+                 precision='d',
+                 verbose=False)
+
+    # n.output.print_simulation_parameters()
     redirect_darts_output(os.path.join(n.output_folder, 'run_n.log'))
 
     # run model
-    Nt = 1
+    Nt = 5
     for i in range(Nt):
-        n.run(5, verbose=True, save_well_data=True, save_reservoir_data=True)
+        n.run(1, verbose=True, save_well_data=True, save_reservoir_data=True, save_well_data_after_run=False)
     # read_data(n.sol_filepath, n.well_filepath)
 
-    # evaluate properties
+    # evaluating properties
     output_props = n.physics.vars + n.output.properties
-    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = output_props, timestep = -1, engine = True)
+    time_vector, property_array = n.output.output_properties(filepath = None, output_properties = output_props, timestep = -1, engine = False)
+
+    # for var in property_array.keys():
+    #     plt.figure()
+    #     plt.title(var)
+    #     plt.plot(property_array[var][0])
+    #     plt.savefig(os.path.join(n.output_folder + '/figures', var))
+    # plt.close('all')
+
+    # # evaluating filtered properties
+    # n.output.filter_phase_props(['dens_oil', 'mu_gas', 'x_oil_CO2'])
+    # output_props = n.physics.vars + n.output.properties
+    # time_vector, property_array = n.output.output_properties(filepath=None, output_properties=output_props, timestep=-1,
+    #                                                          engine=False)
+
+    # for var in property_array.keys():
+    #     plt.figure()
+    #     plt.title(var)
+    #     plt.plot(property_array[var][0])
+    #     plt.savefig(os.path.join(n.output_folder + '/filtered_figures', var))
+    # plt.close('all')
 
     xarray_data = n.output.output_to_xarray(output_properties = output_props)
 
@@ -91,40 +115,43 @@ for mdir in accepted_dirs:
     #     xarray_data[var].isel(time=timestep, z=z).plot()
     #     plt.show()
 
-    for i in [-1]:
-        n.output.plot_xarray(xarray_data, timestep=i, z = 0)
+    # for i in [-1]:
+    #     n.output.plot_xarray(xarray_data, timestep=i, z = 0)
 
     # export to .vtk
     # n.output.output_to_vtk()
 
-    # restart model
-    m = model.Model()
-    m.init()
-    restarted_output_folder = os.path.join(os.getcwd(), 'data/m_restarted')
-    m.set_output(output_folder = restarted_output_folder, sol_filename = 'reservoir_solution.h5',
-                 save_initial = False, all_phase_props = True, precision = 'd', verbose=True)
-    m.load_restart_data(reservoir_filename = n.sol_filepath, well_filename = n.well_filepath, timestep=-1)
-    redirect_darts_output(os.path.join(m.output_folder, 'run_m.log'))
-    m.run(5)
+    if 1:
+        # restart model
+        m = model.Model()
+        m.init()
+        restarted_output_folder = os.path.join(os.getcwd(), 'data/m_restarted')
+        m.set_output(output_folder = restarted_output_folder, sol_filename = 'reservoir_solution.h5',
+                     save_initial = False, all_phase_props = False, precision = 'd', verbose=False)
+        m.load_restart_data(reservoir_filename = n.sol_filepath, well_filename = n.well_filepath, timestep=-1)
+        redirect_darts_output(os.path.join(m.output_folder, 'run_m.log'))
 
-    output_props = m.physics.vars + n.output.properties
-    xarray_data = m.output.output_to_xarray(output_properties=output_props)
-    for i in [0]:
-        m.output.plot_xarray(xarray_data, timestep=i, z=0)
+        for i in range(5):
+            m.run(5)
 
-    # m.output.output_to_vtk()
+        output_props = m.physics.vars + m.output.properties
+        xarray_data = m.output.output_to_xarray(output_properties=output_props)
+        # for i in range(5):
+        #     m.output.plot_xarray(xarray_data, timestep=i, z=0)
 
-    # evaluate well time-series
-    well_rates_dict = n.output.store_and_plot_well_time_data(plot_figs=True)
+        # m.output.output_to_vtk()
 
-    # well_rates_dict = n.output.plot_well_rates(['phases_molar_rates'])
-    # td = pd.DataFrame.from_dict(well_rates_dict)
-    # td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
-    # writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
-    # td.to_excel(writer, sheet_name='Sheet1')
-    # writer.close()
+        # evaluate well time-series
+        well_rates_dict = n.output.store_and_plot_well_time_data(plot_figs=True)
 
-    n.print_timers()
+        # well_rates_dict = n.output.plot_well_rates(['phases_molar_rates'])
+        # td = pd.DataFrame.from_dict(well_rates_dict)
+        # td.to_pickle(os.path.join(n.output_folder, "darts_time_data.pkl"))
+        # writer = pd.ExcelWriter(os.path.join(n.output_folder, 'time_data.xlsx'))
+        # td.to_excel(writer, sheet_name='Sheet1')
+        # writer.close()
 
-    os.chdir(initial_dir)
-    print("------------------------------------------------------------------------------------------")
+        n.print_timers()
+
+        os.chdir(initial_dir)
+        print("------------------------------------------------------------------------------------------")

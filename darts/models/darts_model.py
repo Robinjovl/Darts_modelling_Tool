@@ -138,7 +138,9 @@ class DartsModel:
         initial_values = {}
         for i, name in enumerate(var_names):
             initial_values[name] = X[:, :, i].flatten()
-        self.set_initial_conditions(initial_values=initial_values)
+
+        self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, input_distribution=initial_values)
+        # self.set_initial_conditions(initial_values=initial_values)
 
         # reset engine
         self.reset()
