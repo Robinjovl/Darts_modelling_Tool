@@ -37,7 +37,21 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.set_input_data(case=case)
 
-    m.init_reservoir()
+    arrays = m.init_input_arrays()
+    # custom arrays can be read here
+    # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
+    # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
+    m.init_reservoir(arrays=arrays)
+    m.set_physics()
+
+    # time stepping and convergence parameters
+    sim = m.idata.sim  # short name
+    m.set_sim_params(first_ts=sim.first_ts, mult_ts=sim.mult_ts, max_ts=sim.max_ts, runtime=sim.runtime,
+                        tol_newton=sim.tol_newton, tol_linear=sim.tol_linear)
+    if hasattr(sim, 'linear_type'):
+        m.params.linear_type = sim.linear_type
+
+    m.timer.node["initialization"].stop()
 
     m.init(output_folder=out_dir, platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
@@ -58,10 +72,22 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     #m.print_stat()
 
     if export_vtk:
+        output_properties = None
+        if physics_type == 'geothermal' and False:
+            # output additional properties to vtk
+            output_properties = m.physics.vars + ['temperature']
+            for ph_str in ['_water', '_steam']:
+                output_properties += ['saturation' + ph_str]
+                output_properties += ['density' + ph_str]
+                output_properties += ['viscosity' + ph_str]
+                output_properties += ['enthalpy' + ph_str]
+                if ph_str in ['_water']:
+                    output_properties += ['conduction' + ph_str]
+
         # read h5 file and write vtk
         m.reservoir.create_vtk_wells(output_directory=out_dir)
         for ith_step in range(len(m.idata.sim.time_steps)):
-            m.output_to_vtk(ith_step=ith_step)
+            m.output_to_vtk(ith_step=ith_step, output_properties=output_properties)
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25
         for k in time_data.keys():
