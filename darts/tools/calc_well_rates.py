@@ -42,13 +42,13 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
         try:
             rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
         except:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
+            rates = np.zeros((num_ts, len(conn_ids), 1 * pc.nph))
 
-    elif rate_type == 'heat_rate':
+    elif rate_type == 'advective_heat_rate':
         if thermal:
             rates = np.zeros((num_ts, len(conn_ids), pc.nph))
         else:
-            raise Exception('The model is isothermal, so heat rate cannot be calculated for it!')
+            raise Exception('The model is isothermal, so advective heat rate cannot be calculated for it!')
     else:
         raise Exception("The rate type is not entered correctly or is not supported!")
     id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
@@ -79,7 +79,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
                 values = components_molar_rates_operators(state, pc)
             elif rate_type == 'components_mass_rates':
                 values = components_mass_rates_operators(state, pc)
-            elif rate_type == 'heat_rate':
+            elif rate_type == 'advective_heat_rate':
                 values = heat_rate_operators(state, pc)
             else:
                 raise Exception("Rate type is entered incorrectly!")
@@ -123,7 +123,7 @@ def phase_mass_rate_operators(state, pc):
     values = np.zeros(pc.nph)
     for j in pc.ph:
         try:
-            values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
+            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         except:
             values[j] = pc.density[j] * pc.relperm[j] / pc.viscosity[j]
 
@@ -164,7 +164,7 @@ def components_molar_rates_operators(state, pc):
     try:
         values = np.zeros(pc.nph * pc.nc_fl)
     except:
-        values = np.zeros(pc.nph)
+        values = np.zeros(pc.nph * 1)
 
     for j in pc.ph:
         try:
@@ -172,7 +172,6 @@ def components_molar_rates_operators(state, pc):
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         except:
             for i in range(1):
-                # values[1 * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
                 values[1 * j + i] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
@@ -194,8 +193,7 @@ def components_mass_rates_operators(state, pc):
             try:
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
             except:
-                # values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
-                values[pc.nc_fl * j + i] = pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
+                values[1 * j + i] = pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
