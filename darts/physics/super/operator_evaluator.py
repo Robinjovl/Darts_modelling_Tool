@@ -120,8 +120,8 @@ class ReservoirOperators(OperatorsSuper):
         extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
         # values[:] = extrapolated
         # values.copy_from(value_vector(extrapolated))
-        for i in range(len(extrapolated)):
-            values[i] = float(extrapolated[i])  # ✅ safe element-wise assignment
+        for i, value in enumerate(extrapolated):
+            vec_values[i] = np.float64(value)  # ✅ safe element-wise assignment
 
         # values.copy_from(value_vector(extrapolated.tolist()))
         # values_np = values.to_numpy()
@@ -214,7 +214,7 @@ class ReservoirOperators(OperatorsSuper):
         vec_values_as_np[self.PORO_OP] = self.phi_f
 
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
-        values[self.PRES_OP] = state[0]
+        vec_values_as_np[self.PRES_OP] = state[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
