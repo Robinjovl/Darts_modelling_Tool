@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import operator_set_evaluator_iface
+from darts.engines import operator_set_evaluator_iface, value_vector, index_vector
 from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
 
@@ -31,11 +31,6 @@ class OperatorsSuper(OperatorsBase):
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
-        # Operator names
-        self.op_names = [(self.ACC_OP, "ACC"), (self.FLUX_OP, "FLUX"), (self.UPSAT_OP, "UPSAT"), (self.GRAD_OP, "GRAD"),
-                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.PORO_OP, "PORO"), (self.ENTH_OP, "ENTH"),
-                         (self.TEMP_OP, "TEMP"), (self.PRES_OP, "PRES")]
-
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         print("================================================")
@@ -51,13 +46,99 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
-        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("POROSITY", values[self.PORO_OP])
+        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
 
 class ReservoirOperators(OperatorsSuper):
+    def apply_extrapolation(self, state, values):
+        """
+        Extrapolates the operator value at (z1, z2) using known valid ref points.
+        Should be called when z3 < self.min_z (i.e., unphysical composition).
+
+        Parameters:
+            z1, z2    : coordinates (compositions) at current point
+            op_index  : which operator to extrapolate (e.g., DELTA index)
+        """
+        vec_state = state.to_numpy()
+        z1 = vec_state[1]
+        z2 = vec_state[2]
+        p = vec_state[0]
+        T = vec_state[3]
+        # dz = self.min_z
+        dz = (1.-self.min_z*10)/400
+        vec_values = values.to_numpy()
+
+        ref_points = [
+            (z1-dz, z2),
+            (z1-dz, z2-dz),
+            (z1, z2-dz),
+            (z1-dz/2,z2-dz/2)
+        ]
+
+        A = []
+        B = []
+
+
+        for ref_z1, ref_z2 in ref_points:
+            for rz1, rz2 in ref_points:
+                rz3 = 1.0 - rz1 - rz2
+                if rz1 < 0 or rz2 < 0 or rz3 < 0:
+                    continue  #  skip bad ref point
+            ref_state_np = np.array([p, ref_z1, ref_z2, T])
+            ref_state = value_vector(ref_state_np)
+            ref_values = value_vector(np.zeros(self.n_ops))
+            indices = index_vector([0])
+            # ref_val = value_vector(np.zeros(self.n_ops))
+            # ref_dval = value_vector(np.zeros(self.n_ops * self.n_vars))
+            # self.physics.evalute.evaluate_with_derivatives(ref_state, indices, ref_values, ref_dval)
+            self.evaluate(ref_state, ref_values)
+            comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
+            A.append(list(comp/np.sum(comp)))
+            B.append(ref_values.to_numpy())
+
+            # A.append([ref_z1, ref_z2, 1.0])
+            # b_matrix.append(ref_val.to_numpy())
+            # acc_flux_itor = self.property.acc_flux_itor
+            # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+            # # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+            # ref_operator_vectors.append(ref_val.to_numpy())
+        # # Fit plane per operator
+        # A = np.array(A)
+        # b_matrix = np.array(b_matrix)
+        # Fit linear plane to each operator across z1/z2
+        A = np.array(A)
+        B = np.array(B)  # shape: (3, n_ops)
+        coeffs = np.linalg.lstsq(A, B, rcond=None)[0]  # shape: (3, n_ops)
+
+        # # Fit plane for each operator
+        # coeffs = np.linalg.lstsq(A, b_matrix, rcond=None)[0]
+        # extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+        # Evaluate extrapolated operator values
+        extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
+        # values[:] = extrapolated
+        # values.copy_from(value_vector(extrapolated))
+        for i in range(len(extrapolated)):
+            values[i] = float(extrapolated[i])  # ✅ safe element-wise assignment
+
+        # values.copy_from(value_vector(extrapolated.tolist()))
+        # values_np = values.to_numpy()
+        # values_np[:] = extrapolated
+        # # A = np.column_stack([
+        #     [pt[0] for pt in ref_points],
+        #     [pt[1] for pt in ref_points],
+        #     np.ones(len(ref_points))
+        # ])
+        # v_np = values.to_numpy()
+        # for op in range(self.n_ops):
+        #     b = np.array([rv[op] for rv in ref_values])
+        #     coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
+        #     v_np[op] = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+
+        return 0
+
     def evaluate(self, state, values):
         """
         Class methods which evaluates the state operators for the element based physics
@@ -69,6 +150,15 @@ class ReservoirOperators(OperatorsSuper):
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
+
+        # Find composition, if last composition is negative, apply extrapolation
+        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
+        if zc[-1] < -self.min_z/10:
+            if 1:
+                self.apply_extrapolation(state, values)
+                return 0
+            else:
+                pass
 
         # Evaluate isothermal properties at current state
         self.property.evaluate(vec_state_as_np)
@@ -129,7 +219,7 @@ class ReservoirOperators(OperatorsSuper):
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
-        self.print_operators(state, values)
+        # self.print_operators(state, values)
 
         return 0
 
