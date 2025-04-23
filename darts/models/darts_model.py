@@ -16,25 +16,17 @@ from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-    first_ts : float
-    dt_min: float
-    dt_mult: float
-    eta: float
-    dt_max: float
-    tol_res: float
-    tol_wel_mult: float
-    tol_stationary: float
-    max_it_nonlin: int
+
     def __init__(self, nc):
         self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
 
         # default values
         self.first_ts = 1e-3
         self.dt_min = 1e-2
-        self.dt_mult = 2
-        self.dt_max = 365
+        self.dt_mult = 2.
+        self.dt_max = 365.
         self.tol_res = 1e-2
-        self.tol_wel_mult = 100
+        self.tol_wel_mult = 100.
         self.tol_stationary = 1e-3
         self.max_it_nonlin = 20
 
@@ -442,9 +434,9 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.dt_prev, data_ts.dt_max)
+            dt = min(self.prev_dt, data_ts.dt_max)
 
-        self.dt_prev = dt
+        self.prev_dt = dt
 
         ts = 0
 
@@ -475,16 +467,19 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %10g\tDT = %8.4g\tNI = %2d\tLI=%3d\tdX=%4s\tmt=%3.3g"
+                    print("# %d \tT = %10g\tDT = %8.4g\tNI = %2d\tLI=%3d\tdX=%4s\tDT_MULT=%3.3g"
                           % (ts, np.round(t, 3), np.round(dt, 4), self.physics.engine.n_newton_last_dt,
                              self.physics.engine.n_linear_last_dt, np.round(max_x, 3), dt_mult_new))
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
-                if t + dt >= stop_time:
-                    if t < stop_time:
-                        self.dt_prev = min(dt, days)
+                if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
+
+                if t + dt >= stop_time:
+                    dt = stop_time - t
+                else:
+                    self.prev_dt = dt
 
                 if save_well_data:
                     self.save_data_to_h5(kind='well')
