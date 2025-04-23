@@ -314,29 +314,35 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+	for (index_t i = 0; i < mesh->n_res_blocks; i++)
 	{
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-	  X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-	  for (uint8_t c = 0; c < nc - 1; c++)
+	
+	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
-		  X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
+		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
 	  }
 	  for (uint8_t d = 0; d < ND; d++)
 	  {
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
 	}
+	X_init.resize(n_vars * mesh->n_blocks);
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		PV[i] = mesh->volume[i] * mesh->poro[i];
+	  	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	}
+
 	if (THERMAL)
 	{
 	  for (index_t i = 0; i < mesh_->n_blocks; i++)
 	  {
 		// reference
 		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
-		// initial
-		X_init[n_vars * i + T_VAR] = mesh->temperature[i];
 	  }
 	}
 

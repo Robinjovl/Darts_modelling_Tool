@@ -105,6 +105,12 @@ class CPG_Reservoir(ReservoirBase):
         ids = np.array(self.discretizer.get_one_way_tpfa_transmissibilities())
         cell_m = np.array(self.discretizer.cell_m)[ids]
         cell_p = np.array(self.discretizer.cell_p)[ids]
+
+        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
+        if self.faultfile is not None:
+            self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
+            # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
+
         tran = mpfa_tran[::2][ids]
         tranD = mpfa_tranD[::2][ids]
 
@@ -112,11 +118,6 @@ class CPG_Reservoir(ReservoirBase):
         print('tranD mean=', tranD.mean(), 'tranD max=', tranD.max())
         #max_tranD = 1e3
         #tranD[tranD > max_tranD] = max_tranD
-
-        #self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
-        if self.faultfile is not None:
-            self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
-            # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
 
         tran = np.fabs(tran)
         self.mesh.init(darts.engines.index_vector(cell_m), darts.engines.index_vector(cell_p),
@@ -278,17 +279,23 @@ class CPG_Reservoir(ReservoirBase):
         # local index
         local_block = self.discr_mesh.global_to_local[res_block]
 
+        well_index = -1
+        well_indexD = -1
+
         # check if target grid block is active
         if local_block > -1:
             dx, dy, dz = self.discr_mesh.calc_cell_sizes(i, j, k)
+
+            well_diam = 2 * well_radius
 
             eps = 1e-6  # to avoid divizion by zero
             kx = self.permx[res_block] + eps
             ky = self.permy[res_block] + eps
             kz = self.permz[res_block] + eps
 
-            well_index = 0
             if segment_direction == 'z_axis':
+                assert well_diam < dx and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i+1},{j+1},{k+1})'
+
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
                                ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -296,6 +303,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
                 if kx == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'x_axis':
+                assert well_diam < dz and well_diam < dy, f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kz) * dz ** 2 + np.sqrt(kz / ky) * dy ** 2) / \
                                ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
@@ -303,6 +311,7 @@ class CPG_Reservoir(ReservoirBase):
                 well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
                 if kz == 0 or ky == 0: well_index = 0.0
             elif segment_direction == 'y_axis':
+                assert well_diam < dx and well_diam < dz, f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i+1},{j+1},{k+1})'
                 peaceman_rad = 0.28 * np.sqrt(np.sqrt(kz / kx) * dx ** 2 + np.sqrt(kx / kz) * dz ** 2) / \
                                ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
                 well_index = 2 * np.pi * dz * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
@@ -311,9 +320,6 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or kz == 0: well_index = 0.0
 
             well_index = well_index * StructDiscretizer.darcy_constant
-        else:
-            well_index = 0
-            well_indexD = 0
 
         return local_block, well_index, well_indexD
 
@@ -422,8 +428,13 @@ class CPG_Reservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wiD
 
-        assert well_index >= 0
-        assert well_indexD >= 0
+        if res_block_local < 0:
+            if verbose:
+                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+            return
+        
+        assert well_index >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        assert well_indexD >= 0, f'Well {well_name} index = {well_index} is non-positive! Check the data.'
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -451,9 +462,7 @@ class CPG_Reservoir(ReservoirBase):
                 c = self.centroids_all_cells[res_block_local].values
                 print('Added perforation for well %s to block %d IJK=[%d, %d, %d] XYZ=(%f, %f, %f) with WI=%f WID=%f' % (
                     well.name, res_block_local, i, j, k, c[0], c[1], c[2], well_index, well_indexD))
-        else:
-            if verbose:
-                print('Neglected perforation for well %s to block [%d, %d, %d] (inactive block)' % (well.name, i, j, k))
+
         return
 
     def write_mpfa_conn_to_file(self, path='mpfa_conn.dat'):
@@ -875,6 +884,29 @@ def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: n
     cube_full[local_to_global] = cube
     return cube_full
 
+def read_int_array(filename : str, keywordname : str, n_values_to_read : int =-1) -> np.array:
+    '''
+    read integer array
+    :param filename: grdecl file (text)
+    :param keywordname:
+    :param n_values_to_read: can stop reading if there are non-integer values
+    :return: np.array
+    '''
+    arr_cpp = index_vector_discr()
+    load_single_int_keyword(arr_cpp, filename, keywordname, n_values_to_read)
+    return np.array(arr_cpp, copy=True)
+
+def read_float_array(filename : str, keywordname : str, n_values_to_read : int =-1) -> np.array:
+    '''
+    read floating-point array
+    :param filename: grdecl file (text)
+    :param keywordname:
+    :param n_values_to_read: can stop reading if there are non-integer values
+    :return: np.array
+    '''
+    arr_cpp = value_vector_discr()
+    load_single_float_keyword(arr_cpp, filename, keywordname, n_values_to_read)
+    return np.array(arr_cpp, copy=True)
 
 def read_arrays(gridfile: str, propfile: str):
     '''
@@ -885,48 +917,30 @@ def read_arrays(gridfile: str, propfile: str):
     # fill the dictionary to return
     arrays = {}
 
-    dims_cpp = index_vector_discr()
-    load_single_int_keyword(dims_cpp, gridfile, "SPECGRID", 3)
-    arrays['SPECGRID'] = np.array(dims_cpp, copy=False)
+    arrays['SPECGRID'] = read_int_array(gridfile, "SPECGRID", 3)
 
-    permx_cpp, permy_cpp, permz_cpp = value_vector_discr(), value_vector_discr(), value_vector_discr()
-    load_single_float_keyword(permx_cpp, propfile, 'PERMX', -1)
-    load_single_float_keyword(permy_cpp, propfile, 'PERMY', -1)
-    arrays['PERMX'] = np.array(permx_cpp, copy=False)
-    arrays['PERMY'] = np.array(permy_cpp, copy=False)
+    arrays['PERMX'] = read_float_array(propfile, 'PERMX')
+    arrays['PERMY'] = read_float_array(propfile, 'PERMY')
     for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
         if arrays['PERMX'].size == 0 or arrays['PERMY'].size == 0:
-            load_single_float_keyword(permx_cpp, propfile, perm_str, -1)
-            permy_cpp = permx_cpp
-            arrays['PERMX'] = np.array(permx_cpp, copy=False)
-            arrays['PERMY'] = np.array(permy_cpp, copy=False)
+            arrays['PERMX'] = read_float_array(propfile, perm_str)
+            arrays['PERMY'] = arrays['PERMX']
     if arrays['PERMY'].size == 0:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
-    load_single_float_keyword(permz_cpp, propfile, 'PERMZ', -1)
-    arrays['PERMZ'] = np.array(permz_cpp, copy=False)
+    arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
     if arrays['PERMZ'].size == 0:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1
         print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
-    poro_cpp = value_vector_discr()  # self.discr_mesh.poro
-    load_single_float_keyword(poro_cpp, propfile, 'PORO', -1)
-    arrays['PORO'] = np.array(poro_cpp, copy=False)
+    arrays['PORO'] = read_float_array(propfile, 'PORO')
 
-    coord_cpp = value_vector_discr()  # self.discr_mesh.coord
-    load_single_float_keyword(coord_cpp, gridfile, 'COORD', -1)
-    arrays['COORD'] = np.array(coord_cpp, copy=False)
+    arrays['COORD'] = read_float_array(gridfile, 'COORD')
+    arrays['ZCORN'] = read_float_array(gridfile, 'ZCORN')
 
-    zcorn_cpp = value_vector_discr()  # self.discr_mesh.zcorn
-    load_single_float_keyword(zcorn_cpp, gridfile, 'ZCORN', -1)
-    arrays['ZCORN'] = np.array(zcorn_cpp, copy=False)
-
-    actnum_cpp = index_vector_discr()  # self.discr_mesh.actnum
-    arrays['ACTNUM'] = np.array([])
     for fname in [gridfile, propfile]:
-        if arrays['ACTNUM'].size == 0:
-            load_single_int_keyword(actnum_cpp, fname, 'ACTNUM', -1)
-            arrays['ACTNUM'] = np.array(actnum_cpp, copy=False)
-    if arrays['ACTNUM'].size == 0:
+        if 'ACTNUM' not in arrays:
+            arrays['ACTNUM'] = read_int_array(fname, 'ACTNUM')
+    if 'ACTNUM' not in arrays:
         arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 

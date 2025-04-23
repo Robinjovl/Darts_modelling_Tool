@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # this is the name of the package: name that will appear if one `pip list` or `pip install open-darts`
 name = "open-darts"
 # This version has to be incremented manually for every new release.
-version = "1.2.1"
+version = "1.2.2"
 authors = [
     {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"},
 ]
@@ -18,7 +18,8 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.9"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk', 'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'h5py']
+dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'h5py', 'open-darts-flash']
 
 license = {text = "LICENSE.md"}
 
@@ -26,6 +27,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: C++"
 ]
+dynamic = ["scripts"]
 
 [project.urls]
 homepage = "https://darts.citg.tudelft.nl/"

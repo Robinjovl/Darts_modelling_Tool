@@ -402,44 +402,94 @@ class StructDiscretizer:
         return cell_m, cell_p, tran, tran_thermal
 
     def discretize_velocities(self, cell_m, cell_p, geom_coef, n_res_blocks):
-        # filter well connections
-        inds = np.where(np.logical_and(cell_m < n_res_blocks, cell_p < n_res_blocks))[0]
-        cell_m = cell_m[inds]
-        cell_p = cell_p[inds]
+        """
+        Discretizes cell-centered velocities by approximating them as expansions over fluxes
+        at cell interfaces, including no-flow boundary conditions.
 
-        # find indices/directions of boundary cells - TODO
+        Parameters:
+        - cell_m (np.ndarray): Array of 'from' cell indices.
+        - cell_p (np.ndarray): Array of 'to' cell indices.
+        - geom_coef (np.ndarray): Geometric coefficients for each connection.
+        - n_res_blocks (int): Total number of cells.
+
+        Returns:
+        - all_elements (np.ndarray): Flattened array of velocity approximations.
+        - offsets (np.ndarray): Array indicating starting positions of each cell in all_elements.
+        """
+        # define the six possible outward unit normals for a parallelepiped cell
+        possible_normals = np.array([
+            [1, 0, 0],  # +x
+            [-1, 0, 0],  # -x
+            [0, 1, 0],  # +y
+            [0, -1, 0],  # -y
+            [0, 0, 1],  # +z
+            [0, 0, -1]  # -z
+        ])
+
+        # filter well connections
+        internal_mask = (cell_m < n_res_blocks) & (cell_p < n_res_blocks)
+        cell_m, cell_p, geom_coef = cell_m[internal_mask], cell_p[internal_mask], geom_coef[internal_mask]
 
         # approximate normals
         dr = self.centroids_all_cells[cell_p] - self.centroids_all_cells[cell_m]
-        n = dr * geom_coef[:, np.newaxis]
 
-        # unique elements & and starting positions of each element
-        _, idx_start = np.unique(cell_m, return_index=True)
+        # validate that all connections are axis-aligned
+        non_zero_mask = dr != 0
+        num_non_zero = non_zero_mask.sum(axis=1)
+        if not np.all(num_non_zero == 1):
+            invalid_connections = dr[num_non_zero != 1]
+            raise ValueError(
+                f"All connections must be axis-aligned with exactly one non-zero component. Invalid connections:\n{invalid_connections}")
 
-        # group indices of elements with the same value (cell_m is already sorted)
-        res = np.split(np.arange(cell_m.size), idx_start[1:])
+        # determine direction indices and signs
+        axes = np.argmax(non_zero_mask, axis=1)
+        signs = np.sign(dr[np.arange(dr.shape[0]), axes])
+        direction_mapping = (axes * 2) + (signs > 0).astype(int)
+
+        # group connections by cell_m (assumes cell_m is already sorted)
+        connection_counts = np.bincount(cell_m, minlength=n_res_blocks)
+        connection_indices = np.cumsum(connection_counts)
+        connections_per_cell = np.split(np.arange(len(cell_m)), connection_indices[:-1])
+
+        # create a boolean mask indicating existing directions per cell
+        existing_dir_mask = np.zeros((n_res_blocks, 6), dtype=bool)
+        existing_dir_mask[cell_m, direction_mapping] = True  # Set existing directions to True
+
+        # fill normals with interior and boundary normals (unit normals)
+        total_connections = 6 * n_res_blocks
+        num_existing = len(cell_m)
+        A = np.zeros((total_connections, 3), dtype=float)
+        A[:num_existing] = dr * geom_coef[:, np.newaxis]
+        missing_cells, missing_dirs = np.nonzero(~existing_dir_mask)  # Each row is (cell, direction)
+        A[num_existing:num_existing + len(missing_cells)] = possible_normals[missing_dirs]
+
+        # add no-flow connections to the connection list, sort resulting list
+        cell_of_connection = np.concatenate([cell_m, missing_cells])
+        secondary_key = np.concatenate([direction_mapping, missing_dirs])
+        sorted_conn_indices = np.lexsort((secondary_key, cell_of_connection))
+        A_sorted, cell_sorted = A[sorted_conn_indices], cell_of_connection[sorted_conn_indices]
+        conn_offset = np.concatenate(([0], np.nonzero(np.diff(cell_sorted))[0] + 1, [total_connections]))
 
         # form matrices for each cell
         all_elements = []
         offsets = [0]
         current_offset = 0
         for i in range(n_res_blocks):
-            A = n[res[i]]
-            A_T = A.T
-            A_TA = A_T @ A
+            A_cell = A_sorted[conn_offset[i]:conn_offset[i + 1]]
+            ATA = A_cell.T @ A_cell
 
-            # Use pseudoinverse if the matrix rank is less than the number of columns
-            if np.linalg.matrix_rank(A_TA) < A_TA.shape[0]:
-                least_squares = np.linalg.pinv(A_TA) @ A_T
+            # use pseudoinverse if the matrix rank is less than the number of columns
+            if np.linalg.matrix_rank(ATA) < ATA.shape[0]:
+                least_squares = np.linalg.pinv(ATA) @ A_cell.T
             else:
-                least_squares = np.linalg.inv(A_TA) @ A_T
+                least_squares = np.linalg.inv(ATA) @ A_cell.T
 
-            # Flatten the matrix and add it to the all_elements array
-            flattened_matrix = least_squares.flatten()
-            all_elements.extend(flattened_matrix)
+            # flatten the matrix and add it to the all_elements array
+            appr_matrix = least_squares[:, direction_mapping[connections_per_cell[i]]]
+            all_elements.extend(appr_matrix.flatten())
 
-            # Update the current offset and add it to the offsets array
-            current_offset += A.shape[0]
+            # update the current offset and add it to the offsets array
+            current_offset += appr_matrix.shape[1]
             offsets.append(current_offset)
 
         return np.array(all_elements), np.array(offsets, dtype=np.int32)

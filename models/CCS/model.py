@@ -46,6 +46,8 @@ class Model(DartsModel):
 
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
+        self.zero = zero
+
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         phases = ["Aq", "V"]
@@ -68,8 +70,10 @@ class Model(DartsModel):
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
+            state_spec = Compositional.StateSpecification.PT
         else:
             thermal = False
+            state_spec = Compositional.StateSpecification.P
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
@@ -95,15 +99,43 @@ class Model(DartsModel):
                                            }
 
         self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
-                                     max_z=1-zero/10, min_t=273.15, max_t=373.15, thermal=thermal, cache=False)
+                                     max_z=1-zero/10, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        if 1:
+            dz = self.reservoir.global_data['dz'][0, 0, :]
+
+            # zH2O = 1
+            from darts.physics.super.initialize import Initialize
+            # depth corresponding to boundary_idx = 10
+            b_depth = self.reservoir.global_data['depth'].min() + (self.reservoir.global_data['depth'].max() - self.reservoir.global_data['depth'].min()) / 4.
+            boundary_state = {'H2O': 1 - self.zero, 'pressure': 100., 'temperature': 350.}
+            init = Initialize(physics=self.physics)
+            X = init.solve(depth_bottom=self.reservoir.global_data['depth'].max(),
+                           depth_top=self.reservoir.global_data['depth'].min(),
+                           depth_known=b_depth, boundary_state=boundary_state,
+                           primary_specs={'H2O': 1 - self.zero}, secondary_specs={})
+            self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
+                                                                 input_distribution={var: X[i::self.physics.n_vars] for i, var in
+                                                                                     enumerate(self.physics.vars)})
+        else:
+            input_distribution = {self.physics.vars[0]: 100.,
+                                  self.physics.vars[1]: 0.99995,
+                                  self.physics.vars[2]: 350.,
+                                  }
+            return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
+
     def set_well_controls(self):
-        # define all wells as closed
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if 'I' in w.name:
-                w.control = self.physics.new_bhp_inj(self.p_inj, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.p_inj, inj_composition=self.inj_stream[:-1],
+                                               inj_temp=self.inj_stream[-1])
             else:
-                w.control = self.physics.new_bhp_prod(self.p_prod)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.p_prod)

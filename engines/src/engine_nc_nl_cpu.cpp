@@ -255,19 +255,12 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
-	X_init.resize(n_vars * mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
 
-	for (index_t i = 0; i < mesh->n_blocks; i++)
-	{
-		X_init[n_vars * i] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + c + 1] = mesh->composition[i * (nc - 1) + c];
-		}
-	}
+	X_init = mesh->initial_state;
+	X_init.resize(n_vars * mesh->n_blocks);
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
 	op_ders_arr.resize(n_ops * n_vars * (mesh->n_blocks + mesh->n_bounds));

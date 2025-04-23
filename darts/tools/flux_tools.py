@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from darts.engines import value_vector, ms_well
+from darts.engines import value_vector, ms_well, well_control_iface
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 def calc_connection_fluxes(m, conn_ids, flux_eval = None, eval_ids = None) -> np.ndarray:
@@ -67,7 +67,7 @@ def calc_connection_fluxes(m, conn_ids, flux_eval = None, eval_ids = None) -> np
 
     return rates
 
-def get_molar_well_rates(m) -> dict:
+def get_wells_components_molar_rates(m) -> dict:
     """
     Calculate molar well rate for every component (including temperature) for every well
     for all the timesteps from the saved well data in *.h5
@@ -77,30 +77,30 @@ def get_molar_well_rates(m) -> dict:
     """
     n_vars = m.physics.n_vars
 
-    # load new well data
-    new_filename = os.path.join(m.output_folder, m.well_filename)
-    new_data = load_hdf5_to_dict(new_filename)
-    new_data_cell_id = new_data['dynamic']['cell_id']
-    new_data_var_id = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in new_data_cell_id])
+    # Load HDF5 well data
+    h5_well_data_filename = os.path.join(m.output_folder, m.well_filename)
+    h5_well_data = load_hdf5_to_dict(h5_well_data_filename)
+    cell_id = h5_well_data['dynamic']['cell_id']
+    var_id = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in cell_id])
 
-    # calculate new rates at all timesteps
+    # Calculate Python rates at all timesteps
     molar_rate = {}
-    for i in range(new_data['dynamic']['time'].size):
-        # substitute solution with data from file, for current timestep
-        np.array(m.physics.engine.X, copy=False)[new_data_var_id] = new_data['dynamic']['X'][i].flatten()
-        # calculate new rates for every well
+    for i in range(h5_well_data['dynamic']['time'].size):
+        # Substitute solution with data from file, for current timestep
+        np.array(m.physics.engine.X, copy=False)[var_id] = h5_well_data['dynamic']['X'][i].flatten()
+        # Calculate Python rates for every well
         for well in m.reservoir.wells:
             if well.name not in molar_rate:
                 molar_rate[well.name] = []
 
-            molar_rate[well.name].append(get_molar_well_rate(m, well))
+            molar_rate[well.name].append(get_well_components_molar_rates(m, well))
 
     for well in m.reservoir.wells:
         molar_rate[well.name] = np.array(molar_rate[well.name])
 
     return molar_rate
 
-def get_molar_well_rate(m, well: ms_well) -> np.ndarray:
+def get_well_components_molar_rates(m, well: ms_well) -> np.ndarray:
     """
     Calculate molar well rate for every component (including temperature) for a given well
     :param m: Darts model
@@ -111,9 +111,8 @@ def get_molar_well_rate(m, well: ms_well) -> np.ndarray:
     """
 
     # indices of flux mobility multipliers in op_list output
-    eval_ids = np.vstack(
-        [np.arange(m.physics.n_vars + i, m.physics.n_vars * (m.physics.nph + 1), \
-                   m.physics.n_vars) for i in range(m.physics.nc + m.physics.thermal)])
+    eval_ids = np.vstack([np.arange(m.physics.n_vars + i, m.physics.n_vars * (m.physics.nph + 1),
+                                    m.physics.n_vars) for i in range(m.physics.nc)])
     # calculate fluxes
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
                                         flux_eval=m.op_list,
@@ -121,7 +120,7 @@ def get_molar_well_rate(m, well: ms_well) -> np.ndarray:
     # sum fluxes over phases
     return np.sum(rates[0], axis=-1)
 
-def get_molar_well_rate_profile(m, well: ms_well) -> np.ndarray:
+def get_well_components_molar_rate_profile(m, well: ms_well) -> np.ndarray:
     """
     Calculate molar well rate for every component (including temperature) for all perforations in a given well
     :param m: Darts model
@@ -132,9 +131,8 @@ def get_molar_well_rate_profile(m, well: ms_well) -> np.ndarray:
     """
 
     # indices of flux mobility multipliers in op_list output
-    eval_ids = np.vstack(
-        [np.arange(m.physics.n_vars + i, m.physics.n_vars * (m.physics.nph + 1), \
-                   m.physics.n_vars) for i in range(m.physics.nc + m.physics.thermal)])
+    eval_ids = np.vstack([np.arange(m.physics.n_vars + i, m.physics.n_vars * (m.physics.nph + 1),
+                                    m.physics.n_vars) for i in range(m.physics.nc + m.physics.thermal)])
     # calculate fluxes
     rates = calc_connection_fluxes(m=m, conn_ids=m.well_perf_conn_ids[well.name],
                                         flux_eval=m.op_list,
@@ -142,7 +140,7 @@ def get_molar_well_rate_profile(m, well: ms_well) -> np.ndarray:
     # sum fluxes over phases
     return np.sum(rates, axis=-1)
 
-def get_phase_volumetric_well_rates(m) -> dict:
+def get_wells_phases_volumetric_rates(m) -> dict:
     """
     Calculate volumetric well rate for every fluid phase for every well
     for all the timesteps from the saved well data in *.h5
@@ -150,33 +148,32 @@ def get_phase_volumetric_well_rates(m) -> dict:
     :return: dictionary with arrays of fluxes
     :rtype: dict
     """
-
     n_vars = m.physics.n_vars
 
-    # load new well data
-    new_filename = os.path.join(m.output_folder, m.well_filename)
-    new_data = load_hdf5_to_dict(new_filename)
-    new_data_cell_id = new_data['dynamic']['cell_id']
-    new_data_var_id = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in new_data_cell_id])
+    # Load h5 well data
+    h5_well_data_filename = os.path.join(m.output_folder, m.well_filename)
+    h5_well_data = load_hdf5_to_dict(h5_well_data_filename)
+    cell_id = h5_well_data['dynamic']['cell_id']
+    var_id = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in cell_id])
 
-    # calculate new rates at all timesteps
+    # Calculate Python rates at all timesteps
     vol_rate = {}
-    for i in range(new_data['dynamic']['time'].size):
-        # substitute solution with data from file, for current timestep
-        np.array(m.physics.engine.X, copy=False)[new_data_var_id] = new_data['dynamic']['X'][i].flatten()
-        # calculate new rates for every well
+    for i in range(h5_well_data['dynamic']['time'].size):
+        # Substitute solution with data from file, for current timestep
+        np.array(m.physics.engine.X, copy=False)[var_id] = h5_well_data['dynamic']['X'][i].flatten()
+        # Calculate Python rates for every well
         for well in m.reservoir.wells:
             if well.name not in vol_rate:
                 vol_rate[well.name] = []
 
-            vol_rate[well.name].append(get_phase_volumetric_well_rate(m, well))
+            vol_rate[well.name].append(get_well_phases_volumetric_rates(m, well))
 
     for well in m.reservoir.wells:
         vol_rate[well.name] = np.array(vol_rate[well.name])
 
     return vol_rate
 
-def get_phase_volumetric_well_rate(m, well: ms_well) -> np.ndarray:
+def get_well_phases_volumetric_rates(m, well: ms_well) -> np.ndarray:
     """
     Calculate volumetric well rate for every fluid phase for a given well
     :param m: Darts model
@@ -187,90 +184,8 @@ def get_phase_volumetric_well_rate(m, well: ms_well) -> np.ndarray:
     """
 
     # calculate fluxes
+    volumetric_rate_starting_idx = int(well_control_iface.VOLUMETRIC_RATE) * m.physics.nph
     rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
-                                        flux_eval=[m.physics.rate_itor])
+                                   flux_eval=[m.physics.well_ctrl_itor],
+                                   eval_ids=np.arange(volumetric_rate_starting_idx, volumetric_rate_starting_idx + m.physics.nph))
     return rates[0]
-
-def get_phase_volumetric_well_rate_profile(m, well: ms_well) -> np.ndarray:
-    """
-    Calculate volumetric well rate for every fluid phase for all perforations in a given well
-    :param m: Darts model
-    :param well: well
-    :type well: ms_well
-    :return: array of fluxes
-    :rtype: np.ndarray
-    """
-
-    # calculate fluxes
-    rates = calc_connection_fluxes(m=m, conn_ids=m.well_perf_conn_ids[well.name],
-                                        flux_eval=[m.physics.rate_itor])
-    return rates
-
-def get_mass_well_rates(m) -> dict:
-    """
-    Calculate mass well rate for every well and for all the timesteps from the saved well data in *.h5
-    :param m: Darts model
-    :return: dictionary with arrays of fluxes
-    :rtype: dict
-    """
-
-    n_vars = m.physics.n_vars
-
-    # load new well data
-    new_filename = os.path.join(m.output_folder, m.well_filename)
-    new_data = load_hdf5_to_dict(new_filename)
-    new_data_cell_id = new_data['dynamic']['cell_id']
-    new_data_var_id = np.concatenate([np.arange(i * n_vars, i * n_vars + n_vars) for i in new_data_cell_id])
-
-    # calculate new rates at all timesteps
-    mass_rate = {}
-    for i in range(new_data['dynamic']['time'].size):
-        # substitute solution with data from file, for current timestep
-        np.array(m.physics.engine.X, copy=False)[new_data_var_id] = new_data['dynamic']['X'][i].flatten()
-        # calculate new rates for every well
-        for well in m.reservoir.wells:
-            if well.name not in mass_rate:
-                mass_rate[well.name] = []
-
-            mass_rate[well.name].append(get_mass_well_rate(m, well))
-
-    for well in m.reservoir.wells:
-        mass_rate[well.name] = np.array(mass_rate[well.name])
-
-    return mass_rate
-
-def get_mass_well_rate(m, well: ms_well) -> np.ndarray:
-    """
-    Calculate mass well rate for a given well
-    :param m: Darts model
-    :param well: well
-    :type well: ms_well
-    :return: array of fluxes
-    :rtype: np.ndarray
-    """
-
-    n_ops = m.physics.mass_flux_operators[next(iter(m.physics.mass_flux_operators))].n_ops
-    eval_ids = np.arange(n_ops)
-    # calculate fluxes
-    rates = calc_connection_fluxes(m=m, conn_ids=[m.well_head_conn_id[well.name]],
-                                        flux_eval=m.physics.mass_flux_itor,
-                                        eval_ids=eval_ids)
-    return rates[0]
-
-def get_mass_well_rate_profile(m, well: ms_well) -> np.ndarray:
-    """
-    Calculate mass well rate for all perforations in a given well
-    :param m: Darts model
-    :param well: well
-    :type well: ms_well
-    :return: array of fluxes
-    :rtype: np.ndarray
-    """
-
-    n_ops = m.physics.mass_flux_operators[next(iter(m.physics.mass_flux_operators))].n_ops
-    eval_ids = np.arange(n_ops)
-    # calculate fluxes
-    rates = calc_connection_fluxes(m=m, conn_ids=m.well_perf_conn_ids[well.name],
-                                        flux_eval=m.physics.mass_flux_itor,
-                                        eval_ids=eval_ids)
-    return rates

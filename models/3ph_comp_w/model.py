@@ -28,12 +28,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 50.,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1],
-                               self.physics.vars[3]: self.ini_stream[2]
-                               }
-
     def set_reservoir(self):
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=10, dz=10, permx=100, permy=100,
@@ -56,7 +50,7 @@ class Model(CICDModel):
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        self.inj_stream = [1.0 - 2 * zero, zero, zero]
+        self.inj_composition = [1.0 - 2 * zero, zero, zero]
         self.ini_stream = [0.1, 0.2, 0.6 - zero]
 
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)
@@ -74,19 +68,32 @@ class Model(CICDModel):
                                                ('wat', PhaseRelPerm("wat"))])
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer,
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
                                      n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 50.,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              self.physics.vars[3]: self.ini_stream[2],
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(20, self.inj_stream, 0)
-                # w.control = self.physics.new_bhp_inj(100, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=20., phase_name='gas', inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
 
 class ModelProperties(PropertyContainer):
@@ -94,7 +101,8 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)

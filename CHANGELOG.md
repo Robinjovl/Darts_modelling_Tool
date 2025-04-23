@@ -1,4 +1,55 @@
-# 1.2.2 [**-**-2024]
+# 1.3.0 [-2025]
+- (Breaking) Unify well controls:
+  - A single C++ class well_control_iface class has been generalized to handle bhp and different rate controls (inj/prod) for all engines
+  - An instance of well_control_iface is created for every ms_well object upon init_rate_parameters()
+  - Well controls and constraints are accessed through setters, with the aid of the PhysicsBase.set_well_controls() method  
+  - The set of WellControlOperators calculates BHP, BHT and each phase's volumetric, mass and molar rates
+  - An enum of class well_control_iface specifies the control/constraint type: -1) BHP, 0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
+  - API of set_well_controls(): control_type: well_control_iface.WellControlType, is_inj: bool, target: float, 
+                                phase_name: str, inj_composition: list, inj_temp: float, is_control: bool
+  - A WellInitOperator translates PT-based controls to the given state specification (PT, PH, ...)
+- (Breaking) Unify set_initial_conditions():
+  - 1) Uniform or array -> specify constant or array of values for each variable to self.physics.set_initial_conditions_from_array()
+  - 2) Depth table -> specify depth table with depths and initial distributions of unknowns over depth to self.physics.set_initial_conditions_from_depth_table() 
+  - DartsModel.set_uniform_conditions(): forces user to overload this method in Model() and set initial conditions according to 1) or 2)
+  - PhysicsBase.set_initial_conditions_from_array() to set initial conditions uniformly/with array
+  - PhysicsBase.set_initial_conditions_from_depth_table() to interpolate/calculate properties based on depth table
+  - On the C++ level, there is an array initial_state that lives in the conn_mesh class, which is to be filled with the initial state of all the primary variables in PhysicsBase.set_initial_conditions_from_*()
+  - The method set_initial_conditions() initializes the mesh for **RESERVOIR BLOCKS ONLY**. Well cell initialization is done inside the engine
+- (Breaking) PhysicsBase class constructor contains StateSpecification enum to define state variables
+  - Unifies P (isothermal), PT (pressure-temperature) and PH (pressure-enthalpy)
+  - Compositional constructor contains state_spec variable rather than thermal (bool)
+  - Geothermal is PH by default
+  - All engines have a WellInitOperator to translate PT-based well controls to the given state specification
+- The GPU configuration is supported in cmake. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/179)
+- C++ standard was changed to C++20. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182)
+  - a custom dockerfile usage with gcc-13 compiler for open-DARTS compilation in gitlab pipelines (Linux only).
+  - libstc++ added to the wheels (for Linux).
+  - DARTS command line interface (CLI) added.
+- The required cmake version changed to 3.26.
+- The BCSR jacobain matrix class exposed to Python. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=766b876deb925ffeba1d6971402c93b80256b5a7)
+- Row-wise jacobian scaling for Geothermal engine. Turned off by default [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?file=611eddccefa3651138d3f99d5c57b29072c40eed#611eddccefa3651138d3f99d5c57b29072c40eed_414_492)
+- Line search for Newton iterations. Turned off by default, can be enabled with model.params.line_search = True. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?file=4111fc0a9161b7a085b99b1cd0ac668b08efcff7#4111fc0a9161b7a085b99b1cd0ac668b08efcff7_585_613)
+- Fluxes storage in arrays. Turned off by default, can be enabled by a call `engine.enable_flux_output()`. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=23fd4fdfb9cbcbce7f0f72e0874c83bccae0be73)
+- No-flow boundary conditions in reconstruction of velocities on structured grid. [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/155/diffs?commit_id=cbdd7d97937c1c44b4ed5c947f46357dc72fa2cf)
+- Convergence tests for geomechanical models [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184) 
+- Unstructured mesh generation script [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184)
+- SPE10_mech model is enabled in pipelines.
+- CPG Reservoir:
+  - Fault transmissibility multiplier application fixed.
+  - A test case with a fault transmissibility multiplacator [added](https://gitlab.com/open-darts/open-darts/-/blob/development/models/cpg_sloping_fault/main.py?ref_type=heads#L239).
+  - The heat capacity and rock conduction storage to vtk file in the cpg model fixed.
+  - Slides with the description [added](https://gitlab.com/open-darts/open-darts/-/blob/development/models/cpg_sloping_fault/model_description.pptx?ref_type=heads).
+- CPG and struct reservoirs: fixed a check for perforations in the inactive block.
+- Mesh processing for DFN model with the Python discretizer [optimized](https://gitlab.com/open-darts/open-darts/-/merge_requests/194).
+- Breaking changes:\
+	For open-DARTS wheels installed from pip or gitlab pipelines running command was changed: \
+	{- Before, `python main.py` }\
+	{+ Now, `darts main.py`}\
+	This is neccessary to ensure the libstdc++ provided with open-DARTS is loaded first. This doesn't impact Windows runs.
+	However, DARTS command line interface (CLI) can also be used on Windows. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182).
+
+# 1.2.2 [27-01-2025]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
 - Temperature and pressure operators are added
 - Add enthalpy operators to elastic super engine

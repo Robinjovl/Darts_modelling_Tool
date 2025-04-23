@@ -41,6 +41,31 @@ pybind11_add_module(engines
   ${OD_ENGINES_PYBIND11_PUBLIC_HEADER_FILES}
 )
 
+if (CUDA)
+  set(CUDA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nc_cg_gpu.cpp 
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_gpu.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_gpu_tools.cpp
+  )
+
+  set_source_files_properties(
+    ${CUDA_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pz_cap_gra.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_pze_gra.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_super.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp
+
+    PROPERTIES LANGUAGE CUDA)
+  
+  target_sources(engines PRIVATE
+    ${CUDA_SOURCES}
+  )
+
+  # The following property may speed up compilation, at the cost of some performance
+  # set_target_properties(engines PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()
+
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
 # the opendarts linear solvers, otherwise it uses the old linear solvers
 if(NOT DEFINED BOS_SOLVERS_DIR)

@@ -19,6 +19,8 @@ import os.path as osp
 from typing import List
 sq_norm = lambda x: np.inner(x, x)
 
+from darts.engines import well_control_iface
+
 
 class OptModuleSettings:
     def __init__(self):
@@ -140,6 +142,9 @@ class OptModuleSettings:
 
         # MPFA
         self.n_fm = 0
+
+        # by default, the observation rate type is volumetric rate
+        self.observation_rate_type = well_control_iface.VOLUMETRIC_RATE
 
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -540,8 +545,9 @@ class OptModuleSettings:
 
         self.physics.engine.objfun_saturation = self.objfun_saturation
 
-
         self.physics.engine.scale_function_value = self.scale_function_value
+
+        self.physics.engine.observation_rate_type = self.observation_rate_type
 
         if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
             self.col_idx = list(range(self.n_fm))

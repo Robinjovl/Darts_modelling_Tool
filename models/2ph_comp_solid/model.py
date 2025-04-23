@@ -30,12 +30,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        self.initial_values = {self.physics.vars[0]: 95,
-                               self.physics.vars[1]: self.ini_stream[0],
-                               self.physics.vars[2]: self.ini_stream[1],
-                               self.physics.vars[3]: self.ini_stream[2]
-                               }
-
     def set_reservoir(self):
         trans_exp = 3
         perm = 100  # / (1 - solid_init) ** trans_exp
@@ -72,9 +66,9 @@ class Model(CICDModel):
         zc_fl_init = zc_fl_init + [1 - sum(zc_fl_init)]
         self.ini_stream = [x * (1 - solid_init) for x in zc_fl_init]
 
-        zc_fl_inj_stream_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
-        zc_fl_inj_stream_gas = zc_fl_inj_stream_gas + [1 - sum(zc_fl_inj_stream_gas)]
-        self.inj_stream = [x * (1 - solid_inject) for x in zc_fl_inj_stream_gas]
+        zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
+        zc_fl_inj_composition_gas = zc_fl_inj_composition_gas + [1 - sum(zc_fl_inj_composition_gas)]
+        self.inj_composition = [x * (1 - solid_inject) for x in zc_fl_inj_composition_gas]
 
         """Physical properties"""
         # Create property containers:
@@ -96,19 +90,33 @@ class Model(CICDModel):
         property_container.kinetic_rate_ev[0] = KineticBasic(equi_prod, 1e-0, ne)
 
         """ Activate physics """
-        self.physics = Compositional(components, phases, self.timer, n_points=101, min_p=1, max_p=1000,
-                                     min_z=self.zero / 10, max_z=1 - self.zero / 10)
+        thermal = False
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=101, min_p=1, max_p=1000, min_z=self.zero / 10, max_z=1 - self.zero / 10)
         self.physics.add_property_region(property_container)
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {self.physics.vars[0]: 95,
+                              self.physics.vars[1]: self.ini_stream[0],
+                              self.physics.vars[2]: self.ini_stream[1],
+                              self.physics.vars[3]: self.ini_stream[2]
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(0.2, self.inj_stream, 0)
-                #w.control = self.physics.new_bhp_inj(150, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=0.2, phase_name='gas',
+                                               inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
     def print_and_plot(self, filename):
         import matplotlib.pyplot as plt

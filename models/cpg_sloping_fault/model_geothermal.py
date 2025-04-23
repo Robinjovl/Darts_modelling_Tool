@@ -22,23 +22,39 @@ class ModelGeothermal(Model_CPG):
             self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],
                                               state_max=[self.idata.obl.max_p, 575.])
 
+        if False:
+            prop_cont = self.physics.property_containers[0]
+            for i in range(prop_cont.nph):
+                ph_str = '_water' if i == 0 else '_steam'
+                prop_cont.output_props.update({'saturation' + ph_str: lambda i=i: prop_cont.saturation[i]})
+                prop_cont.output_props.update({'density' + ph_str: lambda i=i: prop_cont.density[i]})
+                prop_cont.output_props.update({'viscosity' + ph_str: lambda i=i: prop_cont.viscosity[i]})
+                prop_cont.output_props.update({'enthalpy' + ph_str: lambda i=i: prop_cont.enthalpy[i]})
+                if ph_str == '_water':
+                    prop_cont.output_props.update({'conduction' + ph_str: lambda i=i: prop_cont.conduction[i]})
+
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                       pressure_grad=self.idata.initial.pressure_gradient,
-                                                       temperature_grad=self.idata.initial.temperature_gradient)
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            input_depth = [0., np.amax(self.reservoir.mesh.depth)]
+            input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient/1000],
+                                  'temperature': [293.15, 293.15 + input_depth[1] * self.idata.initial.temperature_gradient/1000]
+                                  }
+            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
-            state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
-            self.initial_values = {self.physics.vars[0]: state_init[0],
-                                   self.physics.vars[1]: enth_init}
-            super().set_initial_conditions()
+            input_distribution = {'pressure': self.idata.initial.initial_pressure,
+                                  'temperature': self.idata.initial.initial_temperature}
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def set_well_controls(self, time: float = 0., verbose=True):
         '''
         :param time: simulation time, [days]
         :return:
         '''
+        from darts.engines import well_control_iface
         eps_time = 1e-15  # threshold between the current time and the time for the well control
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
@@ -51,32 +67,45 @@ class ModelGeothermal(Model_CPG):
                 continue
             if wctrl.type == 'inj':  # INJ well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.bhp_constraint, wctrl.inj_bht)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=True, target=wctrl.rate, phase_name='water',
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.bhp_constraint,
+                                                   inj_composition=[], inj_temp=wctrl.inj_bht)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_water_inj(wctrl.bhp, wctrl.inj_bht)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.bhp, inj_composition=[],
+                                                   inj_temp=wctrl.inj_bht)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             elif wctrl.type == 'prod':  # PROD well
                 if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_prod(wctrl.rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
+                    # Control
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name='water')
+                    # Constraint
+                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.bhp_constraint)
                 elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
+                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.bhp)
                 else:
                     print('Unknown well ctrl.mode', wctrl.mode)
                     exit(1)
             else:
                 print('Unknown well ctrl.type', wctrl.type)
                 exit(1)
-            if verbose:
-                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
+            # if verbose:
+            #     print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
         # check
-        for w in self.reservoir.wells:
-            assert w.control is not None, 'well control is not initialized for the well ' + w.name
-            if verbose and w.constraint is None and 'rate' in str(type(w.control)):
-                print('A constraint for the well ' + w.name + ' is not initialized!')
+        # for w in self.reservoir.wells:
+        #     assert w.control is not None, 'well control is not initialized for the well ' + w.name
+        #     if verbose and w.constraint is None and 'rate' in str(type(w.control)):
+        #         print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def get_arrays(self):
         '''

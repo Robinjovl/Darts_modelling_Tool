@@ -15,12 +15,9 @@ int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
                                    std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                    sim_params *params_, timer_node *timer_)
 {
-    X_init.resize(N_VARS * mesh_->n_blocks);
-
-    for (index_t i = 0; i < mesh_->n_blocks; i++)
-    {
-        X_init[N_VARS * i + E_VAR] = mesh_->enthalpy[i];
-    }
+	scale_rows = false;
+	scale_dimless = false;
+	e_dim = m_dim = p_dim = 1;
 
 	// prepare dg_dx_n_temp for adjoint method
 	if (opt_history_matching)
@@ -37,13 +34,26 @@ int engine_nce_g_cpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
 		(static_cast<csr_matrix<N_VARS>*>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
 	}
 
-
-
-
-
+	
     engine_base::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+	this->expose_jacobian();
+
+	max_row_values_inv.resize(n_vars * mesh->n_blocks);
 
     return 0;
+}
+
+template <uint8_t NC, uint8_t NP>
+void engine_nce_g_cpu<NC, NP>::enable_flux_output()
+{
+  enabled_flux_output = true;
+
+  if (darcy_fluxes.empty())
+  {
+	darcy_fluxes.resize(NC * NP * mesh->n_conns);
+	heat_darcy_advection_fluxes.resize(NP * mesh->n_conns);
+	fourier_fluxes.resize((NP + 1) * mesh->n_conns);
+  }
 }
 
 template <uint8_t NC, uint8_t NP>
@@ -85,6 +95,10 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
         value_t t_diff, gamma_t_diff;
 
         numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
+
+		// fluxes for output
+		value_t *cur_darcy_fluxes;
+		value_t *cur_heat_darcy_advection_fluxes, *cur_fourier_fluxes;
 
         for (index_t i = start; i < end; i++)
         {
@@ -133,6 +147,14 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                 if (i == j)
                     continue;
 
+				// fluxes for current connection
+				if (enabled_flux_output)
+				{
+				  cur_darcy_fluxes = &darcy_fluxes[NP * NC * conn_idx];
+				  cur_heat_darcy_advection_fluxes = &heat_darcy_advection_fluxes[NP * conn_idx];
+				  cur_fourier_fluxes = &fourier_fluxes[(NP + 1) * conn_idx];
+				}
+
                 p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
                 t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
                 gamma_t_diff = tranD[conn_idx] * dt * t_diff;
@@ -153,6 +175,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                             value_t c_flux = tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c];
 
                             RHS[i * N_VARS + c] -= phase_gamma_p_diff * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c]; // flux operators only
+							if (enabled_flux_output)
+							  cur_darcy_fluxes[p * NC + c] = -phase_gamma_p_diff * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c] / dt;
 
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
@@ -173,6 +197,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
 
                         // energy outflow
                         RHS[i * N_VARS + E_VAR] -= phase_gamma_p_diff * op_vals_arr[i * N_OPS + FE_FLUX_OP + p]; // energy flux
+						if (enabled_flux_output)
+						  cur_heat_darcy_advection_fluxes[p] = -phase_gamma_p_diff * op_vals_arr[i * N_OPS + FE_FLUX_OP + p] / dt;
                         value_t phase_e_flux = tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FE_FLUX_OP + p];
 
                         for (uint8_t v = 0; v < N_VARS; v++)
@@ -200,6 +226,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         {
                             value_t c_flux = tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c];
                             RHS[i * N_VARS + c] -= phase_gamma_p_diff * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c]; // flux operators only
+							if (enabled_flux_output)
+							  cur_darcy_fluxes[p * NC + c] = -phase_gamma_p_diff * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c] / dt;
 
                             for (uint8_t v = 0; v < N_VARS; v++)
                             {
@@ -216,7 +244,9 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
 
                         // energy flux
                         RHS[i * N_VARS + E_VAR] -= phase_gamma_p_diff * op_vals_arr[j * N_OPS + FE_FLUX_OP + p]; // energy flux operator
-                        value_t phase_e_flux = tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FE_FLUX_OP + p];
+						if (enabled_flux_output)
+						  cur_heat_darcy_advection_fluxes[p] = -phase_gamma_p_diff * op_vals_arr[j * N_OPS + FE_FLUX_OP + p] / dt;
+						value_t phase_e_flux = tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FE_FLUX_OP + p];
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[jac_idx + NC * N_VARS + v] -= phase_gamma_p_diff * op_ders_arr[(j * N_OPS + FE_FLUX_OP + p) * N_VARS + v];
@@ -239,6 +269,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                     value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[i * N_OPS + FE_COND_OP] * mesh->poro[i] + (1 - mesh->poro[i]) * mesh->rock_cond[i]);
 
                     RHS[i * N_VARS + NC] -= local_cond_dt * t_diff;
+					if (enabled_flux_output)
+					  cur_fourier_fluxes[NP] = -local_cond_dt * t_diff / dt;
                     for (uint8_t v = 0; v < N_VARS; v++)
                     {
                         // conduction part derivative
@@ -255,6 +287,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                     value_t local_cond_dt = tranD[conn_idx] * dt * (op_vals_arr[j * N_OPS + FE_COND_OP] * mesh->poro[j] + (1 - mesh->poro[j]) * mesh->rock_cond[j]);
 
                     RHS[i * N_VARS + NC] -= local_cond_dt * t_diff;
+					if (enabled_flux_output)
+					  cur_fourier_fluxes[NP] = -local_cond_dt * t_diff / dt;
                     for (uint8_t v = 0; v < N_VARS; v++)
                     {
                         // conduction part derivative
@@ -408,7 +442,197 @@ engine_nce_g_cpu<NC, NP>::calc_well_residual_Linf()
     return residual;
 }
 
+template <uint8_t NC, uint8_t NP>
+int 
+engine_nce_g_cpu<NC, NP>::solve_linear_equation()
+{
+  int r_code;
+  char buffer[1024];
+  linear_solver_error_last_dt = 0;
 
+  // scaling according to dimensions
+  if (scale_dimless)
+	make_dimensionless();
+
+  // row-wise scaling
+  if (scale_rows)
+	dimensionalize_rows<N_VARS>();
+
+  timer->node["linear solver setup"].start();
+  r_code = linear_solver->setup(Jacobian);
+  timer->node["linear solver setup"].stop();
+
+  if (r_code)
+  {
+	sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
+	std::cout << buffer << std::flush;
+	// use class property to save error state from linear solver
+	// this way it will work for both C++ and python newton loop
+	//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
+	linear_solver_error_last_dt = 1;
+	return linear_solver_error_last_dt;
+  }
+
+  timer->node["linear solver solve"].start();
+  r_code = linear_solver->solve(&RHS[0], &dX[0]);
+  timer->node["linear solver solve"].stop();
+
+  if (print_linear_system) //changed this to write jacobian to file!
+  {
+	const std::string matrix_filename = "jac_nc_dar_" + std::to_string(output_counter) + ".csr";
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	Jacobian->export_matrix_to_file(matrix_filename, opendarts::linear_solvers::sparse_matrix_export_format::csr);
+#else
+	Jacobian->write_matrix_to_file_mm(matrix_filename.c_str());
+#endif
+	//Jacobian->write_matrix_to_file(("jac_nc_dar_" + std::to_string(output_counter) + ".csr").c_str());
+	write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".rhs", RHS);
+	write_vector_to_file("jac_nc_dar_" + std::to_string(output_counter) + ".sol", dX);
+	output_counter++;
+  }
+
+  if (scale_dimless)
+	dimensionalize_unknowns();
+
+  if (r_code)
+  {
+	sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
+	std::cout << buffer << std::flush;
+	// use class property to save error state from linear solver
+	// this way it will work for both C++ and python newton loop
+	linear_solver_error_last_dt = 2;
+	return linear_solver_error_last_dt;
+  }
+  else
+  {
+	sprintf(buffer, "\t #%d (%.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1, newton_residual_last_dt,
+	  well_residual_last_dt, linear_solver->get_n_iters(), linear_solver->get_residual());
+	std::cout << buffer << std::flush;
+	n_linear_last_dt += linear_solver->get_n_iters();
+  }
+  return 0;
+}
+
+template <uint8_t NC, uint8_t NP>
+void 
+engine_nce_g_cpu<NC, NP>::make_dimensionless()
+{
+  const index_t n_blocks = mesh->n_blocks;
+  const index_t n_res_blocks = mesh->n_res_blocks;
+  value_t* Jac = Jacobian->get_values();
+  const index_t* rows = Jacobian->get_rows_ptr();
+  const value_t* V = mesh->volume.data();
+  index_t csr_idx_start, csr_idx_end;
+  value_t mass_dim = m_dim, heat_dim = m_dim * e_dim;
+
+  value_t max_jacobian = 0.0, max_residual = 0.0;
+  // value_t min_ratio = std::numeric_limits<value_t>::infinity();
+  value_t row_max_jacobian[N_VARS];
+
+  // matrix + fractures
+  for (index_t i = 0; i < n_res_blocks; i++)
+  {
+	// std::fill_n(row_max_jacobian, N_VARS, 0.0);
+
+	csr_idx_start = rows[i];
+	csr_idx_end = rows[i + 1];
+	for (index_t j = csr_idx_start; j < csr_idx_end; j++)
+	{
+	  // jacobian (fluid mass)
+	  for (uint8_t c = 0; c < NC; c++)
+	  {
+		// pressure
+		Jac[j * N_VARS_SQ + c * N_VARS + P_VAR] /= (mass_dim / p_dim);
+		row_max_jacobian[c] = std::max(row_max_jacobian[c], fabs(Jac[j * N_VARS_SQ + c * N_VARS + P_VAR]));
+		// composition
+		for (uint8_t v = Z_VAR; v < E_VAR; v++)
+		{
+		  Jac[j * N_VARS_SQ + c * N_VARS + v] /= mass_dim;
+		  row_max_jacobian[c] = std::max(row_max_jacobian[c], fabs(Jac[j * N_VARS_SQ + c * N_VARS + v]));
+		}
+		// enthalpy
+		Jac[j * N_VARS_SQ + c * N_VARS + E_VAR] /= (mass_dim / e_dim);
+		row_max_jacobian[c] = std::max(row_max_jacobian[c], fabs(Jac[j * N_VARS_SQ + c * N_VARS + E_VAR]));
+	  }
+
+	  // jacobian (energy)
+	  // pressure
+	  Jac[j * N_VARS_SQ + NC * N_VARS + P_VAR] /= (heat_dim / p_dim);
+	  row_max_jacobian[NC] = std::max(row_max_jacobian[NC], fabs(Jac[j * N_VARS_SQ + NC * N_VARS + P_VAR]));
+	  // composition
+	  for (uint8_t v = Z_VAR; v < E_VAR; v++)
+	  {
+		Jac[j * N_VARS_SQ + NC * N_VARS + v] /= heat_dim;
+		row_max_jacobian[NC] = std::max(row_max_jacobian[NC], fabs(Jac[j * N_VARS_SQ + NC * N_VARS + v]));
+	  }
+	  // enthalpy
+	  Jac[j * N_VARS_SQ + NC * N_VARS + E_VAR] /= (heat_dim / e_dim);
+	  row_max_jacobian[NC] = std::max(row_max_jacobian[NC], fabs(Jac[j * N_VARS_SQ + NC * N_VARS + E_VAR]));
+	}
+	// residual
+	for (uint8_t c = 0; c < NC; c++)
+	{
+	  RHS[i * N_VARS + c] /= mass_dim;
+	  max_jacobian = std::max(max_jacobian, row_max_jacobian[c]);
+	  max_residual = std::max(max_residual, fabs(RHS[i * N_VARS + c]));
+	  //if (fabs(RHS[i * N_VARS + c]) > EQUALITY_TOLERANCE)
+		//min_ratio = std::min(min_ratio, fabs(RHS[i * N_VARS + c] / row_max_jacobian[c]));
+	}
+	RHS[i * N_VARS + NC] /= heat_dim;
+	max_jacobian = std::max(max_jacobian, row_max_jacobian[NC]);
+	max_residual = std::max(max_residual, fabs(RHS[i * N_VARS + NC]));
+	//if (fabs(RHS[i * N_VARS + P_VAR]) > EQUALITY_TOLERANCE)
+	//  min_ratio = std::min(min_ratio, fabs(RHS[i * N_VARS + P_VAR] / row_max_jacobian[P_VAR]));
+  }
+
+  // wells: TODO: add the scaling of well equations
+  /*for (ms_well* w : wells)
+  {
+	if (geomechanics_mode[w->well_body_idx])
+	  mass_dim = mass_dim_geom;
+	else
+	  mass_dim = mass_dim_base;
+
+	// well body
+	csr_idx_start = rows[w->well_body_idx];
+	csr_idx_end = rows[w->well_body_idx + 1];
+
+	for (index_t j = csr_idx_start; j < csr_idx_end; j++)
+	{
+	  // jacobian (fluid mass)
+	  for (uint8_t v = U_VAR; v < U_VAR + ND_; v++)
+	  {
+		Jac[j * N_VARS_SQ + P_VAR * N_VARS + v] /= (mass_dim / x_dim);
+	  }
+	  Jac[j * N_VARS_SQ + P_VAR * N_VARS + P_VAR] /= (mass_dim / p_dim);
+	}
+	// residual
+	RHS[w->well_body_idx * N_VARS + P_VAR] /= (mass_dim);
+  }*/
+
+  // printf("max(residual)/max(jacobian) = %e\n", max_residual / max_jacobian);
+  // printf("row-wise residual/max(jacobian) = %e\n", min_ratio);
+  fflush(stdout);
+}
+
+template <uint8_t NC, uint8_t NP>
+void 
+engine_nce_g_cpu<NC, NP>::dimensionalize_unknowns()
+{
+  const index_t n_blocks = mesh->n_blocks;
+  const index_t n_res_blocks = mesh->n_res_blocks;
+
+  // matrix + fractures
+  for (index_t i = 0; i < n_res_blocks; i++)
+  {
+	// pressure
+	dX[i * N_VARS + P_VAR] *= p_dim;
+	// enthalpy
+	dX[i * N_VARS + E_VAR] *= e_dim;
+  }
+
+  // TODO: add well equations
+}
 
 template <uint8_t NC, uint8_t NP>
 int engine_nce_g_cpu<NC, NP>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)

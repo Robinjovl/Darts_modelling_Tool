@@ -26,13 +26,6 @@ class Model(CICDModel):
 
         self.timer.node["initialization"].stop()
 
-        T_init = 450.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
-                               }
-
     def set_reservoir(self, resolution):
         y_scale = 3
         (nx, ny, nz) = (resolution, y_scale * resolution, resolution)
@@ -94,12 +87,23 @@ class Model(CICDModel):
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {'pressure': 200.,
+                              'temperature': 450.
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_water_inj(205, 300)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=205, phase_name='water',
+                                               inj_composition=[], inj_temp=300.)
             else:
-                w.control = self.physics.new_bhp_prod(195)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=195., phase_name='water')
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_blocks

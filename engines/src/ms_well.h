@@ -42,8 +42,6 @@ public:
   {
     segment_volume = 0.07; // 1 m high, 0.3 m diameter
     segment_transmissibility = 100000;
-    control = 0;
-    constraint = 0;
     well_head_depth = 0;
     well_body_depth = 0;
     segment_depth_increment = 0;
@@ -52,7 +50,8 @@ public:
     well_type = PRODUCER;
   };
 
-  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
+  void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+                            operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = n_vars_;
     P_VAR = 0;
@@ -60,17 +59,21 @@ public:
     n_phases = int(phase_names_.size());
     n_ops = n_ops_;
     phase_names = phase_names_;
-    rate_evaluator = rate_evaluator_;
-    state.resize(n_vars);
-    state_neighbour.resize(n_vars);
-    rates.resize(n_phases);
     thermal = thermal_;
 
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
 
-	rate_etor_ad = rate_evaluator_;  //adjoint method
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES * n_phases + well_control_iface::n_state_ctrls);
+
+	  rate_etor_ad = well_controls_etor;  //adjoint method
   };
 
-  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, operator_set_gradient_evaluator_iface* rate_evaluator_, int thermal_ = 0)
+  void init_mech_rate_parameters(uint8_t N_VARS_, uint8_t P_VAR_, int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
+                                 operator_set_gradient_evaluator_iface* well_controls_etor, operator_set_gradient_evaluator_iface* well_init_etor, int thermal_ = 0)
   {
     n_block_size = N_VARS_;
     P_VAR = P_VAR_;
@@ -78,13 +81,17 @@ public:
     n_phases = int(phase_names_.size());
     n_ops = n_ops_;
     phase_names = phase_names_;
-    rate_evaluator = rate_evaluator_;
-    state.resize(n_vars);
-    state_neighbour.resize(n_vars);
-    rates.resize(n_phases);
     thermal = thermal_;
 
-	rate_etor_ad = rate_evaluator_;  //adjoint method
+    control = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+    constraint = well_control_iface(n_phases, n_vars - thermal, thermal, well_controls_etor, well_init_etor);
+
+    rate_evaluator = well_controls_etor;
+    state.resize(n_vars);
+    state_neighbour.resize(n_vars);
+    rates.resize(well_control_iface::NUMBER_OF_RATE_TYPES* n_phases + well_control_iface::n_state_ctrls);
+
+	  rate_etor_ad = well_controls_etor;  //adjoint method
   };
 
   // the function changes (overwrites) jacobian equations for well_head_idx block
@@ -93,9 +100,26 @@ public:
   // first n_vars*n_vars correspond to diagonal block (well_head_idx>well_body_idx always)
   // second n_vars*n_vars correspond to offdiagonal
   // X and RHS vector are passed in full (yet)
-  int add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
+  void set_bhp_control(bool is_inj, value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
+  { 
+    this->control.set_bhp_control(is_inj, target, inj_comp, inj_temp);
+  }
+  void set_bhp_constraint(bool is_inj, value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
+  { 
+    this->constraint.set_bhp_control(is_inj, target, inj_comp, inj_temp); 
+  }
+  void set_rate_control(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx, 
+                        value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
+  {
+    this->control.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
+  }
+  void set_rate_constraint(bool is_inj, well_control_iface::WellControlType control_type, index_t phase_idx, 
+                           value_t target, std::vector<value_t>& inj_comp, value_t inj_temp)
+  {
+    this->constraint.set_rate_control(is_inj, control_type, phase_idx, target, inj_comp, inj_temp);
+  }
 
-  int add_to_csr_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
+  int add_to_jacobian(double dt, std::vector<value_t> &X, value_t* jac_well_head, std::vector<value_t> &RHS);
 
   int check_constraints(double dt, std::vector<value_t> &X);
 
@@ -123,8 +147,8 @@ public:
   index_t well_body_idx;        // index of the first well segment block, which connects to ghost well block
   index_t well_head_idx_conn;   // index of the first well segment block connection, which connects to ghost well block
 
-  well_control_iface *control;
-  well_control_iface *constraint;
+  well_control_iface control;
+  well_control_iface constraint;
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method

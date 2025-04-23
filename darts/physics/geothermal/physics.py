@@ -1,7 +1,10 @@
 import numpy as np
+from typing import Union
+import warnings
+from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
 from darts.physics.geothermal.operator_evaluator import *
 
 
@@ -17,7 +20,7 @@ class Geothermal(PhysicsBase):
     """
 
     def __init__(self, timer: timer_node, n_points: int, min_p: float, max_p: float, min_e: float, max_e: float,
-                 mass_rate: bool = False, cache: bool = False):
+                 cache: bool = False):
         """
         This is the constructor of the Geothermal Physics class.
 
@@ -31,25 +34,20 @@ class Geothermal(PhysicsBase):
         :type min_p, max_p: float
         :param min_e, max_e: Minimum, maximum enthalpy
         :type min_e, max_e: float
-        :param mass_rate: Switch for mass rate/volume rate?
-        :type mass_rate: bool
         :param cache: Switch to cache operator values
         :type cache: bool
         """
         # Set nc=1, thermal=True
-        nc = 1
+        components = ["H2O"]
 
         # Define phases and variables
-        self.mass_rate = mass_rate
-        if self.mass_rate:
-            phases = ['water_mass', 'steam_mass', 'temperature', 'energy']
-        else:
-            phases = ['water', 'steam', 'temperature', 'energy']
+        phases = ['water', 'steam']
         variables = ['pressure', 'enthalpy']
+        state_spec = PhysicsBase.StateSpecification.PH
 
         # Define OBL axes
-        axes_min = value_vector([min_p, min_e])
-        axes_max = value_vector([max_p, max_e])
+        self.axes_min = value_vector([min_p, min_e])
+        self.axes_max = value_vector([max_p, max_e])
         n_axes_points = index_vector([n_points] * len(variables))
 
         # Define number of operators:
@@ -58,26 +56,34 @@ class Geothermal(PhysicsBase):
         n_ops = 10
 
         # Call PhysicsBase constructor
-        super().__init__(variables=variables, nc=nc, phases=phases, n_ops=n_ops,
-                         axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
+        super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
+                         axes_min=self.axes_min, axes_max=self.axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
+        self.PT_axes_min = value_vector([min_p, 273.15])
+        self.PT_axes_max = value_vector([max_p, 273.15 + 300.])
+
+    def determine_obl_bounds(self, min_p: float, max_p: float, min_z: float = None, max_z: float = None,
+                             min_t: float = None, max_t: float = None,
+                             state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH):
+        """
+        Overload determine_obl_bounds() method to hardcode OBL axes of pressure-enthalpy and PT-axes for WellInitOperators
+        """
+        return self.axes_min, self.axes_max
 
     def set_operators(self):
         """
         Function to set operator objects: :class:`acc_flux_gravity_evaluator` for each of the reservoir regions,
-        :class:`acc_flux_gravity_evaluator_python_well` for the well cells
+        :class:`acc_flux_gravity_evaluator_python_well` for the well segments
         and :class:`geothermal_rate_custom_evaluator_python` for evaluation of rates.
         """
         for region in self.regions:
             self.reservoir_operators[region] = acc_flux_gravity_evaluator_python(self.property_containers[region])
             self.property_operators[region] = PropertyOperators(self.property_containers[region], thermal=True)
-            self.mass_flux_operators[region] = MassFluxOperators(self.property_containers[region])
-        self.wellbore_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
+        self.well_operators = acc_flux_gravity_evaluator_python_well(self.property_containers[self.regions[0]])
 
-        # create rate operators evaluator
-        if self.mass_rate:
-            self.rate_operators = geothermal_mass_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
-        else:
-            self.rate_operators = geothermal_rate_custom_evaluator_python(self.property_containers[self.regions[0]])
+        # create well control operators evaluator
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
 
         return
 
@@ -90,94 +96,87 @@ class Geothermal(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph - 2))()
+        return eval("engine_nce_g_%s%d_%d" % (platform, self.nc, self.nph))()
 
-    def determine_obl_bounds(self, state_min, state_max):
+    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
+                                                input_depth: Union[list, np.ndarray]):
         """
-        Function to compute minimum and maximum enthalpy (kJ/kmol)
+        Function to set initial conditions from given distribution of properties over depth.
 
-        :param state_min: (P,T,z) state corresponding to minimum enthalpy value
-        :param state_max: (P,T,z) state corresponding to maximum enthalpy value
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to depths
+        :param input_depth: Array of depths over which depth table has been specified
         """
-        self.axes_min[1] = self.property_containers[0].compute_total_enthalpy(state_min, state_min[1])
-        self.axes_max[1] = self.property_containers[0].compute_total_enthalpy(state_max, state_max[1])
+        # Assertions of consistent depth table specification
+        assert 'pressure' in input_distribution.keys() and ('temperature' in input_distribution.keys() or
+                                                            'enthalpy' in input_distribution.keys())
+        input_depth = input_depth if not np.isscalar(input_depth) else np.array([input_depth])
+        for key, input_values in input_distribution.values():
+            input_values = input_values if not np.isscalar(input_values) else np.ones(len(input_depth)) * input_values
+            assert len(input_values) == len(input_depth)
 
-        return
+        # Get depths and primary variable arrays from mesh object
+        depths = np.asarray(mesh.depth)[:mesh.n_res_blocks]
 
-    def define_well_controls(self):
-        # create well controls
-        # water stream
-        # pure water injection at constant temperature
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
-        self.water_inj_stream = value_vector([1.0])
-        # water injection at constant temperature with bhp control
-        self.new_bhp_water_inj = lambda bhp, temp: gt_bhp_temp_inj_well_control(self.phases, self.n_vars, bhp, temp,
-                                                                                self.water_inj_stream, self.rate_itor)
-        # water injection at constant temperature with volumetric rate control
-        self.new_rate_water_inj = lambda rate, temp: gt_rate_temp_inj_well_control(self.phases, 0, self.n_vars, rate,
-                                                                                   temp, self.water_inj_stream,
-                                                                                   self.rate_itor)
-        # water production with bhp control
-        self.new_bhp_prod = lambda bhp: gt_bhp_prod_well_control(bhp)
-        # water production with volumetric rate control
-        self.new_rate_water_prod = lambda rate: gt_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                          rate, self.rate_itor)
-        # water injection of constant enthalpy with mass rate control
-        self.new_mass_rate_water_inj = lambda rate, enth: \
-            gt_mass_rate_enthalpy_inj_well_control(self.phases, 0, self.n_vars,
-                                                   self.water_inj_stream,
-                                                   rate, enth,
-                                                   self.rate_itor)
-        # water production with mass rate control
-        self.new_mass_rate_water_prod = lambda rate: gt_mass_rate_prod_well_control(self.phases, 0, self.n_vars,
-                                                                                    rate, self.rate_itor)
-        return
+        # Loop over variables to fill initial_state vector in c++
+        for ith_var, variable in enumerate(self.vars):
+            if variable == "enthalpy" and "enthalpy" not in input_distribution.keys():
+                # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
+                p_itor = interp1d(input_depth, input_distribution['pressure'], kind='linear', fill_value='extrapolate')
+                pressure = p_itor(depths)
 
-    def set_uniform_initial_conditions(self, mesh, uniform_pressure, uniform_temperature):
+                t_itor = interp1d(input_depth, input_distribution['temperature'], kind='linear', fill_value='extrapolate')
+                temperature = t_itor(depths)
+
+                values = np.empty(mesh.n_res_blocks)
+                for j in range(mesh.n_res_blocks):
+                    state_pt = np.array([pressure[j], temperature[j]])
+                    values[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
+            else:
+                # Else, interpolate primary variable
+                itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
+                values = itor(depths)
+
+            np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
+
+    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
         """""
         Function to set uniform initial reservoir condition
 
-        :param mesh: :class:`Mesh` object
-        :param uniform_pressure: Uniform pressure setting
-        :param uniform_temperature: Uniform temperature setting
+        :param mesh: conn_mesh object
+        :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
+                                   and each entry is scalar or array of length equal to number of cells
         """
-        assert isinstance(mesh, conn_mesh)
-        # nb = mesh.n_blocks
+        for variable, values in input_distribution.items():
+            if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
+                warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
+                              format(variable, len(values), mesh.n_res_blocks), stacklevel=2)
+                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_res_blocks)
+
+        # adjust the size of initial_state array in c++
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
         # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure.fill(uniform_pressure)
+        np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
 
-        state = value_vector([uniform_pressure, 0])
-        enth = self.property_containers[0].compute_total_enthalpy(state, uniform_temperature)
+        # interpolate pressure and temperature to compute enthalpies
+        enthalpy = np.empty(mesh.n_res_blocks)
+        if 'enthalpy' in input_distribution.keys():
+            enth = np.ones(mesh.n_res_blocks) * input_distribution['enthalpy'] if not np.isscalar(input_distribution['enthalpy']) else input_distribution['enthalpy']
+            enthalpy[:] = enth
+        elif not np.isscalar(input_distribution['pressure']):
+            # Pressure specified as an array
+            for j in range(mesh.n_res_blocks):
+                temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
+                state_pt = np.array([input_distribution['pressure'][j], temp])
+                enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
+        else:
+            state_pt = np.array([input_distribution['pressure'], input_distribution['temperature']])
+            enth = self.property_containers[0].compute_total_enthalpy(state_pt)
+            enthalpy[:] = enth
 
-        enthalpy = np.array(mesh.enthalpy, copy=False)
-        enthalpy.fill(enth)
-
-    def set_nonuniform_initial_conditions(self, mesh, pressure_grad, temperature_grad, ref_depth_p=0, p_at_ref_depth=1,
-                                          ref_depth_T=0, T_at_ref_depth=293.15):
-        """
-        Function to set nonuniform initial reservoir condition
-
-        :param mesh: :class:`Mesh` object
-        :param pressure_grad: Pressure gradient, calculates pressure based on depth [1/km]
-        :param temperature_grad: Temperature gradient, calculates temperature based on depth [1/km]
-        :param ref_depth_p: the reference depth for the pressure, km
-        :param p_at_ref_depth: the value of the pressure at the reference depth, bars
-        :param ref_depth_T: the reference depth for the temperature, km
-        :param T_at_ref_depth: the value of the temperature at the reference depth, K
-        """
-        assert isinstance(mesh, conn_mesh)
-
-        depth = np.array(mesh.depth, copy=True)
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = (depth[:pressure.size] / 1000 - ref_depth_p) * pressure_grad + p_at_ref_depth
-
-        # set initial enthalpy through given temperature and pressure
-        enthalpy = np.array(mesh.enthalpy, copy=False)
-        temperature = (depth[:pressure.size] / 1000 - ref_depth_T) * temperature_grad + T_at_ref_depth
-
-        for j in range(mesh.n_blocks):
-            state = value_vector([pressure[j], 0])
-            enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state, temperature[j])
+        np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy
