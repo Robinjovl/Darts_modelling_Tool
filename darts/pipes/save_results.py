@@ -62,7 +62,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
 
         # Save phase velocities
         if i == 0:
-            initial_conditions = np.column_stack([coupled_model.wells['I1'].initial_conditions[key] for key in coupled_model.wells['I1'].initial_conditions]).ravel()
+            initial_conditions = next(iter(coupled_model.wells.values())).initial_conditions.initial_conditions_vector
             Xn_ms_well = initial_conditions
             X_ms_well = h5_well_data["dynamic"]["X"][i,num_perfs:,:].flatten()
         else:
