@@ -46,8 +46,7 @@ class Pipe:
 
         self.isothermal = not physics.thermal
 
-        self.initial_conditions = {}
-        self.store_initial_conditions(initial_conditions)
+        self.initial_conditions = initial_conditions
 
         if self.isothermal:
             assert self.physics.property_containers[0].temperature is not None, \
@@ -115,43 +114,6 @@ class Pipe:
 
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.geometry.pipe_name)
-
-    def store_initial_conditions(self, initial_conditions):
-        self.initial_conditions['pressure'] = initial_conditions.p_init_segments
-
-        if len(initial_conditions.initial_fluid_conditions['phases_compositions']) > 1:
-            raise Exception("store_initial_conditions still does not support pipe intervals with different initial composition!")
-
-        for c, comp_name in enumerate(self.physics.property_containers[0].components_name[:-1]):
-            initial_c_mole_fraction = [initial_conditions.initial_fluid_conditions['phases_compositions'][0][c]] * self.geometry.num_segments
-            self.initial_conditions[comp_name + '_mole_fraction'] = initial_c_mole_fraction
-
-        if not self.isothermal:
-            self.initial_conditions['temperature'] = initial_conditions.temp_init_segments
-
-        self.check_initial_conditions()
-
-    def check_initial_conditions(self):
-        """
-        This function checks if all the required initial conditions of the wellbore/pipe are specified by the user.
-        The required initial conditions are:
-        Pressure profile of the fluid in the wellbore/pipe
-        Overall mole fractions profiles of the components specified in components_names except the last component
-        If the system is not isothermal, temperature profile of the fluid in the wellbore/pipe
-        """
-        assert 'pressure' in self.initial_conditions, \
-            'Initial pressure is not specified in initial conditions!'
-
-        for component_name in self.physics.property_containers[0].components_name[:-1]:
-            assert component_name + '_mole_fraction' in self.initial_conditions, (
-                   component_name + '_mole_fraction is not specified in initial conditions!')
-
-        if not self.isothermal:
-            assert 'temperature' in self.initial_conditions, \
-                'Initial temperature is not specified in initial conditions!'
-        elif self.isothermal:
-            assert 'temperature' not in self.initial_conditions, \
-                'Initial temperature must not be specified if the model is isothermal!'
 
     def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
         dt = dt * 24 * 60 * 60   # convert day to second

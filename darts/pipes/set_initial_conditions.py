@@ -3,7 +3,6 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
-from darts.physics.super.property_container import PropertyContainer
 
 from darts.pipes.units import *
 
@@ -14,24 +13,25 @@ class SingleAmbientTemperature:
     This class is used when the ambient temperature along the pipe is a single value, and so the temperature of
     the fluid in the pipe does not change along the pipe.
     """
-    def __init__(self, pipe_name: str, pipe_geom: PipeGeometry, property_container: PropertyContainer, ambient_temperature: float,
-                 pipe_head_pressure: float, pipe_head_segment_index: int, initial_fluid_conditions: dict, verbose: bool = False):
+    def __init__(self, pipe_name: str, pipe_geom: PipeGeometry, physics, ambient_temperature: float,
+                 pipe_head_pressure: float, pipe_head_segment_index: int, initial_conditions_dict: dict,
+                 verbose: bool = False):
         """
         :param pipe_name: Name of the pipe for which the initial conditions are going to be set
         :type pipe_name: str
         :param pipe_geom: Pipe geometry object
         :type pipe_geom: PipeGeometry
-        :param property_container: Property container is used for density calculations
+        :param physics: physics object is used for density calculations, etc.
         :param ambient_temperature: The temperature of the fluid surrounding the pipe
         :type ambient_temperature: float
         :param pipe_head_pressure: Pressure at one of the heads of the pipe the index of which is specified in pip_head_segment_index [bar]
         :type pipe_head_pressure: float
         :param pipe_head_segment_index: The index of the segment of the pipe at which the pipe head pressure is specified. The index starts from 0.
         :type pipe_head_segment_index: int
-        :param initial_fluid_conditions: Initial fluid conditions in the pipe including the names of the phases present
+        :param initial_conditions_dict: Initial fluid conditions in the pipe including the names of the phases present
         in the pipe, the composition of the phases [mole fractions], and the true vertical depth (TVD) intervals of the
         pipe in which those phases are present [meter].
-        :type initial_fluid_conditions: dict consisting three key-value pairs: list of strings, list of lists, list of lists
+        :type initial_conditions_dict: dict consisting three key-value pairs: list of strings, list of lists, list of lists
         :param verbose: Whether to display extra info about SingleAmbientTemperature
         :type verbose: boolean
         :return: Initial pressure and temperature profile along the pipe
@@ -40,31 +40,34 @@ class SingleAmbientTemperature:
             "Pipe names for PipeGeometry and SingleAmbientTemperature are not identical!"
         self.pipe_name = pipe_name
         self.pipe_geom = pipe_geom
-        self.property_container = property_container
+        self.physics = physics
         self.ambient_temperature = ambient_temperature
         self.pipe_head_pressure = pipe_head_pressure * 1e5   # Convert bar to Pa
         self.pipe_head_segment_index = pipe_head_segment_index
 
-        self.check_initial_fluid_conditions(initial_fluid_conditions)
-        self.initial_fluid_conditions = initial_fluid_conditions
+        self.check_initial_fluid_conditions(initial_conditions_dict)
+        self.initial_conditions_dict = initial_conditions_dict
 
         # Get initial conditions
         self.get_initial_temperature_profile()
         self.get_initial_pressure_profile()
 
+        self.initial_conditions_vector = np.zeros(self.physics.n_vars * self.pipe_geom.num_segments)
+        self.assemble_initial_conditions_vector()
+
         if verbose:
             print("** Initial conditions (SingleAmbientTemperature) of the pipe \"%s\" are set!" % pipe_name)
 
-    def check_initial_fluid_conditions(self, initial_fluid_conditions):
-        for phase_composition in initial_fluid_conditions['phases_compositions']:
+    def check_initial_fluid_conditions(self, initial_conditions_dict):
+        for phase_composition in initial_conditions_dict['phases_compositions']:
             assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
                 "Summation of initial fluid mole fractions must be equal to 1!"
-            assert len(phase_composition) == self.property_container.nc, \
+            assert len(phase_composition) == self.physics.property_containers[0].nc, \
                 "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
 
-        num_phase_compositions = len(initial_fluid_conditions['phases_compositions'])
-        num_phase_names = len(initial_fluid_conditions['phases_names'])
-        num_pipe_intervals = len(initial_fluid_conditions['pipe_intervals'])
+        num_phase_compositions = len(initial_conditions_dict['phases_compositions'])
+        num_phase_names = len(initial_conditions_dict['phases_names'])
+        num_pipe_intervals = len(initial_conditions_dict['pipe_intervals'])
 
         assert num_pipe_intervals == num_phase_names == num_phase_compositions, \
             "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
@@ -75,12 +78,12 @@ class SingleAmbientTemperature:
 
     def get_initial_pressure_profile(self):
         def dpdz(TVD, p):
-            for i, interval in enumerate(self.initial_fluid_conditions['pipe_intervals']):
+            for i, interval in enumerate(self.initial_conditions_dict['pipe_intervals']):
                 if interval[0] <= TVD <= interval[1]:
-                    phase_name = self.initial_fluid_conditions['phases_names'][i]
-                    initial_phase_composition = self.initial_fluid_conditions['phases_compositions'][i]
+                    phase_name = self.initial_conditions_dict['phases_names'][i]
+                    initial_phase_composition = self.initial_conditions_dict['phases_compositions'][i]
 
-            density = self.property_container.density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
+            density = self.physics.property_containers[0].density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
 
             return g * density
 
@@ -110,21 +113,32 @@ class SingleAmbientTemperature:
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5   # Convert Pa to bar
         p_init_interfaces = p_seg_interfaces[1::2] * 1e-5   # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
 
+    def assemble_initial_conditions_vector(self):
+        self.initial_conditions_vector[0::self.physics.n_vars] = self.p_init_segments
+        for var_idx in range(self.physics.nc-1):
+            for segment_idx in range(self.pipe_geom.num_segments):
+                for interval_idx, pipe_interval in enumerate(self.initial_conditions_dict['pipe_intervals']):
+                    if pipe_interval[0] <= self.pipe_geom.TVD_segments[segment_idx] <= pipe_interval[1]:
+                        self.initial_conditions_vector[self.physics.n_vars * segment_idx + var_idx + 1] = self.initial_conditions_dict['phases_compositions'][interval_idx][var_idx]
+
+        if self.physics.thermal:
+            self.initial_conditions_vector[self.physics.n_vars-1::self.physics.n_vars] = self.temp_init_segments
+
 
 class LinearAmbientTemperature:
     """
     This class is used when the ambient temperature along the pipe changes linearly, and so the temperature of
     the fluid in the pipe changes linearly.
     """
-    def __init__(self, pipe_name: str, pipe_geom: PipeGeometry, property_container: PropertyContainer, pipe_head_pressure: float,
-                 pipe_head_temperature: float, temp_grad: float, pipe_head_segment_index: int, initial_fluid_conditions: dict,
-                 verbose: bool = False):
+    def __init__(self, pipe_name: str, pipe_geom: PipeGeometry, physics, pipe_head_pressure: float,
+                 pipe_head_temperature: float, temp_grad: float, pipe_head_segment_index: int,
+                 initial_conditions_dict: dict, verbose: bool = False):
         """
         :param pipe_name: Name of the pipe for which the initial conditions are going to be set
         :type pipe_name: str
         :param pipe_geom: Pipe geometry object
         :type pipe_geom: PipeGeometry
-        :param property_container: Property container is used for density calculations
+        :param physics: physics object is used for density calculations
         :param pipe_head_pressure: Pressure at one of the heads of the pipe the index of which is specified in pipe_head_segment_index [bar]
         :type pipe_head_pressure: float
         :param pipe_head_temperature: Temperature at one of the heads of the pipe the index of which is specified in pipe_head_segment_index [Kelvin]
@@ -133,10 +147,10 @@ class LinearAmbientTemperature:
         :type temp_grad: float
         :param pipe_head_segment_index: The index of the segment of the pipe at which the pipe head pressure is specified. The index starts from 0.
         :type pipe_head_segment_index: int
-        :param initial_fluid_conditions: Initial fluid conditions in the pipe including the names of the phases present
+        :param initial_conditions_dict: Initial fluid conditions in the pipe including the names of the phases present
         in the pipe, the composition of the phases [mole fractions], and the true vertical depth (TVD) intervals of the
         pipe in which those phases are present [meter].
-        :type initial_fluid_conditions: dict consisting three key-value pairs: list of strings, list of lists, list of lists
+        :type initial_conditions_dict: dict consisting three key-value pairs: list of strings, list of lists, list of lists
         :param verbose: Whether to display extra info about LinearAmbientTemperature
         :type verbose: boolean
         :return: Initial pressure and temperature profile along the pipe
@@ -145,32 +159,35 @@ class LinearAmbientTemperature:
             "Pipe names for PipeGeometry and LinearAmbientTemperature are not identical!"
         self.pipe_name = pipe_name
         self.pipe_geom = pipe_geom
-        self.property_container = property_container
+        self.physics = physics
         self.pipe_head_pressure = pipe_head_pressure * 1e5   # Convert bar to Pa
         self.pipe_head_temperature = pipe_head_temperature
         self.temp_grad = temp_grad
         self.pipe_head_segment_index = pipe_head_segment_index
 
-        self.check_initial_fluid_conditions(initial_fluid_conditions)
-        self.initial_fluid_conditions = initial_fluid_conditions
+        self.check_initial_fluid_conditions(initial_conditions_dict)
+        self.initial_conditions_dict = initial_conditions_dict
 
         # Get initial conditions
         self.get_initial_temperature_profile()
         self.get_initial_pressure_profile()
 
+        self.initial_conditions_vector = np.zeros(self.physics.n_vars * self.pipe_geom.num_segments)
+        self.assemble_initial_conditions_vector()
+
         if verbose:
             print("** Initial conditions (LinearAmbientTemperature) of the pipe \"%s\" are set!" % pipe_name)
 
-    def check_initial_fluid_conditions(self, initial_fluid_conditions):
-        for phase_composition in initial_fluid_conditions['phases_compositions']:
+    def check_initial_fluid_conditions(self, initial_conditions_dict):
+        for phase_composition in initial_conditions_dict['phases_compositions']:
             assert np.isclose(sum(phase_composition), 1, atol=1e-12, rtol=1e-12), \
                 "Summation of initial fluid mole fractions must be equal to 1!"
-            assert len(phase_composition) == self.property_container.nc, \
+            assert len(phase_composition) == self.physics.property_containers[0].nc, \
                 "Number of specified initial fluid mole fractions must be equal to the number of components in the fluid!"
 
-        num_phase_compositions = len(initial_fluid_conditions['phases_compositions'])
-        num_phase_names = len(initial_fluid_conditions['phases_names'])
-        num_pipe_intervals = len(initial_fluid_conditions['pipe_intervals'])
+        num_phase_compositions = len(initial_conditions_dict['phases_compositions'])
+        num_phase_names = len(initial_conditions_dict['phases_names'])
+        num_pipe_intervals = len(initial_conditions_dict['pipe_intervals'])
 
         assert num_pipe_intervals == num_phase_names == num_phase_compositions, \
             "Number of the specified pipe intervals and their corresponding fluid properties must be equal!"
@@ -188,13 +205,13 @@ class LinearAmbientTemperature:
 
     def get_initial_pressure_profile(self):
         def dpdz(TVD, p):
-            for i, interval in enumerate(self.initial_fluid_conditions['pipe_intervals']):
+            for i, interval in enumerate(self.initial_conditions_dict['pipe_intervals']):
                 if interval[0] <= TVD <= interval[1]:
                     temp = temp_func(TVD)
-                    phase_name = self.initial_fluid_conditions['phases_names'][i]
-                    initial_phase_composition = self.initial_fluid_conditions['phases_compositions'][i]
+                    phase_name = self.initial_conditions_dict['phases_names'][i]
+                    initial_phase_composition = self.initial_conditions_dict['phases_compositions'][i]
 
-            density = self.property_container.density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
+            density = self.physics.property_containers[0].density_ev[phase_name].evaluate(p * 1e-5, temp, initial_phase_composition)
 
             return g * density
 
@@ -226,3 +243,14 @@ class LinearAmbientTemperature:
 
         self.p_init_segments = p_seg_interfaces[0::2] * 1e-5   # Convert Pa to bar
         p_init_interfaces = p_seg_interfaces[1::2] * 1e-5   # Convert Pa to bar   # Pressures at interfaces are calculated. Maybe, they'll be used later.
+
+    def assemble_initial_conditions_vector(self):
+        self.initial_conditions_vector[0::self.physics.n_vars] = self.p_init_segments
+        for var_idx in range(self.physics.nc-1):
+            for segment_idx in range(self.pipe_geom.num_segments):
+                for interval_idx, pipe_interval in enumerate(self.initial_conditions_dict['pipe_intervals']):
+                    if pipe_interval[0] <= self.pipe_geom.TVD_segments[segment_idx] <= pipe_interval[1]:
+                        self.initial_conditions_vector[self.physics.n_vars * segment_idx + var_idx + 1] = self.initial_conditions_dict['phases_compositions'][interval_idx][var_idx]
+
+        if self.physics.thermal:
+            self.initial_conditions_vector[self.physics.n_vars-1::self.physics.n_vars] = self.temp_init_segments

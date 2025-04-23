@@ -299,13 +299,13 @@ class DartsModel:
                     end_w_idx += well.num_segments
                 if well.ms_type == ms_well.MS_Type.DFM:
                     if variable == 'pressure':
-                        values[start_w_idx:end_w_idx] = self.wells[well.name].initial_conditions["pressure"]
+                        values[start_w_idx:end_w_idx] = self.wells[well.name].initial_conditions.initial_conditions_vector[i::self.physics.n_vars]
                     elif variable == 'temperature':
-                        values[start_w_idx:end_w_idx] = self.wells[well.name].initial_conditions["temperature"]
+                        values[start_w_idx:end_w_idx] = self.wells[well.name].initial_conditions.initial_conditions_vector[i::self.physics.n_vars]
                     elif variable not in ['pressure', 'temperature']:
                         c = i - 1
                         values[start_w_idx * (self.physics.nc - 1) + c:end_w_idx * (self.physics.nc - 1) + c:(
-                                self.physics.nc - 1)] = self.wells[well.name].initial_conditions[variable + '_mole_fraction']
+                                self.physics.nc - 1)] = self.wells[well.name].initial_conditions.initial_conditions_vector[i::self.physics.n_vars]
 
                 start_w_idx = end_w_idx
 
