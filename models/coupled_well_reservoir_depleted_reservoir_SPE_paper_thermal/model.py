@@ -193,12 +193,12 @@ class Model(CICDModel):
         temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_fluid_conditions = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
-                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
+        initial_conditions_dict = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
+                                   'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
-        well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics.property_containers[0],
+        well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics,
                                                              pipe_head_pressure, pipe_head_temperature, temp_grad,
-                                                             pipe_head_segment_index, initial_fluid_conditions)
+                                                             pipe_head_segment_index, initial_conditions_dict)
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, well_1_initial_conditions)}
