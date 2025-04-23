@@ -611,23 +611,6 @@ class UnstructReservoirMech():
         else:
             self.t_init = None
 
-    def set_initial_conditions_by_gradients(self):
-        mesh = self.reservoir.mesh
-        depth = np.array(mesh.depth, copy=False)
-
-        # set initial pressure
-        pressure = np.array(mesh.pressure, copy=False)
-        pressure[:] = (depth - self.idata.initial.reference_depth_for_pressure) * self.idata.initial.pressure_gradient + \
-                      self.idata.initial.pressure_initial
-
-        temperature = np.array(mesh.temperature, copy=False)
-        temperature[:] = (depth - self.idata.initial.reference_depth_for_temperature) * self.idata.initial.temperature_gradient + \
-                         + self.idata.initial.temperature_initial
-
-        #print('depth:      ', depth.min(), '-', depth.max(), 'm.')
-        #print('pressure:   ', pressure.min(), '-', pressure.max(), 'bars.')
-        #print('temperature:', temperature.min()-273.15, '-', temperature.max()-273.15, 'C.')
-
     def init_reservoir_main(self, idata:InputData):
         # allocate arrays in C++ (conn_mesh)
         if self.discretizer_name == 'mech_discretizer':

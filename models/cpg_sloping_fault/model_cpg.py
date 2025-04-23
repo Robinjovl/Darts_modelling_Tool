@@ -105,18 +105,6 @@ class Model_CPG(CICDModel):
                                                    cell_index=(wdata.location.I, wdata.location.J, k),
                                                    well_index=None, multi_segment=False, verbose=True)
 
-    def set_initial_pressure_from_file(self, fname : str):
-        # set initial pressure
-        p_cpp = value_vector()
-        load_single_float_keyword(p_cpp, fname, 'PRESSURE', -1)
-        p_file = np.array(p_cpp, copy=False)
-        p_mesh = np.array(self.reservoir.mesh.pressure, copy=False)
-        try:
-            actnum = np.array(self.reservoir.actnum, copy=False) # CPG Reservoir
-        except:
-            actnum = self.reservoir.global_data['actnum']  #Struct reservoir
-        p_mesh[:self.reservoir.mesh.n_res_blocks * 2] = p_file[actnum > 0]
-
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname
 

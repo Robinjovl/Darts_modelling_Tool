@@ -158,10 +158,10 @@ class Compositional(PhysicsBase):
             assert len(input_distribution[key]) == len(input_depth)
 
         # Get depths and primary variable arrays from mesh object
-        depths = np.asarray(mesh.depth)
+        depths = np.asarray(mesh.depth)[:mesh.n_res_blocks]
 
         # adjust the size of initial_state array in c++
-        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
         # Loop over variables to fill initial_state vector in c++
         for ith_var, variable in enumerate(self.vars):
@@ -189,7 +189,7 @@ class Compositional(PhysicsBase):
                 itor = interp1d(input_depth, input_distribution[variable], kind='linear', fill_value='extrapolate')
                 values = itor(depths)
 
-            values = np.resize(np.asarray(values), mesh.n_blocks)
+            values = np.resize(np.asarray(values), mesh.n_res_blocks)
             np.asarray(mesh.initial_state)[ith_var::self.n_vars] = values
 
     def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict):
@@ -201,13 +201,13 @@ class Compositional(PhysicsBase):
                                    and each entry is scalar or array of length equal to number of cells
         """
         for variable, values in input_distribution.items():
-            if not np.isscalar(values) and not len(values) == mesh.n_blocks:
+            if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
                 warnings.warn('Initial condition for variable {} has different length, resizing {} to {}'.
-                              format(variable, len(values), mesh.n_blocks))
-                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_blocks)
+                              format(variable, len(values), mesh.n_res_blocks), stacklevel=2)
+                input_distribution[variable] = np.resize(np.asarray(values), mesh.n_res_blocks)
 
         # adjust the size of initial_state array in c++
-        mesh.initial_state.resize(mesh.n_blocks * self.n_vars)
+        mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0::self.n_vars] = input_distribution['pressure']
@@ -218,12 +218,12 @@ class Compositional(PhysicsBase):
                 np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = input_distribution['temperature']
             else:
                 # interpolate pressure and temperature to compute enthalpies
-                enthalpy = np.empty(mesh.n_blocks)
+                enthalpy = np.empty(mesh.n_res_blocks)
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
-                    for j in range(mesh.n_blocks):
+                    for j in range(mesh.n_res_blocks):
                         temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
-                        
+
                         state_pt = np.array([input_distribution['pressure'][j], temp])
                         enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
                 else:

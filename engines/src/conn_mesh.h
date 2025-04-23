@@ -14,13 +14,7 @@ class conn_mesh
 public:
   conn_mesh () {};                                          // default constructor
 
-
-  int init_poro (std::string poro_filename);                // init mesh porosity by reading PORO keyword file
-
   int init_grav_coef(value_t grav_const = 9.80665e-5);      // discretize ms wells into reservoir
-
-  int save_keyword_compressed (std::string filename, 
-    std::string keyword, value_t* data, index_t length);    // dump keyword in compressed (like 2*50 3*100) format
 
   int get_res_tran(std::vector<value_t> &res_tran, 
                    std::vector<value_t> &res_tranD);        // get trans for reservoir part
@@ -32,17 +26,8 @@ public:
 
   int set_wells_tran(std::vector<value_t> &wells_tran);     // set trans for wells part (well indexes)
 
-  int save_volume (std::string filename);                   // dump VOLUME
-  int save_poro (std::string filename);                     // dump PORO
-
-  int save_pressure (std::string filename);                 // dump PRESSURE
-  int save_zmf (std::string filename);                      // dump ZMF
-  int save_temperature (std::string filename);              // dump TEMPERATURE
-  int save_enthalpy (std::string filename);                 // dump ENTHALPY
-
 public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)
-  index_t n_res_well_blocks;                                // number of reservoir and well blocks in the mesh   (R+W)
   index_t n_blocks;                                         // number of all blocks in the mesh including ghost  (R+W+G)
   index_t n_conns;                                          // number of connections between the blocks
   index_t n_perfs;                                          // number of well perforations
@@ -62,9 +47,6 @@ public:
    *  Parameters and methods in mesh class exposed to Python
    *  @{
    */
-
-  /// @brief init mesh by reading TPFACONNS keyword file
-  int init(std::string conn2p_filename);                   
 
   /// @brief init mesh by reading array of left/right neighbours 
   int init(std::vector<index_t> &block_m,
@@ -182,9 +164,6 @@ public:
 	std::vector<value_t>& _fourier,
 	index_t _n_matrix, index_t _n_bounds, index_t _n_fracs);
 
-  /// @brief init mesh for 1D reservoir with 'nb' blocks
-  int init_const_1d(double trans_const, index_t nb);     
-
   /// @brief add a new connection to connection list
   int add_conn(index_t block_m, index_t block_p,
     value_t trans, value_t transD);
@@ -295,20 +274,12 @@ public:
                                         
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;
-  /// [n_blocks] array of initial pressure values
-  std::vector<value_t> pressure;     
   /// [n_blocks] array of reference pressure values
   std::vector<value_t> ref_pressure;
   /// [n_blocks] array of reference temperature values
   std::vector<value_t> ref_temperature;
   /// [n_blocks] array of reference volumetric strain
   std::vector<value_t> ref_eps_vol;
-  /// [n_blocks] array of initial composition values                        
-  std::vector<value_t> composition;     
-  /// [n_blocks] array of initial temperature values                          
-  std::vector<value_t> temperature;     
-  /// [n_blocks] array of initial enthalpy values                        
-  std::vector<value_t> enthalpy;      
   /// [n_dim * n_blocks] array of initial displacements values
   std::vector<value_t> displacement;
   /// [(1 + n_dim) * n_bounds] array of boundary conditions

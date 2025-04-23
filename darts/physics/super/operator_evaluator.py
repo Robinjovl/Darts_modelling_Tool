@@ -129,7 +129,7 @@ class ReservoirOperators(OperatorsSuper):
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
 
-        self.print_operators(state, values)
+        # self.print_operators(state, values)
 
         return 0
 

@@ -9,130 +9,6 @@
 #include <assert.h>
 
 using namespace std;
-int
-conn_mesh::init_const_1d(double trans_const, index_t nb)
-{
-  n_conns = nb-1;
-
-  one_way_block_m.resize(n_conns);
-  one_way_block_p.resize(n_conns);
-  one_way_tran.resize(n_conns);
-  one_way_tranD.resize(n_conns);
-
-  for (index_t i = 0; i < n_conns; ++i)
-  {
-    one_way_block_m[i] = i;
-    one_way_block_p[i] = i + 1;
-    one_way_tran[i] = trans_const;
-    one_way_tranD[i] = trans_const;
-  }
-
-  n_blocks = nb;
-
-  n_res_blocks = n_blocks;
-  n_res_well_blocks = n_blocks;
-  n_one_way_conns = n_conns;
-  n_one_way_conns_res = n_conns;
-
-  poro.resize(n_blocks);
-  volume.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
-  op_num.assign(n_blocks, 0);
-  depth.assign(n_blocks, 0);
-  // thermal properties
-  heat_capacity.assign(n_blocks, 0);
-  rock_cond.assign(n_blocks, 0);
-
-  // kinetic property
-  kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
-
-  // mobility multiplier
-  mob_multiplier.assign(n_blocks * 2, 1);   // assume two phases present and default multiplier 1
-
-  return 0;
-
-}
-
-using namespace std;
-int
-conn_mesh::init (std::string conn2p_filename)
-{
-  string tmpString;
-  ifstream txtFile (conn2p_filename.c_str());
-  int diff_trans = 1;
-
-  if (txtFile.is_open ())
-  {
-    std::getline (txtFile, tmpString);
-    if (tmpString.find ("TPFACONNSN") == string::npos)
-    {
-      // no diffusion since TPFACONNSN not found
-      diff_trans = 0;
-      if (tmpString.find ("TPFACONNS") == string::npos)
-      {
-        printf ("Wrong format of %s file!\n", conn2p_filename.c_str ());
-        exit (0);
-      }
-    }
-  
-    txtFile >> n_conns;
-  
-
-    one_way_block_m.resize (n_conns);
-    one_way_block_p.resize (n_conns);
-    one_way_tran.resize (n_conns);
-    if (diff_trans)
-      one_way_tranD.resize (n_conns);
-
-
-
-    
-    cout << "Reading mesh with " << n_conns << " connections...\n";
-    if (!diff_trans)
-      for (index_t i = 0; i < n_conns; ++i)
-        txtFile >> one_way_block_m[i] >> one_way_block_p[i] >> one_way_tran[i];
-    else
-      for (index_t i = 0; i < n_conns; ++i)
-        txtFile >> one_way_block_m[i] >> one_way_block_p[i] >> one_way_tran[i] >> one_way_tranD[i];
-
-
-    n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
-    n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
-
-    n_res_blocks = n_blocks;
-    n_res_well_blocks = n_blocks;
-    n_one_way_conns = n_conns;
-    n_one_way_conns_res = n_conns;
-
-    poro.resize(n_blocks);
-    volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-    pressure.resize(n_blocks);
-    composition.resize(n_blocks);
-    temperature.resize(n_blocks);
-	  enthalpy.resize(n_blocks);
-    op_num.assign(n_blocks,0);
-    depth.assign(n_blocks, 0);
-    heat_capacity.assign(n_blocks, 0);
-    rock_cond.assign(n_blocks, 0);
-
-	// kinetic property
-	kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
-    
-	// mobility multiplier
-	mob_multiplier.assign(n_blocks * 2, 1);   // assume two phases present and default multiplier 1
-
-    return 0;
-  }
-  else
-    cout << "Failed to open file " << conn2p_filename << "\n";
-    return -1;
-}
-
 int 
 conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, std::vector<value_t>& tran, std::vector<value_t>& tranD)
 {
@@ -146,31 +22,26 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   one_way_tran = tran;
   one_way_tranD = tranD;
   
-  n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
-  n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
+  n_res_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
+  n_res_blocks = std::max(n_res_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
 
-  n_res_blocks = n_blocks;
-  n_res_well_blocks = n_blocks;
+  n_blocks = n_res_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
-  poro.resize(n_blocks);
-  volume.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
-  op_num.assign(n_blocks, 0);
-  depth.assign(n_blocks, 0);
-  heat_capacity.assign(n_blocks, 0);
-  rock_cond.assign(n_blocks, 0);
+  poro.resize(n_res_blocks);
+  volume.resize(n_res_blocks);
+  initial_state.resize(n_res_blocks * n_vars);
+  op_num.assign(n_res_blocks, 0);
+  depth.assign(n_res_blocks, 0);
+  heat_capacity.assign(n_res_blocks, 0);
+  rock_cond.assign(n_res_blocks, 0);
 
   // kinetic property
-  kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
+  kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
 
   // mobility multiplier
-  mob_multiplier.assign(n_blocks * 2, 1);   // assume two phases present and default multiplier 1
+  mob_multiplier.assign(n_res_blocks * 2, 1);   // assume two phases present and default multiplier 1
 
   return 0;
 }
@@ -194,30 +65,25 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
     one_way_tran = _ftran;
 	one_way_rhs = _rhs;
 
-	n_blocks = n_matrix = _n_matrix;
+	n_res_blocks = n_matrix = _n_matrix;
 	n_bounds = _n_bounds;
 
-    n_res_blocks = n_blocks;
-    n_res_well_blocks = n_blocks;
+    n_blocks = n_res_blocks;
     n_one_way_conns = n_conns;
     n_one_way_conns_res = n_conns;
 
-    poro.resize(n_blocks);
-    volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-    pressure.resize(n_blocks);
-    composition.resize(n_blocks);
-    temperature.resize(n_blocks);
-    enthalpy.resize(n_blocks);
-    op_num.assign(n_blocks, 0);
-    depth.assign(n_blocks + n_bounds, 0);
-    heat_capacity.assign(n_blocks, 0);
-    rock_cond.assign(n_blocks, 0);
+    poro.resize(n_res_blocks);
+    volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+    op_num.assign(n_res_blocks, 0);
+    depth.assign(n_res_blocks + n_bounds, 0);
+    heat_capacity.assign(n_res_blocks, 0);
+    rock_cond.assign(n_res_blocks, 0);
 	bc.resize(3 * n_bounds);
-	f.resize(2 * n_blocks);
+	f.resize(2 * n_res_blocks);
 
     // kinetic property
-    kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
+    kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
 
     return 0;
 }*/
@@ -246,30 +112,25 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	one_way_rhs = _rhs;
 
 	n_matrix = _n_matrix;
-	n_blocks = _n_matrix + _n_fracs;
+	n_res_blocks = _n_matrix + _n_fracs;
 	n_bounds = _n_bounds;
 
-	n_res_blocks = n_blocks;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
-	heat_capacity.assign(n_blocks, 0);
-	rock_cond.assign(n_blocks, 0);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
+	heat_capacity.assign(n_res_blocks, 0);
+	rock_cond.assign(n_res_blocks, 0);
 	bc.resize(_n_vars * n_bounds);
-	f.resize(_n_vars * n_blocks);
+	f.resize(_n_vars * n_res_blocks);
 
 	// kinetic property
-	kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
+	kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
 
 	return 0;
 }
@@ -295,32 +156,27 @@ conn_mesh::init_mpfa(std::vector<index_t>& block_m,
 	one_way_rhs = _rhs;
 	one_way_flux = _flux;
 
-	n_blocks = _n_matrix + _n_fracs;
+	n_res_blocks = _n_matrix + _n_fracs;
 	n_res_blocks = _n_matrix + _n_fracs;
 	n_fracs = _n_fracs;
 	n_bounds = _n_bounds;
 
-	n_res_blocks = n_blocks;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
-	heat_capacity.assign(n_blocks, 0);
-	rock_cond.assign(n_blocks, 0);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
+	heat_capacity.assign(n_res_blocks, 0);
+	rock_cond.assign(n_res_blocks, 0);
 	bc.resize(3 * n_bounds);
-	f.resize(2 * n_blocks);
+	f.resize(2 * n_res_blocks);
 
 	// kinetic property
-	kin_factor.assign(n_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
+	kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
 
 	return 0;
 }*/
@@ -346,19 +202,18 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	n_matrix = _n_matrix;
 	n_fracs = _n_fracs;
 	n_bounds = _n_bounds;
-	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	displacement.resize(n_vars * n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	displacement.resize(n_vars * n_res_blocks);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
 	bc.resize((3 + n_vars) * n_bounds);
-	f.resize(n_vars * n_blocks);
+	f.resize(n_vars * n_res_blocks);
 
 	return 0;
 }
@@ -386,19 +241,18 @@ conn_mesh::init_mpsa(std::vector<index_t>& block_m,
 	n_matrix = _n_matrix;
 	n_fracs = _n_fracs;
 	n_bounds = _n_bounds;
-	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	displacement.resize(n_vars * n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	displacement.resize(n_vars * n_res_blocks);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
 	bc.resize((3 + n_vars) * n_bounds);
-	f.resize(n_vars * n_blocks);
+	f.resize(n_vars * n_res_blocks);
 
 	return 0;
 }
@@ -425,28 +279,23 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_matrix = _n_matrix;
 	n_bounds = _n_bounds;
 	n_fracs = _n_fracs;
-	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
-	displacement.resize(3 * n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks, 0);
-	heat_capacity.assign(n_blocks, 0);
-	rock_cond.assign(n_blocks, 0);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+	displacement.resize(3 * n_res_blocks);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks, 0);
+	heat_capacity.assign(n_res_blocks, 0);
+	rock_cond.assign(n_res_blocks, 0);
 	bc.resize(n_vars * n_bounds);
 	bc_n.resize(n_vars * n_bounds);
 	bc_ref.resize(n_vars * n_bounds);
-	f.resize(n_vars * n_blocks);
+	f.resize(n_vars * n_res_blocks);
 
 	return 0;
 }
@@ -477,27 +326,22 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_matrix = _n_matrix;
 	n_bounds = _n_bounds;
 	n_fracs = _n_fracs;
-	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	ref_pressure.resize(n_blocks);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+	ref_pressure.resize(n_res_blocks);
 	ref_eps_vol.resize(n_matrix);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
-	displacement.resize(3 * n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
-	heat_capacity.assign(n_blocks, 0);
-	rock_cond.assign(n_blocks, 0);
-	rock_compressibility.resize(n_blocks);
+	displacement.resize(3 * n_res_blocks);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
+	heat_capacity.assign(n_res_blocks, 0);
+	rock_cond.assign(n_res_blocks, 0);
+	rock_compressibility.resize(n_res_blocks);
 	bc.resize(4 * n_bounds);
 	bc_n.resize(4 * n_bounds);
 	bc_ref.resize(4 * n_bounds);
@@ -536,27 +380,22 @@ conn_mesh::init_pm(std::vector<index_t>& block_m,
 	n_matrix = _n_matrix;
 	n_bounds = _n_bounds;
 	n_fracs = _n_fracs;
-	n_blocks = n_matrix + n_fracs;
 	n_res_blocks = n_matrix + n_fracs;
-	n_res_well_blocks = n_blocks;
+	n_blocks = n_res_blocks;
 	n_one_way_conns = n_conns;
 	n_one_way_conns_res = n_conns;
 
-	poro.resize(n_blocks);
-	volume.resize(n_blocks);
-	initial_state.resize(n_blocks * n_vars);
-	pressure.resize(n_blocks);
-	ref_pressure.resize(n_blocks);
+	poro.resize(n_res_blocks);
+	volume.resize(n_res_blocks);
+	initial_state.resize(n_res_blocks * n_vars);
+	ref_pressure.resize(n_res_blocks);
 	ref_eps_vol.resize(n_matrix);
-	composition.resize(n_blocks);
-	temperature.resize(n_blocks);
-	enthalpy.resize(n_blocks);
-	displacement.resize(3 * n_blocks);
-	op_num.assign(n_blocks, 0);
-	depth.assign(n_blocks + n_bounds, 0);
-	heat_capacity.assign(n_blocks, 0);
-	rock_cond.assign(n_blocks, 0);
-	rock_compressibility.resize(n_blocks);
+	displacement.resize(3 * n_res_blocks);
+	op_num.assign(n_res_blocks, 0);
+	depth.assign(n_res_blocks + n_bounds, 0);
+	heat_capacity.assign(n_res_blocks, 0);
+	rock_cond.assign(n_res_blocks, 0);
+	rock_compressibility.resize(n_res_blocks);
 	bc.resize(4 * n_bounds);
 	bc_n.resize(4 * n_bounds);
 	bc_ref.resize(4 * n_bounds);
@@ -598,27 +437,22 @@ conn_mesh::init_pm_mech_discretizer(
   n_matrix = _n_matrix;
   n_bounds = _n_bounds;
   n_fracs = _n_fracs;
-  n_blocks = n_matrix + n_fracs;
   n_res_blocks = n_matrix + n_fracs;
-  n_res_well_blocks = n_blocks;
+  n_blocks = n_res_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
-  poro.resize(n_blocks);
-  volume.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  ref_pressure.resize(n_blocks, 0.0);
+  poro.resize(n_res_blocks);
+  volume.resize(n_res_blocks);
+  initial_state.resize(n_res_blocks * n_vars);
+  ref_pressure.resize(n_res_blocks, 0.0);
   ref_eps_vol.resize(n_matrix, 0.0);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
-  displacement.resize(3 * n_blocks);
-  op_num.assign(n_blocks, 0);
-  depth.assign(n_blocks + n_bounds, 0);
-  heat_capacity.assign(n_blocks, 0);
-  rock_cond.assign(n_blocks, 0);
-  rock_compressibility.resize(n_blocks);
+  displacement.resize(3 * n_res_blocks);
+  op_num.assign(n_res_blocks, 0);
+  depth.assign(n_res_blocks + n_bounds, 0);
+  heat_capacity.assign(n_res_blocks, 0);
+  rock_cond.assign(n_res_blocks, 0);
+  rock_compressibility.resize(n_res_blocks);
   bc.resize(n_vars * n_bounds);
   bc_n.resize(n_vars * n_bounds);
   bc_ref.resize(n_vars * n_bounds);
@@ -664,29 +498,24 @@ conn_mesh::init_pme_mech_discretizer(
   n_matrix = _n_matrix;
   n_bounds = _n_bounds;
   n_fracs = _n_fracs;
-  n_blocks = n_matrix + n_fracs;
   n_res_blocks = n_matrix + n_fracs;
-  n_res_well_blocks = n_blocks;
+  n_blocks = n_res_blocks;
   n_one_way_conns = n_conns;
   n_one_way_conns_res = n_conns;
 
-  poro.resize(n_blocks);
-  volume.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  pressure.resize(n_blocks);
-  ref_pressure.resize(n_blocks, 0.0);
-  ref_temperature.resize(n_blocks, 0.0);
+  poro.resize(n_res_blocks);
+  volume.resize(n_res_blocks);
+  initial_state.resize(n_res_blocks * n_vars);
+  ref_pressure.resize(n_res_blocks, 0.0);
+  ref_temperature.resize(n_res_blocks, 0.0);
   ref_eps_vol.resize(n_matrix, 0.0);
-  composition.resize(n_blocks);
-  temperature.resize(n_blocks);
-  enthalpy.resize(n_blocks);
-  displacement.resize(3 * n_blocks);
-  op_num.assign(n_blocks, 0);
-  depth.assign(n_blocks + n_bounds, 0);
-  heat_capacity.assign(n_blocks, 0);
-  rock_cond.assign(n_blocks, 0);
-  th_poro.resize(n_blocks);
-  rock_compressibility.resize(n_blocks);
+  displacement.resize(3 * n_res_blocks);
+  op_num.assign(n_res_blocks, 0);
+  depth.assign(n_res_blocks + n_bounds, 0);
+  heat_capacity.assign(n_res_blocks, 0);
+  rock_cond.assign(n_res_blocks, 0);
+  th_poro.resize(n_res_blocks);
+  rock_compressibility.resize(n_res_blocks);
   bc.resize(n_vars * n_bounds);
   bc_n.resize(n_vars * n_bounds);
   bc_ref.resize(n_vars * n_bounds);
@@ -1904,39 +1733,6 @@ conn_mesh::init_grav_coef(value_t grav_const)
   return 0;
 }
 
-int conn_mesh::save_keyword_compressed (std::string filename, std::string keyword, value_t* data, index_t length)
-{
-  ofstream out_txt (filename.c_str ());
-  value_t prev_value;
-  index_t repetetion_counter = 0;
-
-  if (!out_txt)
-  {
-    printf ("Error: can`t open file %s for writing\n", filename.c_str ());
-    return -1;
-  }
-  out_txt << keyword << "\n";
-  prev_value = data[0];
-  for (index_t i = 0; i < length; ++i)
-  {
-    if (data[i] == prev_value)
-      repetetion_counter++;
-    else
-    {
-      out_txt << repetetion_counter << "*" << prev_value << "\n";
-      prev_value = data[i];
-      repetetion_counter = 1;
-    }
-  }
-
-  // write the last one(s)
-  out_txt << repetetion_counter << "*" << prev_value << "\n";
-
-  out_txt << "/";
-
-  return 0;
-}
-
 int conn_mesh::get_res_tran(std::vector<value_t>& res_tran, std::vector<value_t>& res_tranD)
 {
   res_tran.resize(n_one_way_conns_res);
@@ -2017,131 +1813,9 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
   return 0;
 }
 
-int conn_mesh::save_volume(std::string filename)
-{
-  return save_keyword_compressed (filename, "VOLUME", &volume[0], n_res_blocks);
-}
-
-int conn_mesh::save_poro (std::string filename)
-{
-  return save_keyword_compressed (filename, "PORO", &poro[0], n_res_blocks);
-}
-
-int conn_mesh::save_pressure (std::string filename)
-{
-  return save_keyword_compressed (filename, "PRESSURE", &pressure[0], n_res_blocks);
-}
-
-int conn_mesh::save_temperature (std::string filename)
-{
-  return save_keyword_compressed (filename, "TEMP", &temperature[0], n_res_blocks);
-}
-
-int conn_mesh::save_enthalpy(std::string filename)
-{
-	return save_keyword_compressed(filename, "ENTH", &enthalpy[0], n_res_blocks);
-}
-
-int conn_mesh::save_zmf (std::string filename)
-{
-  string tmpString;
-  ofstream zi_txt (filename.c_str ());
-  value_t prev_value;
-  index_t repetetion_counter = 0;
-  index_t NC = composition.size () / n_res_blocks + 1;
-  zi_txt << "ZMF\n";
-
-  for (index_t j = 0; j < (NC - 1); ++j)
-  {
-    prev_value = composition[j];
-    repetetion_counter = 0;
-    for (index_t i = 0; i < n_res_blocks; ++i)
-    {
-      if (composition[i * (NC - 1) + j] == prev_value)
-        repetetion_counter++;
-      else
-      {
-        zi_txt << repetetion_counter << "*" << prev_value << "\n";
-        prev_value = composition[i * (NC - 1) + j];
-        repetetion_counter = 1;
-      }
-    }
-
-    // write the last one(s)
-    zi_txt << repetetion_counter << "*" << prev_value << "\n";
-  }
-
-  value_t z = 1;
-  for (index_t j = 0; j < (NC - 1); ++j)
-    z -= composition[j];
-  prev_value = z;
-  repetetion_counter = 0;
-
-  for (index_t i = 0; i < n_res_blocks; ++i)
-  {
-    z = 1;
-    for (index_t j = 0; j < (NC - 1); ++j)
-      z -= composition[i * (NC - 1) + j];
-
-    if (z == prev_value)
-      repetetion_counter++;
-    else
-    {
-      zi_txt << repetetion_counter << "*" << prev_value << "\n";
-      prev_value = z;
-      repetetion_counter = 1;
-    }
-  }
-  
-  // write the last one(s)
-  zi_txt << repetetion_counter << "*" << prev_value << "\n";
-
-  zi_txt << "/";
-
-  return 0;
-}
-
-
-int conn_mesh::init_poro (std::string filename)
-{
-  string tmpString;
-  ifstream txtFile (filename.c_str());
-
-  if (txtFile.is_open ())
-  {
-    std::getline (txtFile, tmpString);
-    if (tmpString.find ("PORO") == string::npos)
-    {
-      printf ("Wrong format of %s file!\n", filename.c_str());
-      exit (0);
-    }
-    poro.resize (n_blocks);
-    for (long i = 0; i < n_blocks; ++i)
-    {
-      txtFile >> poro[i];
-      if (poro[i] < PORO_MIN)
-        poro[i] = PORO_MIN;
-    }
-  }
-  else
-  {
-    printf ("File %s does not exist!!!\n", filename.c_str());
-    return -1;
-  }
-
-  /*
-  ofstream vol_txt ("poro_adj.dat");
-  vol_txt << "PORO\n";
-  for (long i = 0; i < n_blocks; ++i)
-    vol_txt << poro[i] << "\n";
-  vol_txt << "/";
-  */
-  return 0;
-}
-
 int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
-  index_t well_head_idx = n_blocks;
+  index_t well_head_idx = n_res_blocks;
   n_perfs = 0;
 
   // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
@@ -2178,20 +1852,16 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
 
   // Resize mesh arrays by number of well blocks and head blocks (one per well)
-  volume.resize(well_head_idx);
-  poro.resize(well_head_idx);
-  initial_state.resize(well_head_idx * n_vars);
-  pressure.resize(well_head_idx);
-  temperature.resize(well_head_idx);
-  enthalpy.resize(well_head_idx);
-  int nc_1 = composition.size() / n_blocks;
-  composition.resize(well_head_idx * nc_1);
-  op_num.resize(well_head_idx);
-  depth.resize(well_head_idx + n_bounds);
+  n_blocks = well_head_idx;
+  volume.resize(n_blocks);
+  poro.resize(n_blocks);
+  initial_state.resize(n_blocks * n_vars);
+  op_num.resize(n_blocks);
+  depth.resize(n_blocks + n_bounds);
 
-  heat_capacity.resize(well_head_idx);
-  rock_cond.resize(well_head_idx + n_bounds);
-  mob_multiplier.resize(2 * well_head_idx);
+  heat_capacity.resize(n_blocks);
+  rock_cond.resize(n_blocks + n_bounds);
+  mob_multiplier.resize(2 * n_blocks);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
@@ -2210,16 +1880,12 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
         int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
         int w_i = wells[iw]->well_head_idx + p;
         // copy properties for the well blocks from the reservoir blocks
-        pressure[w_i] = pressure[r_i];
-        temperature[w_i] = temperature[r_i];
         rock_cond[w_i] = rock_cond[r_i];
         // depth of well segments
         depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-        std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
       }
     }
   }
-  n_blocks = well_head_idx;
 
   return 0;
 }
@@ -2236,7 +1902,7 @@ int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int i
 
 int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR)
 {
-	index_t well_head_idx = n_blocks;
+	index_t well_head_idx = n_res_blocks;
 	n_perfs = 0;
 
 	// calculate number of additional unknowns will be added
@@ -2256,14 +1922,10 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	shift_boundary_ids_mpfa(dofs_num);
 
 	// Resize mesh arrays by number of well blocks and head blocks (one per well)
+	n_blocks += dofs_num;
 	volume.resize(volume.size() + dofs_num);
 	poro.resize(poro.size() + dofs_num);
 	initial_state.resize(initial_state.size() + dofs_num * n_vars);
-	pressure.resize(pressure.size() + dofs_num);
-	temperature.resize(temperature.size() + dofs_num);
-	enthalpy.resize(enthalpy.size() + dofs_num);
-	int nc_1 = composition.size() / n_blocks;
-	composition.resize(composition.size() + dofs_num * nc_1);
 	op_num.resize(op_num.size() + dofs_num);
 	//depth.resize(depth.size() + dofs_num);
 	if (displacement.size())
@@ -2275,7 +1937,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	if (th_poro.size())
 	  th_poro.resize(th_poro.size() + dofs_num);
 	heat_capacity.resize(heat_capacity.size() + dofs_num);
-	//rock_cond.resize(well_head_idx + n_bounds);
+	//rock_cond.resize(n_blocks + n_bounds);
 
 	// Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
 	// which are connected to the reservoir. In addition, there is one more grid block (H-block)
@@ -2323,15 +1985,11 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 			{
 				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
 				int w_i = wells[iw]->well_head_idx + p;
-				pressure[w_i] = pressure[r_i];
-				temperature[w_i] = temperature[r_i];
 				// depth of well segments
 				depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-				std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
 			}
 		}
 	}
-	n_blocks = well_head_idx;
 
 	return 0;
 }

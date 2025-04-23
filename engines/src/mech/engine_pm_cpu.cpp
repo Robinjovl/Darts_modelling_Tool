@@ -181,7 +181,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   nc = get_n_comps();
   z_var = get_z_var();
 
-  X_init.resize(n_vars * mesh->n_blocks);
+  X_init.resize(n_vars * mesh->n_res_blocks);
   PV.resize(mesh->n_blocks);
   RV.resize(mesh->n_blocks);
   old_z.resize(nc);
@@ -199,14 +199,18 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   max_row_values.resize(n_vars * mesh->n_blocks);
   jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
 
-  for (index_t i = 0; i < mesh->n_blocks; i++)
+  for (index_t i = 0; i < mesh->n_res_blocks; i++)
   {
 	for (uint8_t d = 0; d < ND_; d++)
 	{
 	  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND_ * i + d];
 	}
 	X_init[n_vars * i + P_VAR] = mesh->initial_state[i];
+  }
+  X_init.resize(n_vars * mesh->n_blocks);
 
+  for (index_t i = 0; i < mesh->n_blocks; i++)
+  {
 	PV[i] = mesh->volume[i] * mesh->poro[i];
 	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
   }

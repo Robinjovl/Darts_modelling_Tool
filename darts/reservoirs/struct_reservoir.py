@@ -474,7 +474,7 @@ class StructReservoir(ReservoirBase):
             # group file every time
 
             self.vtk_filenames_and_times[vtk_file_name] = t
-            vtk_group = VtkGroup('solution')
+            vtk_group = VtkGroup(os.path.join(output_directory, 'solution'))
             for fname, t in self.vtk_filenames_and_times.items():
                 vtk_group.addFile(fname, t)
             vtk_group.save()
