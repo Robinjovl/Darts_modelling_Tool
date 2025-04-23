@@ -198,18 +198,6 @@ class UnstructReservoir:
         # Create empty list of wells:
         self.wells = []
 
-        # writing *.pvd file
-        self.matpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
-        self.matpvd_root = self.matpvd_doc.documentElement
-        self.matpvd_root.setAttribute("type", "Collection")
-        self.matpvd_root.setAttribute("version", "0.1")
-        self.matpvd_collection = self.matpvd_doc.createElement("Collection")
-
-        self.faultpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
-        self.faultpvd_root = self.faultpvd_doc.documentElement
-        self.faultpvd_root.setAttribute("type", "Collection")
-        self.faultpvd_root.setAttribute("version", "0.1")
-        self.faultpvd_collection = self.faultpvd_doc.createElement("Collection")
     def init_reservoir(self, verbose):
         pass
     def set_equilibrium(self):
@@ -1002,17 +990,7 @@ class UnstructReservoir:
             cell_data=cell_data)
         meshio.write("{:s}/solution{:d}.vtu".format(output_directory, ith_step), mesh)
 
-        # *.pvd
-        snap = self.matpvd_doc.createElement("DataSet")
-        snap.setAttribute("timestep", str(time))
-        snap.setAttribute("file", 'solution{:d}.vtu'.format(ith_step))
-        self.matpvd_collection.appendChild(snap)
-        root = self.matpvd_root
-        root.appendChild(self.matpvd_collection)
-        self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'),
-                     indent="  ",
-                     addindent="  ",
-                     newl='\n')
+        self.write_pvd_file(ith_step, time, output_directory)
 
         # Fractures
         geom_id = 0
@@ -1228,3 +1206,30 @@ class UnstructReservoir:
             self.fig.tight_layout()
             self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
             plt.close(self.fig)
+
+    def write_pvd_file(self, ith_step, time, output_directory):
+        # writing *.pvd file
+        if not hasattr(self, 'matpvd_doc'):  # do just once, at the first call
+            self.matpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
+            self.matpvd_root = self.matpvd_doc.documentElement
+            self.matpvd_root.setAttribute("type", "Collection")
+            self.matpvd_root.setAttribute("version", "0.1")
+            self.matpvd_collection = self.matpvd_doc.createElement("Collection")
+
+            self.faultpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
+            self.faultpvd_root = self.faultpvd_doc.documentElement
+            self.faultpvd_root.setAttribute("type", "Collection")
+            self.faultpvd_root.setAttribute("version", "0.1")
+            self.faultpvd_collection = self.faultpvd_doc.createElement("Collection")
+
+        # *.pvd
+        snap = self.matpvd_doc.createElement("DataSet")
+        snap.setAttribute("timestep", str(time))
+        snap.setAttribute("file", 'solution{:d}.vtu'.format(ith_step))
+        self.matpvd_collection.appendChild(snap)
+        root = self.matpvd_root
+        root.appendChild(self.matpvd_collection)
+        self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'),
+                     indent="  ",
+                     addindent="  ",
+                     newl='\n')
