@@ -16,6 +16,7 @@ from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
+    first_ts : float
     dt_min: float
     dt_mult: float
     eta: float
@@ -28,6 +29,7 @@ class DataTS:
         self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
 
         # default values
+        self.first_ts = 1e-3
         self.dt_min = 1e-2
         self.dt_mult = 2
         self.dt_max = 365
@@ -291,7 +293,7 @@ class DartsModel:
         self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
 
 
-    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
+    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, min_ts = 1e-15, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
                        newton_type=None, newton_params=None, line_search: bool=False):
         """
@@ -318,12 +320,12 @@ class DartsModel:
         """
         self.data_ts = DataTS(self.physics.n_vars)
 
-        self.data_ts.dt_min = first_ts if first_ts is not None else self.data_ts.dt_min
+        self.data_ts.first_ts = first_ts if first_ts is not None else self.data_ts.first_ts
+        self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
         self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
         self.data_ts.max_it_nonlin = it_newton if it_newton is not None else self.data_ts.max_it_nonlin
         self.data_ts.tol_res = tol_newton if tol_newton is not None else self.data_ts.tol_res
         self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
-
 
         self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
         self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
@@ -436,7 +438,7 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = data_ts.dt_min
+            dt = data_ts.first_ts
         elif restart_dt > 0.:
             dt = restart_dt
         else:
