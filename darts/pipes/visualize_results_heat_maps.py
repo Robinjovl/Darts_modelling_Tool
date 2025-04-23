@@ -28,13 +28,16 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     well_geom = next(iter(coupled_model.wells.values())).geometry
 
     segments_MD = well_geom.z
+    interfaces_MD = well_geom.z_interfaces
     if y_axis == "segments_TVD":
         segments_TVD = well_geom.TVD_segments
+        interfaces_TVD = well_geom.TVD_interfaces
 
     # Get components names
     components_names = coupled_model.physics.property_containers[0].components_name
     num_components = len(components_names)
     num_segments = well_geom.num_segments
+    num_interfaces = num_segments - 1
 
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
@@ -60,14 +63,20 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         x_label = 'Simulation time [second]'
 
     if y_axis == "segment_index":
-        y = range(num_segments)
-        y_label = 'Segment index [-]'
+        y_segments = range(num_segments)
+        y_segments_label = 'Segment index [-]'
+        y_interfaces = range(num_interfaces)
+        y_interfaces_label = 'Interface index [-]'
     elif y_axis == "segments_MD":
-        y = segments_MD
-        y_label = "MD [meter]"
+        y_segments = segments_MD
+        y_segments_label = "Segment MD [meter]"
+        y_interfaces = interfaces_MD
+        y_interfaces_label = 'Interface MD [meter]'
     elif y_axis == "segments_TVD":
-        y = segments_TVD
-        y_label = "TVD [meter]"
+        y_segments = segments_TVD
+        y_segments_label = "Segment TVD [meter]"
+        y_interfaces = interfaces_TVD
+        y_interfaces_label = 'Interface TVD [meter]'
 
     #%% Pressure profile
 
@@ -83,7 +92,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, p_matrix, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y_segments, p_matrix, cmap=cmap, shading='auto')
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -91,7 +100,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -128,7 +137,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cax = ax.pcolormesh(x, y, z_c_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(x, y_segments, z_c_matrix, cmap=cmap, shading='auto')
 
         # Set the y-axis ticks
         if y_axis == "segment_index":
@@ -136,7 +145,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
         # Reverse the y-axis
         ax.invert_yaxis()
@@ -166,7 +175,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cax = ax.pcolormesh(x, y, T_matrix, cmap=cmap, shading='auto')
+        cax = ax.pcolormesh(x, y_segments, T_matrix, cmap=cmap, shading='auto')
 
         # Set the y-axis ticks
         if y_axis == "segment_index":
@@ -174,7 +183,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
         # Reverse the y-axis
         ax.invert_yaxis()
@@ -203,7 +212,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+    cax = ax.pcolormesh(x, y_segments, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -211,7 +220,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -242,7 +251,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cax = ax.pcolormesh(x, y, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+        cax = ax.pcolormesh(x, y_segments, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
         # Set the y-axis ticks
         if y_axis == "segment_index":
@@ -250,7 +259,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
         # Reverse the y-axis
         ax.invert_yaxis()
@@ -281,7 +290,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create the heatmap
-        cax = ax.pcolormesh(x, y, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+        cax = ax.pcolormesh(x, y_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
         # Set the y-axis ticks
         if y_axis == "segment_index":
@@ -289,7 +298,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
         # Reverse the y-axis
         ax.invert_yaxis()
@@ -322,7 +331,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, rhoG_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y_segments, rhoG_matrix_masked, cmap=cmap, shading='auto')
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -330,7 +339,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -363,7 +372,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, rhoL_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -371,7 +380,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -404,7 +413,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, miuG_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y_segments, miuG_matrix_masked, cmap=cmap, shading='auto')
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -412,7 +421,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -445,7 +454,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Create the heatmap
-    cax = ax.pcolormesh(x, y, miuL_matrix_masked, cmap=cmap, shading='auto')
+    cax = ax.pcolormesh(x, y_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
 
     # Set the y-axis ticks
     if y_axis == "segment_index":
@@ -453,7 +462,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_label, fontsize=14)
+    ax.set_ylabel(y_segments_label, fontsize=14)
 
     # Reverse the y-axis
     ax.invert_yaxis()
@@ -470,134 +479,82 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     #%% Gas velocity profile
 
-    # # Initialize the gas velocity matrix
-    # num_interfaces = num_segments - 1
-    # vG_matrix = np.zeros((num_interfaces, num_selected_ts))
-    #
-    # # Fill the gas velocity matrix
-    # for ts_counter in time_step_idx_range:
-    #     vG = data_frame["vG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-    #     vG_matrix[:, ts_counter] = vG[:-1]
-    #
-    # # Apply a mask to hide some values
-    # vG_matrix_masked = np.ma.masked_where(vG_matrix == 0, vG_matrix)
-    #
-    # # Initialize the plot
-    # fig, ax = plt.subplots(figsize=(12, 6))
-    #
-    #
-    # # Create the heatmap
-    # if x_axis == "time_step_index" and y_axis == "segment_index":
-    #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vG_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Set the y-axis ticks
-    #     ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Time step [-]', fontsize=14)
-    #     ax.set_ylabel('Interface index [-]', fontsize=14)
-    #
-    # elif x_axis == "simulation_time" and y_axis == "segment_index":
-    #     cax = ax.pcolormesh(simulation_time, range(num_interfaces), vG_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Set the y-axis ticks
-    #     ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #     ax.set_ylabel('Interface index [-]', fontsize=14)
-    #
-    # elif x_axis == "time_step_index" and y_axis == "segments_TVD":
-    #     cax = ax.pcolormesh(time_step_idx_range, TVD_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Time step [-]', fontsize=14)
-    #     ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    # elif x_axis == "simulation_time" and y_axis == "segments_TVD":
-    #     cax = ax.pcolormesh(simulation_time, TVD_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #     ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    #     # Reverse the y-axis
-    #     ax.invert_yaxis()
-    #
-    #
-    # # Add title
-    # ax.set_title('Gas velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
-    #
-    # # Add a colorbar to show the gas velocity values
-    # cbar = fig.colorbar(cax, ax=ax)
-    # cbar.set_label('Gas velocity [m/s]', fontsize=14)
-    #
-    # plt.tight_layout()
-    # plt.show()
+    # Initialize the gas velocity matrix
+    vG_matrix = np.zeros((num_interfaces, num_selected_ts))
+
+    # Fill the gas velocity matrix
+    for ts_counter in time_step_idx_range:
+        vG = data_frame["vG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        vG_matrix[:, ts_counter] = vG[:-1] / (24 * 60 * 60)   # convert m/day to m/s
+
+    # Apply a mask to hide values equal to zero
+    threshold = 0  # Set your threshold here
+    vG_matrix_masked = np.ma.masked_where(vG_matrix == threshold, vG_matrix)
+
+    # Initialize the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Create the heatmap
+    cax = ax.pcolormesh(x, y_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
+        ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_interfaces_label, fontsize=14)
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
+
+    # Add title
+    ax.set_title('Gas velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+    # Add a colorbar to show the gas velocity values
+    cbar = fig.colorbar(cax, ax=ax)
+    cbar.set_label('Gas velocity [m/s]', fontsize=14)
+
+    plt.tight_layout()
+    plt.show()
 
     #%% Liquid velocity profile
 
-    # # Initialize the gas velocity matrix
-    # num_interfaces = num_segments - 1
-    # vL_matrix = np.zeros((num_interfaces, num_selected_ts))
-    #
-    # # Fill the liquid velocity matrix
-    # for ts_counter in time_step_idx_range:
-    #     vL = data_frame["vL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-    #     vL_matrix[:, ts_counter] = vL[:-1]
-    #
-    # # Apply a mask to hide some values
-    # vL_matrix_masked = np.ma.masked_where(vL_matrix == 0, vL_matrix)
-    #
-    # # Initialize the plot
-    # fig, ax = plt.subplots(figsize=(12, 6))
-    #
-    #
-    # # Create the heatmap
-    # if x_axis == "time_step_index" and y_axis == "segment_index":
-    #     cax = ax.pcolormesh(time_step_idx_range, range(num_interfaces), vL_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Set the y-axis ticks
-    #     ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Time step [-]', fontsize=14)
-    #     ax.set_ylabel('Interface index [-]', fontsize=14)
-    #
-    # elif x_axis == "simulation_time" and y_axis == "segment_index":
-    #     cax = ax.pcolormesh(simulation_time, range(num_interfaces), vL_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Set the y-axis ticks
-    #     ax.yaxis.set_major_locator(MultipleLocator(1))
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #     ax.set_ylabel('Interface index [-]', fontsize=14)
-    #
-    # elif x_axis == "time_step_index" and y_axis == "segments_TVD":
-    #     cax = ax.pcolormesh(time_step_idx_range, TVD_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Time step [-]', fontsize=14)
-    #     ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    # elif x_axis == "simulation_time" and y_axis == "segments_TVD":
-    #     cax = ax.pcolormesh(simulation_time, TVD_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
-    #
-    #     # Add axes labels
-    #     ax.set_xlabel('Simulation time [second]', fontsize=14)
-    #     ax.set_ylabel('TVD [meter]', fontsize=14)
-    #
-    #     # Reverse the y-axis
-    #     ax.invert_yaxis()
-    #
-    #
-    # # Add title
-    # ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
-    #
-    # # Add a colorbar to show the liquid velocity values
-    # cbar = fig.colorbar(cax, ax=ax)
-    # cbar.set_label('Liquid velocity [m/s]', fontsize=14)
-    #
-    # plt.tight_layout()
-    # plt.show()
+    # Initialize the liquid velocity matrix
+    vL_matrix = np.zeros((num_interfaces, num_selected_ts))
+
+    # Fill the liquid velocity matrix
+    for ts_counter in time_step_idx_range:
+        vL = data_frame["vL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+        vL_matrix[:, ts_counter] = vL[:-1] / (24 * 60 * 60)   # convert m/day to m/s
+
+    # Apply a mask to hide values equal to zero
+    threshold = 0  # Set your threshold here
+    vL_matrix_masked = np.ma.masked_where(vL_matrix == threshold, vL_matrix)
+
+    # Initialize the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Create the heatmap
+    cax = ax.pcolormesh(x, y_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
+
+    # Set the y-axis ticks
+    if y_axis == "segment_index":
+        ax.yaxis.set_major_locator(MultipleLocator(1))
+
+    # Add axes labels
+    ax.set_xlabel(x_label, fontsize=14)
+    ax.set_ylabel(y_interfaces_label, fontsize=14)
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
+
+    # Add title
+    ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+    # Add a colorbar to show the liquid velocity values
+    cbar = fig.colorbar(cax, ax=ax)
+    cbar.set_label('Liquid velocity [m/s]', fontsize=14)
+
+    plt.tight_layout()
+    plt.show()
