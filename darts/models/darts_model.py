@@ -467,9 +467,9 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %10g\tDT = %8.4g\tNI = %2d\tLI=%3d\tdX=%4s\tDT_MULT=%3.3g"
-                          % (ts, np.round(t, 3), np.round(dt, 4), self.physics.engine.n_newton_last_dt,
-                             self.physics.engine.n_linear_last_dt, np.round(max_x, 3), dt_mult_new))
+                    print("# %d \tT = %10g\tDT = %10g\tNI = %2d\tLI=%3d\tDT_MULT=%3.3g\tdX=%4s"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt,
+                             self.physics.engine.n_linear_last_dt, dt_mult_new, np.round(max_x, 3)))
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
