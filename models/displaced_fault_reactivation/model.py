@@ -164,7 +164,7 @@ class Model(THMCModel):
                 # allow to slip
                 contact.set_state(contact_state.SLIP)
                 # static friction coefficients
-                mu0 = 0.52 * np.ones(len(contact.cell_ids))
+                mu0 = 0.52 * np.ones(len(contact.cell_ids))  # initial friction coefficient
                 contact.mu0 = value_vector(mu0)
                 contact.mu = contact.mu0
 

@@ -149,7 +149,7 @@ def run_timestep_python(m, dt, t):
                 break
         if self.e.dev_g > m.cut_off_gap_residual:
             converged = 0
-            print('Contact residual cut-off exceeded!!!')
+            print('Restart newton iterations due to exceed of contact residual cut-off exceeded!!!')
             break
 
         r_code = self.e.solve_linear_equation()
@@ -234,7 +234,7 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     m.physics.engine.find_equilibrium = False
 
     if m.depletion_mode == 'uniform':
-        # eliminate fluid flow and mechanics -> flow coupling, keeping flow -> mechanics
+        # no fluid flow, no mechanics -> flow coupling, keeping pressure -> mechanics influencing
         m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=True)
     else:
         # eliminate mechanics -> flow coupling, keeping flow -> mechanics
@@ -608,7 +608,14 @@ if __name__ == '__main__':
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse_longer.msh'}
     # commented because it is very long
-    # cases += [config]
+    #cases += [config]
+
+    config = {'mode': 'mixed',
+              'timesteps': 5 * np.ones(4),
+              'depletion': {'mode': 'well', 'value': -250.0},
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse.msh'}
+    #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],

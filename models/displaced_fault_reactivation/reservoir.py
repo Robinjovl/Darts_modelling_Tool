@@ -7,6 +7,8 @@ from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from itertools import compress
 from darts.reservoirs.unstruct_reservoir_mech import get_rock_compressibility
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_bulk_modulus, get_biot_modulus
+from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 import meshio
 import os
 import pandas as pd
@@ -21,7 +23,7 @@ rcParams["text.usetex"]=False
 # rcParams["font.serif"] = ["Liberation Serif"]
 from utils import dict_hash, hash_array
 
-class UnstructReservoir:
+class UnstructReservoir(UnstructReservoirMech):
     def __init__(self, timer, fluid_density, rock_density, mesh_file, cache_discretizer: bool = True):
         self.timer = timer
         self.rho_s = rock_density
@@ -531,6 +533,7 @@ class UnstructReservoir:
         physical_tags['output'] = []
         physical_tags['boundary'] = [991, 981, 992, 982, 993, 994, 995, 996, 998]
         self.unstr_discr = UnstructDiscretizer(mesh_file=self.mesh_file, physical_tags=physical_tags)
+        #TODO can remove this:
         self.unstr_discr.eps_t = 1.E+0
         self.unstr_discr.eps_n = 1.E+0
         self.unstr_discr.mu = 3.2
@@ -1038,18 +1041,6 @@ class UnstructReservoir:
             cell_data=cell_data)
         meshio.write("{:s}/solution_fault{:d}.vtu".format(output_directory, ith_step), mesh)
 
-        # *.pvd
-        snap = self.faultpvd_doc.createElement("DataSet")
-        snap.setAttribute("timestep", str(time))
-        snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
-        self.faultpvd_collection.appendChild(snap)
-        root = self.faultpvd_root
-        root.appendChild(self.faultpvd_collection)
-        self.faultpvd_doc.writexml(open(str(output_directory) + '/solution_fault.pvd', 'w'),
-                     indent="  ",
-                     addindent="  ",
-                     newl='\n')
-
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
 
@@ -1230,6 +1221,18 @@ class UnstructReservoir:
         root = self.matpvd_root
         root.appendChild(self.matpvd_collection)
         self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'),
+                     indent="  ",
+                     addindent="  ",
+                     newl='\n')
+
+        # *.pvd
+        snap = self.faultpvd_doc.createElement("DataSet")
+        snap.setAttribute("timestep", str(time))
+        snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
+        self.faultpvd_collection.appendChild(snap)
+        root = self.faultpvd_root
+        root.appendChild(self.faultpvd_collection)
+        self.faultpvd_doc.writexml(open(str(output_directory) + '/solution_fault.pvd', 'w'),
                      indent="  ",
                      addindent="  ",
                      newl='\n')
