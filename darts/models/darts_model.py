@@ -442,7 +442,7 @@ class DartsModel:
 
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
-        max_x = np.zeros(nc)
+        max_dx = np.zeros(nc)
         
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.
@@ -450,7 +450,7 @@ class DartsModel:
             omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         while t < stop_time:
-            xn = np.array(self.physics.engine.Xn[:nb * nc])
+            xn = np.array(self.physics.engine.Xn, copy=False)[:nb * nc]
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
@@ -458,11 +458,11 @@ class DartsModel:
                 self.physics.engine.t = t
                 ts += 1
 
-                x = np.array(self.physics.engine.X[:nb * nc])
+                x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
                 dt_mult_new = 1e3
                 for i in range(nc):
-                    max_x[i] = np.max(abs(xn[i::nc] - x[i::nc]))
-                    mult = ((1 + omega) * data_ts.eta[i]) / (max_x[i] + omega * data_ts.eta[i])
+                    max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
+                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
                     if mult < dt_mult_new:
                         dt_mult_new = mult
 
