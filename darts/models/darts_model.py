@@ -27,7 +27,7 @@ class DataTS:
         self.dt_max = 365.
         self.tol_res = 1e-2
         self.tol_wel_mult = 100.
-        self.tol_stationary = 1e-3
+        self.tol_stationary = 1e-5
         self.max_it_nonlin = 20
 
 class DartsModel:
