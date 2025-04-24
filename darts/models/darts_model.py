@@ -434,7 +434,7 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt, data_ts.dt_max)
+            dt = min(self.prev_dt*data_ts.dt_mult, data_ts.dt_max)
 
         self.prev_dt = dt
 
@@ -467,9 +467,8 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %10g\tDT = %10g\tNI = %2d\tLI=%3d\tDT_MULT=%3.3g\tdX=%4s"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt,
-                             self.physics.engine.n_linear_last_dt, dt_mult_new, np.round(max_x, 3)))
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tself.prev_dt=%2g"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt, self.prev_dt))
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
