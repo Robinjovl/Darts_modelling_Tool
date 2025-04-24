@@ -46,7 +46,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
         # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
-        p_init_res = 23.771887   # from the pressure of the perforated segment of the wellbore
+        p_init_res = 21.383199   # from the pressure of the perforated segment of the wellbore
         T_init_res = 371.90   # from the temperature of the perforated segment of the wellbore
 
         sw_init_res = 0.25
@@ -70,7 +70,7 @@ class Model(CICDModel):
         if 1:
             case = 'depleted_gas_reservoir'
             poro = np.ones((nr, nz)) * 0.2
-            permr = np.ones((nr, nz)) * 20
+            permr = np.ones((nr, nz)) * 200
 
             permz = permr / 10
 
@@ -188,7 +188,7 @@ class Model(CICDModel):
                                        well_1_wall_roughness, verbose)
 
         #%% Set initial conditions in the pipe using SingleAmbientTemperature
-        pipe_head_pressure = 20  # bar
+        pipe_head_pressure = 18  # bar
         pipe_head_temperature = 25 + 273.15  # Kelvin
         temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
