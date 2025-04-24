@@ -476,7 +476,7 @@ class DartsModel:
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
 
-                if t + dt >= stop_time:
+                if t + dt > stop_time:
                     dt = stop_time - t
                 else:
                     self.prev_dt = dt
