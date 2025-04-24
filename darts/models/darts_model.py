@@ -434,7 +434,7 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt*data_ts.dt_mult, data_ts.dt_max)
+            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
 
         self.prev_dt = dt
 
