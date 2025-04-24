@@ -50,7 +50,7 @@ class Model(CICDModel):
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        self.inj_stream = [1.0 - 2 * zero, zero, zero]
+        self.inj_composition = [1.0 - 2 * zero, zero, zero]
         self.ini_stream = [0.1, 0.2, 0.6 - zero]
 
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)
@@ -86,12 +86,14 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_inj(20, self.inj_stream, 0)
-                # w.control = self.physics.new_bhp_inj(100, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=20., phase_name='gas', inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(50)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=50.)
 
 
 class ModelProperties(PropertyContainer):
@@ -99,7 +101,8 @@ class ModelProperties(PropertyContainer):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
 
         zc_r = zc[:-1] / (1 - zc[-1])
         self.flash_ev.evaluate(pressure, temperature, zc_r)

@@ -373,7 +373,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   X.resize(n_vars * mesh->n_blocks);
   Xn.resize(n_vars * mesh->n_blocks);
-  X_init.resize(n_vars * mesh->n_blocks);
+  X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
   RHS.resize(n_vars * mesh->n_blocks);
   dX.resize(n_vars * mesh->n_blocks);
 
@@ -409,6 +409,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   // *** initialize host data ***
   X_init = mesh->initial_state;
+  X_init.resize(n_vars * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
   {
     PV[i] = mesh->volume[i] * mesh->poro[i];
