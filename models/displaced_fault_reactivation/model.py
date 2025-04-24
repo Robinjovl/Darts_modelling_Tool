@@ -15,6 +15,7 @@ class Model(THMCModel):
         self.physics_type = 'poromechanics'
         self.discretizer_name = 'pm_discretizer'
         self.enable_dynamic_mode = True if config['mode'] != 'quasi_static' else False
+        self.max_newt_it_dynamic_mode = 100
         self.depletion_mode = config['depletion']['mode']
         self.depletion_value = config['depletion']['value']
         self.friction_law = config['friction_law']
@@ -138,6 +139,7 @@ class Model(THMCModel):
         """
         Class method called in the init() class method of parents class
         """
+        from darts.engines import well_control_iface
         # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
         # rate) water/oil rate:
         for i, w in enumerate(self.reservoir.wells):
@@ -149,7 +151,9 @@ class Model(THMCModel):
             # else:
             #     # Add controls for production well:
             #     # Specify bhp for particular production well:
-            w.control = self.physics.new_bhp_prod(self.reservoir.p_init[self.id_prod] + self.depletion_value)
+            self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=False, target=self.reservoir.p_init[self.id_prod] + self.depletion_value,
+                                           phase_name='wat')
         return 0
     def setup_contact_friction(self, contact_algorithm: contact_solver):
         if hasattr(self.reservoir, 'contacts'):

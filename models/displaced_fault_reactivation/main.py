@@ -89,7 +89,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             print("Cut timestep to %.5e" % dt)
 
         max_slip_area = np.max(np.array(m.slip_area))
-        if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.enable_dynamic_mode and \
+        if m.ith_step + 1 > m.max_newt_it_dynamic_mode and m.slip_area[-1] < 0.005 * max_slip_area and m.enable_dynamic_mode and \
                 m.ith_step_ready_for_reinjection == 0:
             m.ith_step_ready_for_reinjection = m.ith_step
 
