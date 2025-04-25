@@ -63,7 +63,7 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
-        # compute well rates
+        # compute well rates, BHP, and BHT
         well_rates_dict = n.output.store_well_time_data()
 
         # save dataframe of well rates
@@ -75,7 +75,7 @@ if __name__ == '__main__':
 
         # td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
         # td.plot(x='time', y='well_I1_molar_rate_wat_at_wh', style='-o')\
-        #     .get_figure().savefig(n.output_folder + '/prd_molar_rate_water.png', dpi=100, bbox_inches='tight')
+        #     .get_figure().savefig(n.output_folder + '/inj_molar_rate_water.png', dpi=100, bbox_inches='tight')
         # td.plot(x='time', y=['well_P1_BHP'], style='-o')\
         #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
 

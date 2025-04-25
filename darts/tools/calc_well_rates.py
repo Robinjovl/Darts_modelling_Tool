@@ -123,7 +123,7 @@ def phase_mass_rate_operators(state, pc):
     values = np.zeros(pc.nph)
     for j in pc.ph:
         try:
-            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+            values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
         except:
             values[j] = pc.density[j] * pc.relperm[j] / pc.viscosity[j]
 
