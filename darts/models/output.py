@@ -794,6 +794,9 @@ class Output:
             # if self.physics.thermal is True:
                 # types_of_well_rates += ["advective_heat_rate"]
 
+        # Store BHP and BHT
+        self.store_bhp_bht(h5_well_data, well_output_dict, pc)
+
         for rate_type in types_of_well_rates:
             # Compute perforation rates
             rates_perfs = self.compute_rates(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, pc)
@@ -805,9 +808,6 @@ class Output:
             rates_wellhead = self.compute_rates(h5_well_data, well_head_conn_ids, well_head_conn_trans, rate_type, pc)
             # Store wellhead rates
             self.store_wellhead_rates(well_output_dict, rates_wellhead, rate_type, pc)
-
-        # Store BHP and BHT
-        self.store_bhp_bht(h5_well_data, well_output_dict, pc)
 
         # Export well_output_dict
         df = pd.DataFrame(well_output_dict)
