@@ -62,7 +62,7 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
-        # compute well rates
+        # compute well rates, BHP, and BHT
         well_rates_dict = n.output.store_well_time_data()
 
         # save dictionary of well rates
