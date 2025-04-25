@@ -49,7 +49,6 @@ plt.savefig('step0.png', format='png')
 
 for t in range(2):
     m.run(200)
-    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
     m.print_timers()
     m.print_stat()
 
@@ -68,9 +67,12 @@ for t in range(2):
 
     plt.savefig('step' + str(t+1) + '.png', format='png')
 
-td = pd.DataFrame.from_dict(m.physics.engine.time_data)
-td.to_pickle("darts_time_data.pkl")
-writer = pd.ExcelWriter('time_data.xlsx')
-td.to_excel(writer, sheet_name='Sheet1')
-writer.close()
+    # compute well time data
+    time_data_dict = m.output.store_well_time_data()
 
+    # save well time data
+    time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    time_data_df.to_pickle(m.output_folder + "/well_time_data.pkl")  # as a pickle file
+    writer = pd.ExcelWriter(m.output_folder + "/well_time_data.xlsx")  # as an excel file
+    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
+    writer.close()

@@ -59,15 +59,15 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     m.print_timers()
     m.print_stat()
 
-    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-    time_data['Time (years)'] = time_data['time']/365.
+    # compute well time data
+    time_data_dict = m.output.store_well_time_data()
 
-    xls_fname = os.path.join(output_directory, 'time_data.xlsx')
-    with pd.ExcelWriter(xls_fname) as writer:
-        time_data.to_excel(writer, sheet_name='Sheet1')
-
-    pkl_fname = os.path.join(output_directory, 'time_data.pkl')
-    pickle.dump(time_data, open(pkl_fname, 'wb'))
+    # save well time data
+    time_data_df = pd.DataFrame.from_dict(time_data_dict)
+    time_data_df.to_pickle(m.output_folder + "/well_time_data.pkl")  # as a pickle file
+    writer = pd.ExcelWriter(m.output_folder + "/well_time_data.xlsx")  # as an excel file
+    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
+    writer.close()
 
     return m
 

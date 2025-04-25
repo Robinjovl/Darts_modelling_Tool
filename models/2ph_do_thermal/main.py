@@ -63,21 +63,15 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
-        # compute well rates, BHP, and BHT
-        well_rates_dict = n.output.store_well_time_data()
+        # compute well time data
+        time_data_dict = n.output.store_well_time_data()
 
-        # save dataframe of well rates
-        td = pd.DataFrame.from_dict(well_rates_dict)
-        td.to_pickle(time_data_filename)  # as a pickle file
-        writer = pd.ExcelWriter(n.output_folder + "/darts_time_data.xlsx")  # as an excel file
-        td.to_excel(writer, sheet_name='Sheet1')
+        # save well time data
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df.to_pickle(time_data_filename)  # as a pickle file
+        writer = pd.ExcelWriter(n.output_folder + "/well_time_data.xlsx")  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
         writer.close()
-
-        # td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        # td.plot(x='time', y='well_I1_molar_rate_wat_at_wh', style='-o')\
-        #     .get_figure().savefig(n.output_folder + '/inj_molar_rate_water.png', dpi=100, bbox_inches='tight')
-        # td.plot(x='time', y=['well_P1_BHP'], style='-o')\
-        #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
 
     else:
         # n.load_restart_data()
@@ -97,8 +91,6 @@ if __name__ == '__main__':
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
-
-    # n.compare_well_rates(time_data_filename)
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
