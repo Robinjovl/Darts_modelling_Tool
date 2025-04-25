@@ -49,10 +49,10 @@ if __name__ == '__main__':
     writer.close()
 
     # plot well data
-    td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
-        .get_figure().savefig(n.output_folder + '/bhp_plot.png', dpi=100, bbox_inches='tight')
-    td.plot(x='time', y=['well_P1_volumetric_rate_oil_at_wh', 'well_P5_volumetric_rate_oil_at_wh'])\
-        .get_figure().savefig(n.output_folder + '/phase_rate_plot.png', dpi=100, bbox_inches='tight')
+    # td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\
+    #     .get_figure().savefig(n.output_folder + '/bhp_plot.png', dpi=100, bbox_inches='tight')
+    # td.plot(x='time', y=['well_P1_volumetric_rate_oil_at_wh', 'well_P5_volumetric_rate_oil_at_wh'])\
+    #     .get_figure().savefig(n.output_folder + '/phase_rate_plot.png', dpi=100, bbox_inches='tight')
 
     # output primary (state) and secondary variables to .vtk files from the solution.h5 file for all available data points
     n.output.output_to_vtk(ith_step = None,

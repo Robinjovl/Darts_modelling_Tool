@@ -50,6 +50,7 @@ class Output:
         self.reservoir = reservoir
         self.physics = physics
         self.op_list = op_list
+        self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
         self.params = params
         self.well_head_conn_id = well_head_conn_id
         self.well_perf_conn_ids = well_perf_conn_ids

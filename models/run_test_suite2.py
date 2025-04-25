@@ -10,16 +10,16 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     model_dir = r'.'
 
     # set model list to run
-
-    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
-                     '2ph_geothermal', '2ph_geothermal_mass_flux',
-                     '3ph_comp_w', '3ph_do', '3ph_bo',
-                     'Uniform_Brugge',
-                     'Chem_benchmark_new',
-                     #'CO2_foam_CCS',
-                     'GeoRising',
-                     'CoaxWell'
-                     ]       
+    accepted_dirs = [
+        '2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+        '2ph_geothermal', '2ph_geothermal_mass_flux',
+        '3ph_comp_w', '3ph_do', '3ph_bo',
+        'Uniform_Brugge',
+        'Chem_benchmark_new',
+        # 'CO2_foam_CCS',
+        'GeoRising',
+        'CoaxWell'
+    ]
 
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
@@ -110,21 +110,21 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mainpy
 
     # discretizer tests
-    print('Discretizer tests:')
+    print('\nDiscretizer tests:')
     n_total_discr = n_failed_discr = 0
     n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
-    print('Fracture network tests:')
+    print('\nFracture network tests:')
     n_total_dfn = n_failed_dfn = 0
     n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
     # poromechanic tests
-    print('Poromechanics tests:')
+    print('\nPoromechanics tests:')
     n_total_mech = n_failed_mech = 0
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
         n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
@@ -132,7 +132,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
-    print('Adjoint tests:')
+    print('\nAdjoint tests:')
     n_failed_adj = n_total_adj = 0
     import time
     if len(accepted_dirs_adjoint):
