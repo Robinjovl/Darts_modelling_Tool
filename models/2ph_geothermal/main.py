@@ -47,12 +47,13 @@ def plot_sol(n):
 if __name__ == '__main__':
 
     redirect_darts_output('run.log')
-    time_data_filename = "darts_time_data.pkl"
+
 
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
     n.set_output()
+    time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
         n.run(1000)
@@ -71,15 +72,15 @@ if __name__ == '__main__':
         td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
-        td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        td.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
-            .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
-
-        td.plot(x='time', y=['well_P1_BHP'], style='-o')\
-            .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
-
-        td.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
-            .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
+        # td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
+        # td.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
+        #
+        # td.plot(x='time', y=['well_P1_BHP'], style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
+        #
+        # td.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
+        #     .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
 
     else:
         # n.load_restart_data()
@@ -101,7 +102,7 @@ if __name__ == '__main__':
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
-    n.compare_well_rates(time_data_filename)
+    # n.compare_well_rates(time_data_filename)
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 

@@ -156,19 +156,20 @@ class CICDModel(DartsModel):
 
         rtol = 1.e-2
         atol = 0.1
-        c_pattern = ' : c {} rate (Kmol/day)'
-        p_pattern = ' : {} rate (m3/day)'
+        c_pattern = 'well_{}_molar_rate_{}_at_wh'
+        p_pattern = 'well_{}_volumetric_rate_{}_at_wh'
 
         # compare
         for well in self.reservoir.wells:
             # molar rates
-            old_c = np.array([old_data[well.name + c_pattern.format(c)].to_numpy() for c in range(self.physics.nc)]).T
-            assert (np.isclose(new_molar_rate[well.name][:, :self.physics.nc], -old_c, rtol=rtol, atol=atol).all())
+            old_c = np.array([old_data[c_pattern.format(well.name,c)].to_numpy() for c in self.physics.components]).T
+            new_c = new_molar_rate[well.name][:, :self.physics.nc]
+            assert (np.isclose(new_c, -old_c, rtol=rtol, atol=atol).all())
 
             # volumetric phase rates
-            old_p = np.array([old_data[well.name + p_pattern.format(self.physics.phases[p])].to_numpy() for p in
-                              range(self.physics.nph)]).T
-            assert (np.isclose(new_volumetric_rate[well.name], -old_p, rtol=rtol, atol=atol).all())
+            old_p = np.array([old_data[p_pattern.format(well.name, p)].to_numpy() for p in self.physics.phases]).T
+            new_p = new_volumetric_rate[well.name]
+            assert (np.isclose(new_p, -old_p/1e3, rtol=rtol, atol=atol).all())
 
     @staticmethod
     def load_performance_data(file_name: str = '', pkl_suffix: str = ''):

@@ -73,11 +73,11 @@ if __name__ == '__main__':
         td.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
-        td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
-        td.plot(x='time', y='well_I1_molar_rate_wat_at_wh', style='-o')\
-            .get_figure().savefig(n.output_folder + '/prd_molar_rate_water.png', dpi=100, bbox_inches='tight')
-        td.plot(x='time', y=['well_P1_BHP'], style='-o')\
-            .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
+        # td['well_I1_molar_rate_wat_at_wh'] = td['well_I1_molar_rate_wat_at_wh'].round(2)
+        # td.plot(x='time', y='well_I1_molar_rate_wat_at_wh', style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/prd_molar_rate_water.png', dpi=100, bbox_inches='tight')
+        # td.plot(x='time', y=['well_P1_BHP'], style='-o')\
+        #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
 
     else:
         # n.load_restart_data()
@@ -98,7 +98,7 @@ if __name__ == '__main__':
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
-    n.compare_well_rates(time_data_filename)
+    # n.compare_well_rates(time_data_filename)
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
