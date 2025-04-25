@@ -41,8 +41,6 @@ class Model(CICDModel, OptModuleSettings):
 
         self.timer.node["initialization"].stop()
 
-        # self.set_output()
-
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
         nx = 20
@@ -187,7 +185,7 @@ class Model(CICDModel, OptModuleSettings):
                 else:
                     w.control = self.physics.new_bhp_prod(50)
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            CICDModel.run(self, ts, save_well_data=False, save_reservoir_data=False, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 self.export_vtk(file_name)
