@@ -21,10 +21,10 @@ class DataTS:
         self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
 
         # default values
-        self.first_ts = 1e-3
-        self.dt_min = 1e-2
+        self.first_ts = 1.
+        self.dt_min = 1e-12
         self.dt_mult = 2.
-        self.dt_max = 365.
+        self.dt_max = 10.
         self.tol_res = 1e-2
         self.tol_wel_mult = 100.
         self.tol_stationary = 1e-3
