@@ -63,23 +63,19 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     if 0:
         # old C++ timedata
         time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data['Time (years)'] = time_data['time']/365.
-
-        xls_fname = os.path.join(output_directory, 'time_data.xlsx')
-        with pd.ExcelWriter(xls_fname) as writer:
-            time_data.to_excel(writer, sheet_name='Sheet1')
+        time_data['Time (years)'] = time_data['time'] / 365.
 
         pkl_fname = os.path.join(output_directory, 'time_data.pkl')
         pickle.dump(time_data, open(pkl_fname, 'wb'))
     else:
-        # compute well rates in python
-        well_rates_dict = m.output.store_well_time_data()
+        # compute well time data
+        time_data_dict = m.output.store_well_time_data()
 
-        # save dataframe of well rates
-        td = pd.DataFrame.from_dict(well_rates_dict)
-        td.to_pickle(m.output_folder + "/time_data.pkl")  # as a pickle file
-        writer = pd.ExcelWriter(m.output_folder + "/time_data.xlsx")  # as an excel file
-        td.to_excel(writer, sheet_name='Sheet1')
+        # save well time data
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df.to_pickle(m.output_folder + "/well_time_data.pkl")  # as a pickle file
+        writer = pd.ExcelWriter(m.output_folder + "/well_time_data.xlsx")  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
         writer.close()
     return m
 
