@@ -12,7 +12,7 @@ from darts.physics.super.physics import Compositional
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.engines import value_vector, timer_node, ms_well_vector, op_vector
+from darts.engines import value_vector, index_vector, timer_node, ms_well_vector, op_vector
 from darts.tools.calc_well_rates import *
 from darts.physics.base.operators_base import PropertyOperators
 
@@ -521,7 +521,7 @@ class Output:
 
         return time, cell_id, X, var_names
 
-    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.array, dict]:
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
         """
         Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
 
@@ -539,39 +539,34 @@ class Output:
         :return timesteps: A NumPy array of the time labels.
         :type timesteps: np.ndarray
 
-        :raises ValueError: If specified property in `output_properties` is not found in any property container
+        :raises KeyError: If specified property in `output_properties` is not found in any property container
         """
 
         if not engine:
             # Evaluate properties from the HDF5 file
-            if filepath is None:
+            if filepath is None: # Establish filepath/name to HDF5 file
                 path = os.path.join(self.output_folder, self.sol_filename)
             else:
                 path = filepath
-
-            timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep)
-
+            timesteps, cell_id, X, var_names = self.read_specific_data(path, timestep) # Read data from HDF5 file
         else:
-            # Evaluate properties from the engine
-            timesteps = np.array(self.physics.engine.t).reshape(1,)
-            cell_id = np.arange(self.reservoir.mesh.n_res_blocks)
-            X = np.array(self.physics.engine.X[:self.physics.n_vars*self.reservoir.mesh.n_res_blocks], copy = True)
-            var_names = self.physics.vars
+            # Evaluate properties from the physics.engine.X
+            timesteps = np.array(self.physics.engine.t).reshape(1,) # current time
+            cell_id = np.arange(self.reservoir.mesh.n_res_blocks) # cell ids
+            X = np.array(self.physics.engine.X[:self.physics.n_vars*self.reservoir.mesh.n_res_blocks], copy = True) # solution at current time
+            var_names = self.physics.vars # primary variable names
 
-        # Initialize property_array
-        n_vars = len(var_names)
-
-        nb = len(cell_id)
-
+        n_vars = len(var_names) # number of primary variables
+        nb = len(cell_id) # number of grid blocks
+        # complete list of properties
         output_properties = output_properties if output_properties is not None else list(self.physics.vars)
 
-        # primary properties i.e. state variables
+        # List of primary variables i.e. state variables
         primary_props = [prop for prop in output_properties if prop in var_names]
         primary_prop_idxs = {prop: list(var_names).index(prop) for prop in primary_props}
 
-        # secondary properties defined
+        # List of secondary properties
         secondary_props = [prop for prop in output_properties if prop not in var_names]
-        # secondary_prop_idxs = {prop: list(self.physics.property_containers[next(iter(self.physics.property_containers))].output_props.keys()).index(prop) for prop in secondary_props}
         secondary_prop_idxs = {}
         for prop in secondary_props:
             for container in self.physics.property_containers.values():
@@ -579,14 +574,13 @@ class Output:
                     secondary_prop_idxs[prop] = list(container.output_props.keys()).index(prop)
                     break
             else:
-                raise ValueError(f"Secondary property '{prop}' not found in any property container.")
+                raise KeyError(f"Secondary property '{prop}' not found in any property container.")
 
-        # define property array
+        # define property array dictionary
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in primary_props + secondary_props}
 
-        # Loop over timesteps
+        # Loop over available timesteps
         for k, timestep in enumerate(timesteps):
-
             # Extract primary properties from X vector
             for var_name, var_idx in primary_prop_idxs.items():
                 if engine is False:
@@ -595,31 +589,29 @@ class Output:
                     property_array[var_name][k] = X[var_idx::n_vars]
 
             # Interpolate secondary properties
-            if secondary_props:
+            if secondary_props: # if empty this part is skipped
                 if engine is False:
                     state = value_vector(np.stack([X[k, :nb, j] for j in range(n_vars)]).T.flatten())
                 else:
                     state = value_vector(np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten())
 
-                i = 0
-                # n_ops = self.physics.property_operators[i].n_ops
-
+                ######################################################
                 if len(self.properties) < self.physics.n_ops:
                     n_ops = self.physics.n_ops
                 else:
                     n_ops = len(self.properties) + self.physics.n_vars
+                ######################################################
 
                 values = value_vector(np.zeros(n_ops * nb))
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
 
                 for region, prop_itor in self.physics.property_itor.items():
-                    prop_itor.evaluate_with_derivatives(state, self.physics.engine.region_cell_idx[i], values, dvalues)
-                    # prop_itor.evaluate(state, values)
-                    i += 1
+                    block_idx = np.where(self.op_num == region)[0].astype(np.int32)
+                    prop_itor.evaluate_with_derivatives(state, index_vector(block_idx), values, dvalues)
 
-                for prop_name, prop_idx in secondary_prop_idxs.items():
-                    property_array[prop_name][k] = values_numpy[prop_idx::n_ops]
+                    for prop_name, prop_idx in secondary_prop_idxs.items():
+                        property_array[prop_name][k][block_idx] = values_numpy[block_idx * n_ops + prop_idx]
 
         return timesteps, property_array
 

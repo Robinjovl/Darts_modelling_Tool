@@ -561,7 +561,7 @@ test-windows-3.9-ODLS:
         - cd ../../../..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
-        - darts main.py
+        - darts main__.py
         - cd ../../..
         #
         - echo "test finished"
@@ -601,7 +601,7 @@ test-windows-3.9-ODLS:
         - cd ..
         # test discretizer
         - cd discretizer/tests/compare_discretizers
-        - python main.py
+        - python main__.py
         - cd ../../..
         #
         - echo "test finished"
@@ -648,7 +648,7 @@ test-windows-3.9-ODLS:
         - cd ..\..\..\..
         # test discretizer
         - cd discretizer\tests\compare_discretizers
-        - python main.py
+        - python main__.py
         - cd ..\..\..
     after_script:
         - cd models
