@@ -126,7 +126,7 @@ class Output:
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
 
-            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond'] #, 'temperature']
+            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy']# 'cond']
 
             self.physics.property_itor = {}
 
@@ -135,14 +135,14 @@ class Output:
 
                 temp_dict = {}
 
+                # add temperature
+                temp_dict['temperature'] = lambda: pc.temperature
+
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     # for j, phase_name in enumerate(self.physics.property_containers[region].nph):
                     for j in range(self.physics.property_containers[region].nph):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
-
-                # add temperature
-                # temp_dict[phase_props_labels[-1]] = lambda: self.physics.property_containers[region].temperature
 
                 self.physics.property_operators[region] = PropertyOperators(pc, thermal = False, props = temp_dict)
 
@@ -610,7 +610,8 @@ class Output:
                     prop_itor.evaluate_with_derivatives(state, index_vector(block_idx), values, dvalues)
 
                     for prop_name, prop_idx in secondary_prop_idxs.items():
-                        property_array[prop_name][k][block_idx] = values_numpy[prop_idx::self.n_ops][block_idx]
+                        temp = values_numpy[prop_idx::self.n_ops]
+                        property_array[prop_name][k][block_idx] = temp[block_idx]
 
         return timesteps, property_array
 
