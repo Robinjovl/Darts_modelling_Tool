@@ -547,7 +547,11 @@ class Output:
         :type timesteps: np.ndarray
 
         :raises KeyError: If specified property in `output_properties` is not found in any property container
+        :raises TypeError: If output_properties is not a list
         """
+
+        if output_properties is not None and not isinstance(output_properties, list):
+            raise TypeError(f"Expected 'output_properties' to be a list, but got {type(output_properties).__name__}.")
 
         if not engine:
             # Evaluate properties from the HDF5 file
@@ -621,6 +625,45 @@ class Output:
                         property_array[prop_name][k][block_idx] = values_numpy[block_idx * n_ops + prop_idx]
 
         return timesteps, property_array
+
+    def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
+        """
+        Function to export results at timestamp t into `.vtk` format.
+
+
+        :param ith_step: i'th reporting step
+        :type ith_step: int
+
+        :param output_directory: Name to save .vtk file
+        :type output_directory: str
+
+        :param output_properties: List of properties to include in .vtk file, default is None in which case only primary (state) variables are evaluated
+        :type output_properties: list
+        """
+        self.timer.start(); self.timer.node["vtk_output"].start()
+
+        # Set default output directory
+        if output_directory is None:
+            output_directory = os.path.join(self.output_folder, 'vtk_files')
+        os.makedirs(output_directory, exist_ok=True)
+
+        timesteps, property_array = self.output_properties(self.sol_filepath if sol_filepath is None else sol_filepath,
+                                                           output_properties,
+                                                           ith_step,
+                                                           engine)
+        prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
+
+        for t, time in enumerate(timesteps):
+            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
+            for i, name in enumerate(property_array.keys()):
+                data[i, :] = property_array[name][t]
+
+            if ith_step is None:
+                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
+            else:
+                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
+
+        self.timer.node["vtk_output"].stop(); self.timer.stop()
 
     def output_to_xarray(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine: bool = False) -> xr.Dataset:
         """
@@ -720,44 +763,7 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
-        """
-        Function to export results at timestamp t into `.vtk` format.
 
-
-        :param ith_step: i'th reporting step
-        :type ith_step: int
-
-        :param output_directory: Name to save .vtk file
-        :type output_directory: str
-
-        :param output_properties: List of properties to include in .vtk file, default is None in which case only primary (state) variables are evaluated
-        :type output_properties: list
-        """
-        self.timer.start(); self.timer.node["vtk_output"].start()
-
-        # Set default output directory
-        if output_directory is None:
-            output_directory = os.path.join(self.output_folder, 'vtk_files')
-        os.makedirs(output_directory, exist_ok=True)
-
-        timesteps, property_array = self.output_properties(self.sol_filepath if sol_filepath is None else sol_filepath,
-                                                           output_properties,
-                                                           ith_step,
-                                                           engine)
-        prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
-
-        for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
-
-            if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
-            else:
-                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
-
-        self.timer.node["vtk_output"].stop(); self.timer.stop()
 
     def store_well_time_data(self, types_of_well_rates=None):
         """
