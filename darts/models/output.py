@@ -505,20 +505,26 @@ class Output:
                     time = file['dynamic/time'][:]
                     X = file['dynamic/X'][:]
                 else:
+
+                    if not isinstance(timestep, int):
+                        raise TypeError(f"Expected 'timestep' to be an int, but got {type(timestep).__name__}")
+
                     cell_id = file['dynamic/cell_id'][:]
                     var_names = file['dynamic/variable_names'][:]
+
                     try:
                         time = file['dynamic/time'][timestep].reshape(1)
                         X = file['dynamic/X'][timestep].reshape(1, len(cell_id), len(var_names))
+
                     except IndexError:
                         raise IndexError(
-                            f"Timestep {timestep} is out of range in the HDF5 file.")
+                            f"Timestep {timestep} does not exist in {filename}.")
 
             for i, name in enumerate(var_names):
                 var_names[i] = name.decode()
 
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {filename}")
+            raise FileNotFoundError(f"File not found: {filename}.")
 
         return time, cell_id, X, var_names
 
@@ -526,7 +532,7 @@ class Output:
         """
         Evaluates and returns properties from saved data (HDF5 file) or a simulation engine.
 
-        :param filepath: Path to the solution HDF5 file. Defaults to None, which uses a previously defined output folder.
+        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
         :type filepath: str, optional
         :param output_properties: List of properties to evaluate. Defaults to None, which returns an array containing only state variables.
         :type output_properties: list, optional
@@ -581,7 +587,7 @@ class Output:
         property_array = {prop: np.zeros((len(timesteps), nb)) for prop in primary_props + secondary_props}
 
         # Loop over available timesteps
-        for k, timestep in enumerate(timesteps):
+        for k, t in enumerate(timesteps):
             # Extract primary properties from X vector
             for var_name, var_idx in primary_prop_idxs.items():
                 if engine is False:
