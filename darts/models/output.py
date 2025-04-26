@@ -804,13 +804,13 @@ class Output:
 
         for rate_type in types_of_well_rates:
             # Compute perforation rates
-            rates_perfs = self.compute_rates(h5_well_data, perfs_conn_ids, geometric_WI, rate_type, pc)
+            rates_perfs = calc_rates_at_connections(h5_well_data, perfs_conn_ids, geometric_WI, self.physics.thermal, pc, rate_type)
             # Store perforation rates
             self.store_perf_rates(well_output_dict, rates_perfs, rate_type, pc)
             # Store well rates by summing perforation rates
             self.store_well_rates_sums(well_output_dict, rates_perfs, rate_type, pc)
             # Compute wellhead rates
-            rates_wellhead = self.compute_rates(h5_well_data, well_head_conn_ids, well_head_conn_trans, rate_type, pc)
+            rates_wellhead = calc_rates_at_connections(h5_well_data, well_head_conn_ids, well_head_conn_trans, self.physics.thermal, pc, rate_type)
             # Store wellhead rates
             self.store_wellhead_rates(well_output_dict, rates_wellhead, rate_type, pc)
 
@@ -870,12 +870,6 @@ class Output:
         well_head_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
 
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
-
-    def compute_rates(self, h5_well_data, conn_ids, transmissibility, rate_type, pc):
-        try:
-            return calc_rates_at_connections(h5_well_data, conn_ids, transmissibility, self.physics.thermal, pc, rate_type)
-        except:
-            return calc_rates_at_connections(h5_well_data, conn_ids, transmissibility, True, pc, rate_type)
 
     def store_perf_rates(self, well_output_dict, rates_perfs, rate_type, pc):
         perf_idx = 0
