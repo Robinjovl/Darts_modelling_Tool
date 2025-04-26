@@ -931,6 +931,15 @@ class Output:
         # Get transmissibility for each wellhead connection
         well_head_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
 
+        # This change is done to make sure that if the user has not set multi_segment to True in the function
+        # add_perforation, the perforations have different indices.
+        for well in self.reservoir.wells:
+            new_perforations = []
+            for idx, perf in enumerate(well.perforations):
+                new_perf = (idx, *perf[1:])
+                new_perforations.append(new_perf)
+            well.perforations = new_perforations
+
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(self, time_data_dict, rates_perfs, rate_type, pc):
