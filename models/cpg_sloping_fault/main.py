@@ -74,18 +74,18 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 time_data[k.replace('m3/day', 'kmol/day')] = time_data[k]
                 time_data.drop(columns=k, inplace=True)
 
-    # compute well time data
-    time_data_dict = m.output.store_well_time_data()
-    time_data_df = pd.DataFrame.from_dict(time_data_dict)
-    add_columns_time_data(time_data_df)
-    time_data_df.to_pickle(os.path.join(out_dir, 'well_time_data.pkl'))
+    # COMPUTE TIME DATA
+    td = m.output.store_well_time_data()
+    time_data = pd.DataFrame.from_dict(td)
+    add_columns_time_data(time_data)
+    time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
-    # compute well time data at fixed reporting points
+    # COMPUTE TIME DATA AT FIXED REPORTING STEPS
     time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
     add_columns_time_data(time_data_report)
-    time_data_report.to_pickle(os.path.join(out_dir, 'well_time_data_report.pkl'))
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'well_time_data.xlsx'))
-    time_data.to_excel(writer, sheet_name='well_time_data', index=False)
+    time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
+    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
+    time_data.to_excel(writer, sheet_name='time_data')
     writer.close()
 
     # filter time_data_report and write to xlsx
@@ -96,8 +96,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.drop(columns=press_gridcells + chem_cols, inplace=True)
     # add time in years
     time_data_report['Time (years)'] = time_data_report['time'] / 365.25
-    writer = pd.ExcelWriter(os.path.join(out_dir, 'well_time_data_report.xlsx'))
-    time_data_report.to_excel(writer, sheet_name='well_time_data_report')
+    writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data_report.xlsx'))
+    time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
     failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
