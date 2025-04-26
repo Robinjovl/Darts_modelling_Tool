@@ -51,7 +51,8 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
 
     id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
     if thermal:
-        id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')
+        # id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
+        id_temp = -1
 
     # Looping over time steps
     for i in range(num_ts):
@@ -217,7 +218,10 @@ def heat_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        try:
+            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        except:
+            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
