@@ -90,7 +90,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
             else:
                 raise Exception("Rate type is entered incorrectly!")
 
-            rates[i, j] = values * trans[j] * dp[j]
+            rates[i, j] = - values * trans[j] * dp[j]
 
     return rates
 

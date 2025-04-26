@@ -940,15 +940,15 @@ class Output:
                 tag = f'well_{well.name}_perf_{perf[0]}'
                 if rate_type.startswith('phases_'):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
-                        arr = -rates_perfs[:, perf_idx, phase_idx]
+                        arr = rates_perfs[:, perf_idx, phase_idx]
                         time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'] = arr
                 elif rate_type.startswith('components_'):
                     for c_idx in range(pc.nc_fl):
-                        arr = -np.sum(rates_perfs[:, perf_idx, c_idx::pc.nc_fl], axis=1)
+                        arr = np.sum(rates_perfs[:, perf_idx, c_idx::pc.nc_fl], axis=1)
                         time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'] = arr
                 elif rate_type.startswith('advective_heat_'):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
-                        arr = -rates_perfs[:, perf_idx, phase_idx]
+                        arr = rates_perfs[:, perf_idx, phase_idx]
                         time_data_dict[f'{tag}_advective_heat_rate_{phase_name}'] = arr
                 perf_idx += 1
 
@@ -958,19 +958,19 @@ class Output:
             tag = f'well_{well.name}'
             if rate_type.startswith('phases_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    total = sum(-rates_perfs[:, perf_idx + j, phase_idx]
+                    total = sum(rates_perfs[:, perf_idx + j, phase_idx]
                                 for j in range(len(well.perforations)))
                     time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
             elif rate_type.startswith('components_'):
                 for c_idx in range(pc.nc_fl):
-                    total = sum(-np.sum(rates_perfs[:, perf_idx + j, c_idx::pc.nc_fl], axis=1)
+                    total = sum(np.sum(rates_perfs[:, perf_idx + j, c_idx::pc.nc_fl], axis=1)
                                 for j in range(len(well.perforations)))
                     time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
             elif rate_type.startswith('advective_heat_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    total = sum(-rates_perfs[:, perf_idx + j, phase_idx]
+                    total = sum(rates_perfs[:, perf_idx + j, phase_idx]
                                 for j in range(len(well.perforations)))
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
@@ -980,14 +980,14 @@ class Output:
             tag = f'well_{well.name}'
             if rate_type.startswith('phases_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_at_wh'] = -wh_rates[:, well_idx, phase_idx]
+                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_at_wh'] = wh_rates[:, well_idx, phase_idx]
             elif rate_type.startswith('components_'):
                 for c_idx, c_name in enumerate(pc.components_name):
-                    arr = -np.sum(wh_rates[:, well_idx, c_idx::pc.nc_fl], axis=1)
+                    arr = np.sum(wh_rates[:, well_idx, c_idx::pc.nc_fl], axis=1)
                     time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{c_name}_at_wh'] = arr
             elif rate_type.startswith('advective_heat_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = -wh_rates[:, well_idx, phase_idx]
+                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = wh_rates[:, well_idx, phase_idx]
 
     def store_bhp_bht(self, h5_well_data, time_data_dict, pc):
         dyn = h5_well_data['dynamic']
