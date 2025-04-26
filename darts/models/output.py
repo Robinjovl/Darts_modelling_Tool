@@ -789,7 +789,7 @@ class Output:
         pc = self.configure_physics()
 
         time = h5_well_data['dynamic']['time']
-        well_output_dict = {'time': time}
+        time_data_dict = {'time': time}
 
         perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans = self.get_connection_info()
 
@@ -802,34 +802,34 @@ class Output:
                 "components_mass_rates",
             ]
             if self.physics.thermal:
-                types_of_well_rates.append(["advective_heat_rate"])
+                types_of_well_rates.append("advective_heat_rate")
 
         # Store BHP and BHT
-        self.store_bhp_bht(h5_well_data, well_output_dict, pc)
+        self.store_bhp_bht(h5_well_data, time_data_dict, pc)
 
         for rate_type in types_of_well_rates:
             # Compute perforation rates
             rates_perfs = calc_rates_at_connections(h5_well_data, perfs_conn_ids, geometric_WI, self.physics.thermal, pc, rate_type)
             # Store perforation rates
-            self.store_perf_rates(well_output_dict, rates_perfs, rate_type, pc)
+            self.store_perf_rates(time_data_dict, rates_perfs, rate_type, pc)
             # Store well rates by summing perforation rates
-            self.store_well_rates_sums(well_output_dict, rates_perfs, rate_type, pc)
+            self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type, pc)
             # Compute wellhead rates
             rates_wellhead = calc_rates_at_connections(h5_well_data, well_head_conn_ids, well_head_conn_trans, self.physics.thermal, pc, rate_type)
             # Store wellhead rates
-            self.store_wellhead_rates(well_output_dict, rates_wellhead, rate_type, pc)
+            self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type, pc)
 
-        # Export well_output_dict
-        df = pd.DataFrame(well_output_dict)
+        # Export time_data_dict
+        df = pd.DataFrame(time_data_dict)
         df.to_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
         with pd.ExcelWriter(os.path.join(self.output_folder, 'well_time_data.xlsx')) as w:
             df.to_excel(w, sheet_name='Sheet1')
 
         # End timer for store_well_time_data
         self.timer.node["output_well_time_data"].stop(); self.timer.stop()
-        return well_output_dict
+        return time_data_dict
 
-    def plot_well_time_data(self, types_of_well_time_data):
+    def plot_well_time_data(self, types_of_well_rates=None):
         """
         Plots well time data that are specified in the list types_of_well_time_data over time, including
         phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates, components_mass_rates,
@@ -848,11 +848,68 @@ class Output:
         time = df['time']
         pc = self.physics.property_containers[0]
 
-        for dtype in types_of_well_time_data:
-            if dtype == 'advective_heat_rate':
-                continue
-            self.plot_all_rates(df, time, dtype, pc, main_dir)
+        # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
+        if types_of_well_rates is None:
+            types_of_well_rates = [
+                "phases_molar_rates",
+                "phases_mass_rates",
+                "phases_volumetric_rates",
+                "components_molar_rates",
+                "components_mass_rates",
+            ]
+            if self.physics.thermal:
+                types_of_well_rates.append("advective_heat_rate")
+
+        for rtype in types_of_well_rates:
+            for w in self.reservoir.wells:
+                well_dir = os.path.join(main_dir, f'well_{w.name}')
+                for perf in w.perforations:
+                    subdir = os.path.join(well_dir, f'perf_{perf[0]}')
+                    keys = self.create_perf_keys(rtype, w.name, perf[0], pc)
+                    for key, ylabel in keys:
+                        arr = df[key]
+                        plt.figure()
+                        plt.plot(time, arr, marker='o')
+                        plt.xlabel('Time [day]')
+                        plt.ylabel(ylabel)
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(subdir, f'{key}.png'))
+                # total and wellhead plots
+                total_keys = self.create_total_keys(rtype, w.name, pc)
+                for key, ylabel in total_keys:
+                    plt.figure()
+                    plt.plot(time, df[key], marker='o')
+                    plt.xlabel('Time [day]')
+                    plt.ylabel(ylabel)
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(well_dir, f'{key}.png'))
+
+        # BHP and BHT are plotted all the time
+        for w in self.reservoir.wells:
+            well_dir = os.path.join(main_dir, f'well_{w.name}')
+
+            BHP_key = f'well_{w.name}_BHP'
+            BHP = df[BHP_key]
+
+            plt.figure()
+            plt.plot(time, BHP, marker='o')
+            plt.xlabel('Time [day]')
+            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.tight_layout()
+            plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
+
+            BHT_key = f'well_{w.name}_BHT'
+            BHT = df[BHT_key]
+
+            plt.figure()
+            plt.plot(time, BHT, marker='o')
+            plt.xlabel('Time [day]')
+            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.tight_layout()
+            plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
+
         plt.close('all')
+
         return df
 
     def configure_physics(self):
@@ -876,7 +933,7 @@ class Output:
 
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
-    def store_perf_rates(self, well_output_dict, rates_perfs, rate_type, pc):
+    def store_perf_rates(self, time_data_dict, rates_perfs, rate_type, pc):
         perf_idx = 0
         for well in self.reservoir.wells:
             for perf in well.perforations:
@@ -884,45 +941,55 @@ class Output:
                 if rate_type.startswith('phases_'):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
                         arr = -rates_perfs[:, perf_idx, phase_idx]
-                        well_output_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'] = arr
+                        time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'] = arr
                 elif rate_type.startswith('components_'):
                     for c_idx in range(pc.nc_fl):
                         arr = -np.sum(rates_perfs[:, perf_idx, c_idx::pc.nc_fl], axis=1)
-                        well_output_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'] = arr
+                        time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'] = arr
+                elif rate_type.startswith('advective_heat_'):
+                    for phase_idx, phase_name in enumerate(pc.phases_name):
+                        arr = -rates_perfs[:, perf_idx, phase_idx]
+                        time_data_dict[f'{tag}_advective_heat_rate_{phase_name}'] = arr
                 perf_idx += 1
 
-    def store_well_rates_sums(self, well_output_dict, rates_perfs, rate_type, pc):
+    def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type, pc):
         perf_idx = 0
         for well in self.reservoir.wells:
-            tag = f'well_{well.name}_{rate_type.split("_")[1]}_rate'
-            if 'phases_' in rate_type:
+            tag = f'well_{well.name}'
+            if rate_type.startswith('phases_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(-rates_perfs[:, perf_idx + j, phase_idx]
                                 for j in range(len(well.perforations)))
-                    well_output_dict[f'{tag}_{phase_name}_by_sum_perfs'] = total
+                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
-            elif 'components_' in rate_type:
+            elif rate_type.startswith('components_'):
                 for c_idx in range(pc.nc_fl):
                     total = sum(-np.sum(rates_perfs[:, perf_idx + j, c_idx::pc.nc_fl], axis=1)
                                 for j in range(len(well.perforations)))
-                    well_output_dict[f'{tag}_{pc.components_name[c_idx]}_by_sum_perfs'] = total
+                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}_by_sum_perfs'] = total
+                perf_idx += len(well.perforations)
+            elif rate_type.startswith('advective_heat_'):
+                for phase_idx, phase_name in enumerate(pc.phases_name):
+                    total = sum(-rates_perfs[:, perf_idx + j, phase_idx]
+                                for j in range(len(well.perforations)))
+                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
 
-    def store_wellhead_rates(self, well_output_dict, wh_rates, rate_type, pc):
+    def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type, pc):
         for well_idx, well in enumerate(self.reservoir.wells):
-            tag = f'well_{well.name}_{rate_type.split("_")[1]}_rate'
-            if 'phases_' in rate_type:
+            tag = f'well_{well.name}'
+            if rate_type.startswith('phases_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    well_output_dict[f'{tag}_{phase_name}_at_wh'] = -wh_rates[:, well_idx, phase_idx]
-            elif 'components_' in rate_type:
+                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_at_wh'] = -wh_rates[:, well_idx, phase_idx]
+            elif rate_type.startswith('components_'):
                 for c_idx, c_name in enumerate(pc.components_name):
                     arr = -np.sum(wh_rates[:, well_idx, c_idx::pc.nc_fl], axis=1)
-                    well_output_dict[f'{tag}_{c_name}_at_wh'] = arr
-            elif rate_type == 'advective_heat_rate':
-                arr = -wh_rates.sum(axis=2)[:, well_idx]
-                well_output_dict[f'well_{well.name}_advective_heat_rate_at_wh'] = arr
+                    time_data_dict[f'{tag}_{rate_type.split("_")[1]}_rate_{c_name}_at_wh'] = arr
+            elif rate_type.startswith('advective_heat_'):
+                for phase_idx, phase_name in enumerate(pc.phases_name):
+                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = -wh_rates[:, well_idx, phase_idx]
 
-    def store_bhp_bht(self, h5_well_data, well_output_dict, pc):
+    def store_bhp_bht(self, h5_well_data, time_data_dict, pc):
         dyn = h5_well_data['dynamic']
         n = len(dyn['time'])
         for well in self.reservoir.wells:
@@ -940,8 +1007,8 @@ class Output:
                     else:
                         idx_h = dyn['variable_names'].index('enthalpy')
                         BHT[t] = pc.temperature_ev.evaluate([BHP[t], dyn['X'][t, cell, idx_h]])
-            well_output_dict[f'well_{well.name}_BHP'] = BHP
-            well_output_dict[f'well_{well.name}_BHT'] = BHT
+            time_data_dict[f'well_{well.name}_BHP'] = BHP
+            time_data_dict[f'well_{well.name}_BHT'] = BHT
 
     def create_perf_dirs(self, main_dir):
         for well in self.reservoir.wells:
@@ -950,75 +1017,53 @@ class Output:
             for perf in well.perforations:
                 os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
 
-    def plot_all_rates(self, df, time, dtype, pc, main_dir):
-        for w in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f'well_{w.name}')
-            for perf in w.perforations:
-                subdir = os.path.join(well_dir, f'perf_{perf[0]}')
-                keys = self.plot_keys(dtype, w.name, perf[0], pc)
-                for key, ylabel in keys:
-                    arr = df[key]
-                    plt.figure()
-                    plt.plot(time, arr, marker='o')
-                    plt.xlabel('Time [day]')
-                    plt.ylabel(ylabel)
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(subdir, f'{key}.png'))
-            # total and head plots
-            total_keys = self.plot_total_keys(dtype, w.name, pc)
-            for key, ylabel in total_keys:
-                plt.figure()
-                plt.plot(time, df[key], marker='o')
-                plt.xlabel('Time [day]')
-                plt.ylabel(ylabel)
-                plt.tight_layout()
-                plt.savefig(os.path.join(well_dir, f'{key}.png'))
-
-    def plot_keys(self, dtype, well_name, perf_idx, pc):
+    def create_perf_keys(self, rtype, well_name, perf_idx, pc):
         keys = []
         tag = f'well_{well_name}_perf_{perf_idx}_'
-        if dtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[dtype.split('_')[1]]
+        if rtype.startswith('phases_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
             for phase_name in pc.phases_name:
-                key = f'{tag}{dtype.split("_")[1]}_rate_{phase_name}'
-                ylabel = f'{phase_name} {dtype.split("_")[1]} rate [{unit}]'
+                key = f'{tag}{rtype.split("_")[1]}_rate_{phase_name}'
+                ylabel = f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'
                 keys.append((key, ylabel))
-        elif dtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[dtype.split('_')[1]]
+        elif rtype.startswith('components_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
             for component_name in pc.components_name:
-                key = f'{tag}{dtype.split("_")[1]}_rate_{component_name}'
-                ylabel = f'{component_name} {dtype.split("_")[1]} rate [{unit}]'
+                key = f'{tag}{rtype.split("_")[1]}_rate_{component_name}'
+                ylabel = f'{component_name} {rtype.split("_")[1]} rate [{unit}]'
                 keys.append((key, ylabel))
-        elif dtype == 'advective_heat_rate':
-            key = f'{tag}advective_heat_rate'
-            keys.append((key, 'Advective heat rate [kJ/day]'))
+        elif rtype.startswith('advective_heat_'):
+            for phase_name in pc.phases_name:
+                key = f'{tag}advective_heat_rate_{phase_name}'
+                keys.append((key, f'{phase_name} advective heat rate [kJ/day]'))
         return keys
 
-    def plot_total_keys(self, dtype, well_name, pc):
+    def create_total_keys(self, rtype, well_name, pc):
         keys = []
         base = f'well_{well_name}_'
-        if dtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[dtype.split('_')[1]]
+        if rtype.startswith('phases_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
             for phase_name in pc.phases_name:
                 keys.extend([
                     (
-                    f'{base}{dtype.split("_")[1]}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {dtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{dtype.split("_")[1]}_rate_{phase_name}_at_wh', f'{phase_name} {dtype.split("_")[1]} rate [{unit}]')
+                    f'{base}{rtype.split("_")[1]}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'),
+                    (f'{base}{rtype.split("_")[1]}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
                 ])
-        elif dtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[dtype.split('_')[1]]
+        elif rtype.startswith('components_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
             for component_name in pc.components_name:
                 keys.extend([
-                    (f'{base}{dtype.split("_")[1]}_rate_{component_name}_by_sum_perfs',
-                     f'{component_name} {dtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{dtype.split("_")[1]}_rate_{component_name}_at_wh', f'{component_name} {dtype.split("_")[1]} rate [{unit}]')
+                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_by_sum_perfs',
+                     f'{component_name} {rtype.split("_")[1]} rate [{unit}]'),
+                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_at_wh', f'{component_name} {rtype.split("_")[1]} rate [{unit}]')
                 ])
-        elif dtype == 'advective_heat_rate':
-            keys.extend([
-                (f'{base}advective_heat_rate_by_sum_perfs', 'Advective heat rate [kJ/day]'),
-                (f'{base}advective_heat_rate_at_wh', 'Advective heat rate [kJ/day]')
-            ])
-        elif dtype in ('BHP', 'BHT'):
-            label = 'Bottom-hole pressure [bar]' if dtype == 'BHP' else 'Bottom-hole temperature [K]'
-            keys.append((f'{base}{dtype}', label))
+        elif rtype.startswith('advective_heat_'):
+            for phase_name in pc.phases_name:
+                keys.extend([
+                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective heat rate [kJ/day]'),
+                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective heat rate [kJ/day]')
+                ])
+        elif rtype in ('BHP', 'BHT'):
+            label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
+            keys.append((f'{base}{rtype}', label))
         return keys
