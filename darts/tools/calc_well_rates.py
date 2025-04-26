@@ -39,10 +39,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
         rates = np.zeros((num_ts, len(conn_ids), pc.nph))
     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
-        try:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
-        except:
-            rates = np.zeros((num_ts, len(conn_ids), 1 * pc.nph))
+        rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
 
     elif rate_type == 'advective_heat_rate':
         if thermal:
