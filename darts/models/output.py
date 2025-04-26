@@ -794,10 +794,15 @@ class Output:
         perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans = self.get_connection_info()
 
         if types_of_well_rates is None:
-            types_of_well_rates = ["phases_molar_rates", "phases_mass_rates", "phases_volumetric_rates",
-                                   "components_molar_rates", "components_mass_rates"]
-            # if self.physics.thermal is True:
-                # types_of_well_rates += ["advective_heat_rate"]
+            types_of_well_rates = [
+                "phases_molar_rates",
+                "phases_mass_rates",
+                "phases_volumetric_rates",
+                "components_molar_rates",
+                "components_mass_rates",
+            ]
+            if self.physics.thermal:
+                types_of_well_rates.append(["advective_heat_rate"])
 
         # Store BHP and BHT
         self.store_bhp_bht(h5_well_data, well_output_dict, pc)
