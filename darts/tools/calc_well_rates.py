@@ -51,8 +51,12 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
 
     id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
     if thermal:
-        # id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
-        id_temp = -1
+        if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+            id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
+        elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:   # For the geothermal engine
+            pass
+        else:
+            raise Exception('Neither temperature nor enthalpy exists in the list of variables!')
 
     # Looping over time steps
     for i in range(num_ts):
@@ -82,10 +86,18 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
                 values = heat_rate_operators(state, pc)
 
                 # Calc heat operators for the dead state (1 atm and 15 deg C)
-                state_dead = state.copy()
-                state_dead[id_pres] = 1.01325
-                state_dead[id_temp] = 273.15 + 15
-                values_dead = heat_rate_operators(state_dead, pc)
+                if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+                    state_dead = state.copy()
+                    state_dead[id_pres] = 1.01325
+                    state_dead[id_temp] = 273.15 + 15
+                    values_dead = heat_rate_operators(state_dead, pc)
+                elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:  # For the geothermal engine (1 atm, 15 deg C, and zH2O = 1)
+                    enthalpy_w, dens_m_w, kr_w, miu_w = -44582.229072, 55.457385, 1, 1.132781
+                    value_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                    values_dead = np.zeros(len(values))
+                    for ph_idx, value in enumerate(values):
+                        if value != 0:
+                            values_dead[ph_idx] = value_dead_phase
 
                 values = values - values_dead
             else:
