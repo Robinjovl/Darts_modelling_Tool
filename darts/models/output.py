@@ -59,8 +59,8 @@ class Output:
 
         self.master_timer = timer
         self.timer = timer.node['output']
-        self.timer.node["output_reservoir"] = timer_node()
-        self.timer.node["output_well"] = timer_node()
+        self.timer.node["saving_reservoir_data"] = timer_node()
+        self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output_well_time_data"] = timer_node()
 
@@ -464,15 +464,15 @@ class Output:
 
         if kind == 'well':
             path = os.path.join(self.output_folder, self.well_filename)
-            self.timer.start(); self.timer.node['output_well'].start()
+            self.timer.start(); self.timer.node['saving_well_data'].start()
             self.save_specific_data(path)
-            self.timer.node['output_well'].stop(); self.timer.stop()
+            self.timer.node['saving_well_data'].stop(); self.timer.stop()
 
         elif kind == 'reservoir':
             path = os.path.join(self.output_folder, self.sol_filename)
-            self.timer.start(); self.timer.node['output_reservoir'].start()
+            self.timer.start(); self.timer.node['saving_reservoir_data'].start()
             self.save_specific_data(path)
-            self.timer.node['output_reservoir'].stop(); self.timer.stop()
+            self.timer.node['saving_reservoir_data'].stop(); self.timer.stop()
 
         else:
             print("Please use either kind='well' or kind='solution' in save_data_to_h5")
