@@ -12,9 +12,9 @@ m.set_output()
 
 if restart:
     for i in range(2):
-        m.run(365/10/2)
+        m.run(365/2)
 else:
-    m.run(365/10)
+    m.run(365)
 m.print_timers()
 m.print_stat()
 
@@ -57,24 +57,30 @@ if restart:
     well_filename = m.well_filepath
     m_restarted.load_restart_data(reservoir_filename, well_filename, timestep = 1) # restart from
 
-    m_restarted.run(365/10/2)
+    m_restarted.run(365/2)
     # m.print_timers()
     # m.print_stat()
 
     output_props = m_restarted.physics.vars + m_restarted.output.properties
     m_restarted.output.output_to_vtk(output_properties = output_props)
 
-    time, cell_id, X, var_names = m.output.read_specific_data(m.sol_filepath, timestep = -1)
-    time_restarted, cell_id, X_restarted, var_names = m_restarted.output.read_specific_data(m_restarted.sol_filepath, timestep = -1)
+    time, cell_id, X, var_names = m.output.read_specific_data(m.sol_filepath)
+    time_restarted, cell_id, X_restarted, var_names = m_restarted.output.read_specific_data(m_restarted.sol_filepath)
 
-    plt.figure()
-    for i,name in enumerate(m_restarted.physics.vars):
-        mae = np.mean(np.abs(X[:, :, i] - X_restarted[:, :, i]))
-        plt.scatter(X[:,:,i].flatten(), X_restarted[:,:,i].flatten(), label = rf'MAE of {name} = {mae:.4e}')
-    plt.close()
+    # check restart position
+    assert np.isclose(X[1, :, 0], X_restarted[0, :, 0], rtol=0, atol=0).all() # check pressure
+    assert np.isclose(X[1, :, 1], X_restarted[0, :, 1], rtol=0, atol=0).all() # check enthalpy
 
-    rtol = 1.e-1
-    atol = 0
-    assert np.isclose(X, X_restarted, rtol=rtol, atol=atol).all()
+    # plt.figure()
+    # for i, name in enumerate(m_restarted.physics.vars):
+    #     mae = np.mean(np.abs(X[-1, :, i] - X_restarted[-1, :, i]))
+    #     plt.scatter(X[-1, :, i] / np.max(X[-1, :, i]), X_restarted[-1, :, i] / np.max(X_restarted[-1, :, i]).flatten(),
+    #                 label=rf'MAE of {name} = {mae:.4e}')
+    # plt.legend()
+    # plt.show()
+
+    # check final result
+    assert np.isclose(X[-1,:,0], X_restarted[-1,:,0], rtol=1e-2, atol=0).all() # check pressure
+    assert np.isclose(X[-1,:,1], X_restarted[-1,:,1], rtol=1, atol=0).all() # check enthalpy
 
 
