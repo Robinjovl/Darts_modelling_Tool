@@ -1,5 +1,7 @@
 """
 Injection of water into a column of gas for 30 seconds and then well shut-in
+
+Reservoir is saturated with water (aquifer)
 """
 
 import numpy as np
