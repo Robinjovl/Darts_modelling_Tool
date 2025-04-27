@@ -58,19 +58,19 @@ def run_darts(mode):
         n.print_stat()
 
         if mode == 'wells':
-            # compute well rates
-            well_rates_dict = n.output.store_well_time_data()
-            print('\n'.join(well_rates_dict.keys()))
+            # compute well time data
+            time_data_dict = n.output.store_well_time_data()
+            print('\n'.join(time_data_dict.keys()))
 
-            # save dataframe of well rates
-            td = pd.DataFrame.from_dict(well_rates_dict)
-            td.to_pickle(n.output_folder + "/darts_time_data.pkl")  # as a pickle file
-            writer = pd.ExcelWriter(n.output_folder + "/darts_time_data.xlsx")  # as an excel file
-            td.to_excel(writer, sheet_name='Sheet1')
+            # save well time data
+            time_data_df = pd.DataFrame.from_dict(time_data_dict)
+            time_data_df.to_pickle(n.output_folder + "/well_time_data.pkl")  # as a pickle file
+            writer = pd.ExcelWriter(n.output_folder + "/well_time_data.xlsx")  # as an excel file
+            time_data_df.to_excel(writer, sheet_name='Sheet1')
             writer.close()
 
-            td.plot(x='time', y=['well_P1_BHP'])
-            td.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
+            time_data_df.plot(x='time', y=['well_P1_BHP'])
+            time_data_df.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
             plt.show()
 
         Xn = np.array(n.physics.engine.X, copy=False)
