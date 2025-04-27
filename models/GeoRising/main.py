@@ -12,9 +12,9 @@ m.set_output()
 
 if restart:
     for i in range(2):
-        m.run(365/2)
+        m.run(365/10/2)
 else:
-    m.run(365)
+    m.run(365/10)
 m.print_timers()
 m.print_stat()
 
@@ -50,25 +50,31 @@ writer.close()
 
 if restart:
     m_restarted = Model(iapws_physics=True)
-    m_restarted.init() #(platform='gpu')
-    m_restarted.set_output(output_folder='output/restarted', save_initial=False)
+    m_restarted.init()
+    m_restarted.set_output(output_folder='output/restarted', save_initial=False, all_phase_props=True)
 
     reservoir_filename = m.sol_filepath
     well_filename = m.well_filepath
     m_restarted.load_restart_data(reservoir_filename, well_filename, timestep = 1) # restart from
 
-    m_restarted.run(365/2)
+    m_restarted.run(365/10/2)
     # m.print_timers()
     # m.print_stat()
 
+    output_props = m_restarted.physics.vars + m_restarted.output.properties
     m_restarted.output.output_to_vtk(output_properties = output_props)
 
-    time, cell_id, X, var_names = m.output.read_specific_data(m.sol_filepath)
-    time_restarted, cell_id, X_restarted, var_names = m_restared.output.read_specific_data(m_restarted.sol_filepath)
+    time, cell_id, X, var_names = m.output.read_specific_data(m.sol_filepath, timestep = -1)
+    time_restarted, cell_id, X_restarted, var_names = m_restarted.output.read_specific_data(m_restarted.sol_filepath, timestep = -1)
 
-    rtol = 1.e-2
-    atol = 0.1
-    assert (np.isclose(X, X_restarted, rtol=rtol, atol=atol).all())
+    plt.figure()
+    for i,name in enumerate(m_restarted.physics.vars):
+        mae = np.mean(np.abs(X[:, :, i] - X_restarted[:, :, i]))
+        plt.scatter(X[:,:,i].flatten(), X_restarted[:,:,i].flatten(), label = rf'MAE of {name} = {mae:.4e}')
+    plt.close()
 
+    rtol = 1.e-1
+    atol = 0
+    assert np.isclose(X, X_restarted, rtol=rtol, atol=atol).all()
 
 

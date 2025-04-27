@@ -77,15 +77,17 @@ class Output:
             's': np.float32
         }
 
+        self.properties = list(self.physics.property_containers[0].output_props.keys())
+        if len(self.properties) < self.physics.n_ops:
+            self.n_ops = self.physics.n_ops
+        else:
+            self.n_ops = len(self.properties) + self.physics.n_vars
+
         if save_initial:
             self.save_data_to_h5(kind='reservoir')
 
         if all_phase_props:
             self.set_phase_properties()
-
-        # Update the properties list
-        self.properties = list(self.physics.property_containers[0].output_props.keys())
-        self.n_ops = self.physics.n_ops if type(self.physics).__name__ == 'Compositional' else self.physics.property_operators[0].n_ops
 
     def set_phase_properties(self):
         if type(self.physics) is Compositional or type(self.physics) is BlackOil:
@@ -124,6 +126,8 @@ class Output:
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
 
+                self.n_ops = self.physics.n_ops
+
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
 
             phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy']# 'cond']
@@ -156,6 +160,10 @@ class Output:
 
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
+                self.n_ops = self.physics.property_operators[0].n_ops
+
+        # Update the properties list
+        self.properties = list(self.physics.property_containers[0].output_props.keys())
 
         return 0
 

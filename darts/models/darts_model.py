@@ -128,11 +128,13 @@ class DartsModel:
             raise FileNotFoundError(f"The restart file does not exist: {filename}")
 
         # Read data from the file
-        time, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(reservoir_filename, timestep)
-        time, well_cell_id, Xwell, var_names = self.output.read_specific_data(well_filename, timestep)
+        time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(reservoir_filename, timestep)
+        time_well, well_cell_id, Xwell, var_names = self.output.read_specific_data(well_filename)
+        time_idx_in_well = np.where(time_well == time_res)[0][0]
 
         # self.output.id_well_data
-        X = np.concatenate([Xres, Xwell[:, ~np.isin(well_cell_id, reservoir_cell_id), :]], axis=1)
+        temp = np.expand_dims(Xwell[time_idx_in_well, ~np.isin(well_cell_id, reservoir_cell_id), :], axis = 0)
+        X = np.concatenate([Xres, temp], axis=1)
 
         # load data as initial conditions
         initial_values = {}
@@ -144,10 +146,13 @@ class DartsModel:
 
         # reset engine
         self.reset()
-        self.physics.engine.t = time[0]
+        self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
+        print(fr'Restarting model from {reservoir_filename} and {well_filename} at day {time_res[0]}...')
         self.output.save_data_to_h5(kind='reservoir')
+
+        return
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5', well_filename: str = 'well_data.h5',
                    save_initial: bool = True, all_phase_props : bool = False, precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
