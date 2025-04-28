@@ -148,17 +148,19 @@ class Output:
 
                 self.physics.property_operators[region] = PropertyOperators(pc, self.physics.thermal, temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
-                                                                                      n_ops=self.physics.n_ops,
-                                                                                      platform='cpu', algorithm='multilinear',
-                                                                                      mode='adaptive', precision='d',
-                                                                                      timer_name='property %d interpolation' % region,
-                                                                                      region=str(region))
+                                                                                    n_ops=self.physics.n_ops,
+                                                                                    axes_min=self.physics.axes_min, axes_max=self.physics.axes_max,
+                                                                                    platform='cpu', algorithm='multilinear',
+                                                                                    mode='adaptive', precision='d',
+                                                                                    timer_name='property %d interpolation' % region,
+                                                                                    region=str(region))
+
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
                 self.n_ops = self.physics.n_ops
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
-            phase_props_labels = ['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy']# 'cond'
+            phase_props_labels = ['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy'] # 'cond'
             self.physics.property_itor = {}
 
             for region in self.physics.regions:  # loop over the different sets of operators
@@ -176,8 +178,8 @@ class Output:
                 self.physics.property_operators[region] = PropertyOperators(pc, thermal = False, props = temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
                                                                                       n_ops = self.physics.property_operators[region].n_ops,
-                                                                                      # n_ops = self.physics.n_ops,
-                                                                                      platform='cpu', algorithm='multilinear',
+                                                                                      axes_min = self.physics.axes_min, axes_max = self.physics.axes_max,
+                                                                                      platform = 'cpu', algorithm='multilinear',
                                                                                       mode='adaptive', precision='d',
                                                                                       timer_name='property %d interpolation' % region,
                                                                                       region=str(region))
@@ -208,7 +210,7 @@ class Output:
             for key in new_prop_keys:
                 if key not in prop_keys:
                     raise ValueError(
-                        f"The following properties are not available: {missing_keys}. "
+                        f"The following properties are not available: {key}. "
                         f"Choose properties from: {prop_keys}"
                     )
 
@@ -225,22 +227,6 @@ class Output:
                                      op_vector(self.op_list),
                                      self.params,
                                      self.master_timer.node["simulation"])
-
-            """
-            # Create a new dictionary with only the available keys from new_prop_keys
-            new_output_dictionary = {}
-            for name in new_prop_keys:
-                if name in output_dictionary: # Only add if the key is available
-                    new_output_dictionary[name] = output_dictionary[name]
-
-            # Update the output properties and reinitialize physics
-            self.physics.property_containers[region].output_props = new_output_dictionary
-            # self.physics.init_physics()
-            # self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list), self.params, self.timer.node["simulation"])
-
-
-            """
-
             self.properties = list(output_dictionary.keys())
 
         return 0
@@ -778,7 +764,8 @@ class Output:
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
 
-        assert timestep < len(xarray_data['time']), 'time step should be less than %d' % len(xarray_data['time'])
+        assert isinstance(timestep, int) and timestep < len(xarray_data['time']), \
+            f"Timestep should be an integer less than {len(xarray_data['time'])}."
 
         var_names = list(xarray_data.data_vars)
         nrows = len(var_names)
