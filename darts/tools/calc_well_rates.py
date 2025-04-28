@@ -121,10 +121,7 @@ def phase_molar_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        try:
-            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j] # compositional
-        except:
-            values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+        values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
 
     return values
 
@@ -141,11 +138,7 @@ def phase_mass_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        try:
-            values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
-        except:
-            values[j] = pc.density[j] * pc.relperm[j] / pc.viscosity[j]
-
+        values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
 
     return values
 
@@ -162,10 +155,7 @@ def phase_volumetric_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        try:
-            values[j] = pc.kr[j] / pc.mu[j]
-        except:
-            values[j] = pc.relperm[j] / pc.viscosity[j]
+        values[j] = pc.kr[j] / pc.mu[j]
 
     return values
 
@@ -180,18 +170,13 @@ def components_molar_rates_operators(state, pc):
     """
     pc.evaluate(state)
 
-    try:
-        values = np.zeros(pc.nph * pc.nc_fl)
-    except:
-        values = np.zeros(pc.nph * 1)
+    if pc.nc_fl == 1:   # For geothermal engine
+        pc.x = [[1.], [1.]]
 
+    values = np.zeros(pc.nph * pc.nc_fl)
     for j in pc.ph:
-        try:
             for i in range(pc.nc_fl):
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
-        except:
-            for i in range(1):
-                values[1 * j + i] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -206,13 +191,13 @@ def components_mass_rates_operators(state, pc):
     """
     pc.evaluate(state)
 
+    if pc.nc_fl == 1:   # For geothermal engine
+        pc.x = [[1.], [1.]]
+
     values = np.zeros(pc.nph * pc.nc_fl)
     for j in pc.ph:
         for i in range(pc.nc_fl):
-            try:
-                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
-            except:
-                values[1 * j + i] = pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
+            values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
 
     return values
 
@@ -230,10 +215,7 @@ def heat_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        try:
-            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
-        except:
-            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+        values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
 
     return values
 
