@@ -82,7 +82,6 @@ class StructReservoir(ReservoirBase):
         self.timer.node['connection list generation'].stop()
 
         volume = self.discretizer.calc_volumes()
-        self.global_data['volume'] = volume
 
         if self.global_data['depth'] is None: # pick z coordinates from the centers, and change the order from KJI to IJK
             self.global_data['depth'] = self.discretizer.centroids_all_cells[:, 2].flatten(order='F')
@@ -112,6 +111,8 @@ class StructReservoir(ReservoirBase):
         np.array(mesh.op_num, copy=False)[:] = op_num
 
         self.set_boundary_volume(self.boundary_volumes)
+        # copy the values of mesh.volume instead of using the pointer
+        self.global_data['volume'] = np.array(mesh.volume, copy=True)
 
         return mesh
 
@@ -445,11 +446,11 @@ class StructReservoir(ReservoirBase):
         vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
         cell_data = {}
-        for i, prop_name in enumerate(prop_names):
+        for i, name in enumerate(prop_names):
             local_data = data[i]
             global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
             global_array[self.discretizer.local_to_global] = local_data
-            cell_data[prop_name] = global_array
+            cell_data[prop_names[name]] = global_array
 
         if self.vtk_grid_type == 0:
             vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
@@ -482,7 +483,9 @@ class StructReservoir(ReservoirBase):
             x1 = xx[~array.mask]
             y1 = yy[~array.mask]
             newarr = array[~array.mask]
-            array = griddata((x1, y1), newarr.ravel(),(xx, yy), method=method)
+            array = griddata((x1, y1), newarr.ravel(),
+                             (xx, yy),
+                             method=method)
             return array
 
         def interpolate_zeroes_2d(array):

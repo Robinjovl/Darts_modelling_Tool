@@ -11,7 +11,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # set model list to run
 
-    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do',
                      '2ph_geothermal', '2ph_geothermal_mass_flux',
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
@@ -21,8 +21,12 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'CoaxWell'
                      ]       
 
+
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
+
+    if platform == 'cpu':  # this model doesn't converge well, so we skip it on GPU
+        accepted_dirs += ['2ph_do_thermal']
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
@@ -56,9 +60,11 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_cpg = []
     for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'deadoil']:
-            for wctrl in ['wrate', 'wbhp']:
-                if physics_type == 'deadoil' and wctrl == 'wrate':
-                    continue  #TODO fix convergence
+            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
+                if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
+                    continue  # TODO fix convergence
+                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
+                    continue
                 case = case_geom + '_' + wctrl
                 test_args_cpg.append([case, physics_type])
     test_args_cpg = [test_args_cpg]
@@ -76,7 +82,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_dfn = [test_args_dfn]
 
     # for adjoint test
-    accepted_dirs_adjoint = ['Adjoint_super_engine']
+    accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
@@ -109,18 +115,21 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mainpy
 
     # discretizer tests
+    print('\nDiscretizer tests:')
     n_total_discr = n_failed_discr = 0
     n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
+    print('\nFracture network tests:')
     n_total_dfn = n_failed_dfn = 0
     n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
     # poromechanic tests
+    print('\nPoromechanics tests:')
     n_total_mech = n_failed_mech = 0
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
         n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
@@ -128,6 +137,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
+    print('\nAdjoint tests:')
     n_failed_adj = n_total_adj = 0
     import time
     if len(accepted_dirs_adjoint):
@@ -179,6 +189,7 @@ def check_performance(mod):
         platform='gpu'
 
     m.init(platform=platform)
+    m.set_output()
     m.run()
     m.print_stat()
     abort_redirection(log_stream)

@@ -96,7 +96,7 @@ def main():
         exit()
 
     if path and os.path.isdir(path):
-        file = "model.py" if args.model else "main.py"
+        file = "model.py" if args.model else "main__.py"
         filepath = os.path.join(path, file)
 
         if os.path.isfile(filepath):

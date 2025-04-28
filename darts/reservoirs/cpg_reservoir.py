@@ -541,7 +541,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
@@ -549,51 +549,45 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        for ts, t in enumerate(time_steps):
+        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
-            if len(time_steps) == 1:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
-            else:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
+        cell_data = {}
+        for i, prop in enumerate(prop_names):
+            local_data = data[i]
+            global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
+            dummy_zeros = np.zeros(
+                self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
+            v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
+            global_array[self.discr_mesh.local_to_global] = v[:]
+            cell_data[prop_names[prop]] = global_array
 
-            cell_data = {}
-            for prop in prop_names:
-                local_data = data[prop][ts]
-                global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
-                dummy_zeros = np.zeros(
-                    self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
-                v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
-                global_array[self.discr_mesh.local_to_global] = v[:]
-                cell_data[prop] = global_array
+        if self.vtk_grid_type == 0:
+            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+        else:
+            for key, value in cell_data.items():
+                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+                if cell_data[key].size == g_to_l.size:
+                    a = cell_data[key][g_to_l >= 0]
+                else:
+                    a = cell_data[key]
+                self.vtkobj.AppendScalarData(key, a)
 
-            if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-            else:
-                for key, value in cell_data.items():
+            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+            if len(self.vtk_filenames_and_times) == 0:
+                for key, data in self.global_data.items():
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-                    g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                    if cell_data[key].size == g_to_l.size:
-                        a = cell_data[key][g_to_l >= 0]
-                    else:
-                        a = cell_data[key]
-                    self.vtkobj.AppendScalarData(key, a)
+        # in order to have correct timesteps in Paraview, write down group file
+        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+        # and does not support reading, track all written files and times and re-write the complete
+        # group file every time
 
-                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-                if len(self.vtk_filenames_and_times) == 0:
-                    for key, data in self.global_data.items():
-                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
-
-            # in order to have correct timesteps in Paraview, write down group file
-            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-            # and does not support reading, track all written files and times and re-write the complete
-            # group file every time
-
-            self.vtk_filenames_and_times[vtk_file_name] = t
-            vtk_group = VtkGroup('solution')
-            for fname, t in self.vtk_filenames_and_times.items():
-                vtk_group.addFile(fname, t)
-            vtk_group.save()
+        self.vtk_filenames_and_times[vtk_file_name] = t
+        vtk_group = VtkGroup('solution')
+        for fname, t in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, t)
+        vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
 
@@ -884,6 +878,29 @@ def make_full_cube(cube: np.array, local_to_global: np.array, global_to_local: n
     cube_full[local_to_global] = cube
     return cube_full
 
+def read_int_array(filename : str, keywordname : str, n_values_to_read : int =-1) -> np.array:
+    '''
+    read integer array
+    :param filename: grdecl file (text)
+    :param keywordname:
+    :param n_values_to_read: can stop reading if there are non-integer values
+    :return: np.array
+    '''
+    arr_cpp = index_vector_discr()
+    load_single_int_keyword(arr_cpp, filename, keywordname, n_values_to_read)
+    return np.array(arr_cpp, copy=True)
+
+def read_float_array(filename : str, keywordname : str, n_values_to_read : int =-1) -> np.array:
+    '''
+    read floating-point array
+    :param filename: grdecl file (text)
+    :param keywordname:
+    :param n_values_to_read: can stop reading if there are non-integer values
+    :return: np.array
+    '''
+    arr_cpp = value_vector_discr()
+    load_single_float_keyword(arr_cpp, filename, keywordname, n_values_to_read)
+    return np.array(arr_cpp, copy=True)
 
 def read_arrays(gridfile: str, propfile: str):
     '''
@@ -894,48 +911,30 @@ def read_arrays(gridfile: str, propfile: str):
     # fill the dictionary to return
     arrays = {}
 
-    dims_cpp = index_vector_discr()
-    load_single_int_keyword(dims_cpp, gridfile, "SPECGRID", 3)
-    arrays['SPECGRID'] = np.array(dims_cpp, copy=False)
+    arrays['SPECGRID'] = read_int_array(gridfile, "SPECGRID", 3)
 
-    permx_cpp, permy_cpp, permz_cpp = value_vector_discr(), value_vector_discr(), value_vector_discr()
-    load_single_float_keyword(permx_cpp, propfile, 'PERMX', -1)
-    load_single_float_keyword(permy_cpp, propfile, 'PERMY', -1)
-    arrays['PERMX'] = np.array(permx_cpp, copy=False)
-    arrays['PERMY'] = np.array(permy_cpp, copy=False)
+    arrays['PERMX'] = read_float_array(propfile, 'PERMX')
+    arrays['PERMY'] = read_float_array(propfile, 'PERMY')
     for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
         if arrays['PERMX'].size == 0 or arrays['PERMY'].size == 0:
-            load_single_float_keyword(permx_cpp, propfile, perm_str, -1)
-            permy_cpp = permx_cpp
-            arrays['PERMX'] = np.array(permx_cpp, copy=False)
-            arrays['PERMY'] = np.array(permy_cpp, copy=False)
+            arrays['PERMX'] = read_float_array(propfile, perm_str)
+            arrays['PERMY'] = arrays['PERMX']
     if arrays['PERMY'].size == 0:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
-    load_single_float_keyword(permz_cpp, propfile, 'PERMZ', -1)
-    arrays['PERMZ'] = np.array(permz_cpp, copy=False)
+    arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
     if arrays['PERMZ'].size == 0:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1
         print('No PERMZ found in input files. PERMZ=PERMX/10 will be used')
-    poro_cpp = value_vector_discr()  # self.discr_mesh.poro
-    load_single_float_keyword(poro_cpp, propfile, 'PORO', -1)
-    arrays['PORO'] = np.array(poro_cpp, copy=False)
+    arrays['PORO'] = read_float_array(propfile, 'PORO')
 
-    coord_cpp = value_vector_discr()  # self.discr_mesh.coord
-    load_single_float_keyword(coord_cpp, gridfile, 'COORD', -1)
-    arrays['COORD'] = np.array(coord_cpp, copy=False)
+    arrays['COORD'] = read_float_array(gridfile, 'COORD')
+    arrays['ZCORN'] = read_float_array(gridfile, 'ZCORN')
 
-    zcorn_cpp = value_vector_discr()  # self.discr_mesh.zcorn
-    load_single_float_keyword(zcorn_cpp, gridfile, 'ZCORN', -1)
-    arrays['ZCORN'] = np.array(zcorn_cpp, copy=False)
-
-    actnum_cpp = index_vector_discr()  # self.discr_mesh.actnum
-    arrays['ACTNUM'] = np.array([])
     for fname in [gridfile, propfile]:
-        if arrays['ACTNUM'].size == 0:
-            load_single_int_keyword(actnum_cpp, fname, 'ACTNUM', -1)
-            arrays['ACTNUM'] = np.array(actnum_cpp, copy=False)
-    if arrays['ACTNUM'].size == 0:
+        if 'ACTNUM' not in arrays:
+            arrays['ACTNUM'] = read_int_array(fname, 'ACTNUM')
+    if 'ACTNUM' not in arrays:
         arrays['ACTNUM'] = np.ones(arrays['SPECGRID'].prod(), dtype=np.int32)
         print('No ACTNUM found in input files. ACTNUM=1 will be used')
 

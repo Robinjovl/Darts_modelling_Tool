@@ -21,7 +21,7 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
     :type trans: numpy.ndarray
     :param thermal: If the model is thermal or not
     :type thermal: bool
-    :param pc: An instance of the class PropertyContainer
+    :param pc: An instance of the class PropertyContainer()
     :type pc: PropertyContainer
     :param rate_type: Type of well rate to calculate
     :type rate_type: str
@@ -39,24 +39,27 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
     if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
         rates = np.zeros((num_ts, len(conn_ids), pc.nph))
     elif rate_type in ['components_molar_rates', 'components_mass_rates']:
-        try:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
-        except:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
-
-    elif rate_type == 'heat_rate':
+        rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
+    elif rate_type == 'advective_heat_rate':
         if thermal:
             rates = np.zeros((num_ts, len(conn_ids), pc.nph))
         else:
-            raise Exception('The model is isothermal, so heat rate cannot be calculated for it!')
+            raise Exception('The model is isothermal, so advective heat rate cannot be calculated for it!')
     else:
         raise Exception("The rate type is not entered correctly or is not supported!")
     id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
 
     id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
+    if thermal:
+        if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+            id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
+        elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:   # For the geothermal engine
+            pass
+        else:
+            raise Exception('Neither temperature nor enthalpy exists in the list of variables!')
+
     # Looping over time steps
     for i in range(num_ts):
-
         p = h5_well_data['dynamic']['X'][i,:,id_pres]
         # Determine upwind cell indices for all connections
         dp = p[cell_p] - p[cell_m]
@@ -79,12 +82,28 @@ def calc_rates_at_connections(h5_well_data: dict, conn_ids: list, trans: np.ndar
                 values = components_molar_rates_operators(state, pc)
             elif rate_type == 'components_mass_rates':
                 values = components_mass_rates_operators(state, pc)
-            elif rate_type == 'heat_rate':
+            elif rate_type == 'advective_heat_rate':
                 values = heat_rate_operators(state, pc)
+
+                # Calc heat operators for the dead state (1 atm and 15 deg C)
+                if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+                    state_dead = state.copy()
+                    state_dead[id_pres] = 1.01325
+                    state_dead[id_temp] = 273.15 + 15
+                    values_dead = heat_rate_operators(state_dead, pc)
+                elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:  # For the geothermal engine (1 atm, 15 deg C, and zH2O = 1)
+                    enthalpy_w, dens_m_w, kr_w, miu_w = -44582.229072, 55.457385, 1, 1.132781
+                    value_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                    values_dead = np.zeros(len(values))
+                    for ph_idx, value in enumerate(values):
+                        if value != 0:
+                            values_dead[ph_idx] = value_dead_phase
+
+                values = values - values_dead
             else:
                 raise Exception("Rate type is entered incorrectly!")
 
-            rates[i, j] = values * trans[j] * dp[j]
+            rates[i, j] = - values * trans[j] * dp[j]
 
     return rates
 
@@ -103,7 +122,7 @@ def phase_molar_rate_operators(state, pc):
     values = np.zeros(pc.nph)
     for j in pc.ph:
         try:
-            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+            values[j] = pc.dens_m[j] * pc.kr[j] / pc.mu[j] # compositional
         except:
             values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
@@ -125,7 +144,7 @@ def phase_mass_rate_operators(state, pc):
         try:
             values[j] = pc.dens[j] * pc.kr[j] / pc.mu[j]
         except:
-            values[j] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+            values[j] = pc.density[j] * pc.relperm[j] / pc.viscosity[j]
 
 
     return values
@@ -164,7 +183,7 @@ def components_molar_rates_operators(state, pc):
     try:
         values = np.zeros(pc.nph * pc.nc_fl)
     except:
-        values = np.zeros(pc.nph)
+        values = np.zeros(pc.nph * 1)
 
     for j in pc.ph:
         try:
@@ -172,7 +191,7 @@ def components_molar_rates_operators(state, pc):
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         except:
             for i in range(1):
-                values[1 * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
+                values[1 * j + i] = pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -193,7 +212,7 @@ def components_mass_rates_operators(state, pc):
             try:
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
             except:
-                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
+                values[1 * j + i] = pc.dens_m[j] * pc.Mw[i] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 
@@ -211,7 +230,10 @@ def heat_rate_operators(state, pc):
 
     values = np.zeros(pc.nph)
     for j in pc.ph:
-        values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        try:
+            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+        except:
+            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.relperm[j] / pc.viscosity[j]
 
     return values
 

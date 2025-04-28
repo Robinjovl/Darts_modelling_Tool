@@ -19,6 +19,8 @@ import os.path as osp
 from typing import List
 sq_norm = lambda x: np.inner(x, x)
 
+from darts.engines import well_control_iface
+
 
 class OptModuleSettings:
     def __init__(self):
@@ -141,6 +143,9 @@ class OptModuleSettings:
         # MPFA
         self.n_fm = 0
 
+        # by default, the observation rate type is volumetric rate
+        self.observation_rate_type = well_control_iface.VOLUMETRIC_RATE
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 #---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
@@ -205,6 +210,13 @@ class OptModuleSettings:
         self.set_op_list()
         self.reset()
 
+        from darts.models.output import Output
+        # self.output_folder = 'jaja'
+        # self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+        #                      self.well_head_conn_id, self.well_perf_conn_ids,
+        #                      self.output_folder, self.sol_filename, self.well_filename,
+        #                      False, False,'d', 'gzip', False)
+
         self.sim_time -= time.time()
         # 3. Run
         if args:
@@ -213,7 +225,11 @@ class OptModuleSettings:
             self.run(start_opt=args[0],stop_opt=args[1])
         else:
             self.physics.engine.clear_previous_adjoint_assembly()
-            self.run(export_to_vtk=False)
+            self.run(
+                    # export_to_vtk=False,
+                    # save_well_data=False,
+                    # save_reservoir_data=False
+            )
             # self.run_python()opt_history_matching
         # self.run()
         self.sim_time += time.time()
@@ -540,8 +556,9 @@ class OptModuleSettings:
 
         self.physics.engine.objfun_saturation = self.objfun_saturation
 
-
         self.physics.engine.scale_function_value = self.scale_function_value
+
+        self.physics.engine.observation_rate_type = self.observation_rate_type
 
         if type(self.modifier.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
             self.col_idx = list(range(self.n_fm))

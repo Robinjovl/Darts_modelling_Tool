@@ -53,8 +53,7 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
-    n.set_output(output_folder='output', sol_filename='solution.h5',
-                 save_initial=True, all_phase_props=False, precision='d', compression=None, verbose=False)
+    n.set_output()
 
     if True:
         n.run(1000)
@@ -63,19 +62,20 @@ if __name__ == '__main__':
         n.print_timers()
         n.print_stat()
 
+        # compute well time data
+        time_data_dict = n.output.store_well_time_data()
 
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
+        # save well time data
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df.to_pickle(n.output_folder + "/well_time_data.pkl")  # as a pickle file
+        writer = pd.ExcelWriter(n.output_folder + "/well_time_data.xlsx")  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
         writer.close()
+
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
-
 
     if True:
         Xn = np.array(n.physics.engine.X, copy=False)
@@ -90,12 +90,6 @@ if __name__ == '__main__':
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
-
-#%% Calculate well rates
-from darts.tools.plot_well_rates import plot_well_rates
-types_of_well_rates = ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates', 'components_molar_rates', 'components_mass_rates', 'heat_rate']
-plot_well_rates(types_of_well_rates, n)
-
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
