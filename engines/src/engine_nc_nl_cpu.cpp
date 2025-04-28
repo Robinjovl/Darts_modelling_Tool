@@ -255,7 +255,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 
 	fluxes.resize(mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
-	X_init.resize(n_vars * mesh->n_blocks);
+	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
@@ -263,6 +263,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	FIPS.resize(nc);
 
 	X_init = mesh->initial_state;
+	X_init.resize(n_vars * mesh->n_blocks);
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
 		PV[i] = mesh->volume[i] * mesh->poro[i];

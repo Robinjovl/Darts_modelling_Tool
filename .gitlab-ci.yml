@@ -232,7 +232,7 @@ build-windows-3.9-ODLS:
       expire_in: 1 week
       when: always
 
-build-linux-builder:
+docker-image-builder:
   stage: build images
   tags:
     - linux
@@ -245,9 +245,10 @@ build-linux-builder:
       --dockerfile "${CI_PROJECT_DIR}/.cicd/build-linux/Dockerfile"
       --destination "${CI_REGISTRY_IMAGE}/linux-builder:${CI_COMMIT_TAG}"
   rules:
-    - changes:
-        - .cicd/build-linux/Dockerfile
-        - .cicd/build-linux/Toolchain.cmake
+    - if: $UPDATE_DOCKER_IMAGE == "1"
+    #- changes:
+    #    - .cicd/build-linux/Dockerfile
+    #    - .cicd/build-linux/Toolchain.cmake
       
 ###################################################################################
      

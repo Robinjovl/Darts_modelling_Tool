@@ -26,14 +26,7 @@ class Model(CICDModel):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-6
-        # self.params.newton_type = 2
-        # self.params.newton_params = value_vector([0.2])
-
+        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
         self.timer.node["initialization"].stop()
 
     def init(self, platform='cpu'):
@@ -151,14 +144,15 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_boundary_conditions(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_prod(self.p_init - 10)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=self.p_init-10.)
             else:
-                # w.control = self.physics.new_rate_inj(200, self.inj, 1)
-                w.control = self.physics.new_bhp_inj(self.p_init + 10, self.inj)
-                # w.control = self.physics.new_rate_inj(5, self.inj, 0)
-                # w.control = self.physics.new_bhp_inj(450, self.inj)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
+                                               inj_temp=self.inj[-1])
 
 
 class ModelProperties(PropertyContainer):

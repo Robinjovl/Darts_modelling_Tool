@@ -15,6 +15,19 @@ from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
+class DataTS:
+    def __init__(self, nc):
+        self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
+
+        # default values
+        self.first_ts = 1.
+        self.dt_min = 1e-12
+        self.dt_mult = 2.
+        self.dt_max = 10.
+        self.tol_res = 1e-2
+        self.tol_wel_mult = 100.
+        self.tol_stationary = 1e-3
+        self.max_it_nonlin = 20
 
 class DartsModel:
     """
@@ -226,7 +239,8 @@ class DartsModel:
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
         self.op_num[self.reservoir.mesh.n_res_blocks:] = len(self.op_list) - 1
 
-    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, max_ts: float = None, runtime: float = 1000,
+
+    def set_sim_params(self, first_ts: float = None, mult_ts: float = None, min_ts = 1e-15, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
                        newton_type=None, newton_params=None, line_search: bool=False):
         """
@@ -250,9 +264,16 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
-        :param line_search: flag to activate line search in Newton iterations
-        :type: line_search: bool
         """
+        self.data_ts = DataTS(self.physics.n_vars)
+
+        self.data_ts.first_ts = first_ts if first_ts is not None else self.data_ts.first_ts
+        self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
+        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
+        self.data_ts.max_it_nonlin = it_newton if it_newton is not None else self.data_ts.max_it_nonlin
+        self.data_ts.tol_res = tol_newton if tol_newton is not None else self.data_ts.tol_res
+        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
+
         self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
         self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
         self.params.max_ts = max_ts if max_ts is not None else self.params.max_ts
@@ -266,6 +287,7 @@ class DartsModel:
 
         self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
         self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
+
         self.params.line_search = line_search
 
     def run_simple(self, physics, params, days):
@@ -338,8 +360,8 @@ class DartsModel:
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
 
-    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_well_data_after_run : bool = False, save_reservoir_data : bool = True,
-            log_3d_body_path: bool = False, verbose: bool = True):
+    def run(self, days: float = None, restart_dt: float = 0., save_well_data : bool = True, save_well_data_after_run : bool = False,
+            save_reservoir_data : bool = True, verbose: bool = True):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -353,44 +375,58 @@ class DartsModel:
         :type save_well_data: bool
         :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
-        :param log_3d_body_path: hypercube output
-        :type verbose: bool
         """
         days = days if days is not None else self.runtime
+        data_ts = self.data_ts
+
         # get current engine time
         t = self.physics.engine.t
         stop_time = t + days
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = self.params.first_ts
+            dt = data_ts.first_ts
         elif restart_dt > 0.:
             dt = restart_dt
         else:
+            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
 
-            dt = min(self.prev_dt*self.params.mult_ts, days, self.params.max_ts)
         self.prev_dt = dt
 
         ts = 0
 
-        if log_3d_body_path:
-            self.physics.body_path_start(output_folder=self.output_folder)
+        nc = self.physics.n_vars
+        nb = self.reservoir.mesh.n_res_blocks
+        max_dx = np.zeros(nc)
+
+        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+            omega = 0.
+        else:
+            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         while t < stop_time:
+            xn = np.array(self.physics.engine.Xn, copy=False)[:nb * nc]
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
                 t += dt
                 self.physics.engine.t = t
                 ts += 1
+
+                x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
+                dt_mult_new = 1e3
+                for i in range(nc):
+                    max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
+                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
+                    if mult < dt_mult_new:
+                        dt_mult_new = mult
+
                 if verbose:
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
                           % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
 
-                dt = min(dt * self.params.mult_ts, self.params.max_ts)
+                dt = min(dt * dt_mult_new, data_ts.dt_max)
 
-                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
-                # to not allow the next time step be smaller than min_ts
                 if np.fabs(t + dt - stop_time) < self.params.min_ts:
                     dt = stop_time - t
 
@@ -399,19 +435,16 @@ class DartsModel:
                 else:
                     self.prev_dt = dt
 
-                if log_3d_body_path:
-                    self.physics.body_path_add_bodys(output_folder=self.output_folder, time=t)
-
                 # save well data at every converged time step
                 if save_well_data and save_well_data_after_run is False:
                     self.output.save_data_to_h5(kind='well')
 
             else:
-                dt /= self.params.mult_ts
+                dt /= data_ts.dt_mult
                 if verbose:
                     print("Cut timestep to %2.10f" % dt)
-                assert dt > self.params.min_ts, ('Stop simulation. Reason: reached min. timestep '
-                                                 + str(self.params.min_ts) + ' dt=' + str(dt))
+                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
+                                                 + str(data_ts.dt_min) + ' dt=' + str(dt))
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -429,7 +462,9 @@ class DartsModel:
                   % (self.physics.engine.stat.n_timesteps_total, self.physics.engine.stat.n_timesteps_wasted,
                      self.physics.engine.stat.n_newton_total, self.physics.engine.stat.n_newton_wasted,
                      self.physics.engine.stat.n_linear_total, self.physics.engine.stat.n_linear_wasted))
+
         return 0
+
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
@@ -442,21 +477,20 @@ class DartsModel:
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
-        max_newt = self.params.max_i_newton
+        max_newt = self.data_ts.max_it_nonlin
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
-        residual_history = []
         for i in range(max_newt+1):
-            # self.physics.engine.run_single_newton_iteration(dt)
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
+
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
-                if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.params.stationary_point_tolerance:
+                if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.data_ts.tol_stationary:
                     counter += 1
             if counter > 2:
                 if verbose:
@@ -464,15 +498,11 @@ class DartsModel:
                 break
 
             self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
-            residual_history.append((self.physics.engine.newton_residual_last_dt, # matrix residual
-                                     self.physics.engine.well_residual_last_dt,   # well residual
-                                     1.0))                                        # Newton update coefficient
-
             self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
-            if ((self.physics.engine.newton_residual_last_dt < self.params.tolerance_newton and
-                 self.physics.engine.well_residual_last_dt < self.params.well_tolerance_coefficient * self.params.tolerance_newton) or
-                    self.physics.engine.n_newton_last_dt == self.params.max_i_newton):
+            if ((self.physics.engine.newton_residual_last_dt < self.data_ts.tol_res and
+                 self.physics.engine.well_residual_last_dt < self.data_ts.tol_res * self.data_ts.tol_wel_mult) or
+                    self.physics.engine.n_newton_last_dt == max_newt):
                 if i > 0:  # min_i_newton
                     break
 
@@ -497,7 +527,6 @@ class DartsModel:
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
-
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
 

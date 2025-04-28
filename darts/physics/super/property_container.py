@@ -43,6 +43,9 @@ class PropertyContainer(PropertyBase):
             self.thermal = True
             self.temperature = None
 
+        # In case of PH-formulation, PT flashes are required for calculating initial distribution (Initialize class)
+        self.evaluate_PT_bool = False  # set to True when PH-formulation but PT-flash needs to be calculated (Initialize)
+
         # Allocate (empty) evaluators for functions
         self.density_ev = {}
         self.viscosity_ev = {}
@@ -151,26 +154,29 @@ class PropertyContainer(PropertyBase):
 
         return self.sat[0]
 
-    def compute_total_enthalpy(self, state, temperature):
-        _ = self.flash_ev.evaluate_PT(state[0], temperature)
-        flash_results = self.flash_ev.get_flash_results()
-        nu = np.array(flash_results.nu)
-        x = np.array(flash_results.X).reshape(self.nph, self.nc)
+    def compute_total_enthalpy(self, state_pt):
+        # Evaluate flash at PT
+        pressure, temperature, zc = self.get_state(state_pt)
+        ph = self.run_flash(pressure, temperature, zc, evaluate_PT=True)
 
-        ph = np.array([j for j in range(self.nph) if nu[j] > 0])
-
+        # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.
         for j in ph:
-            enthalpy += nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(state[0], temperature, x[j, :])
+            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # kJ/kmol
 
         return enthalpy
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = False):
         # Normalize fluid compositions
         zc_norm = zc if not self.ns else zc[:self.nc_fl] / (1. - np.sum(zc[self.nc_fl:]))
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+        if evaluate_PT:
+            # In case of PH-formulation, PT flashes are required for calculating initial distribution
+            error_output = self.flash_ev.evaluate_PT(pressure, temperature, zc_norm)
+        else:
+            error_output = self.flash_ev.evaluate(pressure, temperature, zc_norm)
+
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         try:
@@ -211,7 +217,7 @@ class PropertyContainer(PropertyBase):
         self.clean_arrays()
 
         # Run flash
-        self.ph = self.run_flash(pressure, temperature, zc)
+        self.ph = self.run_flash(pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool)
         self.temperature = self.flash_ev.get_flash_results().temperature if not isinstance(self.flash_ev, int) else self.temperature
         assert self.temperature is not None, ("PropertyContainer does not specify self.temperature, should be set to "
                                               "constant temperature in case of isothermal physics, "

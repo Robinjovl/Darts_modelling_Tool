@@ -59,7 +59,7 @@ class Model(CICDModel):
         phases = ['gas', 'wat']
 
         self.ini_stream = [1e-6]
-        self.inj_stream = [0.3]
+        self.inj_composition = [0.3]
 
         property_container = PropertyContainer(phase_name=phases, component_name=components, min_z=zero, Mw=Mw)
 
@@ -98,11 +98,14 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_rate_gas_inj(1, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, phase_name='gas', target=1., inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(85)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=85.)
 
 
 class CustomPhysics(Compositional):
@@ -123,22 +126,6 @@ class CustomPhysics(Compositional):
             self.property_operators = output_properties
 
         return
-
-    def set_well_controls(self):
-        # define well control factories
-        # Injection wells (upwind method requires both bhp and inj_stream for bhp controlled injection wells):
-        self.new_bhp_inj = lambda bhp, inj_stream: bhp_inj_well_control(bhp, value_vector(inj_stream))
-        self.new_rate_gas_inj = lambda rate, inj_stream: rate_inj_well_control(self.phases, 0, self.nc, self.nc, rate,
-                                                                               value_vector(inj_stream), self.rate_itor)
-        # Production wells:
-        self.new_bhp_prod = lambda bhp: bhp_prod_well_control(bhp)
-        self.new_rate_gas_prod = lambda rate: rate_prod_well_control(self.phases, 0, self.nc, self.nc, rate,
-                                                                     self.rate_itor)
-        self.new_rate_water_prod = lambda rate: rate_prod_well_control(self.phases, 1, self.nc, self.nc, rate,
-                                                                       self.rate_itor)
-
-        return
-
 
 class RelPerm:
     def __init__(self, phase, swc=0., sgr=0., kre=1., n=2.):

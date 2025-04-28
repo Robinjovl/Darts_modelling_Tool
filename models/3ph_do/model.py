@@ -47,7 +47,7 @@ class Model(CICDModel):
         components = ['g', 'o', 'w']
         phases = ['gas', 'oil', 'wat']
         Mw = [1, 1, 1]
-        self.inj_stream = [1 - 2 * zero, zero]
+        self.inj_composition = [1 - 2 * zero, zero]
         self.ini_stream = [0.05, 0.2 - zero]
 
         """ properties correlations """
@@ -81,12 +81,14 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_inj(120, self.inj_stream)
-                # w.control = self.physics.new_bhp_inj(100, self.inj_stream)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=120., inj_composition=self.inj_composition)
             else:
-                w.control = self.physics.new_bhp_prod(60)
+                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=60.)
 
 
 class ModelProperties(PropertyContainer):
@@ -95,8 +97,9 @@ class ModelProperties(PropertyContainer):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          rock_comp=rock_comp, temperature=1.)
 
-    def run_flash(self, pressure, temperature, zc):
-
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
+        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
+        
         ph = np.array([0, 1, 2], dtype=np.intp)
 
         for i in range(self.nc):
