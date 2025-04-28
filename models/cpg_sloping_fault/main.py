@@ -11,7 +11,7 @@ from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
+def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -126,7 +126,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    m.output.store_well_time_data()
+    m.output.plot_well_time_data()
+
+    if compare_with_ref:
+        failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    else:
+        failed, sim_time = 0, 0.0
 
     if redirect_log:
         abort_redirection(log_stream)
@@ -249,7 +255,7 @@ def run_test(args: list = [], platform='cpu'):
         physics_type = args[1]
 
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
+        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform, compare_with_ref=True)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
@@ -263,11 +269,11 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    #physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
@@ -275,8 +281,8 @@ if __name__ == '__main__':
 
     well_controls = []
     well_controls += ['wrate']
-    well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wbhp']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:
