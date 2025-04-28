@@ -240,9 +240,6 @@ def find_conn_ids_for_perfs(perfs, block_m, block_p, n_res_blocks):
     assert (len(perfs_conn_ids) == len(perfs) and (block_m[perfs_conn_ids] > n_res_blocks).all())
     return perfs_conn_ids
 
-def find_conn_ids_for_wellhead_conns():
-    return None
-
 def find_one_array_in_another_indices(to_find, in_array):
     indices = []
     for element in to_find:
