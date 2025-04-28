@@ -915,6 +915,7 @@ class Output:
                         plt.ylabel(ylabel)
                         plt.tight_layout()
                         plt.savefig(os.path.join(subdir, f'{key}.png'))
+                        plt.close()
                 # total and wellhead plots
                 total_keys = self.create_total_keys(rtype, w.name, pc)
                 for key, ylabel in total_keys:
@@ -924,6 +925,7 @@ class Output:
                     plt.ylabel(ylabel)
                     plt.tight_layout()
                     plt.savefig(os.path.join(well_dir, f'{key}.png'))
+                    plt.close()
 
         # BHP and BHT are plotted all the time
         for w in self.reservoir.wells:
@@ -938,6 +940,7 @@ class Output:
             plt.ylabel('Bottom-hole pressure [bar]')
             plt.tight_layout()
             plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
+            plt.close()
 
             BHT_key = f'well_{w.name}_BHT'
             BHT = df[BHT_key]
@@ -948,8 +951,7 @@ class Output:
             plt.ylabel('Bottom-hole pressure [bar]')
             plt.tight_layout()
             plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
-
-        plt.close('all')
+            plt.close()
 
         return df
 
