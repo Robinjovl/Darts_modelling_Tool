@@ -18,8 +18,11 @@ else:
 m.print_timers()
 m.print_stat()
 
+# evaluate properties, save dictionary, load dictionary
 output_props = m.physics.vars + m.output.properties
 timesteps, property_array = m.output.output_properties(output_properties = output_props)
+m.output.save_property_array(timesteps, property_array)
+loaded_timesteps, loaded_property_array = m.output.load_property_array(file_directory='output/property_array.h5')
 
 m.output.output_to_vtk(output_properties=output_props) # output all saved time steps to vtk
 

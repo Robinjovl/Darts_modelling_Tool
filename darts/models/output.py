@@ -89,25 +89,56 @@ class Output:
         if all_phase_props:
             self.set_phase_properties()
 
-    def set_phase_properties(self):
-        if type(self.physics) is Compositional or type(self.physics) is BlackOil:
-            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
-            phase_props_units = [' $[kg/m^{3}]$', ' $[kmol/m^{3}]$', ' [-]', ' [cP]', ' [-]', ' [Bar]', ' [kJ]', ' [kJ/m/day/K]']
+        self.unit_dictionary = {
+            'dens': '[kg/m3]',
+            'densm': '[kmol/m3]',
+            'sat': '[-]',
+            'mu': '[cP]',
+            'kr': '[-]',
+            'pc': '[Bar]',
+            'pressure': '[Bar]',
+            'enthalpy': '[kJ]',
+            'cond': '[kJ/m/day/K]',
+            'temperature': '[K]'}
 
+        self.set_units()
+
+    def set_units(self):
+        """
+        Function to construct a dictionary of units for all the variables
+        """
+        self.variable_units = {}
+        for name in self.physics.vars:
+            try:
+                self.variable_units[name] = self.unit_dictionary[name]
+            except:
+                pass
+
+        for name in self.properties:
+            try:
+                self.variable_units[name] = self.unit_dictionary[name.split('_')[0]]
+            except:
+                self.variable_units[name] = ''
+
+        return
+
+    def set_phase_properties(self):
+        """
+        This function constructs a predefined set of property operators for the compositiol/geothermal physics class.
+        """
+
+        if type(self.physics) is Compositional or type(self.physics) is BlackOil:
+            phase_props_labels = ['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']
             self.physics.property_itor = {}
 
             for region in self.physics.regions:  # loop over the different sets of operators
                 pc = self.physics.property_containers[region]
-
                 temp_dict = {} # output_properties dictionary
-                self.unit_dict = {}
-                self.unit_dict['pressure'] = 'bar'
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
-                        self.unit_dict[f"{name}_{self.physics.phases[j]}"] = phase_props_units[i]
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
@@ -115,32 +146,25 @@ class Output:
                         temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda i=i, j=j: pc.x[j, i]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, self.physics.thermal, temp_dict)
-
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
                                                                                       n_ops=self.physics.n_ops,
                                                                                       platform='cpu', algorithm='multilinear',
                                                                                       mode='adaptive', precision='d',
                                                                                       timer_name='property %d interpolation' % region,
                                                                                       region=str(region))
-
                 # Assign the temporary dictionary to output_props for the region
                 self.physics.property_containers[region].output_props = temp_dict
-
                 self.n_ops = self.physics.n_ops
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
-
-            phase_props_labels = ['dens', 'dens_m', 'sat', 'mu', 'kr', 'pc', 'enthalpy']# 'cond']
-
+            phase_props_labels = ['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy']# 'cond'
             self.physics.property_itor = {}
 
             for region in self.physics.regions:  # loop over the different sets of operators
                 pc = self.physics.property_containers[region]
-
                 temp_dict = {}
 
-                # add temperature
-                temp_dict['temperature'] = lambda: pc.temperature
+                temp_dict['temperature'] = lambda: pc.temperature # add temperature
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
@@ -149,7 +173,6 @@ class Output:
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, thermal = False, props = temp_dict)
-
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
                                                                                       n_ops = self.physics.property_operators[region].n_ops,
                                                                                       # n_ops = self.physics.n_ops,
@@ -165,15 +188,69 @@ class Output:
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
 
+        return
+
+    def filter_phase_props(self, new_prop_keys):
+        """
+        Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
+
+        :param new_prop_keys: list of properties to keep
+        :type new_prop_keys: list
+
+        :raises ValueError: If any key in `new_prop_keys` is not an available property.
+        """
+        for region in self.physics.regions:
+            output_dictionary = self.physics.property_containers[region].output_props
+            prop_keys = list(output_dictionary.keys())
+
+            # Warn if any key is missing in the available properties
+            for key in new_prop_keys:
+                if key not in prop_keys:
+                    raise ValueError(
+                        f"The following properties are not available: {missing_keys}. "
+                        f"Choose properties from: {prop_keys}"
+                    )
+
+            for key in prop_keys:
+                if key not in new_prop_keys:
+                    del output_dictionary[key]
+
+            self.physics.property_containers[region].output_props = output_dictionary
+
+            # Initialize physics and engine settings
+            self.physics.init_physics()
+            self.physics.engine.init(self.reservoir.mesh,
+                                     ms_well_vector(self.reservoir.wells),
+                                     op_vector(self.op_list),
+                                     self.params,
+                                     self.master_timer.node["simulation"])
+
+            """
+            # Create a new dictionary with only the available keys from new_prop_keys
+            new_output_dictionary = {}
+            for name in new_prop_keys:
+                if name in output_dictionary: # Only add if the key is available
+                    new_output_dictionary[name] = output_dictionary[name]
+
+            # Update the output properties and reinitialize physics
+            self.physics.property_containers[region].output_props = new_output_dictionary
+            # self.physics.init_physics()
+            # self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list), self.params, self.timer.node["simulation"])
+
+
+            """
+
+            self.properties = list(output_dictionary.keys())
+
         return 0
 
     def save_property_array(self, time_vector, property_array, filename="property_array.h5"):
         """
         Saves property_array to an HDF5 file.
 
-        time_vector : Array of timesteps.
-        property_array : Dictionary where keys are property names and values are NumPy arrays.
-        filename : Name of the HDF5 file to save.
+        :param time_vector : Array of timesteps
+        :param property_array : Dictionary where keys are property names and values are NumPy arrays.
+        :param filename : Name of the HDF5 file to save to.
         """
         
         compression_level = 2
@@ -190,25 +267,29 @@ class Output:
         return 0 
 
     def load_property_array(self, file_directory="property_array.h5"):
+        """
+        Load saved properties back into a dictionary.
+        :param file_directory : filepath to saved property_array.h5
 
-       property_array = {}
+        :return time_vector:  available timesteps
+        :return property_array: dictionary of properties
+        """
+        property_array = {}
 
-       with h5py.File(file_directory, "r") as h5f:
-           # Load time vector
-           time_vector = np.array(h5f["time_vector"])
+        with h5py.File(file_directory, "r") as h5f:
+            # Load time vector
+            time_vector = np.array(h5f["time_vector"])
 
            # Load each property array
-           for key in h5f.keys():
-               if key != "time_vector":  # Skip time vector in property dictionary
-                   property_array[key] = np.array(h5f[key])
+            for key in h5f.keys():
+                if key != "time_vector":  # Skip time vector in property dictionary
+                    property_array[key] = np.array(h5f[key])
 
-       print(f"{filename} loaded successfully.")
-
-       return time_vector, property_array
+        return time_vector, property_array
         
     def print_simulation_parameters(self, mode = 'table'):
         """
-        Function that prints all the class variables into a .txt file
+        Function that prints class variables into a .txt file
         """
         filepath = os.path.join(self.output_folder, 'simulation_input_parameters.txt')
 
@@ -285,60 +366,6 @@ class Output:
                         elif hasattr(w.control, 'target_rate'):
                             f.write(
                                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate}.\n")
-
-        return 0
-
-    def filter_phase_props(self, new_prop_keys):
-        """
-        Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
-
-        :param new_prop_keys: list of properties to keep
-        :type new_prop_keys: list
-
-        :raises ValueError: If any key in `new_prop_keys` is not an available property.
-        """
-        for region in self.physics.regions:
-            output_dictionary = self.physics.property_containers[region].output_props
-            prop_keys = list(output_dictionary.keys())
-
-            # Warn if any key is missing in the available properties
-            for key in new_prop_keys:
-                if key not in prop_keys:
-                    raise ValueError(
-                        f"The following properties are not available: {missing_keys}. "
-                        f"Choose properties from: {prop_keys}"
-                    )
-
-            for key in prop_keys:
-                if key not in new_prop_keys:
-                    del output_dictionary[key]
-
-            self.physics.property_containers[region].output_props = output_dictionary
-
-            # Initialize physics and engine settings
-            self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh,
-                                     ms_well_vector(self.reservoir.wells),
-                                     op_vector(self.op_list),
-                                     self.params,
-                                     self.master_timer.node["simulation"])
-
-            """
-            # Create a new dictionary with only the available keys from new_prop_keys
-            new_output_dictionary = {}
-            for name in new_prop_keys:
-                if name in output_dictionary: # Only add if the key is available
-                    new_output_dictionary[name] = output_dictionary[name]
-
-            # Update the output properties and reinitialize physics
-            self.physics.property_containers[region].output_props = new_output_dictionary
-            # self.physics.init_physics()
-            # self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list), self.params, self.timer.node["simulation"])
-
-            
-            """
-
-            self.properties = list(output_dictionary.keys())
 
         return 0
 
@@ -479,7 +506,7 @@ class Output:
 
     def read_specific_data(self, filename: str, timestep: int = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Extracts time and data from an HDF5 file for a given timestep.
+        Extracts time and data (primary variables) from an HDF5 file for a given timestep
 
         :param filename: Path to the HDF5 file
         :type file_path: str
@@ -537,9 +564,9 @@ class Output:
         :type filepath: str, optional
         :param output_properties: List of properties to evaluate. Defaults to None, which returns an array containing only state variables.
         :type output_properties: list, optional
-        :param timestep: Timestep at which to evaluate properties. Defaults to None, which evaluates all saved timesteps.
+        :param timestep: Timestep at which to evaluate properties. Defaults to None, which will evaluate all saved timesteps.
         :type timestep: int, optional
-        :param engine: Whether to evaluate properties directly from the simulation engine. Defaults to False, which reads properties from the HDF5 file.
+        :param engine: If true, state variables are evaluated directly from engine.X. Defaults to False, which reads properties from the HDF5 file.
         :type engine: bool, optional
     
         :return property_array: A dictionary where keys are primary/secondary variables and values are NumPy arrays of the requested properties for each grid block. The shape of each array is (number_of_timesteps, number_of_gridblocks).
@@ -625,16 +652,15 @@ class Output:
 
     def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
         """
-        Function to export results at timestamp t into `.vtk` format.
+        Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
 
-
-        :param ith_step: i'th reporting step
+        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :type filepath: str, optional
+        :param ith_step: i'th reporting step indicates which timestep to create a .vtk from. Defaults to None, in which case all saved data points are evaluated.
         :type ith_step: int
-
-        :param output_directory: Name to save .vtk file
+        :param output_directory: directory of where to save .vtk file. Defaults to none in which case the 'self.output_folder/vtk' is used.
         :type output_directory: str
-
-        :param output_properties: List of properties to include in .vtk file, default is None in which case only primary (state) variables are evaluated
+        :param output_properties: List of properties to include in .vtk file. Defaults to None in which case only primary (state) variables are evaluated.
         :type output_properties: list
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
@@ -648,7 +674,13 @@ class Output:
                                                            output_properties,
                                                            ith_step,
                                                            engine)
-        prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
+
+        # prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
+        # units to prop names
+        prop_names = {}
+        for i, name in enumerate(property_array.keys()):
+            prop_names[name] = name + self.variable_units[name]
+        # prop_names = {prop: f"{prop} {self.variable_units.get(prop, '')}" for prop in property_array.keys()}
 
         for t, time in enumerate(timesteps):
             data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
@@ -668,6 +700,8 @@ class Output:
         State variables area obtained from the engine or *.h5 file.
         Properties are interpolated by the property iterator.
 
+        :param filepath: Path to the solution HDF5 file. Defaults to None, in which case the dartsmodel.sol_filepath is used.
+        :type filepath: str, optional
         :param output_properties: List of properties to include in the dataset. If None, all properties are included.
         :type output_properties: list, optional
         :param timestep: Specific timestep to output. If None, all timesteps are included.
@@ -699,6 +733,19 @@ class Output:
         coords = {'time': time, 'z': z, 'y': y, 'x': x}
         data_vars = {prop: (list(coords.keys()), data[prop]) for prop in props}
         dataset = xr.Dataset(data_vars=data_vars, coords=coords)
+
+        # Attach units
+        dataset['time'].attrs['units'] = 'days'
+        dataset['x'].attrs['units'] = 'm'
+        dataset['y'].attrs['units'] = 'm'
+        dataset['z'].attrs['units'] = 'm'
+        for var in data.keys():
+            try:
+                # first_part = var.split('_')[0]
+                dataset[var].attrs['units'] = self.variable_units[var][1:-1]
+            except:
+                dataset[var].attrs['units'] = ''
+
         if self.precision == 'd':
             encoding = {prop: {'dtype': 'float64'} for prop in data.keys()}
         else:
@@ -733,15 +780,11 @@ class Output:
         var_names = list(xarray_data.data_vars)
         nrows = len(var_names)
         for i, var in enumerate(var_names):
-            plt.figure()
+            fig = plt.figure()
             if z is not None:
                 assert z < len(xarray_data['z']), 'z-level step should be less than %d' % len(xarray_data['z'])
                 xarray_data[var].isel(time=timestep, z=z).plot()
-                try:
-                    plt.ylabel(var + self.unit_dict[var])
-                except KeyError:
-                    pass
-
+                # plot.colorbar.set_label(self.variable_units[var])
                 plt.savefig(output_directory + '/%s ts%d z%d.png'%(var, timestep, z))
 
             elif y is not None:
@@ -759,8 +802,6 @@ class Output:
                 xarray_data[var].isel(time=timestep).plot()
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
-
-
 
     def store_well_time_data(self, types_of_well_rates=None):
         """

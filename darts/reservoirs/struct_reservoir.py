@@ -445,11 +445,11 @@ class StructReservoir(ReservoirBase):
         vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
         cell_data = {}
-        for i, prop_name in enumerate(prop_names):
+        for i, name in enumerate(prop_names):
             local_data = data[i]
             global_array = np.ones(self.discretizer.nodes_tot, dtype=local_data.dtype) * np.nan
             global_array[self.discretizer.local_to_global] = local_data
-            cell_data[prop_name] = global_array
+            cell_data[prop_names[name]] = global_array
 
         if self.vtk_grid_type == 0:
             vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
