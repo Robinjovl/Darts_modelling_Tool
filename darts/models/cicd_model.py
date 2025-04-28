@@ -160,7 +160,7 @@ class CICDModel(DartsModel):
         # Compare rates calculated in C++ and Python
         for well in self.reservoir.wells:
             # molar rates
-            old_c = np.array(cpp_data[c_pattern.format(well.name,c)].to_numpy() for c in self.physics.components]).T
+            old_c = np.array([cpp_data[c_pattern.format(well.name,c)].to_numpy() for c in self.physics.components]).T
             new_c = python_components_molar_rates[well.name][:, :self.physics.nc]
             assert (np.isclose(new_c, -old_c, rtol=rtol, atol=atol).all())
 

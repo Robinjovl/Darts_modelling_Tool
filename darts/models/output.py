@@ -107,12 +107,13 @@ class Output:
         """
         Function to construct a dictionary of units for all the variables
         """
+
         self.variable_units = {}
         for name in self.physics.vars:
             try:
                 self.variable_units[name] = self.unit_dictionary[name]
             except:
-                pass
+                self.variable_units[name] = ''
 
         for name in self.properties:
             try:
@@ -349,23 +350,25 @@ class Output:
                 f.write("-- n_res_blocks:\n")
                 f.write(f"{self.reservoir.mesh.n_res_blocks}\n")
 
-                f.write("------------------------WELLS-----------------------\n")
-                f.write("-- wells and perforations:\n")
-                for i, w in enumerate(self.reservoir.wells):
-                    if 'I' in w.name:  # Injector well
-                        if hasattr(w.control, 'target_pressure'):
-                            f.write(
-                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure} and injection stream {w.control.injection_stream}.\n")
-                        elif hasattr(w.control, 'target_rate'):
-                            f.write(
-                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate} and injection stream {w.control.injection_stream}.\n")
-                    else:  # Producer well
-                        if hasattr(w.control, 'target_pressure'):
-                            f.write(
-                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure}.\n")
-                        elif hasattr(w.control, 'target_rate'):
-                            f.write(
-                                f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate}.\n")
+                # UPDATE THIS PART FOR THE NEW CONTROLS
+                ### UPDATE TO NEW WELL CONTROLS
+                # f.write("------------------------WELLS-----------------------\n")
+                # f.write("-- wells and perforations:\n")
+                # for i, w in enumerate(self.reservoir.wells):
+                #     if 'I' in w.name:  # Injector well
+                #         if hasattr(w.control, 'target_pressure'):
+                #             f.write(
+                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure} and injection stream {w.control.injection_stream}.\n")
+                #         elif hasattr(w.control, 'target_rate'):
+                #             f.write(
+                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate} and injection stream {w.control.injection_stream}.\n")
+                #     else:  # Producer well
+                #         if hasattr(w.control, 'target_pressure'):
+                #             f.write(
+                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure}.\n")
+                #         elif hasattr(w.control, 'target_rate'):
+                #             f.write(
+                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate}.\n")
 
         return 0
 

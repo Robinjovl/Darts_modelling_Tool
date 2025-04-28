@@ -559,7 +559,7 @@ class CPG_Reservoir(ReservoirBase):
                 self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
             v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
             global_array[self.discr_mesh.local_to_global] = v[:]
-            cell_data[prop] = global_array
+            cell_data[prop_names[prop]] = global_array
 
         if self.vtk_grid_type == 0:
             vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)

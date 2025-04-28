@@ -294,7 +294,8 @@ class UnstructReservoir(ReservoirBase):
         output_idxs = self.discretizer.vtk_output_cell_idxs['matrix'] if not self.discretizer.frac_cells_tot \
             else {**self.discretizer.vtk_output_cell_idxs['fracture'], **self.discretizer.vtk_output_cell_idxs['matrix']}
         geometries = output_nodes.keys()
-        cell_data = {prop: [[] for geometry in geometries] for prop in prop_names}
+
+        cell_data = {prop_names[prop]: [[] for geometry in geometries] for prop in prop_names}
 
         # Distinguish fracture cells from matrix cells
         cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
@@ -312,7 +313,7 @@ class UnstructReservoir(ReservoirBase):
         for i, prop in enumerate(prop_names):
             # Loop over fracture and matrix cells (in that order)
             for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
-                cell_data[prop][ith_geometry] = data[i][cell_idxs]
+                cell_data[prop_names[prop]][ith_geometry] = data[i][cell_idxs]
 
         # Temporarily store mesh_data in copy:
         mesh = meshio.Mesh(

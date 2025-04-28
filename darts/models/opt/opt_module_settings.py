@@ -212,10 +212,10 @@ class OptModuleSettings:
 
         from darts.models.output import Output
         # self.output_folder = 'jaja'
-        self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
-                             self.well_head_conn_id, self.well_perf_conn_ids,
-                             self.output_folder, self.sol_filename, self.well_filename,
-                             False, False,'d', 'gzip', False)
+        # self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+        #                      self.well_head_conn_id, self.well_perf_conn_ids,
+        #                      self.output_folder, self.sol_filename, self.well_filename,
+        #                      False, False,'d', 'gzip', False)
 
         self.sim_time -= time.time()
         # 3. Run
