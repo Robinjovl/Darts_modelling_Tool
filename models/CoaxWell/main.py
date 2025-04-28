@@ -4,6 +4,7 @@ from model import Model
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 m = Model(resolution=10)
 m.init()
@@ -20,8 +21,8 @@ m.output.output_to_vtk(ith_step = 1, engine = True)
 # time_data_dict = m.output.store_well_time_data()
 # save well time data
 # time_data_df = pd.DataFrame.from_dict(time_data_dict)
-# time_data_df.to_pickle(m.output_folder + "/well_time_data.pkl")  # as a pickle file
-# writer = pd.ExcelWriter(m.output_folder + "/well_time_data.xlsx")  # as an excel file
+# time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
+# writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
 # time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
 # writer.close()
 #

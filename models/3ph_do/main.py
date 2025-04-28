@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
@@ -65,8 +66,8 @@ if __name__ == '__main__':
 
         # save well time data
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(n.output_folder + "/well_time_data.pkl")  # as a pickle file
-        writer = pd.ExcelWriter(n.output_folder + "/well_time_data.xlsx")  # as an excel file
+        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
         time_data_df.to_excel(writer, sheet_name='Sheet1')
         writer.close()
 
