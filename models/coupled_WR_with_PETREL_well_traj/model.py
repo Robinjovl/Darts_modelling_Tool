@@ -95,13 +95,14 @@ class Model(CICDModel):
                                      n_points=200, min_p=1, max_p=500, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
-        property_container.output_props = {"sat_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].sat[0],
-                                           "mole_fraction_CO2__in_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].x[0,0],
-                                           "mole_fraction_CO2__in_aqueous_phase": lambda: self.physics.property_containers[0].x[1,0],
-                                           "rho_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].dens[0],
-                                           "rho_aqueous_phase": lambda: self.physics.property_containers[0].dens[1],
-                                           "miu_CO2/C1_rich_phase": lambda: self.physics.property_containers[0].mu[0],
-                                           "miu_aqueous_phase": lambda: self.physics.property_containers[0].mu[1]}
+        property_container.output_props = {}
+        for j, ph in enumerate(phases_names):
+            property_container.output_props['sat_' + ph] = lambda jj=j: property_container.sat[jj]
+            property_container.output_props['rho_' + ph] = lambda jj=j: property_container.dens[jj]
+            property_container.output_props['miu_' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['enth_' + ph] = lambda jj=j: property_container.enthalpy[jj]
+            for i, comp in enumerate(components_names):
+                property_container.output_props[comp + '_in_' + ph] = lambda jj=j, ii=i: property_container.x[jj, ii]
 
         return
 

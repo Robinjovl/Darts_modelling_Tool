@@ -112,6 +112,15 @@ class Model(CICDModel):
 
         return
 
+        property_container.output_props = {}
+        for j, ph in enumerate(phases_names):
+            property_container.output_props['sat_' + ph] = lambda jj=j: property_container.sat[jj]
+            property_container.output_props['rho_' + ph] = lambda jj=j: property_container.dens[jj]
+            property_container.output_props['miu_' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['enth_' + ph] = lambda jj=j: property_container.enthalpy[jj]
+            for i, comp in enumerate(components_names):
+                property_container.output_props[comp + '_in_' + ph] = lambda jj=j, ii=i: property_container.x[jj, ii]
+
     def set_physics(self):
         """Physical properties"""
         components_names = ['CO2', 'C1', 'H2O']
