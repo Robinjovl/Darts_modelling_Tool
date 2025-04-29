@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 from darts.engines import value_vector, redirect_darts_output
 from model import Model
 
@@ -72,7 +73,7 @@ for t in range(2):
 
     # save well time data
     time_data_df = pd.DataFrame.from_dict(time_data_dict)
-    time_data_df.to_pickle(m.output_folder + "/well_time_data.pkl")  # as a pickle file
-    writer = pd.ExcelWriter(m.output_folder + "/well_time_data.xlsx")  # as an excel file
+    time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
+    writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
     time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
     writer.close()

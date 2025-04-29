@@ -902,6 +902,7 @@ class Output:
                         plt.ylabel(ylabel)
                         plt.tight_layout()
                         plt.savefig(os.path.join(subdir, f'{key}.png'))
+                        plt.close()
                 # total and wellhead plots
                 total_keys = self.create_total_keys(rtype, w.name, pc)
                 for key, ylabel in total_keys:
@@ -911,6 +912,7 @@ class Output:
                     plt.ylabel(ylabel)
                     plt.tight_layout()
                     plt.savefig(os.path.join(well_dir, f'{key}.png'))
+                    plt.close()
 
         # BHP and BHT are plotted all the time
         for w in self.reservoir.wells:
@@ -925,6 +927,7 @@ class Output:
             plt.ylabel('Bottom-hole pressure [bar]')
             plt.tight_layout()
             plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
+            plt.close()
 
             BHT_key = f'well_{w.name}_BHT'
             BHT = df[BHT_key]
@@ -935,15 +938,16 @@ class Output:
             plt.ylabel('Bottom-hole pressure [bar]')
             plt.tight_layout()
             plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
-
-        plt.close('all')
+            plt.close()
 
         return df
 
     def configure_physics(self):
         pc = self.physics.property_containers[0]
+        pc.physics_type = "super_engine"
         physics_name = type(self.physics).__name__
         if physics_name in ('Geothermal', 'GeothermalPH'):
+            pc.physics_type = "geothermal_engine"
             pc.phases_name = self.physics.phases[:pc.nph]
             pc.nc_fl = 1
             pc.components_name = ['H2O']
@@ -1028,22 +1032,22 @@ class Output:
 
     def store_bhp_bht(self, h5_well_data, time_data_dict, pc):
         dyn = h5_well_data['dynamic']
-        n = len(dyn['time'])
+        nt = len(dyn['time'])
         for well in self.reservoir.wells:
-            BHP = np.zeros(n)
-            BHT = np.zeros(n) if self.physics.thermal else np.full(n, pc.temperature)
-            cell = find_one_array_in_another_indices([well.well_head_idx], dyn['cell_id'])
-            idx_p = dyn['variable_names'].index('pressure')
-            for t in range(n):
-                p = dyn['X'][t, :, idx_p]
-                BHP[t] = p[cell]
+            BHP = np.zeros(nt)
+            BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
+            wellhead_cell_idx = find_one_array_in_another_indices([well.well_head_idx], dyn['cell_id'])
+            p_idx = dyn['variable_names'].index('pressure')
+            for i in range(nt):
+                p = dyn['X'][i, :, p_idx]
+                BHP[i] = p[wellhead_cell_idx]
                 if self.physics.thermal:
                     if 'temperature' in dyn['variable_names']:
                         idx_T = dyn['variable_names'].index('temperature')
-                        BHT[t] = dyn['X'][t, :, idx_T][cell]
+                        BHT[i] = dyn['X'][i, :, idx_T][wellhead_cell_idx]
                     else:
-                        idx_h = dyn['variable_names'].index('enthalpy')
-                        BHT[t] = pc.temperature_ev.evaluate([BHP[t], dyn['X'][t, cell, idx_h]])
+                        h_idx = dyn['variable_names'].index('enthalpy')
+                        BHT[i] = pc.temperature_ev.evaluate([BHP[i], dyn['X'][i, wellhead_cell_idx, h_idx]])
             time_data_dict[f'well_{well.name}_BHP'] = BHP
             time_data_dict[f'well_{well.name}_BHT'] = BHT
 
