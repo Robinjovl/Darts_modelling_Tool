@@ -147,7 +147,7 @@ for mdir in accepted_dirs:
     # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
     # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
-    """ ------------------------- WELLS --------------------------- """
+    """ ----------------------------- WELLS ------------------------------ """
 
 
 

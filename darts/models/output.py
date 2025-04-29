@@ -13,7 +13,6 @@ from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.engines import value_vector, index_vector, timer_node, ms_well_vector, op_vector
-from darts.tools.calc_well_rates import *
 from darts.physics.base.operators_base import PropertyOperators
 
 #%%
@@ -858,6 +857,9 @@ class Output:
         return time_data_dict
 
     def plot_well_time_data_2(self, time_data_df):
+        """
+        Make plots out of the time data dataframe.
+        """
 
         self.well_plots_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
         if os.path.exists(self.well_plots_dir):
