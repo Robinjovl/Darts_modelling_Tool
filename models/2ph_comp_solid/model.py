@@ -47,7 +47,6 @@ class Model(CICDModel):
 
     def set_wells(self):
         well_type = ms_well.MS_Type.EPM
-        well_ID = 0.1
         self.reservoir.add_well("I1", well_type)
         self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
         self.reservoir.add_well("P1", well_type)
