@@ -46,7 +46,9 @@ Since there are some properties we would like to keep the same for a few cases, 
 
 ![case_setting.PNG](doc_images/case_setting.PNG "case_setting")
 
-# Grid generation
+# Geometry and rock properties
+
+## Grid generation
 The grid is generated with a function `gen_cpg_grid` and can be with a regular layers thickness, like in case_generate_51x51x1.py:
 ```
 geom.nx = 51
@@ -63,7 +65,7 @@ geom.dy = np.array([1000, 700, 300])
 geom.dz = np.array([100, 150, 180, 120])
 ```
 
-# Grid initialization from files
+## Grid initialization from files
 This call creates an `arrays` dictionary with keys `SPECGRID`, `COORD`, `ZCORN`, `ACTNUM`, `PORO`, `PERMX`, `PERMY`, `PERMZ`.
 ```
 arrays = m.init_input_arrays()
@@ -76,7 +78,7 @@ Additional arrays can be read as well:
     arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
 ```
 
-# CPG Reservoir initialization
+## CPG Reservoir initialization
 
 The main input of the reservoir class is a dictionary of numpy arrays containing grid data and rock properties.
 
@@ -85,7 +87,7 @@ Internal mesh initialization (inactive cells filtering, arrays allocation, cells
 m.init_reservoir(arrays=arrays)
 ```
 
-# Over- and underburden layers generation
+## Over- and underburden layers generation
 
 If Over- and underburden layers were not generated in the geological modeling software, or if one uses a mesh generation option in open-DARTS, it is possible to add that layers using the `make_burden_layers` function.
 This option enabled by default for geothermal physics case.
@@ -95,7 +97,7 @@ The properties `geom.burden_layers, geom.burden_init_thickness, idata.rock.burde
 
 Note: this feature doesn’t work well if the top or the bottom layers are fully or partly inactive (due to ACTNUM=0, PORO=0, thickness=0). 
 
-# Fault transmissibility multipliers
+## Fault transmissibility multipliers
 CPG_Reservoir class has an option to pass a filename with fault location and multipliers in format:
 ```
 I1   J1   K1   I2   J2   K2   M
@@ -131,12 +133,12 @@ One can overwrite some evaluators with custom one.
 self.physics = DeadOil(self.idata, self.timer, thermal=False)
 ```
 
-## Initial and boundary conditions
+# Initial and boundary conditions
 
-# Initial conditions (geothermal physics)
+## Initial conditions (geothermal physics)
 We provide two predefined options: uniform, when just two values are defined, and gradient. However, one can come up with a custom initial distribution.
 
-# Initial conditions (deadoil physics)
+## Initial conditions (deadoil physics)
 Here, the initial pressure is defined by a gradient. The initial saturation is defined by water table depth.
 
 ![initial_state_deadoil](doc_images/initial_state_deadoil.PNG "initial_state_deadoil")
@@ -151,10 +153,10 @@ geom.bound_volume = 1e18    # lateral boundary volume, m^3
 In case ACTNUM array is defined, the large volume will be set at the closest to the boundary active cell: 
 ![boundary_volume](doc_images/boundary_volume.PNG "boundary volume")
 
-## Wells
+# Wells
 In this model, wells are defined in InputData class.
 
-# Wells and perforations
+## Wells and perforations
 We use this function to put well and perforations with a particular `I,J` values for each geometric case. 
 ```
 well_data.add_well(name='PRD', loc_type='ijk', loc_ijk=(I, J, -1))
@@ -166,7 +168,7 @@ Adding a well perforation using XYZ-coordinates is also possible. For example:
 well_data.add_well(name='PRD', loc_type='xyz', loc_xyz=(250.0, 500.0, 890.0))
 ```
 
-# Well controls
+## Well controls
 There is a custom function `well_is_inj(well_name)` which returns True or False.
 For a constant well rate:
 ```
@@ -174,7 +176,7 @@ wdata = self.idata.well_data
 wdata.add_inj_bhp_control(name=w, bhp=250, temperature=300)  # m3/day | bars | K
 ```
 
-## Simulation parameters
+# Simulation parameters
 In this model, timesteps are defined in InputData class.
 ```
 dt = 365.25  # one report timestep length, [days]
@@ -186,11 +188,11 @@ Timestep and convergence control parameters are defined in `case_base.py`.
 Set number of CPU cores or enable GPU: https://open-darts.gitlab.io/open-DARTS/for_developers/configure_hardware.html 
 
 
-## Output
+# Output
 All output files are created in a subfolder with a case name in a suffix, for example: `results_deadoil_generate_5x3x4_wbhp`.
 Note, the output folder is deleted at each run. Please rename it if you would like to save results from the previous run.
 
-# 3D data 
+## 3D data 
 This models outputs 4 types of vtk files, which can be loaded into ParaView:
 - solution.pvd and solution_ts[i].vtu - dynamic properties
 - mesh.vtk - static properties
