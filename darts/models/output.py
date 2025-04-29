@@ -814,7 +814,7 @@ class Output:
         self.timer.start(); self.timer.node["output_well_time_data"].start()
 
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
-        pc = self.configure_physics()
+        self.configure_physics()
 
         time = h5_well_data['dynamic']['time']
         time_data_dict = {'time': time}
@@ -833,19 +833,19 @@ class Output:
                 types_of_well_rates.append("advective_heat_rate")
 
         # Store BHP and BHT
-        self.store_bhp_bht(h5_well_data, time_data_dict, pc)
+        self.store_bhp_bht(h5_well_data, time_data_dict)
 
         for rate_type in types_of_well_rates:
             # Compute perforation rates
-            rates_perfs = calc_rates_at_connections(h5_well_data, perfs_conn_ids, geometric_WI, self.physics.thermal, pc, rate_type)
+            rates_perfs = self.calc_rates_at_connections(h5_well_data, perfs_conn_ids, geometric_WI, self.physics.thermal, rate_type)
             # Store perforation rates
-            self.store_perf_rates(time_data_dict, rates_perfs, rate_type, pc)
+            self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
             # Store well rates by summing perforation rates
-            self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type, pc)
+            self.store_well_rates_sums(time_data_dict, rates_perfs, rate_type)
             # Compute wellhead rates
-            rates_wellhead = calc_rates_at_connections(h5_well_data, well_head_conn_ids, well_head_conn_trans, self.physics.thermal, pc, rate_type)
+            rates_wellhead = self.calc_rates_at_connections(h5_well_data, well_head_conn_ids, well_head_conn_trans, self.physics.thermal, rate_type)
             # Store wellhead rates
-            self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type, pc)
+            self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
 
         # Export time_data_dict
         df = pd.DataFrame(time_data_dict)
@@ -952,7 +952,6 @@ class Output:
             pc.nc_fl = 1
             pc.components_name = ['H2O']
             self.physics.thermal = True
-        return pc
 
     def get_connection_info(self):
         perfs_conn_ids = [item for sublist in self.well_perf_conn_ids.values() for item in sublist]
@@ -974,7 +973,8 @@ class Output:
 
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
-    def store_perf_rates(self, time_data_dict, rates_perfs, rate_type, pc):
+    def store_perf_rates(self, time_data_dict, rates_perfs, rate_type):
+        pc = self.physics.property_containers[0]
         perf_idx = 0
         for well in self.reservoir.wells:
             for perf in well.perforations:
@@ -993,7 +993,8 @@ class Output:
                         time_data_dict[f'{tag}_advective_heat_rate_{phase_name}'] = arr
                 perf_idx += 1
 
-    def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type, pc):
+    def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type):
+        pc = self.physics.property_containers[0]
         perf_idx = 0
         for well in self.reservoir.wells:
             tag = f'well_{well.name}'
@@ -1016,7 +1017,8 @@ class Output:
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
 
-    def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type, pc):
+    def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type):
+        pc = self.physics.property_containers[0]
         for well_idx, well in enumerate(self.reservoir.wells):
             tag = f'well_{well.name}'
             if rate_type.startswith('phases_'):
@@ -1030,13 +1032,14 @@ class Output:
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = wh_rates[:, well_idx, phase_idx]
 
-    def store_bhp_bht(self, h5_well_data, time_data_dict, pc):
+    def store_bhp_bht(self, h5_well_data, time_data_dict):
         dyn = h5_well_data['dynamic']
         nt = len(dyn['time'])
+        pc = self.physics.property_containers[0]
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
             BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
-            wellhead_cell_idx = find_one_array_in_another_indices([well.well_head_idx], dyn['cell_id'])
+            wellhead_cell_idx = self.find_one_array_in_another_indices([well.well_head_idx], dyn['cell_id'])
             p_idx = dyn['variable_names'].index('pressure')
             for i in range(nt):
                 p = dyn['X'][i, :, p_idx]
@@ -1058,7 +1061,8 @@ class Output:
             for perf in well.perforations:
                 os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
 
-    def create_perf_keys(self, rtype, well_name, perf_idx, pc):
+    def create_perf_keys(self, rtype, well_name, perf_idx):
+        pc = self.physics.property_containers[0]
         keys = []
         tag = f'well_{well_name}_perf_{perf_idx}_'
         if rtype.startswith('phases_'):
@@ -1079,7 +1083,8 @@ class Output:
                 keys.append((key, f'{phase_name} advective heat rate [kJ/day]'))
         return keys
 
-    def create_total_keys(self, rtype, well_name, pc):
+    def create_total_keys(self, rtype, well_name):
+        pc = self.physics.property_containers[0]
         keys = []
         base = f'well_{well_name}_'
         if rtype.startswith('phases_'):
@@ -1108,3 +1113,196 @@ class Output:
             label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
             keys.append((f'{base}{rtype}', label))
         return keys
+
+    def calc_rates_at_connections(self, h5_well_data: dict, conn_ids: list, trans: np.ndarray,
+                                  thermal: bool, rate_type: str):
+        """
+        Calculates different types of rates at perforations or wellhead connections of wells
+
+        :param h5_well_data: Well data stored in the HDF5 file
+        :type h5_well_data: dict
+        :param conn_ids: IDs of connections
+        :type conn_ids: numpy.ndarray
+        :param trans: Transmissibility (For perforations, it is geometric part of well index)
+        :type trans: numpy.ndarray
+        :param thermal: If the model is thermal or not
+        :type thermal: bool
+        :param pc: An instance of the class PropertyContainer()
+        :type pc: PropertyContainer
+        :param rate_type: Type of well rate to calculate
+        :type rate_type: str
+        """
+        # Evaluate position of block_m, block_p in stored data, for every connection
+        block_m = h5_well_data['static']['block_m']
+        block_p = h5_well_data['static']['block_p']
+        cell_m = self.find_one_array_in_another_indices(block_m[conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
+        cell_p = self.find_one_array_in_another_indices(block_p[conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
+        assert (cell_m.size == len(conn_ids) and cell_p.size == len(conn_ids))
+
+        num_ts = h5_well_data['dynamic']['time'].size
+
+        pc = self.physics.property_containers[0]
+        # Pre-allocate data
+        if rate_type in ['phases_molar_rates', 'phases_mass_rates', 'phases_volumetric_rates']:
+            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
+        elif rate_type in ['components_molar_rates', 'components_mass_rates']:
+            rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
+        elif rate_type == 'advective_heat_rate':
+            if thermal:
+                rates = np.zeros((num_ts, len(conn_ids), pc.nph))
+            else:
+                raise Exception('The model is isothermal, so advective heat rate cannot be calculated for it!')
+        else:
+            raise Exception("The rate type is not entered correctly or is not supported!")
+        id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
+
+        id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
+        if thermal:
+            if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+                id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
+            elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:   # For the geothermal engine
+                pass
+            else:
+                raise Exception('Neither temperature nor enthalpy exists in the list of variables!')
+
+        # Looping over time steps
+        for i in range(num_ts):
+            p = h5_well_data['dynamic']['X'][i,:,id_pres]
+            # Determine upwind cell indices for all connections
+            dp = p[cell_p] - p[cell_m]
+            downstream = (dp < 0)
+            upstream = (dp >= 0)
+            id_state_cell[downstream] = cell_m[downstream]
+            id_state_cell[upstream] = cell_p[upstream]
+
+            # Looping over perforations
+            for j in range(len(conn_ids)):
+                state = h5_well_data['dynamic']['X'][i, id_state_cell[j]]
+
+                # Calculate operators for phase molar, mass, volumetric, and advective heat rates from WellControlOperators
+                state = value_vector(state)
+                all_values = value_vector(np.zeros(self.physics.well_ctrl_operators.n_ops))
+                self.physics.well_ctrl_itor.evaluate(state, all_values)
+
+                if rate_type == 'phases_molar_rates':
+                    values = all_values[0:pc.nph].to_numpy()
+                elif rate_type == 'phases_mass_rates':
+                    values = all_values[pc.nph:2 * pc.nph].to_numpy()
+                elif rate_type == 'phases_volumetric_rates':
+                    values = all_values[2 * pc.nph:3 * pc.nph].to_numpy()
+                elif rate_type in ['components_molar_rates']:
+                    values = self.components_molar_rates_operators(state, pc)
+                elif rate_type == 'components_mass_rates':
+                    values = self.components_mass_rates_operators(state, pc)
+                elif rate_type == 'advective_heat_rate':
+                    values = all_values[3 * pc.nph:4 * pc.nph].to_numpy()
+
+                    # Calc heat operators for the dead state (1 atm and 15 deg C)
+                    if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+                        state_dead = state.to_numpy().copy()
+                        state_dead[id_pres] = 1.01325
+                        state_dead[id_temp] = 273.15 + 15
+                        values_dead = self.heat_rate_operators(state_dead, pc)
+                    elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:  # For the geothermal engine (1 atm, 15 deg C, and zH2O = 1)
+                        enthalpy_w, dens_m_w, kr_w, miu_w = -44582.229072, 55.457385, 1, 1.132781
+                        value_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                        values_dead = np.zeros(len(values))
+                        for ph_idx, value in enumerate(values):
+                            if value != 0:
+                                values_dead[ph_idx] = value_dead_phase
+
+                    values = values - values_dead
+                else:
+                    raise Exception("Rate type is entered incorrectly!")
+
+                rates[i, j] = - values * trans[j] * dp[j]
+
+        return rates
+
+    #%% Operator functions
+    def components_molar_rates_operators(self, state, pc):
+        """
+        This function is used for calculating advective molar rates of components in each phase [kmole/day]
+
+        :param state: State of the fluid containing the primary variables
+        :type state: numpy.ndarray
+        :param pc: An instance of the class PropertyContainer
+        :type pc: PropertyContainer
+        """
+        pc.evaluate(state)
+
+        if pc.physics_type == 'geothermal_engine':
+            pc.x = [[1.], [1.]]
+
+        values = np.zeros(pc.nph * pc.nc_fl)
+        for j in pc.ph:
+                for i in range(pc.nc_fl):
+                    values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+
+        return values
+
+    def components_mass_rates_operators(self, state, pc):
+        """
+        This function is used for calculating advective mass rates of components in each phase [kg/day]
+
+        :param state: State of the fluid containing the primary variables
+        :type state: numpy.ndarray
+        :param pc: An instance of the class PropertyContainer
+        :type pc: PropertyContainer
+        """
+        pc.evaluate(state)
+
+        if pc.physics_type == 'geothermal_engine':
+            pc.x = [[1.], [1.]]
+
+        values = np.zeros(pc.nph * pc.nc_fl)
+        for j in pc.ph:
+            for i in range(pc.nc_fl):
+                values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
+
+        return values
+
+    def heat_rate_operators(self, state, pc):
+        """
+        This function is used for calculating advective heat rate operator for dead state only [kJ/day]
+
+        :param state: State of the fluid containing the primary variables
+        :type state: numpy.ndarray
+        :param pc: An instance of the class PropertyContainer
+        :type pc: PropertyContainer
+        """
+        pc.evaluate(state)
+        pc.evaluate_thermal(state)
+
+        values = np.zeros(pc.nph)
+        for j in pc.ph:
+            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
+
+        return values
+
+    def find_conn_ids_for_perfs(self, perfs, block_m, block_p, n_res_blocks):
+        """
+        This function finds the connection IDs of perforations
+
+        :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
+        :type perfs: List
+        :param block_m: block_m of the connection list
+        :type block_m: numpy.ndarray
+        :param block_p: block_p of the connection list
+        :type block_p: numpy.ndarray
+        :param n_res_blocks: Number of reservoir blocks
+        :type n_res_blocks: int
+        """
+        res_cell_ids = [perf[1] for perf in perfs]
+
+        perfs_conn_ids = np.nonzero(np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks))[0]
+        assert (len(perfs_conn_ids) == len(perfs) and (block_m[perfs_conn_ids] > n_res_blocks).all())
+        return perfs_conn_ids
+
+    def find_one_array_in_another_indices(self, to_find, in_array):
+        indices = []
+        for element in to_find:
+            id = np.where(in_array == element)[0]
+            if id.size > 0:
+                indices.append(id[0])
+        return np.array(indices, dtype=np.intp)
