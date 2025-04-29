@@ -124,7 +124,7 @@ class ReservoirOperators(OperatorsSuper):
         vec_values_as_np[self.PORO_OP] = self.phi_f
 
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
-        values[self.PRES_OP] = state[0]
+        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -228,7 +228,7 @@ class WellOperators(OperatorsSuper):
 
         vec_values_as_np[:] = 0
 
-        self.property.evaluate(state)
+        self.property.evaluate(vec_state_as_np)
 
         self.compr = self.property.rock_compr_ev.evaluate(pressure)
 
@@ -270,7 +270,7 @@ class WellOperators(OperatorsSuper):
 
 
         # Pressure operator
-        values[self.PRES_OP] = vec_state_as_np[0]
+        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
