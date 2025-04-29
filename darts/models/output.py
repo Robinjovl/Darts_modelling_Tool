@@ -944,8 +944,10 @@ class Output:
 
     def configure_physics(self):
         pc = self.physics.property_containers[0]
+        pc.physics_type = "super_engine"
         physics_name = type(self.physics).__name__
         if physics_name in ('Geothermal', 'GeothermalPH'):
+            pc.physics_type = "geothermal_engine"
             pc.phases_name = self.physics.phases[:pc.nph]
             pc.nc_fl = 1
             pc.components_name = ['H2O']

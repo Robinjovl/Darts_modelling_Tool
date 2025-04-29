@@ -170,7 +170,7 @@ def components_molar_rates_operators(state, pc):
     """
     pc.evaluate(state)
 
-    if pc.nc_fl == 1:   # For geothermal engine
+    if pc.physics_type == 'geothermal_engine':
         pc.x = [[1.], [1.]]
 
     values = np.zeros(pc.nph * pc.nc_fl)
@@ -191,7 +191,7 @@ def components_mass_rates_operators(state, pc):
     """
     pc.evaluate(state)
 
-    if pc.nc_fl == 1:   # For geothermal engine
+    if pc.physics_type == 'geothermal_engine':
         pc.x = [[1.], [1.]]
 
     values = np.zeros(pc.nph * pc.nc_fl)
