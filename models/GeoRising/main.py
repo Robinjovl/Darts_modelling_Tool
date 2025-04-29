@@ -61,7 +61,7 @@ if restart:
     well_filename = m.well_filepath
     m_restarted.load_restart_data(reservoir_filename, well_filename, timestep = 1) # restart from
 
-    m_restarted.run(365/2)
+    m_restarted.run(365/2, restart_dt = 1e-4)
     # m.print_timers()
     # m.print_stat()
 
@@ -72,8 +72,8 @@ if restart:
     time_restarted, cell_id, X_restarted, var_names = m_restarted.output.read_specific_data(m_restarted.sol_filepath)
 
     # check restart position
-    assert np.isclose(X[1, :, 0], X_restarted[0, :, 0], rtol=0, atol=0).all() # check pressure
-    assert np.isclose(X[1, :, 1], X_restarted[0, :, 1], rtol=0, atol=0).all() # check enthalpy
+    assert np.isclose(X[1, :, 0], X_restarted[0, :, 0], rtol=0, atol=0).all(), 'pressure mismatch at restart position'
+    assert np.isclose(X[1, :, 1], X_restarted[0, :, 1], rtol=0, atol=0).all(), 'enthalpy mismatch at restart position'
 
     # plt.figure()
     # for i, name in enumerate(m_restarted.physics.vars):
@@ -84,7 +84,7 @@ if restart:
     # plt.show()
 
     # check final result
-    assert np.isclose(X[-1,:,0], X_restarted[-1,:,0], rtol=1e-2, atol=0).all() # check pressure
-    assert np.isclose(X[-1,:,1], X_restarted[-1,:,1], rtol=1, atol=0).all() # check enthalpy
+    assert np.isclose(X[-1,:,0], X_restarted[-1,:,0], rtol=1e-2, atol=0).all(), f'pressure mismatch at restart position at end of run.'
+    assert np.isclose(X[-1,:,1], X_restarted[-1,:,1], rtol=1, atol=0).all(), f'enthalpy mismatch at restart position at end of run.'
 
 

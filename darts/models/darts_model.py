@@ -116,9 +116,13 @@ class DartsModel:
 
         self.set_op_list()
         self.set_boundary_conditions()
-        self.set_initial_conditions()
         self.set_well_controls()
-        self.reset()
+
+        self.restart = restart
+        # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
+        if restart is False:
+            self.set_initial_conditions()
+            self.reset()
 
     def reset(self):
         """
@@ -127,9 +131,10 @@ class DartsModel:
         self.physics.engine.init(self.reservoir.mesh, ms_well_vector(self.reservoir.wells), op_vector(self.op_list),
                                  self.params, self.timer.node["simulation"])
 
-    def load_restart_data(self, reservoir_filename: str, well_filename: str, timestep: int = -1):
+    def load_restart_data(self, reservoir_filename: str, timestep: int = -1):
         """
         Loads data from a previous simulation and sets it for the current simulation.
+        Beware that loading restart data resets the engine.
 
         :param reservoir_filename (str): Path to the restart file containing reservoir block data.
         :param well_filename (str): Path to the restart file containing well block data.
@@ -137,32 +142,23 @@ class DartsModel:
         """
 
         # check if the files with data exist
-        if not os.path.exists(reservoir_filename) or not os.path.exists(well_filename):
-            raise FileNotFoundError(f"The restart file does not exist: {filename}")
+        if not os.path.exists(reservoir_filename): # or not os.path.exists(well_filename):
+            raise FileNotFoundError(f"The restart file does not exist: {reservoir_filename}")
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(reservoir_filename, timestep)
-        time_well, well_cell_id, Xwell, var_names = self.output.read_specific_data(well_filename)
-        time_idx_in_well = np.where(time_well == time_res)[0][0]
-
-        # self.output.id_well_data
-        temp = np.expand_dims(Xwell[time_idx_in_well, ~np.isin(well_cell_id, reservoir_cell_id), :], axis = 0)
-        X = np.concatenate([Xres, temp], axis=1)
 
         # load data as initial conditions
         initial_values = {}
         for i, name in enumerate(var_names):
-            initial_values[name] = X[:, :, i].flatten()
-
+            initial_values[name] = Xres[:, :, i].flatten()
         self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh, input_distribution=initial_values)
-        # self.set_initial_conditions(initial_values=initial_values)
 
-        # reset engine
         self.reset()
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(fr'Restarting model from {reservoir_filename} and {well_filename} at day {time_res[0]}...')
+        print(fr'Restarting model from {reservoir_filename} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
@@ -183,14 +179,17 @@ class DartsModel:
         """
 
         self.output_folder = output_folder
-        self.sol_filename = sol_filename
+        self.sol_filename  = sol_filename
         self.well_filename = well_filename
-        self.sol_filepath = os.path.join(self.output_folder, self.sol_filename)
+        self.sol_filepath  = os.path.join(self.output_folder, self.sol_filename)
         self.well_filepath = os.path.join(self.output_folder, self.well_filename)
+
+        if self.restart:
+            save_initial = False
 
         self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.well_head_conn_id, self.well_perf_conn_ids,
                              self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
-        # self.reset()
+
         return
 
     def set_wells(self, verbose: bool = False):

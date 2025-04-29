@@ -37,11 +37,11 @@ def read_data(sol_filepath, well_filepath, timestep = None):
 
 RESTART = True
 accepted_dirs = [
-    # '2ph_comp',
-    # '2ph_comp_solid',
-    # '2ph_do',
-    # '2ph_do_thermal',
-    # '2ph_geothermal',
+    '2ph_comp',
+    '2ph_comp_solid',
+    '2ph_do',
+    '2ph_do_thermal',
+    '2ph_geothermal',
     # '2ph_geothermal_mass_flux',
     # '3ph_comp_w',
     # '3ph_do',
@@ -57,6 +57,9 @@ accepted_dirs = [
 
 # Store the initial working directory
 initial_dir = os.getcwd()
+parent_dir = os.path.dirname(initial_dir)
+models_dir = os.path.join(parent_dir, 'models')
+os.chdir(models_dir)
 
 for mdir in accepted_dirs:
     # Navigate to the model directory
@@ -182,15 +185,17 @@ for mdir in accepted_dirs:
     """ --------------------- RESTART MODEL --------------------- """
     if RESTART:
         m_restarted = model.Model()
-        m_restarted.init()
+        m_restarted.init(restart=True)
         m_restarted.set_output(output_folder='output_data/n_restarted', # ensure you use a different output folder
-                               save_initial=False,
+                               #save_initial=True,
                                all_phase_props=True)
 
         # path to the data you want to restart from
         reservoir_filename = n.sol_filepath
         well_filename = n.well_filepath
-        m_restarted.load_restart_data(reservoir_filename, well_filename, timestep=1)
+        m_restarted.load_restart_data(reservoir_filename,
+                                      # well_filename,
+                                      timestep=1)
         m_restarted.run(1+365/2, restart_dt=1e-5)
 
         output_props = m_restarted.physics.vars + m_restarted.output.properties
@@ -220,4 +225,4 @@ for mdir in accepted_dirs:
 
         # assert np.isclose(X, X_restarted, rtol=0, atol=0.1).all()
 
-    os.chdir(initial_dir)
+    os.chdir(models_dir)
