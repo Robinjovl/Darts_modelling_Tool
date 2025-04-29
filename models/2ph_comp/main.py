@@ -56,7 +56,7 @@ if __name__ == '__main__':
     n.set_output()
 
     if True:
-        n.run(1000)
+        n.run(10)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
@@ -64,9 +64,20 @@ if __name__ == '__main__':
 
         # compute well time data
         time_data_dict = n.output.store_well_time_data()
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+
+        if 1:
+            n.output.plot_well_time_data_2(time_data_df)
+            # time_data_df.plot(x='time', y='well_P1_volumetric_rate_oil_at_wh')
+            # time_data_df.plot(x='time', y='well_P1_volumetric_rate_gas_at_wh')
+            # time_data_df.plot(x='time', y='well_I1_volumetric_rate_oil_at_wh')
+            # time_data_df.plot(x='time', y='well_I1_volumetric_rate_gas_at_wh')
+            # plt.show()
+
+        else:
+            n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
 
         # save well time data
-        time_data_df = pd.DataFrame.from_dict(time_data_dict)
         time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
         writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
         time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)

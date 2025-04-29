@@ -38,10 +38,10 @@ def read_data(sol_filepath, well_filepath, timestep = None):
 RESTART = True
 accepted_dirs = [
     '2ph_comp',
-    '2ph_comp_solid',
-    '2ph_do',
-    '2ph_do_thermal',
-    '2ph_geothermal',
+    # '2ph_comp_solid',
+    # '2ph_do',
+    # '2ph_do_thermal',
+    # '2ph_geothermal',
     # '2ph_geothermal_mass_flux',
     # '3ph_comp_w',
     # '3ph_do',
@@ -146,6 +146,10 @@ for mdir in accepted_dirs:
     # time_vector, property_array = n.output.output_properties(timestep = 6) # raises an IndexError
     # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
     # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
+
+    """ ------------------------- WELLS --------------------------- """
+
+
 
     """ ------------------------ POST PROCESSING ------------------------ """
     m = model.Model()
