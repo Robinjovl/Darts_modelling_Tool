@@ -82,7 +82,7 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = None,
+    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = 0.15,
                  well_geometry: PipeGeometry = None) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
@@ -93,7 +93,8 @@ class ReservoirBase:
         ms_well.MS_Type.EPM: For the Equivalent Porous Medium model
         ms_well.MS_Type.DFM: For the Drift-Flux model
         :type ms_well_type: ms_well.MS_Type
-        :param well_ID: Well inside diameter. If well_ms_type is EPM, this input argument must be specified.
+        :param well_ID: Well inside diameter. If well_ms_type is EPM, this input argument is needed. If well_ms_type
+        is DFM, this will be extracted from well_geometry.
         :type well_ID: float
         :param well_geometry: Geometry of the well. If well_ms_type is DFM, this input argument must be specified.
         :type well_geometry: PipeGeometry
@@ -103,10 +104,9 @@ class ReservoirBase:
         well.ms_type = ms_well_type
 
         if well.ms_type == ms_well.MS_Type.EPM:
-            assert well_ID is not None, "For EPM, well_ID must be specified!"
             assert well_geometry is None, "For EPM, well_geometry must not be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
-            # the segment in front of the reservoir.
+            # the segment in front of the reservoir cell which is perforated.
             well.segment_volume = math.pi / 4 * well_ID ** 2
             # will be updated in add_perforation
             well.well_head_depth = 0
@@ -114,7 +114,6 @@ class ReservoirBase:
             well.segment_depth_increment = 0
 
         elif well.ms_type == ms_well.MS_Type.DFM:
-            assert well_ID is None, "For DFM, well_ID must not be specified!"
             assert well_geometry is not None, "For DFM, well_geometry must be specified!"
             # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
             # the lowermost perforated or non-perforated segment.
@@ -132,7 +131,7 @@ class ReservoirBase:
         return
 
     @abc.abstractmethod
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_ID: float,
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_ID: float = 0.3048,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
@@ -140,8 +139,8 @@ class ReservoirBase:
 
         :param well_name: Name of well to add perforation to
         :type well_name: str
-        :param cell_index: Index of cell to be perforated
-        :type cell_index: int or tuple
+        :param res_cell_idx: Index of reservoir cell to be perforated
+        :type res_cell_idx: int or tuple
         :param well_ID: Internal diameter of the wellbore
         :param well_index: Well index, default is calculated inside
         :param well_indexD: Thermal well index, default is calculated inside

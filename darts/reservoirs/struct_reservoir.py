@@ -135,7 +135,7 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None, well_ID: float = None,
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None, well_ID: float = 0.1524,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = None, verbose: bool = False):
         """
@@ -146,8 +146,6 @@ class StructReservoir(ReservoirBase):
         i, j, k = res_cell_idx
         if well.ms_type == ms_well.MS_Type.EPM:
             assert well_seg_idx is None, "If the well is of the EPM type, well_seg_idx must not be specified!"
-            if well_index is not None:
-                well_ID = 1.   # Assign a dummy well_ID to avoid errors in calc_well_index, even though well_ID here is not used when well_index is provided by the user
             res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
                                                                         segment_direction=segment_direction, skin=skin)
         elif well.ms_type == ms_well.MS_Type.DFM:
