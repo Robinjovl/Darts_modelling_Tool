@@ -151,9 +151,8 @@ class Model(THMCModel):
             # else:
             #     # Add controls for production well:
             #     # Specify bhp for particular production well:
-            self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                           is_inj=False, target=self.reservoir.p_init[self.id_prod] + self.depletion_value,
-                                           phase_name='wat')
+            self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=self.reservoir.p_init[self.id_prod] + self.depletion_value)
         return 0
     def setup_contact_friction(self, contact_algorithm: contact_solver):
         if hasattr(self.reservoir, 'contacts'):

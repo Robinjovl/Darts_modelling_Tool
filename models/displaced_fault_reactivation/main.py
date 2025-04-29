@@ -499,6 +499,7 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
             import matplotlib.animation as animation
             from matplotlib.animation import FuncAnimation
             from matplotlib import rcParams
+            # substitute with your own path to FFMPEG installation
             rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
 
             times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
