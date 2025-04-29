@@ -21,6 +21,15 @@
   - Compositional constructor contains state_spec variable rather than thermal (bool)
   - Geothermal is PH by default
   - All engines have a WellInitOperator to translate PT-based well controls to the given state specification
+- (Breaking) DartsModel.output() class now contains all output related functions of open-DARTS. Please refer to this [example](https://gitlab.com/open-darts/open-darts/-/blob/output/tutorials/output_and_restart.py?ref_type=heads) as a reference.
+  - The output folder is defined in DartsModel.set_output(output_folder=output) instead of in DartsModel.init()
+  - The default name for save file 'solution.h5' is changed to 'reservoir_solution.h5' and now only contains reservoir blocks instead of the entire solution vector. 
+  - DartsModel.output.output_properties()'s new default behavior is to return primary variables if the properties list is not defined. If defined, only the listed primary (states) and/or secondary (properties) variables are returned as a dictionary.
+  - C++ rate calculations will be replaced in the near future with python based rate calculations in the DartsModel.output(). Currently, both are available. However, it is recomended that you start transitioning to the new python rates. 
+  - New naming scheme for columns in 'time_data' when using python rates. For more information, please consult the [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data) 
+- Save data to *.hdf5 with compression and/or single precision in order to manage file size. 
+- Evaluate properties from engine or saved data.
+- New option: DartsModel.set_output(all_phase_props=True), creates an extensive list of phase properties in the DartsModel.physics. 
 - The GPU configuration is supported in cmake. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/179)
 - C++ standard was changed to C++20. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182)
   - a custom dockerfile usage with gcc-13 compiler for open-DARTS compilation in gitlab pipelines (Linux only).
