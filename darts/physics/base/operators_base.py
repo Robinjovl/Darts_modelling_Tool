@@ -54,6 +54,7 @@ class WellControlOperators(OperatorsBase):
         # Advective heat rate
         idx += self.nph
         if self.thermal:
+            self.property.evaluate_thermal(vec_state_as_np)
             vec_values_as_np[idx + self.property.ph] = \
                     self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
 
