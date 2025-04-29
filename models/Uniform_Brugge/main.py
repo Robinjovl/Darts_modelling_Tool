@@ -5,6 +5,7 @@ Unstructured grid
 
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
