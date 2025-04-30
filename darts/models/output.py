@@ -11,7 +11,7 @@ from darts.physics.super.physics import Compositional
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
-from darts.engines import value_vector, index_vector, timer_node, ms_well_vector, op_vector
+from darts.engines import value_vector, index_vector, timer_node, ms_well_vector, op_vector, well_control_iface
 from darts.physics.base.operators_base import PropertyOperators
 
 #%%
@@ -1068,17 +1068,21 @@ class Output:
                 self.physics.well_ctrl_itor.evaluate(state, all_values)
 
                 if rate_type == 'phases_molar_rates':
-                    values = all_values[0:pc.nph].to_numpy()
+                    ph_molar_rate_op_start_idx = int(well_control_iface.MOLAR_RATE) * pc.nph
+                    values = all_values[ph_molar_rate_op_start_idx:ph_molar_rate_op_start_idx + pc.nph].to_numpy()
                 elif rate_type == 'phases_mass_rates':
-                    values = all_values[pc.nph:2 * pc.nph].to_numpy()
+                    ph_mass_rate_op_start_idx = int(well_control_iface.MASS_RATE) * pc.nph
+                    values = all_values[ph_mass_rate_op_start_idx:ph_mass_rate_op_start_idx + pc.nph].to_numpy()
                 elif rate_type == 'phases_volumetric_rates':
-                    values = all_values[2 * pc.nph:3 * pc.nph].to_numpy()
+                    ph_vol_rate_op_start_idx = int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
+                    values = all_values[ph_vol_rate_op_start_idx:ph_vol_rate_op_start_idx + pc.nph].to_numpy()
                 elif rate_type in ['components_molar_rates']:
                     values = self.components_molar_rates_operators(state, pc)
                 elif rate_type == 'components_mass_rates':
                     values = self.components_mass_rates_operators(state, pc)
                 elif rate_type == 'advective_heat_rate':
-                    values = all_values[3 * pc.nph:4 * pc.nph].to_numpy()
+                    ph_ad_heat_rate_op_start_idx = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
+                    values = all_values[ph_ad_heat_rate_op_start_idx:ph_ad_heat_rate_op_start_idx + pc.nph].to_numpy()
 
                     # Calc heat operators for the dead state (1 atm and 15 deg C)
                     if self.physics.state_spec == self.physics.StateSpecification.PT:
