@@ -1183,58 +1183,6 @@ class Output:
                 indices.append(id[0])
         return np.array(indices, dtype=np.intp)
 
-    def plot_well_time_data_2(self, time_data_df, compare = False):
-        """
-        Make plots out of the time data dataframe.
-        Names of the columns are named according to https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data
-
-        :param time_data_df: data frame computed from output.store_well_time_data()
-        """
-
-        self.well_plots_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
-        if os.path.exists(self.well_plots_dir):
-            shutil.rmtree(self.well_plots_dir)
-        os.makedirs(self.well_plots_dir)
-
-        rate_list = {'volumetric_rate': ' [m3/day]',
-                     'mass_rate': ' [kg/day]',
-                     'molar_rate': ' [kmol/day]',
-                     'advective_heat': ' [kJ]'}
-        type_list = ['at_wh', 'by_sum_perfs'] if compare else ['at_wh']
-
-        # for the phases
-        for well in self.reservoir.wells:
-            for phase in self.physics.phases:
-                for rate in rate_list:
-                    y = [f'well_{well.name}_{rate}_{phase}_{type}' for type in type_list]
-                    y_valid = [col for col in y if col in time_data_df.columns]
-                    if y_valid:
-                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
-                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
-        # for the components
-        for well in self.reservoir.wells:
-            for component in self.physics.components:
-                for rate in rate_list:
-                    y = [f'well_{well.name}_{rate}_{component}_{type}' for type in type_list]
-                    y_valid = [col for col in y if col in time_data_df.columns]
-                    if y_valid:
-                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
-                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
-        # BHP and BHT
-        bottom_hole_list = {'BHP': 'Bars', 'BHT': 'K'}
-        for well in self.reservoir.wells:
-            for i in bottom_hole_list.keys():
-                y = [f'well_{well.name}_{i}']
-                y_valid = [col for col in y if col in time_data_df.columns]
-                if y_valid:
-                    time_data_df.plot(x='time', y=y_valid, xlabel='time [days]', ylabel=bottom_hole_list[i], title=well.name)\
-                        .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
     def plot_well_time_data(self, types_of_well_rates=None):
         """
         Plots well time data that are specified in the list types_of_well_time_data over time, including

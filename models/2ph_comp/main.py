@@ -66,10 +66,7 @@ if __name__ == '__main__':
         time_data_dict = n.output.store_well_time_data()
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
 
-        if 1:
-            n.output.plot_well_time_data_2(time_data_df)
-        else:
-            n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
+        n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
 
         # save well time data
         time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
