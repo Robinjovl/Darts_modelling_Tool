@@ -44,6 +44,8 @@
 - Convergence tests for geomechanical models [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184) 
 - Unstructured mesh generation script [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/184)
 - SPE10_mech model is enabled in pipelines.
+- Save the \*.pvd file in the associated output directory, together with \*.vtk/\*.vtu files [Changes](https://gitlab.com/open-darts/open-darts/-/merge_requests/200)
+- Enable the visualization of large volume from mesh.vts for StructReservoir [added](https://gitlab.com/open-darts/open-darts/-/merge_requests/198)
 - CPG Reservoir:
   - Fault transmissibility multiplier application fixed.
   - A test case with a fault transmissibility multiplacator [added](https://gitlab.com/open-darts/open-darts/-/blob/development/models/cpg_sloping_fault/main.py?ref_type=heads#L239).

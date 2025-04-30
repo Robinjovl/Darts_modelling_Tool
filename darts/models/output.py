@@ -925,7 +925,6 @@ class Output:
 
         df = pd.read_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
         time = df['time']
-        pc = self.physics.property_containers[0]
 
         # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
         if types_of_well_rates is None:
@@ -944,7 +943,7 @@ class Output:
                 well_dir = os.path.join(main_dir, f'well_{w.name}')
                 for perf in w.perforations:
                     subdir = os.path.join(well_dir, f'perf_{perf[0]}')
-                    keys = self.create_perf_keys(rtype, w.name, perf[0], pc)
+                    keys = self.create_perf_keys(rtype, w.name, perf[0])
                     for key, ylabel in keys:
                         arr = df[key]
                         plt.figure()
@@ -955,7 +954,7 @@ class Output:
                         plt.savefig(os.path.join(subdir, f'{key}.png'))
                         plt.close()
                 # total and wellhead plots
-                total_keys = self.create_total_keys(rtype, w.name, pc)
+                total_keys = self.create_total_keys(rtype, w.name)
                 for key, ylabel in total_keys:
                     plt.figure()
                     plt.plot(time, df[key], marker='o')

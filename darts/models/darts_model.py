@@ -405,7 +405,7 @@ class DartsModel:
             omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         while t < stop_time:
-            xn = np.array(self.physics.engine.Xn, copy=False)[:nb * nc]
+            xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
             converged = self.run_timestep(dt, t, verbose)
 
             if converged:
@@ -414,7 +414,7 @@ class DartsModel:
                 ts += 1
 
                 x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
-                dt_mult_new = 1e3
+                dt_mult_new = data_ts.dt_mult
                 for i in range(nc):
                     max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
                     mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
@@ -427,7 +427,7 @@ class DartsModel:
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
-                if np.fabs(t + dt - stop_time) < self.params.min_ts:
+                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
                     dt = stop_time - t
 
                 if t + dt > stop_time:
