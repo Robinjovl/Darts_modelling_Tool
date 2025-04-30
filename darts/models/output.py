@@ -832,142 +832,6 @@ class Output:
         self.timer.node["output_well_time_data"].stop(); self.timer.stop()
         return time_data_dict
 
-    def plot_well_time_data_2(self, time_data_df, compare = False):
-        """
-        Make plots out of the time data dataframe.
-        Names of the columns are named according to https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data
-
-        :param time_data_df: data frame computed from output.store_well_time_data()
-        """
-
-        self.well_plots_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
-        if os.path.exists(self.well_plots_dir):
-            shutil.rmtree(self.well_plots_dir)
-        os.makedirs(self.well_plots_dir)
-
-        rate_list = {'volumetric_rate': ' [m3/day]',
-                     'mass_rate': ' [kg/day]',
-                     'molar_rate': ' [kmol/day]',
-                     'advective_heat': ' [kJ]'}
-        type_list = ['at_wh', 'by_sum_perfs'] if compare else ['at_wh']
-
-        # for the phases
-        for well in self.reservoir.wells:
-            for phase in self.physics.phases:
-                for rate in rate_list:
-                    y = [f'well_{well.name}_{rate}_{phase}_{type}' for type in type_list]
-                    y_valid = [col for col in y if col in time_data_df.columns]
-                    if y_valid:
-                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
-                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
-        # for the components
-        for well in self.reservoir.wells:
-            for component in self.physics.components:
-                for rate in rate_list:
-                    y = [f'well_{well.name}_{rate}_{component}_{type}' for type in type_list]
-                    y_valid = [col for col in y if col in time_data_df.columns]
-                    if y_valid:
-                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
-                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
-        # BHP and BHT
-        bottom_hole_list = {'BHP': 'Bars', 'BHT': 'K'}
-        for well in self.reservoir.wells:
-            for i in bottom_hole_list.keys():
-                y = [f'well_{well.name}_{i}']
-                y_valid = [col for col in y if col in time_data_df.columns]
-                if y_valid:
-                    time_data_df.plot(x='time', y=y_valid, xlabel='time [days]', ylabel=bottom_hole_list[i], title=well.name)\
-                        .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close('all')
-
-    def plot_well_time_data(self, types_of_well_rates=None):
-        """
-        Plots well time data that are specified in the list types_of_well_time_data over time, including
-        phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates, components_mass_rates,
-        advective_heat_rate, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
-        """
-        main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
-
-        # Reset_directory
-        if os.path.exists(main_dir):
-            shutil.rmtree(main_dir)
-        os.makedirs(main_dir)
-
-        self.create_perf_dirs(main_dir)
-
-        df = pd.read_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
-        time = df['time']
-
-        # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
-        if types_of_well_rates is None:
-            types_of_well_rates = [
-                "phases_molar_rates",
-                "phases_mass_rates",
-                "phases_volumetric_rates",
-                "components_molar_rates",
-                "components_mass_rates",
-            ]
-            if self.physics.thermal:
-                types_of_well_rates.append("advective_heat_rate")
-
-        for rtype in types_of_well_rates:
-            for w in self.reservoir.wells:
-                well_dir = os.path.join(main_dir, f'well_{w.name}')
-                for perf in w.perforations:
-                    subdir = os.path.join(well_dir, f'perf_{perf[0]}')
-                    keys = self.create_perf_keys(rtype, w.name, perf[0])
-                    for key, ylabel in keys:
-                        arr = df[key]
-                        plt.figure()
-                        plt.plot(time, arr, marker='o')
-                        plt.xlabel('Time [day]')
-                        plt.ylabel(ylabel)
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(subdir, f'{key}.png'))
-                        plt.close()
-                # total and wellhead plots
-                total_keys = self.create_total_keys(rtype, w.name)
-                for key, ylabel in total_keys:
-                    plt.figure()
-                    plt.plot(time, df[key], marker='o')
-                    plt.xlabel('Time [day]')
-                    plt.ylabel(ylabel)
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(well_dir, f'{key}.png'))
-                    plt.close()
-
-        # BHP and BHT are plotted all the time
-        for w in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f'well_{w.name}')
-
-            BHP_key = f'well_{w.name}_BHP'
-            BHP = df[BHP_key]
-
-            plt.figure()
-            plt.plot(time, BHP, marker='o')
-            plt.xlabel('Time [day]')
-            plt.ylabel('Bottom-hole pressure [bar]')
-            plt.tight_layout()
-            plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
-            plt.close()
-
-            BHT_key = f'well_{w.name}_BHT'
-            BHT = df[BHT_key]
-
-            plt.figure()
-            plt.plot(time, BHT, marker='o')
-            plt.xlabel('Time [day]')
-            plt.ylabel('Bottom-hole pressure [bar]')
-            plt.tight_layout()
-            plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
-            plt.close()
-
-        return df
-
     def configure_physics(self):
         """
         This function makes the physics of the geothermal engine compatible with how the physics of the super engine
@@ -1133,94 +997,6 @@ class Output:
                         BHT[i] = pc.temperature_ev.evaluate([BHP[i], dyn['X'][i, wellhead_cell_idx, h_idx]])
             time_data_dict[f'well_{well.name}_BHP'] = BHP
             time_data_dict[f'well_{well.name}_BHT'] = BHT
-
-    def create_perf_dirs(self, main_dir):
-        """
-        This function creates a new directory (folder) for each perforation of wells. The rates for each perforation
-        will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
-        of the current class.
-
-        :param main_dir: Directory in which perforation directories will be created
-        :type main_dir: str
-        """
-        for well in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f'well_{well.name}')
-            os.makedirs(well_dir, exist_ok=True)
-            for perf in well.perforations:
-                os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
-
-    def create_perf_keys(self, rtype, well_name, perf_idx):
-        """
-        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
-        of the current class.
-
-        :param rtype: Type of the well rate
-        :type rtype: str
-        :param well_name: Name of the well
-        :type well_name: str
-        :param perf_idx: Index of the perforation
-        :type perf_idx: int
-        """
-        pc = self.physics.property_containers[0]
-        keys = []
-        tag = f'well_{well_name}_perf_{perf_idx}_'
-        if rtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
-            for phase_name in pc.phases_name:
-                key = f'{tag}{rtype.split("_")[1]}_rate_{phase_name}'
-                ylabel = f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'
-                keys.append((key, ylabel))
-        elif rtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
-            for component_name in pc.components_name:
-                key = f'{tag}{rtype.split("_")[1]}_rate_{component_name}'
-                ylabel = f'{component_name} {rtype.split("_")[1]} rate [{unit}]'
-                keys.append((key, ylabel))
-        elif rtype.startswith('advective_heat_'):
-            for phase_name in pc.phases_name:
-                key = f'{tag}advective_heat_rate_{phase_name}'
-                keys.append((key, f'{phase_name} advective heat rate [kJ/day]'))
-        return keys
-
-    def create_total_keys(self, rtype, well_name):
-        """
-        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
-        method plot_well_time_data of the current class.
-
-        :param rtype: Type of well rate
-        :type rtype: str
-        :param well_name: Name of the well
-        :type well_name: str
-        """
-        pc = self.physics.property_containers[0]
-        keys = []
-        base = f'well_{well_name}_'
-        if rtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
-            for phase_name in pc.phases_name:
-                keys.extend([
-                    (
-                    f'{base}{rtype.split("_")[1]}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{rtype.split("_")[1]}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
-                ])
-        elif rtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
-            for component_name in pc.components_name:
-                keys.extend([
-                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_by_sum_perfs',
-                     f'{component_name} {rtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_at_wh', f'{component_name} {rtype.split("_")[1]} rate [{unit}]')
-                ])
-        elif rtype.startswith('advective_heat_'):
-            for phase_name in pc.phases_name:
-                keys.extend([
-                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective heat rate [kJ/day]'),
-                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective heat rate [kJ/day]')
-                ])
-        elif rtype in ('BHP', 'BHT'):
-            label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
-            keys.append((f'{base}{rtype}', label))
-        return keys
 
     def calc_rates_at_connections(self, h5_well_data: dict, conn_ids: list, trans: np.ndarray,
                                   thermal: bool, rate_type: str):
@@ -1414,3 +1190,227 @@ class Output:
             if id.size > 0:
                 indices.append(id[0])
         return np.array(indices, dtype=np.intp)
+
+    def plot_well_time_data_2(self, time_data_df, compare = False):
+        """
+        Make plots out of the time data dataframe.
+        Names of the columns are named according to https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data
+
+        :param time_data_df: data frame computed from output.store_well_time_data()
+        """
+
+        self.well_plots_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
+        if os.path.exists(self.well_plots_dir):
+            shutil.rmtree(self.well_plots_dir)
+        os.makedirs(self.well_plots_dir)
+
+        rate_list = {'volumetric_rate': ' [m3/day]',
+                     'mass_rate': ' [kg/day]',
+                     'molar_rate': ' [kmol/day]',
+                     'advective_heat': ' [kJ]'}
+        type_list = ['at_wh', 'by_sum_perfs'] if compare else ['at_wh']
+
+        # for the phases
+        for well in self.reservoir.wells:
+            for phase in self.physics.phases:
+                for rate in rate_list:
+                    y = [f'well_{well.name}_{rate}_{phase}_{type}' for type in type_list]
+                    y_valid = [col for col in y if col in time_data_df.columns]
+                    if y_valid:
+                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
+                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
+        plt.close('all')
+
+        # for the components
+        for well in self.reservoir.wells:
+            for component in self.physics.components:
+                for rate in rate_list:
+                    y = [f'well_{well.name}_{rate}_{component}_{type}' for type in type_list]
+                    y_valid = [col for col in y if col in time_data_df.columns]
+                    if y_valid:
+                        time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
+                            .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
+        plt.close('all')
+
+        # BHP and BHT
+        bottom_hole_list = {'BHP': 'Bars', 'BHT': 'K'}
+        for well in self.reservoir.wells:
+            for i in bottom_hole_list.keys():
+                y = [f'well_{well.name}_{i}']
+                y_valid = [col for col in y if col in time_data_df.columns]
+                if y_valid:
+                    time_data_df.plot(x='time', y=y_valid, xlabel='time [days]', ylabel=bottom_hole_list[i], title=well.name)\
+                        .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
+        plt.close('all')
+
+    def plot_well_time_data(self, types_of_well_rates=None):
+        """
+        Plots well time data that are specified in the list types_of_well_time_data over time, including
+        phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates, components_mass_rates,
+        advective_heat_rate, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
+        """
+        main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
+
+        # Reset_directory
+        if os.path.exists(main_dir):
+            shutil.rmtree(main_dir)
+        os.makedirs(main_dir)
+
+        self.create_perf_dirs(main_dir)
+
+        df = pd.read_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
+        time = df['time']
+
+        # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
+        if types_of_well_rates is None:
+            types_of_well_rates = [
+                "phases_molar_rates",
+                "phases_mass_rates",
+                "phases_volumetric_rates",
+                "components_molar_rates",
+                "components_mass_rates",
+            ]
+            if self.physics.thermal:
+                types_of_well_rates.append("advective_heat_rate")
+
+        for rtype in types_of_well_rates:
+            for w in self.reservoir.wells:
+                well_dir = os.path.join(main_dir, f'well_{w.name}')
+                for perf in w.perforations:
+                    subdir = os.path.join(well_dir, f'perf_{perf[0]}')
+                    keys = self.create_perf_keys(rtype, w.name, perf[0])
+                    for key, ylabel in keys:
+                        arr = df[key]
+                        plt.figure()
+                        plt.plot(time, arr, marker='o')
+                        plt.xlabel('Time [day]')
+                        plt.ylabel(ylabel)
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(subdir, f'{key}.png'))
+                        plt.close()
+                # total and wellhead plots
+                total_keys = self.create_total_keys(rtype, w.name)
+                for key, ylabel in total_keys:
+                    plt.figure()
+                    plt.plot(time, df[key], marker='o')
+                    plt.xlabel('Time [day]')
+                    plt.ylabel(ylabel)
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(well_dir, f'{key}.png'))
+                    plt.close()
+
+        # BHP and BHT are plotted all the time
+        for w in self.reservoir.wells:
+            well_dir = os.path.join(main_dir, f'well_{w.name}')
+
+            BHP_key = f'well_{w.name}_BHP'
+            BHP = df[BHP_key]
+
+            plt.figure()
+            plt.plot(time, BHP, marker='o')
+            plt.xlabel('Time [day]')
+            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.tight_layout()
+            plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
+            plt.close()
+
+            BHT_key = f'well_{w.name}_BHT'
+            BHT = df[BHT_key]
+
+            plt.figure()
+            plt.plot(time, BHT, marker='o')
+            plt.xlabel('Time [day]')
+            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.tight_layout()
+            plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
+            plt.close()
+
+        return df
+
+    def create_perf_dirs(self, main_dir):
+        """
+        This function creates a new directory (folder) for each perforation of wells. The rates for each perforation
+        will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
+        of the current class.
+
+        :param main_dir: Directory in which perforation directories will be created
+        :type main_dir: str
+        """
+        for well in self.reservoir.wells:
+            well_dir = os.path.join(main_dir, f'well_{well.name}')
+            os.makedirs(well_dir, exist_ok=True)
+            for perf in well.perforations:
+                os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
+
+    def create_perf_keys(self, rtype, well_name, perf_idx):
+        """
+        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
+        of the current class.
+
+        :param rtype: Type of the well rate
+        :type rtype: str
+        :param well_name: Name of the well
+        :type well_name: str
+        :param perf_idx: Index of the perforation
+        :type perf_idx: int
+        """
+        pc = self.physics.property_containers[0]
+        keys = []
+        tag = f'well_{well_name}_perf_{perf_idx}_'
+        if rtype.startswith('phases_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
+            for phase_name in pc.phases_name:
+                key = f'{tag}{rtype.split("_")[1]}_rate_{phase_name}'
+                ylabel = f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'
+                keys.append((key, ylabel))
+        elif rtype.startswith('components_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
+            for component_name in pc.components_name:
+                key = f'{tag}{rtype.split("_")[1]}_rate_{component_name}'
+                ylabel = f'{component_name} {rtype.split("_")[1]} rate [{unit}]'
+                keys.append((key, ylabel))
+        elif rtype.startswith('advective_heat_'):
+            for phase_name in pc.phases_name:
+                key = f'{tag}advective_heat_rate_{phase_name}'
+                keys.append((key, f'{phase_name} advective heat rate [kJ/day]'))
+        return keys
+
+    def create_total_keys(self, rtype, well_name):
+        """
+        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
+        method plot_well_time_data of the current class.
+
+        :param rtype: Type of well rate
+        :type rtype: str
+        :param well_name: Name of the well
+        :type well_name: str
+        """
+        pc = self.physics.property_containers[0]
+        keys = []
+        base = f'well_{well_name}_'
+        if rtype.startswith('phases_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
+            for phase_name in pc.phases_name:
+                keys.extend([
+                    (
+                    f'{base}{rtype.split("_")[1]}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'),
+                    (f'{base}{rtype.split("_")[1]}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
+                ])
+        elif rtype.startswith('components_'):
+            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
+            for component_name in pc.components_name:
+                keys.extend([
+                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_by_sum_perfs',
+                     f'{component_name} {rtype.split("_")[1]} rate [{unit}]'),
+                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_at_wh', f'{component_name} {rtype.split("_")[1]} rate [{unit}]')
+                ])
+        elif rtype.startswith('advective_heat_'):
+            for phase_name in pc.phases_name:
+                keys.extend([
+                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective heat rate [kJ/day]'),
+                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective heat rate [kJ/day]')
+                ])
+        elif rtype in ('BHP', 'BHT'):
+            label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
+            keys.append((f'{base}{rtype}', label))
+        return keys
