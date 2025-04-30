@@ -346,7 +346,6 @@ class DartsModel:
         self.data_ts.print()
 
         # copy to params since theay are still used in engines
-        self.params.first_ts = self.data_ts.dt_first
         self.params.max_ts = self.data_ts.dt_max
         self.params.mult_ts = self.data_ts.dt_mult
 
