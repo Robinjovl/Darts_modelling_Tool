@@ -1357,48 +1357,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	return 0;
 };
 
-int engine_base::print_timestep(value_t time, value_t deltat)
-{
-	double estimate;
-	int hour, min, sec;
-	char buffer[1024];
-	char buffer2[1024];
-	char line[] = "-------------------------------------------------------------------------------------------------------------\n";
-
-	estimate = timer->get_timer();
-	hour = estimate / 3600;
-	estimate -= hour * 3600;
-	min = estimate / 60;
-	estimate -= min * 60;
-	sec = estimate;
-
-	sprintf(buffer, "T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
-			time, deltat, n_newton_last_dt, n_linear_last_dt, newton_residual_last_dt, well_residual_last_dt, CFL_max, hour, min, sec);
-	if ((dt * params->mult_ts > params->max_ts || full_step_timer.timer) && t < stop_time)
-	{
-		if (!full_step_timer.timer)
-		{
-			full_step_timer.start();
-			t_full_step = t;
-		}
-		else
-		{
-			estimate = full_step_timer.get_timer() / (t - t_full_step) * (stop_time - t);
-			hour = estimate / 3600;
-			estimate -= hour * 3600;
-			min = estimate / 60;
-			estimate -= min * 60;
-			sec = estimate;
-			sprintf(buffer2, "%s, REMAINING %02d:%02d:%02d", buffer, hour, min, sec);
-			sprintf(buffer, "%s", buffer2);
-		}
-	}
-	sprintf(buffer2, "%s %s )\n%s", line, buffer, line);
-	std::cout << buffer2 << std::flush;
-
-	return 0;
-}
-
 /*!
  @details
 
@@ -2705,12 +2663,6 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 		stat.n_linear_total += n_linear_last_dt;
 		stat.n_timesteps_total++;
 		converged = 1;
-
-		//adjoint method
-		if (opt_history_matching == false)
-		{
-			print_timestep(time + deltat, deltat);
-		}
 
 		time_data["time"].push_back(time + deltat);
 

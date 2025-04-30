@@ -96,9 +96,6 @@ public:
   sim_params()
   {
     // set default params
-    max_ts = 10;
-    mult_ts = 2;
-    min_ts = 1e-12;
 
     max_i_linear = 50;
     tolerance_linear = 1e-5;
@@ -130,10 +127,6 @@ public:
 
     phase_existence_tolerance = 1.e-6;
   }
-
-  value_t max_ts;   // maximum time step length (days)
-  value_t mult_ts;  // multiplication ts factor
-  value_t min_ts;   // minimum time step length (days)
 
   index_t max_i_newton;     // maximum number of newton iterations
   index_t min_i_newton;     // minimum number of newton iterations

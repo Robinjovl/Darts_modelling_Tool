@@ -1647,8 +1647,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		stat.n_timesteps_total++;
 		converged = 1;
 
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)

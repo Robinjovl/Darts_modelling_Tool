@@ -163,8 +163,6 @@ public:
 
 	// output routines
 
-	virtual int print_timestep(value_t time, value_t deltat);
-
 	int print_header();
 
 	/// @brief report for one newton iteration

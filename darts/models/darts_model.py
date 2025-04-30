@@ -346,9 +346,6 @@ class DartsModel:
         self.data_ts.print()
 
         # copy to params since theay are still used in engines
-        self.params.max_ts = self.data_ts.dt_max
-        self.params.mult_ts = self.data_ts.dt_mult
-
         self.params.max_i_newton = self.data_ts.newton_max_iter
         self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.newton_type = self.data_ts.newton_type

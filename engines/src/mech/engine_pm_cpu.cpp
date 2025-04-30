@@ -1806,8 +1806,6 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 		stat.n_timesteps_total++;
 		converged = 1;
 
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -1881,8 +1879,6 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
   stat.n_linear_total += n_linear_last_dt;
   stat.n_timesteps_total++;
   converged = 1;
-
-  print_timestep(time + deltat, deltat);
 
   time_data["time"].push_back(time + deltat);
 

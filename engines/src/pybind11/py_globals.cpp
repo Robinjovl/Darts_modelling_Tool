@@ -73,9 +73,6 @@ void pybind_globals(py::module &m)
 
   sim_params.def(py::init<>())
     //properties
-    .def_readwrite("max_ts", &sim_params::max_ts)
-    .def_readwrite("mult_ts", &sim_params::mult_ts)
-    .def_readwrite("min_ts", &sim_params::min_ts)
     .def_readwrite("max_i_newton", &sim_params::max_i_newton)
     .def_readwrite("max_i_linear", &sim_params::max_i_linear)
     .def_readwrite("tolerance_newton", &sim_params::tolerance_newton)
