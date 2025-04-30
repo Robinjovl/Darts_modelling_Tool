@@ -46,35 +46,39 @@ class OperatorsBase(operator_set_evaluator_iface):
         p = vec_state[0]
         T = vec_state[3]
         # dz = self.min_z
-        dz = (1.-self.min_z*10)/400
-        vec_values = values.to_numpy()
+        # dz = (1.+self.min_z*10)/200
+        dz = abs(1 - z1 - z2)
 
+        # vec_values = values.to_numpy()
+        vec_values = np.array(values, copy=False)
         ref_points = [
-            (z1-dz, z2),
-            (z1-dz, z2-dz),
-            (z1, z2-dz),
-            (z1-dz/2,z2-dz/2)
+            (z1 - dz, z2),
+            (z1 - dz, z2 - dz),
+            (z1, z2 - dz),
+            (z1 - dz / 2, z2 - dz / 2)
         ]
 
         A = []
         B = []
 
-
         for ref_z1, ref_z2 in ref_points:
-            for rz1, rz2 in ref_points:
-                rz3 = 1.0 - rz1 - rz2
-                if rz1 < 0 or rz2 < 0 or rz3 < 0:
-                    continue  #  skip bad ref point
+            # for rz1, rz2 in ref_points:
+            #     rz3 = 1.0 - rz1 - rz2
+            #     if rz1 < 0 or rz2 < 0 or rz3 < 0:
+            #         continue  #  skip bad ref point
+            rz3 = 1.0 - ref_z1 - ref_z2
+            if ref_z1 < 0 or ref_z2 < 0 or rz3 < 0:
+                continue
             ref_state_np = np.array([p, ref_z1, ref_z2, T])
             ref_state = value_vector(ref_state_np)
             ref_values = value_vector(np.zeros(self.n_ops))
-            indices = index_vector([0])
-            # ref_val = value_vector(np.zeros(self.n_ops))
-            # ref_dval = value_vector(np.zeros(self.n_ops * self.n_vars))
-            # self.physics.evalute.evaluate_with_derivatives(ref_state, indices, ref_values, ref_dval)
+
             self.evaluate(ref_state, ref_values)
-            comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
-            A.append(list(comp/np.sum(comp)))
+            # comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
+
+            # comp = np.array([ref_z1, ref_z2, 1])
+            # A.append(list(comp/np.sum(comp)))
+            A.append([ref_z1, ref_z2, 1])
             B.append(ref_values.to_numpy())
 
             # A.append([ref_z1, ref_z2, 1.0])
@@ -96,10 +100,19 @@ class OperatorsBase(operator_set_evaluator_iface):
         # extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
         # Evaluate extrapolated operator values
         extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
+        # 1) Get the raw numpy array backing your DARTS `values`
+        # out = values.to_numpy()
+        #
+        # # 2) Copy your extrapolated operators directly into it
+        # out[:] = extrapolated
+        # print("extrapolated", extrapolated)
+
+        # vec_extrapolated = extrapolated.to_numpy()
+
         # values[:] = extrapolated
         # values.copy_from(value_vector(extrapolated))
         for i, value in enumerate(extrapolated):
-            vec_values[i] = np.float64(value)  # ✅ safe element-wise assignment
+            vec_values[i] = np.float64(value)
 
         # values.copy_from(value_vector(extrapolated.tolist()))
         # values_np = values.to_numpy()
@@ -115,7 +128,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         #     coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
         #     v_np[op] = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
 
-        return 0
+        return vec_values
 
 
 class WellControlOperators(OperatorsBase):
