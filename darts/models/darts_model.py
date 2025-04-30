@@ -26,12 +26,23 @@ class DataTS:
         self.dt_min = 1e-12  # minimal allowed timestep [days]
         self.dt_mult = 2.    # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.    # maximal allowed timestep [days]
-        self.newton_tol = 1e-2  # newton solver residual
-        self.newton_tol_wel_mult = 100.   # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
-        self.newton_tol_stationary = 1e-3 # tolerance for stationary point detection in the newton solver (by residual)
-        self.newton_max_iter = 20    # maximum newton iterations allowed
-        self.line_search = False
-        self.min_line_search_update = 1.e-4
+
+        self.newton_tol = 1e-2           # newton solver residual
+        self.newton_tol_wel_mult = 100.  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
+        self.newton_max_iter = 20  # maximum newton iterations allowed
+        self.line_search = False   # line search option
+        self.min_line_search_update = 1e-4  # linear solver update value
+
+        self.linear_tol = 1e-5     # linear solver residual
+        self.linear_max_iter = 50  # maximum linear iterations allowed
+
+    def print(self):
+        print('Simulation parameters:')
+        for k in self.__dict__.keys():
+            value = self.__getattribute__(k)
+            print('\t', k, '=', value)
+
 
 class DartsModel:
     """
@@ -319,24 +330,33 @@ class DartsModel:
         self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
         self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
         self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
+
+        # Non linear solver parameters. if None, default value will be used
+        self.data_ts.newton_max_iter = it_newton if it_newton is not None else self.data_ts.newton_max_iter
+        self.data_ts.newton_tol = tol_newton if tol_newton is not None else self.data_ts.tol_res
+
+        self.data_ts.newton_type = newton_type if newton_type is not None else self.params.newton_type
+        self.data_ts.newton_params = newton_params if newton_params is not None else self.params.newton_params
+        self.data_ts.line_search = line_search
+
+        # Linear solver parameters. if None, default value will be used
+        self.data_ts.linear_tol = tol_linear if tol_linear is not None else self.params.tolerance_linear
+        self.data_ts.linear_max_iter = it_linear if it_linear is not None else self.params.max_i_linear
+
+        self.data_ts.print()
+
+        # copy to params since theay are still used in engines
         self.params.first_ts = self.data_ts.dt_first
         self.params.max_ts = self.data_ts.dt_max
         self.params.mult_ts = self.data_ts.dt_mult
 
-        # Non linear solver parameters. if None, default value will be used
-        self.data_ts.newton_max_iter = it_newton if it_newton is not None else self.data_ts.newton_max_iter
         self.params.max_i_newton = self.data_ts.newton_max_iter
-        self.data_ts.newton_tol = tol_newton if tol_newton is not None else self.data_ts.tol_res
         self.params.tolerance_newton = self.data_ts.newton_tol
-        self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
-        self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
-        self.data_ts.line_search = line_search
+        self.params.newton_type = self.data_ts.newton_type
+        self.params.newton_params = self.data_ts.newton_params
 
-        # Linear solver parameters. if None, default value will be used
-        self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
-        self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
-
-        self.runtime = runtime
+        self.params.tolerance_linear = self.data_ts.linear_tol
+        self.params.max_i_linear = self.data_ts.linear_max_iter
 
     def run_simple(self, physics, params, days):
         """
@@ -437,7 +457,7 @@ class DartsModel:
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
+            dt = min(self.prev_dt * data_ts.dt_mult, days, data_ts.dt_max)
 
         self.prev_dt = dt
 
@@ -560,7 +580,7 @@ class DartsModel:
                 # check stationary point after line search
                 counter = 0
                 for j in range(i):
-                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.params.stationary_point_tolerance:
+                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.data_ts.newton_tol_stationary:
                         counter += 1
                 if counter > 2:
                     if verbose:
