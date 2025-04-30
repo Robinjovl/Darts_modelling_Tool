@@ -1,4 +1,5 @@
 import numpy as np
+import abc
 from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_base import PropertyBase
 
@@ -17,6 +18,105 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
 
+    @abc.abstractmethod
+    def evaluate(self, state, values):
+        pass
+
+    def apply_extrapolation(self, state, values):
+        # Find composition, if last composition is negative, apply extrapolation
+        zc = np.append(state[1:self.nc], 1 - np.sum(state[1:self.nc]))
+        if zc[-1] < -self.min_z / 10:
+            self.extrapolate(state, values)
+            return 1
+        else:
+            return 0
+
+    def extrapolate(self, state, values):
+        """
+        Extrapolates the operator value at (z1, z2) using known valid ref points.
+        Should be called when z3 < self.min_z (i.e., unphysical composition).
+
+        Parameters:
+            z1, z2    : coordinates (compositions) at current point
+            op_index  : which operator to extrapolate (e.g., DELTA index)
+        """
+        vec_state = state.to_numpy()
+        z1 = vec_state[1]
+        z2 = vec_state[2]
+        p = vec_state[0]
+        T = vec_state[3]
+        # dz = self.min_z
+        dz = (1.-self.min_z*10)/400
+        vec_values = values.to_numpy()
+
+        ref_points = [
+            (z1-dz, z2),
+            (z1-dz, z2-dz),
+            (z1, z2-dz),
+            (z1-dz/2,z2-dz/2)
+        ]
+
+        A = []
+        B = []
+
+
+        for ref_z1, ref_z2 in ref_points:
+            for rz1, rz2 in ref_points:
+                rz3 = 1.0 - rz1 - rz2
+                if rz1 < 0 or rz2 < 0 or rz3 < 0:
+                    continue  #  skip bad ref point
+            ref_state_np = np.array([p, ref_z1, ref_z2, T])
+            ref_state = value_vector(ref_state_np)
+            ref_values = value_vector(np.zeros(self.n_ops))
+            indices = index_vector([0])
+            # ref_val = value_vector(np.zeros(self.n_ops))
+            # ref_dval = value_vector(np.zeros(self.n_ops * self.n_vars))
+            # self.physics.evalute.evaluate_with_derivatives(ref_state, indices, ref_values, ref_dval)
+            self.evaluate(ref_state, ref_values)
+            comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
+            A.append(list(comp/np.sum(comp)))
+            B.append(ref_values.to_numpy())
+
+            # A.append([ref_z1, ref_z2, 1.0])
+            # b_matrix.append(ref_val.to_numpy())
+            # acc_flux_itor = self.property.acc_flux_itor
+            # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+            # # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+            # ref_operator_vectors.append(ref_val.to_numpy())
+        # # Fit plane per operator
+        # A = np.array(A)
+        # b_matrix = np.array(b_matrix)
+        # Fit linear plane to each operator across z1/z2
+        A = np.array(A)
+        B = np.array(B)  # shape: (3, n_ops)
+        coeffs = np.linalg.lstsq(A, B, rcond=None)[0]  # shape: (3, n_ops)
+
+        # # Fit plane for each operator
+        # coeffs = np.linalg.lstsq(A, b_matrix, rcond=None)[0]
+        # extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+        # Evaluate extrapolated operator values
+        extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
+        # values[:] = extrapolated
+        # values.copy_from(value_vector(extrapolated))
+        for i, value in enumerate(extrapolated):
+            vec_values[i] = np.float64(value)  # ✅ safe element-wise assignment
+
+        # values.copy_from(value_vector(extrapolated.tolist()))
+        # values_np = values.to_numpy()
+        # values_np[:] = extrapolated
+        # # A = np.column_stack([
+        #     [pt[0] for pt in ref_points],
+        #     [pt[1] for pt in ref_points],
+        #     np.ones(len(ref_points))
+        # ])
+        # v_np = values.to_numpy()
+        # for op in range(self.n_ops):
+        #     b = np.array([rv[op] for rv in ref_values])
+        #     coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
+        #     v_np[op] = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+
+        return 0
+
 
 class WellControlOperators(OperatorsBase):
     """
@@ -30,6 +130,10 @@ class WellControlOperators(OperatorsBase):
         self.n_ops = 2 + self.nph * 4
 
     def evaluate(self, state, values):
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
@@ -73,6 +177,10 @@ class WellInitOperators(OperatorsBase):
         self.is_pt = is_pt
 
     def evaluate(self, state_pt, values):
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state_pt, values):
+            return 0
+
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
 
@@ -116,6 +224,10 @@ class PropertyOperators(OperatorsBase):
         :param values: Vector for storage of operator values
         :type values: darts.engines.value_vector
         """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
         _ = self.property.evaluate(state)
         if self.thermal:
             _ = self.property.evaluate_thermal(state)
