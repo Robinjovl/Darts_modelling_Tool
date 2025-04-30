@@ -1041,9 +1041,9 @@ class Output:
 
         id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
         if thermal:
-            if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+            if self.physics.state_spec == self.physics.StateSpecification.PT:
                 id_temp = h5_well_data['dynamic']['variable_names'].index('temperature')  # This does not work for geothermal engine
-            elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:   # For the geothermal engine
+            elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 pass
             else:
                 raise Exception('Neither temperature nor enthalpy exists in the list of variables!')
@@ -1081,17 +1081,18 @@ class Output:
                     values = all_values[3 * pc.nph:4 * pc.nph].to_numpy()
 
                     # Calc heat operators for the dead state (1 atm and 15 deg C)
-                    if 'temperature' in h5_well_data['dynamic']['variable_names']:   # For the super engine
+                    if self.physics.state_spec == self.physics.StateSpecification.PT:
                         state_dead = state.to_numpy().copy()
                         state_dead[id_pres] = 1.01325   # Dead pressure (1 atm)
                         state_dead[id_temp] = 273.15 + 15   # Dead temperature (15 deg C)
                         values_dead = self.heat_rate_operators(state_dead, pc)
-                    elif 'enthalpy' in h5_well_data['dynamic']['variable_names']:  # For the geothermal engine
+                    elif self.physics.state_spec == self.physics.StateSpecification.PH:
+                        # TODO This does not work properly if the super engine is of the PH type
                         enthalpy_w, dens_m_w, kr_w, miu_w = -44582.229072, 55.457385, 1, 1.132781   # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
                         value_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
                         values_dead = np.zeros(len(values))
                         for ph_idx, value in enumerate(values):
-                            if value != 0:
+                            if value != 0.:
                                 values_dead[ph_idx] = value_dead_phase
 
                     values = values - values_dead
