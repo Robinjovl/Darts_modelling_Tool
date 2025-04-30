@@ -21,4 +21,6 @@ Be careful to use the correct depths for reservoir cells; otherwise, fluid flow 
 
 ![image.png](images/wells/add_perf_mswell_true.png){width=892 height=79}
 
+An example is given below with two perforations:
+
 ![image.png](images/wells/mswell_true.png)
