@@ -96,7 +96,6 @@ public:
   sim_params()
   {
     // set default params
-    first_ts = 1;
     max_ts = 10;
     mult_ts = 2;
     min_ts = 1e-12;
@@ -132,7 +131,6 @@ public:
     phase_existence_tolerance = 1.e-6;
   }
 
-  value_t first_ts; // first time step length (days)
   value_t max_ts;   // maximum time step length (days)
   value_t mult_ts;  // multiplication ts factor
   value_t min_ts;   // minimum time step length (days)

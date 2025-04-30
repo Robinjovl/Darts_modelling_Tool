@@ -73,7 +73,6 @@ void pybind_globals(py::module &m)
 
   sim_params.def(py::init<>())
     //properties
-    .def_readwrite("first_ts", &sim_params::first_ts, "Length of the first time step (days)")
     .def_readwrite("max_ts", &sim_params::max_ts)
     .def_readwrite("mult_ts", &sim_params::mult_ts)
     .def_readwrite("min_ts", &sim_params::min_ts)

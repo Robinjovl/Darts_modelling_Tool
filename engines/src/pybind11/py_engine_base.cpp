@@ -114,7 +114,6 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("component_index", &engine_base::component_index) \
 		.def_readwrite("phase_index", &engine_base::phase_index) \
 		.def_readwrite("prod_phase_name", &engine_base::prod_phase_name) \
-		.def_readwrite("prev_usual_dt", &engine_base::prev_usual_dt)\
 		.def_readwrite("inj_phase_name", &engine_base::inj_phase_name) \
 		.def_readwrite("unit", &engine_base::unit) \
 		.def_readwrite("Temp_dj_dx", &engine_base::Temp_dj_dx) \

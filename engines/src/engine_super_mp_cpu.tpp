@@ -331,8 +331,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
-	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
 	block_idxs.resize(acc_flux_op_set_list.size());

@@ -269,9 +269,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
 	Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
 
-  dt = params->first_ts;
-  prev_usual_dt = dt;
-
   // initialize arrays for every operator set
   block_idxs.resize(acc_flux_op_set_list.size());
   op_axis_min.resize(acc_flux_op_set_list.size());

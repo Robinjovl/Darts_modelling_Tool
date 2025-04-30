@@ -452,8 +452,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   }
 
   Xn = X = X_init;
-  dt = params->first_ts;
-  prev_usual_dt = dt;
 
   // initialize arrays for every operator set
   block_idxs.resize(acc_flux_op_set_list.size());
