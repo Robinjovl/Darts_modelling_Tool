@@ -38,20 +38,20 @@ def read_data(sol_filepath, well_filepath, timestep = None):
 RESTART = True
 accepted_dirs = [
     '2ph_comp',
-    # '2ph_comp_solid',
-    # '2ph_do',
-    # '2ph_do_thermal',
-    # '2ph_geothermal',
-    # '2ph_geothermal_mass_flux',
-    # '3ph_comp_w',
-    # '3ph_do',
-    # '3ph_bo',
+    '2ph_comp_solid',
+    '2ph_do',
+    '2ph_do_thermal',
+    '2ph_geothermal',
+    '2ph_geothermal_mass_flux',
+    '3ph_comp_w',
+    '3ph_do',
+    '3ph_bo',
         ## 'Uniform_Brugge',
     ## 'Chem_benchmark_new', # something strange is happening here
         ## 'CO2_foam_CCS',
     # 'GeoRising',
     # 'CoaxWell'
-    ]
+    ] # directory of cicd models
 
 #%%
 
@@ -147,9 +147,22 @@ for mdir in accepted_dirs:
     # time_vector, property_array = n.output.output_properties(timestep = 5.5) # raises a TypeError
     # time_vector, property_array = n.output.output_properties(filepath = output_folder + 'bublegum') # raises FileNotFoundError
 
-    """ ----------------------------- WELLS ------------------------------ """
+    """ ----------------------------- WELL DATA ----------------------------- """
 
+    # compute well time data
+    time_data_dict = n.output.store_well_time_data()
+    time_data_df = pd.DataFrame.from_dict(time_data_dict) # data frame for plotting
 
+    if 1:
+        n.output.plot_well_time_data_2(time_data_df)
+    else:
+        n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
+
+    # save well time data
+    time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+    writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
+    writer.close()
 
     """ ------------------------ POST PROCESSING ------------------------ """
     m = model.Model()
@@ -222,7 +235,7 @@ for mdir in accepted_dirs:
             plt.legend()
             plt.ylabel(var)
             plt.savefig('output_data/' + f'{var}_comparison_restart.png')
-            plt.show()
+            plt.close()
 
             X[i::n.physics.n_vars] = X[i::n.physics.n_vars]/(np.max(X[i::n.physics.n_vars])-np.min(X[i::n.physics.n_vars]))
             X_restarted[i::n.physics.n_vars] = X_restarted[i::n.physics.n_vars] / (np.max(X_restarted[i::n.physics.n_vars]) - np.min(X_restarted[i::n.physics.n_vars]))

@@ -859,6 +859,9 @@ class Output:
     def plot_well_time_data_2(self, time_data_df):
         """
         Make plots out of the time data dataframe.
+        Names of the columns are named according to https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data
+
+        :param time_data_df: data frame computed from output.store_well_time_data()
         """
 
         self.well_plots_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
