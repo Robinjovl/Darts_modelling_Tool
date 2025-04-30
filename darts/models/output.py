@@ -777,12 +777,12 @@ class Output:
         2- calculating the rates directly at the wellhead connection
 
         :param types_of_well_rates: List of types of well rates that can be computed:
-        "phases_molar_rates"
-        "phases_mass_rates"
-        "phases_volumetric_rates"
-        "components_molar_rates"
-        "components_mass_rates"
-        "advective_heat_rate" for thermal scenarios
+                                    "phases_molar_rates"
+                                    "phases_mass_rates"
+                                    "phases_volumetric_rates"
+                                    "components_molar_rates"
+                                    "components_mass_rates"
+                                    "advective_heat_rate" for thermal scenarios
         :type types_of_well_rates: list
         """
         # Start timer for store_well_time_data
