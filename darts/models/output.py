@@ -970,7 +970,8 @@ class Output:
 
     def configure_physics(self):
         """
-        ADD DESCRIPTION
+        This function makes the physics of the geothermal engine compatible with how the physics of the super engine
+        is defined. This function is used in the method store_well_time_data of the current class.
         """
         pc = self.physics.property_containers[0]
         pc.physics_type = "super_engine"
@@ -984,7 +985,8 @@ class Output:
 
     def get_connection_info(self):
         """
-        ADD DESCRIPTION
+        This function gives information of the connections, including perforations and wellhead, for evaluation of
+        perforation and wellhead rates in the method store_well_time_data of the current class.
         """
         perfs_conn_ids = [item for sublist in self.well_perf_conn_ids.values() for item in sublist]
         well_head_conn_ids = list(self.well_head_conn_id.values())
@@ -1007,7 +1009,16 @@ class Output:
 
     def store_perf_rates(self, time_data_dict, rates_perfs, rate_type):
         """
-        ADD DESCRIPTION
+        This function stores perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
+        dict time_data_dict. This function is used in the method store_well_time_data of the current class.
+
+        :param time_data_dict: Dictionary in which well time series will be stored
+        :type time_data_dict: dict
+        :param rates_perfs: A 3D numpy array in which perforation rates are stored for different time steps,
+        perforations, and phases or components.
+        :type rates_perfs: np.ndarray
+        :param rate_type: Type of the well rate
+        :type rate_type: str
         """
         pc = self.physics.property_containers[0]
         perf_idx = 0
@@ -1030,7 +1041,17 @@ class Output:
 
     def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type):
         """
-        ADD DESCRIPTION
+        This function stores summation of perforation rates for each well from the 3D numpy array rates_perfs for the
+        rate type rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of
+        the current class.
+
+        :param time_data_dict: Dictionary in which well time series will be stored
+        :type time_data_dict: dict
+        :param rates_perfs: A 3D numpy array in which perforation rates are stored for different time steps,
+        perforations, and phases or components.
+        :type rates_perfs: np.ndarray
+        :param rate_type: Type of the well rate
+        :type rate_type: str
         """
         pc = self.physics.property_containers[0]
         perf_idx = 0
@@ -1057,7 +1078,17 @@ class Output:
 
     def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type):
         """
-        ADD DESCRIPTION
+        This function stores wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
+        rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of the
+        current class.
+
+        :param time_data_dict: Dictionary in which well time series will be stored
+        :type time_data_dict: dict
+        :param wh_rates: A 3D numpy array in which wellhead rates are stored for different time steps,
+        wellheads, and phases or components.
+        :type wh_rates: np.ndarray
+        :param rate_type: Type of the well rate
+        :type rate_type: str
         """
         pc = self.physics.property_containers[0]
         for well_idx, well in enumerate(self.reservoir.wells):
@@ -1075,7 +1106,12 @@ class Output:
 
     def store_bhp_bht(self, h5_well_data, time_data_dict):
         """
-        ADD DESCRIPTION
+        This function stores bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
+        This function is used in the method store_well_time_data of the current class.
+
+        :param h5_well_data: Dictionary extracted from the HDF5 file that stores well primary variables, etc.
+        :param time_data_dict: Dictionary in which well time series will be stored
+        :type time_data_dict: dict
         """
         dyn = h5_well_data['dynamic']
         nt = len(dyn['time'])
@@ -1100,7 +1136,12 @@ class Output:
 
     def create_perf_dirs(self, main_dir):
         """
-        ADD DESCRIPTION
+        This function creates a new directory (folder) for each perforation of wells. The rates for each perforation
+        will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
+        of the current class.
+
+        :param main_dir: Directory in which perforation directories will be created
+        :type main_dir: str
         """
         for well in self.reservoir.wells:
             well_dir = os.path.join(main_dir, f'well_{well.name}')
@@ -1110,7 +1151,15 @@ class Output:
 
     def create_perf_keys(self, rtype, well_name, perf_idx):
         """
-        ADD DESCRIPTION
+        This function creates keys for perforation rates. This function is used in the method plot_well_time_data
+        of the current class.
+
+        :param rtype: Type of the well rate
+        :type rtype: str
+        :param well_name: Name of the well
+        :type well_name: str
+        :param perf_idx: Index of the perforation
+        :type perf_idx: int
         """
         pc = self.physics.property_containers[0]
         keys = []
@@ -1135,7 +1184,13 @@ class Output:
 
     def create_total_keys(self, rtype, well_name):
         """
-        ADD DESCRIPTION
+        This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
+        method plot_well_time_data of the current class.
+
+        :param rtype: Type of well rate
+        :type rtype: str
+        :param well_name: Name of the well
+        :type well_name: str
         """
         pc = self.physics.property_containers[0]
         keys = []
@@ -1170,7 +1225,8 @@ class Output:
     def calc_rates_at_connections(self, h5_well_data: dict, conn_ids: list, trans: np.ndarray,
                                   thermal: bool, rate_type: str):
         """
-        Calculates different types of rates at perforations or wellhead connections of wells
+        This function calculates different types of rates at perforations or wellhead connections of wells.
+        This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
@@ -1180,8 +1236,6 @@ class Output:
         :type trans: numpy.ndarray
         :param thermal: If the model is thermal or not
         :type thermal: bool
-        :param pc: An instance of the class PropertyContainer()
-        :type pc: PropertyContainer
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
         """
@@ -1333,6 +1387,7 @@ class Output:
 
         return values
 
+    #%% Auxiliary functions
     def find_conn_ids_for_perfs(self, perfs, block_m, block_p, n_res_blocks):
         """
         This function finds the connection IDs of perforations
