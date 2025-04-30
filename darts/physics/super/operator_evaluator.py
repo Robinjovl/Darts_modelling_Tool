@@ -1,5 +1,5 @@
 import numpy as np
-from darts.engines import operator_set_evaluator_iface, value_vector, index_vector
+from darts.engines import operator_set_evaluator_iface
 from darts.physics.base.operators_base import OperatorsBase
 from darts.physics.super.property_container import PropertyContainer
 
@@ -31,6 +31,11 @@ class OperatorsSuper(OperatorsBase):
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
+        # Operator names
+        self.op_names = [(self.ACC_OP, "ACC"), (self.FLUX_OP, "FLUX"), (self.UPSAT_OP, "UPSAT"), (self.GRAD_OP, "GRAD"),
+                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.PORO_OP, "PORO"), (self.ENTH_OP, "ENTH"),
+                         (self.TEMP_OP, "TEMP"), (self.PRES_OP, "PRES")]
+
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
         print("================================================")
@@ -46,8 +51,8 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
-        print("POROSITY", values[self.PORO_OP])
         print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
+        print("POROSITY", values[self.PORO_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
@@ -68,15 +73,6 @@ class ReservoirOperators(OperatorsSuper):
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
-
-        # Find composition, if last composition is negative, apply extrapolation
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-        if zc[-1] < -self.min_z/10:
-            if 1:
-                self.apply_extrapolation(state, values)
-                return 0
-            else:
-                pass
 
         # Evaluate isothermal properties at current state
         self.property.evaluate(vec_state_as_np)
@@ -132,7 +128,7 @@ class ReservoirOperators(OperatorsSuper):
         vec_values_as_np[self.PORO_OP] = self.phi_f
 
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
-        vec_values_as_np[self.PRES_OP] = state[0]
+        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -240,7 +236,7 @@ class WellOperators(OperatorsSuper):
 
         vec_values_as_np[:] = 0
 
-        self.property.evaluate(state)
+        self.property.evaluate(vec_state_as_np)
 
         self.compr = self.property.rock_compr_ev.evaluate(pressure)
 
@@ -282,7 +278,7 @@ class WellOperators(OperatorsSuper):
 
 
         # Pressure operator
-        values[self.PRES_OP] = vec_state_as_np[0]
+        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)

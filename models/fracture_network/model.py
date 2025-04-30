@@ -108,11 +108,7 @@ class Model(CICDModel):
         self.physics = Geothermal(self.idata, self.timer)
 
         # Some tuning parameters:
-        self.params.first_ts = 1e-6  # Size of the first time-step [days]
-        self.params.mult_ts = 1.5  # Time-step multiplier if newton is converged (i.e. dt_new = dt_old * mult_ts)
-        self.params.max_ts = 60  # Max size of the time-step [days]
-        self.params.tolerance_newton = 1e-4  # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.tolerance_linear = 1e-5  # Tolerance for linear solver ||Ax - b||<tol_linslv
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         # direct linear solver

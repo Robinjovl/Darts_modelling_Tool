@@ -74,6 +74,7 @@ gpu_simulator_nc3::init (conn_mesh *_mesh, std::string table_base_name)
   dX.resize (3 * mesh->n_blocks);
   
   X = mesh->initial_state;
+  X.resize(3 * mesh->n_blocks);
   for (index_t i = 0; i < mesh->n_blocks; i++)
   {
     dX[i] = mesh->volume[i] * mesh->poro[i];

@@ -59,10 +59,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_args_cpg = []
     for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'deadoil']:
-            for wctrl in ['wrate', 'wbhp','wperiodic']:
+            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
                 if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
-                    continue  #TODO fix convergence
-                if case_geom != 'generate_5x3x4'and wctrl == 'wperiodic':
+                    continue  # TODO fix convergence
+                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
                     continue
                 case = case_geom + '_' + wctrl
                 test_args_cpg.append([case, physics_type])

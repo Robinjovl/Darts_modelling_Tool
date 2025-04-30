@@ -29,7 +29,13 @@ import scipy
 import meshio
 import time
 
+try:
+    # if compiled with OpenMP, set to run with 1 thread, as MPFA tests are not working in the multithread version yet
+    from darts.engines import set_num_threads
 
+    set_num_threads(1)
+except:
+    pass
 
 # Run a realization to generate "true" data (otherwise it will be read from pickle file, if it exists)
 generate_true_data = True

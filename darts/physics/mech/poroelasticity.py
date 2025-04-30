@@ -136,7 +136,7 @@ class Poroelasticity(Compositional):
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]
+            np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
 
     def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, input_displacement: list):
         """
@@ -151,4 +151,4 @@ class Poroelasticity(Compositional):
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement, copy=False)[i::self.n_dim] = input_displacement[i]
+            np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]

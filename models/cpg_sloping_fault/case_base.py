@@ -2,7 +2,7 @@ import numpy as np
 import os
 
 from darts.input.input_data import InputData
-from darts.models.darts_model import sim_params
+from darts.models.darts_model import DataTS
 
 class InputDataGeom():  # to group geometry input data
     def __init__(self):
@@ -24,14 +24,14 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.time_steps = np.zeros(n_time_steps) + dt
 
     # time stepping and convergence parameters
-    idata.sim.first_ts = 0.01
-    idata.sim.mult_ts = 2
-    idata.sim.max_ts = 92
-    idata.sim.runtime = None
-    idata.sim.tol_newton = 1e-2
-    idata.sim.tol_linear = 1e-4
+    idata.sim.DataTS = DataTS(n_vars=0)
+    idata.sim.DataTS.first_ts = 0.01
+    idata.sim.DataTS.dt_mult = 2
+    idata.sim.DataTS.dt_max = 92
+    idata.sim.DataTS.tol_res = 1e-2
+    idata.sim.DataTS.tol_linear = 1e-4
     # use direct linear solver:
-    #idata.sim.linear_type = sim_params.linear_solver_t.cpu_superlu
+    #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

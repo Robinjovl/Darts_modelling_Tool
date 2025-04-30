@@ -31,7 +31,8 @@ class ModelDeadOil(Model_CPG):
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         else:
-            depth_array = np.array(self.reservoir.mesh.depth, copy=False)
+            nb = self.reservoir.mesh.n_res_blocks
+            depth_array = np.array(self.reservoir.mesh.depth, copy=False)[:nb]
             water_table_depth = depth_array.mean()  # specify your value here
 
             def sat_to_z(p, s):

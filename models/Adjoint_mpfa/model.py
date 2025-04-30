@@ -34,13 +34,7 @@ class Model(DartsModel, OptModuleSettings):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-3
-        self.params.tolerance_linear = 1e-6
-        # self.params.newton_type = 2
-        # self.params.newton_params = value_vector([0.2])
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 

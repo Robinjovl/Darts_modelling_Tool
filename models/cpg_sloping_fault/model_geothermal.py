@@ -15,10 +15,11 @@ class ModelGeothermal(Model_CPG):
         super().__init__()
 
     def set_physics(self):
+        # single component, two phase. Pressure and enthalpy are the main variables
         if self.iapws_physics:
-            self.physics = Geothermal(self.idata, self.timer)
+            self.physics = Geothermal(self.idata, self.timer)  # IAPWS
         else:
-            self.physics = GeothermalPH(self.idata, self.timer)
+            self.physics = GeothermalPH(self.idata, self.timer)  # Flash
             self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],
                                               state_max=[self.idata.obl.max_p, 575.])
 
@@ -166,6 +167,8 @@ class ModelGeothermal(Model_CPG):
         #init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
+
+        self.idata.other.iapws_physics = True
 
         set_input_data(self.idata, case)
 

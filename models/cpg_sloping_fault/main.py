@@ -46,16 +46,15 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     # time stepping and convergence parameters
     sim = m.idata.sim  # short name
-    m.set_sim_params(first_ts=sim.first_ts, mult_ts=sim.mult_ts, max_ts=sim.max_ts, runtime=sim.runtime,
-                        tol_newton=sim.tol_newton, tol_linear=sim.tol_linear)
-    if hasattr(sim, 'linear_type'):
-        m.params.linear_type = sim.linear_type
+    m.set_sim_params(first_ts=sim.DataTS.first_ts, mult_ts=sim.DataTS.dt_mult, max_ts=sim.DataTS.dt_max, runtime=None,
+                        tol_newton=sim.DataTS.tol_res, tol_linear=sim.DataTS.tol_linear)
+    if hasattr(sim.DataTS, 'linear_type'):
+        m.params.linear_type = sim.DataTS.linear_type
 
     m.timer.node["initialization"].stop()
 
     m.init(output_folder=out_dir, platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.save_data_to_h5(kind = 'solution')
     m.set_well_controls()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
@@ -86,7 +85,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         # read h5 file and write vtk
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)):
+        for ith_step in range(len(m.idata.sim.time_steps)+1):
             m.output_to_vtk(ith_step=ith_step, output_properties=output_properties)
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25
