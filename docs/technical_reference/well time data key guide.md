@@ -1,6 +1,3 @@
----
-title: 'Output: Well Time Data'
----
 # Well Time Data Key Guide
 
 This guide explains how to access stored well time data (series) using the appropriate dictionary keys.\
