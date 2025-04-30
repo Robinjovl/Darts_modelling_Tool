@@ -128,26 +128,3 @@ if __name__ == '__main__':
 # plt.subplot(224)
 # plt.plot(T)
 # plt.title('Gas saturation', y=1)
-
-
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
-# from darts.tools.plot_darts import *
-# writer = pd.ExcelWriter('time_data.xlsx')
-# plot_phase_rate_darts('I1', time_data1, 'wat')
-#
-#
-# plt.show()
-
-# from darts.tools.plot_darts import *
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
-# for i, w in enumerate(n.reservoir.wells):
-#     # plot oil rate
-#     ax1 = plot_oil_rate_darts(w.name, time_data1, color='b')
-#     ax1.tick_params(labelsize=14)
-#     ax1.set_xlabel('Days', fontsize=14)
-#
-#     ax3 = plot_gas_rate_darts(w.name, time_data1, color='b')
-#     ax3.tick_params(labelsize=14)
-#     ax3.set_xlabel('Days', fontsize=14)
-#
-# plt.show()

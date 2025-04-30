@@ -4,7 +4,6 @@ import h5py
 import xarray as xr
 import matplotlib.pyplot as plt
 import shutil
-import pickle
 import pandas as pd
 
 from darts.physics.blackoil import BlackOil
@@ -166,11 +165,11 @@ class Output:
                 pc = self.physics.property_containers[region]
                 temp_dict = {}
 
-                temp_dict['temperature'] = lambda: pc.temperature # add temperature
+                # add temperature
+                temp_dict['temperature'] = lambda: pc.temperature
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
-                    # for j, phase_name in enumerate(self.physics.property_containers[region].nph):
                     for j in range(self.physics.property_containers[region].nph):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
 
@@ -335,26 +334,6 @@ class Output:
                 f.write("-- n_res_blocks:\n")
                 f.write(f"{self.reservoir.mesh.n_res_blocks}\n")
 
-                # UPDATE THIS PART FOR THE NEW CONTROLS
-                ### UPDATE TO NEW WELL CONTROLS
-                # f.write("------------------------WELLS-----------------------\n")
-                # f.write("-- wells and perforations:\n")
-                # for i, w in enumerate(self.reservoir.wells):
-                #     if 'I' in w.name:  # Injector well
-                #         if hasattr(w.control, 'target_pressure'):
-                #             f.write(
-                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure} and injection stream {w.control.injection_stream}.\n")
-                #         elif hasattr(w.control, 'target_rate'):
-                #             f.write(
-                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate} and injection stream {w.control.injection_stream}.\n")
-                #     else:  # Producer well
-                #         if hasattr(w.control, 'target_pressure'):
-                #             f.write(
-                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at pressure {w.control.target_pressure}.\n")
-                #         elif hasattr(w.control, 'target_rate'):
-                #             f.write(
-                #                 f"Well {w.name} perforated at {w.perforations} with {type(w.control).__name__} control at rate {w.control.target_rate}.\n")
-
         return 0
 
     def configure_h5_output(self, filename: str, cell_ids, description, add_static_data: bool = False):
@@ -394,8 +373,6 @@ class Output:
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
             dynamic_group.create_dataset('variable_names', data=np.array(self.physics.vars, dtype=datatype))
-            #var_names = dynamic_group.create_dataset('variable_names', (self.physics.n_vars,), dtype=datatype)
-            #var_names[:] = self.physics.vars
 
             # write brief description
             f.attrs['description'] = description
@@ -513,15 +490,20 @@ class Output:
         try:
             with h5py.File(filename, 'r') as file:
                 if timestep is None:
-                    # datapoints = file['dynamic/X'].shape[0] * file['dynamic/X'].shape[1] * file['dynamic/X'].shape[2]
-                    # print('WARNING: %s contains %d data points...' % (filename, datapoints)) if self.verbose
-
                     cell_id = file['dynamic/cell_id'][:]
                     var_names = file['dynamic/variable_names'][:]
                     time = file['dynamic/time'][:]
-                    X = file['dynamic/X'][:]
-                else:
 
+                    # memory check
+                    dataset = file['dynamic/X'] # does not load data into memory since we are not slicing
+                    convert2MB = 1e6
+                    estimated_size_mb = dataset.size * dataset.dtype.itemsize / convert2MB # number of bytes per element
+                    if estimated_size_mb > 1000:  # throw a warning if more than 1GB
+                        print(f"WARNING: Dataset 'X' is approximately {estimated_size_mb:.1f} MB. Loading it may impact memory performance.")
+
+                    X = file['dynamic/X'][:]
+
+                else:
                     if not isinstance(timestep, int):
                         raise TypeError(f"Expected 'timestep' to be an int, but got {type(timestep).__name__}")
 
@@ -583,11 +565,9 @@ class Output:
             X = np.array(self.physics.engine.X[:self.physics.n_vars*self.reservoir.mesh.n_res_blocks], copy = True) # solution at current time
             var_names = self.physics.vars # primary variable names
 
-        # n_ops = self.n_ops
         n_vars = len(var_names) # number of primary variables
         nb = len(cell_id) # number of grid blocks
-        # complete list of properties
-        output_properties = output_properties if output_properties is not None else list(self.physics.vars)
+        output_properties = output_properties if output_properties is not None else list(self.physics.vars) # complete list of properties
 
         # List of primary variables i.e. state variables
         primary_props = [prop for prop in output_properties if prop in var_names]
@@ -663,12 +643,10 @@ class Output:
                                                            ith_step,
                                                            engine)
 
-        # prop_names = {prop: i for i, prop in enumerate(property_array.keys())}
         # units to prop names
         prop_names = {}
         for i, name in enumerate(property_array.keys()):
             prop_names[name] = name + self.variable_units[name]
-        # prop_names = {prop: f"{prop} {self.variable_units.get(prop, '')}" for prop in property_array.keys()}
 
         for t, time in enumerate(timesteps):
             data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
@@ -767,13 +745,11 @@ class Output:
             f"Timestep should be an integer less than {len(xarray_data['time'])}."
 
         var_names = list(xarray_data.data_vars)
-        nrows = len(var_names)
         for i, var in enumerate(var_names):
-            fig = plt.figure()
+            plt.figure()
             if z is not None:
                 assert z < len(xarray_data['z']), 'z-level step should be less than %d' % len(xarray_data['z'])
                 xarray_data[var].isel(time=timestep, z=z).plot()
-                # plot.colorbar.set_label(self.variable_units[var])
                 plt.savefig(output_directory + '/%s ts%d z%d.png'%(var, timestep, z))
 
             elif y is not None:
@@ -856,7 +832,7 @@ class Output:
         self.timer.node["output_well_time_data"].stop(); self.timer.stop()
         return time_data_dict
 
-    def plot_well_time_data_2(self, time_data_df):
+    def plot_well_time_data_2(self, time_data_df, compare = False):
         """
         Make plots out of the time data dataframe.
         Names of the columns are named according to https://gitlab.com/open-darts/open-darts/-/wikis/Well-Time-Data
@@ -873,7 +849,7 @@ class Output:
                      'mass_rate': ' [kg/day]',
                      'molar_rate': ' [kmol/day]',
                      'advective_heat': ' [kJ]'}
-        type_list = ['at_wh'] #, 'by_sum_perfs']
+        type_list = ['at_wh', 'by_sum_perfs'] if compare else ['at_wh']
 
         # for the phases
         for well in self.reservoir.wells:
@@ -884,7 +860,7 @@ class Output:
                     if y_valid:
                         time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
                             .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close()
+        plt.close('all')
 
         # for the components
         for well in self.reservoir.wells:
@@ -895,7 +871,7 @@ class Output:
                     if y_valid:
                         time_data_df.plot(x='time', y=y_valid, xlabel = 'time [days]', ylabel=rate + rate_list[rate], title=well.name)\
                             .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close()
+        plt.close('all')
 
         # BHP and BHT
         bottom_hole_list = {'BHP': 'Bars', 'BHT': 'K'}
@@ -906,7 +882,7 @@ class Output:
                 if y_valid:
                     time_data_df.plot(x='time', y=y_valid, xlabel='time [days]', ylabel=bottom_hole_list[i], title=well.name)\
                         .get_figure().savefig(os.path.join(self.well_plots_dir, f'{y_valid[0]}.png'), dpi=100, bbox_inches='tight')
-        plt.close()
+        plt.close('all')
 
     def plot_well_time_data(self, types_of_well_rates=None):
         """
@@ -993,6 +969,9 @@ class Output:
         return df
 
     def configure_physics(self):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         pc.physics_type = "super_engine"
         physics_name = type(self.physics).__name__
@@ -1004,6 +983,9 @@ class Output:
             self.physics.thermal = True
 
     def get_connection_info(self):
+        """
+        ADD DESCRIPTION
+        """
         perfs_conn_ids = [item for sublist in self.well_perf_conn_ids.values() for item in sublist]
         well_head_conn_ids = list(self.well_head_conn_id.values())
 
@@ -1024,6 +1006,9 @@ class Output:
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
     def store_perf_rates(self, time_data_dict, rates_perfs, rate_type):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         perf_idx = 0
         for well in self.reservoir.wells:
@@ -1044,6 +1029,9 @@ class Output:
                 perf_idx += 1
 
     def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         perf_idx = 0
         for well in self.reservoir.wells:
@@ -1068,6 +1056,9 @@ class Output:
                 perf_idx += len(well.perforations)
 
     def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         for well_idx, well in enumerate(self.reservoir.wells):
             tag = f'well_{well.name}'
@@ -1083,6 +1074,9 @@ class Output:
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = wh_rates[:, well_idx, phase_idx]
 
     def store_bhp_bht(self, h5_well_data, time_data_dict):
+        """
+        ADD DESCRIPTION
+        """
         dyn = h5_well_data['dynamic']
         nt = len(dyn['time'])
         pc = self.physics.property_containers[0]
@@ -1105,6 +1099,9 @@ class Output:
             time_data_dict[f'well_{well.name}_BHT'] = BHT
 
     def create_perf_dirs(self, main_dir):
+        """
+        ADD DESCRIPTION
+        """
         for well in self.reservoir.wells:
             well_dir = os.path.join(main_dir, f'well_{well.name}')
             os.makedirs(well_dir, exist_ok=True)
@@ -1112,6 +1109,9 @@ class Output:
                 os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
 
     def create_perf_keys(self, rtype, well_name, perf_idx):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         keys = []
         tag = f'well_{well_name}_perf_{perf_idx}_'
@@ -1134,6 +1134,9 @@ class Output:
         return keys
 
     def create_total_keys(self, rtype, well_name):
+        """
+        ADD DESCRIPTION
+        """
         pc = self.physics.property_containers[0]
         keys = []
         base = f'well_{well_name}_'

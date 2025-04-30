@@ -48,7 +48,6 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
     # Run over all reporting time-steps:
     for ith_step in range(num_report_steps):
         m.run(size_report_step)
-        # m.save_data_to_h5(kind='solution')
 
         if ith_step % output_vtk_period == 0:
             m.output.output_to_vtk(ith_step=ith_step+1, output_directory=output_directory)
