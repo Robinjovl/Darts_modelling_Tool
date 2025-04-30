@@ -1,3 +1,13 @@
+# Well Time Data Units
+* Time: day
+* BHP: bar
+* BHT: Kelvin
+* Molar rate: kmol/day
+* Mass rate: kg/day
+* Volumetric rate: m^3/day
+* Advective heat rate: kJ/day
+
+
 # Well Time Data Key Guide
 
 This guide explains how to access stored well time data (series) using the appropriate dictionary keys.\
