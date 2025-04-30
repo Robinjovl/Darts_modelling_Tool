@@ -1113,15 +1113,12 @@ class Output:
         :type pc: PropertyContainer
         """
         pc.evaluate(state)
-
         if pc.physics_type == 'geothermal_engine':
             pc.x = [[1.], [1.]]
-
         values = np.zeros(pc.nph * pc.nc_fl)
         for j in pc.ph:
                 for i in range(pc.nc_fl):
                     values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
-
         return values
 
     def components_mass_rates_operators(self, state, pc):
@@ -1134,15 +1131,12 @@ class Output:
         :type pc: PropertyContainer
         """
         pc.evaluate(state)
-
         if pc.physics_type == 'geothermal_engine':
             pc.x = [[1.], [1.]]
-
         values = np.zeros(pc.nph * pc.nc_fl)
         for j in pc.ph:
             for i in range(pc.nc_fl):
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
-
         return values
 
     def heat_rate_operators(self, state, pc):
@@ -1156,11 +1150,9 @@ class Output:
         """
         pc.evaluate(state)
         pc.evaluate_thermal(state)
-
         values = np.zeros(pc.nph)
         for j in pc.ph:
             values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
-
         return values
 
     #%% Auxiliary functions
@@ -1178,7 +1170,6 @@ class Output:
         :type n_res_blocks: int
         """
         res_cell_ids = [perf[1] for perf in perfs]
-
         perfs_conn_ids = np.nonzero(np.logical_and(np.isin(block_p, res_cell_ids), block_m >= n_res_blocks))[0]
         assert (len(perfs_conn_ids) == len(perfs) and (block_m[perfs_conn_ids] > n_res_blocks).all())
         return perfs_conn_ids
