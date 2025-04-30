@@ -73,7 +73,6 @@ void pybind_globals(py::module &m)
 
   sim_params.def(py::init<>())
     //properties
-    .def_readwrite("max_i_newton", &sim_params::max_i_newton)
     .def_readwrite("max_i_linear", &sim_params::max_i_linear)
     .def_readwrite("tolerance_newton", &sim_params::tolerance_newton)
     .def_readwrite("tolerance_linear", &sim_params::tolerance_linear)
@@ -87,7 +86,7 @@ void pybind_globals(py::module &m)
     .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
-    .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
+
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
     .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
