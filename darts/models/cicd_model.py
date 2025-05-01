@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
-from darts.tools.flux_tools import get_wells_components_molar_rates, get_wells_phases_volumetric_rates
 
 import numpy as np
 import pandas as pd
@@ -136,38 +135,6 @@ class CICDModel(DartsModel):
         os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
-
-    def compare_well_rates(self, time_data_filename: str):
-        """
-        Compares well component and phase molar rates in Python against those calculated in C++, which are saved in
-        time_data
-        :param time_data_filename: data filename
-        :type time_data_filename: str
-        """
-        # Load time_data
-        cpp_data = pd.read_pickle(time_data_filename)
-
-        # Calculate well components molar rates for all time steps in Python
-        python_components_molar_rates = get_wells_components_molar_rates(self)
-        # Calculate well phases volumetric rates for all time steps in Python
-        python_phases_volumetric_rates = get_wells_phases_volumetric_rates(self)
-
-        rtol = 1.e-2
-        atol = 0.1
-        c_pattern = 'well_{}_molar_rate_{}_at_wh'
-        p_pattern = 'well_{}_volumetric_rate_{}_at_wh'
-
-        # Compare rates calculated in C++ and Python
-        for well in self.reservoir.wells:
-            # molar rates
-            old_c = np.array([cpp_data[c_pattern.format(well.name,c)].to_numpy() for c in self.physics.components]).T
-            new_c = python_components_molar_rates[well.name][:, :self.physics.nc]
-            assert (np.isclose(new_c, -old_c, rtol=rtol, atol=atol).all())
-
-            # volumetric phase rates
-            old_p = np.array([cpp_data[p_pattern.format(well.name, p)].to_numpy() for p in self.physics.phases]).T
-            new_p = python_phases_volumetric_rates[well.name]
-            assert (np.isclose(new_p, -old_p/1e3, rtol=rtol, atol=atol).all())
 
     @staticmethod
     def load_performance_data(file_name: str = '', pkl_suffix: str = ''):
