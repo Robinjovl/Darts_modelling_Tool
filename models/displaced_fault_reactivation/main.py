@@ -235,10 +235,10 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
 
     if m.depletion_mode == 'uniform':
         # no fluid flow, no mechanics -> flow coupling, keeping pressure -> mechanics influencing
-        m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=True)
+        m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=2)
     else:
         # eliminate mechanics -> flow coupling, keeping flow -> mechanics
-        m.reservoir.apply_geomehcanics_mode(physics=m.physics, full=False)
+        m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=0)
 
     ## timestepping
     m.physics.engine.t = 0.0

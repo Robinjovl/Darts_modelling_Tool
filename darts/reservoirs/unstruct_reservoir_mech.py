@@ -168,23 +168,9 @@ class UnstructReservoirMech():
             self.rhs = np.array(self.mesh.rhs, copy=True)
             self.tran_biot = np.array(self.mesh.tran_biot, copy=True)
             self.rhs_biot = np.array(self.mesh.rhs_biot, copy=True)
+
             # turn off some terms for evaluation of momentum equilibrium
-            tran = np.array(self.mesh.tran, copy=False)
-            rhs = np.array(self.mesh.rhs, copy=False)
-            tran_biot = np.array(self.mesh.tran_biot, copy=False)
-            rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
-
-            tran[12::16] = 0.0
-            tran[13::16] = 0.0
-            tran[14::16] = 0.0
-            tran[15::16] = 0.0
-            rhs[3::4] = 0.0
-
-            tran_biot[12::16] = 0.0
-            tran_biot[13::16] = 0.0
-            tran_biot[14::16] = 0.0
-            tran_biot[15::16] = 0.0
-            rhs_biot[3::4] = 0.0
+            self.apply_geomechanics_mode(mode=1)
 
             self.unstr_discr.f[3::4] = 0.0  # self.p_init - self.unstr_discr.p_ref[:]
             self.f[:] = self.unstr_discr.f
@@ -247,10 +233,16 @@ class UnstructReservoirMech():
                     fourier_tran = np.array(self.mesh.fourier_tran, copy=False)
                     fourier_tran[:] = self.fourier_tran
 
-    def apply_geomehcanics_mode(self, physics, full: bool = False):
+    def apply_geomechanics_mode(self, physics = None, mode : int = 0):
+        '''
+        :param physics: None if mode is 0 or 1
+        :param mode:
+            0 - nullify biot terms,
+            1 - nullify biot and flow terms,
+            2 - nullify biot and flow terms and set physics.engine.geomechanics_mode array to 1
+        :return:
+        '''
         if self.discretizer_name == 'pm_discretizer':
-            geom_mode = np.array(physics.engine.geomechanics_mode, copy=False)
-    
             cell_m = np.array(self.mesh.block_m, copy=False)
             cell_p = np.array(self.mesh.block_p, copy=False)
             offset = np.array(self.mesh.offset, copy=False)
@@ -259,8 +251,11 @@ class UnstructReservoirMech():
             rhs = np.array(self.mesh.rhs, copy=False)
             rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
     
-            if full:
-                geom_mode[:] = 1
+            if mode > 0:
+                if mode == 2:
+                    assert physics is not None, 'physics should be passed when mode is 2'
+                    geom_mode = np.array(physics.engine.geomechanics_mode, copy=False)
+                    geom_mode[:] = 1
                 tran[12::16] = 0.0
                 tran[13::16] = 0.0
                 tran[14::16] = 0.0
