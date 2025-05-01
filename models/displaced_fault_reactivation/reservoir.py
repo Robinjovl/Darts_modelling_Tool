@@ -188,25 +188,6 @@ class UnstructReservoir(UnstructReservoirMech):
     def set_wells(self, verbose):
         pass
 
-    def update(self, dt, time):
-        # update local array
-        #if time > dt:
-        self.bc_rhs_prev = np.copy(self.bc_rhs)
-        self.pm.bc_prev = self.pm.bc
-    def update_trans(self, dt, x):
-        #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
-        #self.pm.reconstruct_gradients_per_cell(dt)
-        #self.pm.calc_all_fluxes(dt)
-        #self.write_pm_conn_to_file(t_step=t_step)
-        #self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p, self.pm.stencil, self.pm.offset, self.pm.tran, self.pm.rhs,
-        #                  self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_cells_tot, 0)
-
-        # update transient sources / sinks
-        self.f[:] = self.unstr_discr.f
-        # update boundaries at n+1 / n timesteps
-        self.bc[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs
-        self.bc_prev[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_prev
-
     def update_contact_condition(self, x, ith_iter):
         self.unstr_discr.ith_iter = ith_iter
         if ith_iter == 1:

@@ -710,24 +710,21 @@ class UnstructReservoirMech():
         self.wells = []
 
     def update_trans(self, dt, x):
-        #self.pm.x_prev = value_vector(np.concatenate((x, self.bc_rhs_prev)))
-        #self.pm.reconstruct_gradients_per_cell(dt)
-        #self.pm.calc_all_fluxes(dt)
-        #self.write_pm_conn_to_file(t_step=t_step)
-        #self.mesh.init_pm(self.pm.cell_m, self.pm.cell_p, self.pm.stencil, self.pm.offset, self.pm.tran, self.pm.rhs,
-        #                  self.unstr_discr.mat_cells_tot, self.unstr_discr.bound_faces_tot, 0)
-
-        # update transient sources / sinks
-        # self.f[:] = self.unstr_discr.f
-        # update boundaries at n+1 / n timesteps
-        self.bc[:] = self.bc_rhs
-        self.bc_prev[:] = self.bc_rhs_prev
-        #self.init_wells()
+        if self.discretizer_name == 'mech_discretizer':
+            self.bc[:] = self.bc_rhs
+            self.bc_prev[:] = self.bc_rhs_prev
+        elif self.discretizer_name == 'pm_discretizer':
+            # update transient sources / sinks
+            self.f[:] = self.unstr_discr.f
+            # update boundaries at n+1 / n timesteps
+            self.bc[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs
+            self.bc_prev[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_prev
 
     def update(self, dt, time):
         # update local array
-        #if time > dt:
         self.bc_rhs_prev = np.copy(self.bc_rhs)
+        if self.discretizer_name == 'pm_discretizer':
+            self.pm.bc_prev = self.pm.bc
 
     def set_vars_pm_discretizer(self):
         # make vars with the same name as in mech_discretize to avoid code duplication
