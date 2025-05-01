@@ -372,10 +372,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
         pres['time'][ith_step + 1] = time
         disp['time'][ith_step + 1] = time
         # write a vtk snapshot
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
+
     m.print_timers()
 
     if case != 'terzaghi_two_layers_no_analytics' and case != 'bai':

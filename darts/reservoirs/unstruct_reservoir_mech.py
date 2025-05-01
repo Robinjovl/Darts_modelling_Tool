@@ -2,6 +2,8 @@ import numpy as np
 import os
 import meshio
 
+import xml.dom.minidom
+
 from darts.engines import conn_mesh, index_vector, value_vector
 from darts.engines import ms_well, ms_well_vector
 from darts.engines import matrix33 as engine_matrix33
@@ -845,7 +847,92 @@ class UnstructReservoirMech():
         well.perforations = well.perforations + [(well_block, res_block, well_index, 0.0)]
         return 0
 
-    def write_to_vtk_mech_discretizer(self, output_directory, ith_step, engine):
+    def get_props_over_output(self, property_array, ith_step, engine):
+        if self.discretizer_name == 'mesh_discretizer':
+            return None
+        elif self.discretizer_name == 'pm_discretizer':
+            n_vars = 4
+            n_dim = 3
+            fluxes = np.array(engine.fluxes, copy=False)
+            fluxes_biot = np.array(engine.fluxes_biot, copy=False)
+            cell_m = np.array(self.mesh.block_m, copy=False)
+            cell_p = np.array(self.mesh.block_p, copy=False)
+
+            #S_eng = vector_matrix(engine.contacts[0].S)
+            #frac_prop = property_array[n_vars * self.unstr_discr.mat_cells_tot:n_vars * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)].reshape(self.unstr_discr.frac_cells_tot, n_vars)
+            #fstress = np.array(engine.contacts[0].fault_stress, copy=False)
+
+            S = np.zeros((n_dim, n_dim))
+            frac_data = {}
+            #frac_data['tag'] = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intp)
+            frac_data['f_local'] = np.zeros((self.unstr_discr.output_face_tot, n_dim))
+
+            ref_id = self.unstr_discr.output_face_to_face[0]
+            ref_face = self.unstr_discr.faces[ref_id[0]][ref_id[1]]
+            S[1:n_dim] = null_space(np.array([ref_face.n])).T
+            S[0] = ref_face.n
+            for face_id, ids in self.unstr_discr.output_face_to_face.items():
+                #cell_id -= self.unstr_discr.mat_cells_tot
+                #frac_data['tag'][cell_id] = int(cell.prop_id)
+                face = self.unstr_discr.faces[ids[0]][ids[1]]
+                sign = np.sign((self.unstr_discr.mat_cell_info_dict[face.cell_id2].centroid - \
+                                self.unstr_discr.mat_cell_info_dict[face.cell_id1].centroid).dot(ref_face.n))
+                flux_ids = np.argwhere(np.logical_and(cell_m == face.cell_id1, cell_p == face.cell_id2))[0]
+                flux = sign * fluxes[n_vars * flux_ids[0]:n_vars * flux_ids[0] + n_dim] / face.area
+
+                if len(flux_ids):
+                    frac_data['f_local'][face_id] = S.dot(flux)
+                else:
+                    return 0
+
+            for face_id in range(self.unstr_discr.output_face_tot):
+                print(str(face_id + self.unstr_discr.mat_cells_tot) + ' ' + str(frac_data['f_local'][face_id][0] * 1.E+5) + ' ' +
+                      str(frac_data['f_local'][face_id][1] * 1.E+5) + ' ' + str(frac_data['f_local'][face_id][2] * 1.E+5))
+
+            return frac_data
+    def get_fault_props(self, property_array, ith_step, engine):
+        if self.discretizer_name == 'mesh_discretizer':
+            return None
+        elif self.discretizer_name == 'pm_discretizer':
+            n_vars = 4
+            n_dim = 3
+            fluxes = np.array(engine.fluxes, copy=False)
+            fluxes_biot = np.array(engine.fluxes_biot, copy=False)
+            S_eng = vector_matrix(engine.contacts[0].S)
+            frac_prop = property_array[n_vars * self.unstr_discr.mat_cells_tot:n_vars * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)].reshape(self.unstr_discr.frac_cells_tot, n_vars)
+            fstress = np.array(engine.contacts[0].fault_stress, copy=False)
+
+            frac_data = {}
+            #frac_data['tag'] = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intp)
+            frac_data['g_local'] = np.zeros((self.unstr_discr.frac_cells_tot, n_dim))
+            frac_data['f_local'] = np.zeros((self.unstr_discr.frac_cells_tot, n_dim))
+            frac_data['mu'] = np.array(engine.contacts[0].mu, copy=False)
+
+            for cell_id, cell in self.unstr_discr.frac_cell_info_dict.items():
+                cell_id -= self.unstr_discr.mat_cells_tot
+                #frac_data['tag'][cell_id] = int(cell.prop_id)
+                face = self.unstr_discr.faces[cell_id + self.unstr_discr.mat_cells_tot][4]
+                S = np.array(S_eng[cell_id].values).reshape((n_dim, n_dim))
+                f = fstress[n_dim * cell_id:n_dim * (cell_id + 1)] / face.area
+                frac_data['f_local'][cell_id] = S.dot(f)
+                frac_data['g_local'][cell_id] = S.dot(frac_prop[cell_id,:n_dim])
+
+            phi = np.array(engine.contacts[0].phi, copy=False)
+            #states = phi > 0
+            frac_data['phi'] = phi
+
+            return frac_data
+
+    def write_to_vtk(self, output_directory, ith_step, engine, dt=0.):
+        if self.discretizer_name == 'mesh_discretizer':
+            self.write_to_vtk_mech_discretizer(output_directory, ith_step, engine, dt)
+        elif self.discretizer_name == 'pm_discretizer':
+            self.write_to_vtk_pm_discretizer(output_directory, ith_step, engine, dt)
+
+    def add_initial_properties(self, cell_data):
+        pass
+
+    def write_to_vtk_mech_discretizer(self, output_directory, ith_step, engine, dt):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -901,6 +988,9 @@ class UnstructReservoirMech():
 
             geom_id += 1
 
+        if ith_step == 0:
+            self.add_initial_properties(cell_data)
+
         # Store solution for each time-step:
         mesh = meshio.Mesh(
             Mesh.points,
@@ -911,7 +1001,7 @@ class UnstructReservoirMech():
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
 
-    def write_to_vtk_pm_discretizer(self, output_directory, ith_step, engine):
+    def write_to_vtk_pm_discretizer(self, output_directory, ith_step, engine, dt):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
@@ -961,14 +1051,6 @@ class UnstructReservoirMech():
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
                     cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
 
-                #if 'velocity' not in cell_data: cell_data['velocity'] = []
-                #cell_data['velocity'].append(vels)
-                # if hasattr(self.unstr_discr, 'E') and hasattr(self.unstr_discr, 'nu'):
-                #     cell_data[ith_geometry]['E'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     cell_data[ith_geometry]['nu'] = np.zeros(self.unstr_discr.mat_cells_tot, dtype=np.float64)
-                #     for id, cell in enumerate(self.unstr_discr.mat_cell_info_dict.values()):
-                #         cell_data[ith_geometry]['E'][id] = self.unstr_discr.E[cell.prop_id]
-                #         cell_data[ith_geometry]['nu'][id] = self.unstr_discr.nu[cell.prop_id]
                 if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
                 if 'porosity' not in cell_data: cell_data['porosity'] = []
                 if 'stress' not in cell_data: cell_data['stress'] = []
@@ -985,6 +1067,16 @@ class UnstructReservoirMech():
                     cell_data['stress'][-1][:, i] = stress[i::6]
                     cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
 
+                if engine.momentum_inertia > 0.0 and dt != 0: # dynamic simulation
+                    # velocity
+                    days2sec = 86400
+                    if 'v_x' not in cell_data: cell_data['v_x'] = []
+                    if 'v_y' not in cell_data: cell_data['v_y'] = []
+                    if 'v_z' not in cell_data: cell_data['v_z'] = []
+                    cell_data['v_x'].append(-dX[props_num * start_geom_cell_id:props_num * (cell_size + start_geom_cell_id):props_num] / dt / days2sec)
+                    cell_data['v_y'].append(-dX[props_num * start_geom_cell_id + 1:props_num * (cell_size + start_geom_cell_id):props_num] / dt / days2sec)
+                    cell_data['v_z'].append(-dX[props_num * start_geom_cell_id + 2:props_num * (cell_size + start_geom_cell_id):props_num] / dt / days2sec)
+
                 if 'cell_id' not in cell_data: cell_data['cell_id'] = []
                 cell_data['cell_id'].append(np.array([cell_id for cell_id, cell in self.unstr_discr.mat_cell_info_dict.items() if cell.geometry_type == ith_geometry], dtype=np.int64))
                 # if ith_step == 0:
@@ -1000,5 +1092,88 @@ class UnstructReservoirMech():
             cell_data=cell_data)
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
 
+        # Faults
+        if self.unstr_discr.output_faces_tot > 0:
+            geom_id = 0
+            Mesh.cells = []
+            cell_data = {}
+            for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
+                if ith_geometry in available_fracture_geometries:
+                    # fracture geometry
+                    frac_ids = np.argwhere(np.in1d(self.unstr_discr.mesh_data.cell_data['gmsh:physical'][geom_id],
+                                                   self.unstr_discr.physical_tags['fracture']))[:, 0]
+                    if len(frac_ids):
+                        Mesh.cells.append(meshio.CellBlock(ith_geometry, data=self.unstr_discr.mesh_data.cells[geom_id].data[frac_ids]))
+                        data = property_array[4 * self.unstr_discr.mat_cells_tot:4 * (
+                                self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot)].reshape(self.unstr_discr.frac_cells_tot, 4)
+                        for i in range(props_num):
+                            if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
+                            cell_data[cell_property[i]].append(data[:, i])
+
+                    # output geometry
+                    out_ids = np.argwhere(np.in1d(self.unstr_discr.mesh_data.cell_data['gmsh:physical'][geom_id],
+                                                  self.unstr_discr.physical_tags['output']))[:, 0]
+                    if len(out_ids):
+                        Mesh.cells.append(meshio.CellBlock(ith_geometry, data=self.unstr_discr.mesh_data.cells[geom_id].data[out_ids]))
+
+                geom_id += 1
+            # fracture output
+            if self.unstr_discr.frac_cells_tot > 0:
+                #self.write_fault_props(output_directory, property_array, ith_step, engine)
+                frac_data = self.get_fault_props(property_array, ith_step, engine)
+                for key, val in frac_data.items():
+                   if key not in cell_data: cell_data[key] = []
+                   cell_data[key].append(val)
+            # just output
+            if self.unstr_discr.output_faces_tot > 0:
+                out_data = self.get_props_over_output(property_array, ith_step, engine)
+                for key, val in out_data.items():
+                   if key not in cell_data: cell_data[key] = []
+                   cell_data[key].append(val)
+
+            # Store solution for each time-step:
+            mesh = meshio.Mesh(
+                Mesh.points,
+                Mesh.cells,
+                cell_data=cell_data)
+            meshio.write("{:s}/solution_fault{:d}.vtu".format(output_directory, ith_step), mesh)
+
+        time = engine.t if ith_step > 0 else 0.0
+        self.write_pvd_file(ith_step, time, output_directory)
+
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
+
+    def write_pvd_file(self, ith_step, time, output_directory):
+        # write *.pvd file for matrix and *.pvd file for faults if there are some
+        if not hasattr(self, 'matpvd_doc'):  # do just once, at the first call
+            self.matpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
+            self.matpvd_root = self.matpvd_doc.documentElement
+            self.matpvd_root.setAttribute("type", "Collection")
+            self.matpvd_root.setAttribute("version", "0.1")
+            self.matpvd_collection = self.matpvd_doc.createElement("Collection")
+
+            self.faultpvd_doc = xml.dom.minidom.parseString("<VTKFile/>")
+            self.faultpvd_root = self.faultpvd_doc.documentElement
+            self.faultpvd_root.setAttribute("type", "Collection")
+            self.faultpvd_root.setAttribute("version", "0.1")
+            self.faultpvd_collection = self.faultpvd_doc.createElement("Collection")
+
+        # matrix
+        snap = self.matpvd_doc.createElement("DataSet")
+        snap.setAttribute("timestep", str(time))
+        snap.setAttribute("file", 'solution{:d}.vtu'.format(ith_step))
+        self.matpvd_collection.appendChild(snap)
+        root = self.matpvd_root
+        root.appendChild(self.matpvd_collection)
+        self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'), indent="  ", addindent="  ", newl='\n')
+
+        # faults
+        if self.unstr_discr.output_faces_tot > 0:
+            snap = self.faultpvd_doc.createElement("DataSet")
+            snap.setAttribute("timestep", str(time))
+            snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
+            self.faultpvd_collection.appendChild(snap)
+            root = self.faultpvd_root
+            root.appendChild(self.faultpvd_collection)
+            self.faultpvd_doc.writexml(open(str(output_directory) + '/solution_fault.pvd', 'w'), indent="  ", addindent="  ", newl='\n')
