@@ -6,17 +6,13 @@ import numpy as np
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
-from darts.physics.properties.flash import ConstantK
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.density import DensityBasic
-
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import NegativeFlash
-from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
+from dartsflash.libflash import Flash
+from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, EoS
 from dartsflash.components import CompData
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
@@ -49,13 +45,12 @@ class Model(CICDModel):
         p_init_res = 21.383199   # from the pressure of the perforated segment of the wellbore
         T_init_res = 371.90   # from the temperature of the perforated segment of the wellbore
 
-        sw_init_res = 0.25
         zCO2_init_res = self.zero
         zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
         for zC1 in zC1_range:
             state = [p_init_res, zCO2_init_res, zC1, T_init_res]
             self.physics.property_containers[0].compute_saturation_full(state)
-            if self.physics.property_containers[0].sat[self.physics.phases.index("aqueous")] < sw_init_res:
+            if self.physics.property_containers[0].sat[self.physics.phases.index("aqueous")] < self.sw_init_res:
                 break
 
         self.initial_values = {self.physics.vars[0]: state[0],
@@ -112,49 +107,87 @@ class Model(CICDModel):
 
         return
 
-
     def set_physics(self):
-        """Physical properties"""
         components_names = ['CO2', 'C1', 'H2O']
-        phases_names = ['gas', 'aqueous']
+        h2o_idx = components_names.index('H2O')
+        phases_names = ['aqueous', 'gas', 'LCO2']    # Why are the results wrong if the list is like this: ['gas', 'aqueous', "LCO2"] the order based on flash order is important
         comp_data = CompData(components_names, setprops=True)
 
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
-        aq = AQEoS(comp_data, {AQEoS.water: AQEoS.Jager2003, AQEoS.solute: AQEoS.Ziabakhsh2012})
+        """ Activate physics """
+        self.physics = Compositional(components_names, phases_names, self.timer, thermal=True, n_points=1001,
+                                     min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
+                                     min_t=200, max_t=500)
 
+        """ Initialize flash """
         flash_params = FlashParams(comp_data)
 
         # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
+        pr = CubicEoS(comp_data, CubicEoS.PR)
+        pr.set_preferred_roots(h2o_idx, 0.75, EoS.MAX)
+        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+                               })
+        aq.set_eos_range(h2o_idx, [0.6, 1.])
+
+        flash_params.add_eos("PR", pr)
         flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["CEOS", "AQ"]
+        flash_params.eos_order = ["AQ", "PR"]
+        flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
+
+        # Define initial guesses for stability + flash
+        params = flash_params.eos_params["PR"]
+        params.initial_guesses = [i for i in range(comp_data.nc)]
+        params.stability_tol = 1e-20
+        params.stability_switch_tol = 1e-2
+        params.stability_max_iter = 50
+        params.use_gmix = False
+
+        params = flash_params.eos_params["AQ"]
+        params.initial_guesses = [h2o_idx]
+        params.stability_max_iter = 10
+        params.use_gmix = True
 
         # Flash-related parameters
-        flash_params.split_tol = 1e-14
+        # flash_params.split_switch_tol = 1e-3
+        # flash_params.split_tol = 1e-14
+        flash_params.comp_tol = 1e-2
+        # flash_params.verbose = True
 
-        # system_temperature = 35 + 273.15
+        """ PropertyContainer object and correlations """
+        property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
+                                               temperature=None, rock_comp=0)
 
-        """ properties correlations """
-        property_container = PropertyContainer(phases_name=phases_names, components_name=components_names, Mw=comp_data.Mw,
-                                               temperature=None, rock_comp=0, min_z=self.zero / 10)
+        property_container.flash_ev = Flash(flash_params)
 
-        property_container.flash_ev = NegativeFlash(flash_params, ["CEOS", "AQ"], [InitialGuess.Henry_VA])
-        property_container.density_ev = dict([('gas', EoSDensity(ceos, comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components_names))])
-        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(ceos)),
-                                               ('aqueous', EoSEnthalpy(aq))])
+        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+                                              ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+                                              ('aqueous', Garcia2001(components_names)), ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
-                                                ('aqueous', Islam2012(components_names))])
+                                                ('LCO2', Fenghour1998()),
+                                                ('aqueous', Islam2012(components_names)), ])
+
+        # diff = 8.64e-6
+        # property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(len(components_names)) * diff)),
+        #                                         ('LCO2', ConstFunc(np.ones(len(components_names)) * diff)),
+        #                                         ('aqueous', ConstFunc(np.ones(len(components_names)) * diff * 1e-3))])
+
+        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr)),
+                                               ('LCO2', EoSEnthalpy(eos=pr)),
+                                               ('aqueous', EoSEnthalpy(eos=aq)), ])
+
         property_container.conductivity_ev = dict([('gas', ConstFunc(10.)),
+                                                   ('LCO2', ConstFunc(10.)),
                                                    ('aqueous', ConstFunc(180.)), ])
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas", swc=0.25, sgr=0.0, n=1.5)),
-                                               ('aqueous', PhaseRelPerm("oil", swc=0.25, sgr=0.0, n=4))])
+
+        self.sw_init_res = 0.25
+        swc = self.sw_init_res
+        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
+                                               ('LCO2', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
+                                               ('aqueous', PhaseRelPerm("wat", swc=swc, sgr=swc, n=4))])
+
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
-        """ Activate physics """
-        self.physics = Compositional(components_names, phases_names, self.timer, thermal=True,
-                                     n_points=1000, min_p=1, max_p=500, min_z=self.zero/10, max_z=1-self.zero/10,
-                                     min_t=200, max_t=500)
+        """ Add property region """
         self.physics.add_property_region(property_container)
 
         property_container.output_props = {}
@@ -245,7 +278,7 @@ class Model(CICDModel):
         #     injected_fluid_pressure,
         #     injected_fluid_temperature,
         #     injected_fluid_mole_fractions)  # Constant injection specific enthalpy
-        injected_fluid_specific_enthalpy = - 2000
+        injected_fluid_specific_enthalpy = - 2000   # Now you can use a lower injected specific enthalpy for CO2
         injected_heat_rate = inj_rate * injected_fluid_specific_enthalpy
         inj_flux = np.append(inj_flux, injected_heat_rate)
 
