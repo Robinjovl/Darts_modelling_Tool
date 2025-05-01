@@ -620,7 +620,7 @@ if __name__ == '__main__':
               'depletion': {'mode': 'well', 'value': -250.0},
               'friction_law': 'slip_weakening',
               'mesh_file': 'meshes/new_setup_coarse.msh'}
-    cases += [config]
+    #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
