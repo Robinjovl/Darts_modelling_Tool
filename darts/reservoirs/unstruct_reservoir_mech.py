@@ -162,44 +162,119 @@ class UnstructReservoirMech():
         self.n_bc_vars = 1 + thermoporoelasticity + self.n_dim
 
     def set_equilibrium(self, zero_conduction: bool=False):
-        # store original transmissibilities
-        self.vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=True)
-        self.vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=True)
+        if self.discretizer_name == 'pm_discretizer':
+            # store original transmissibilities
+            self.tran = np.array(self.mesh.tran, copy=True)
+            self.rhs = np.array(self.mesh.rhs, copy=True)
+            self.tran_biot = np.array(self.mesh.tran_biot, copy=True)
+            self.rhs_biot = np.array(self.mesh.rhs_biot, copy=True)
+            # turn off some terms for evaluation of momentum equilibrium
+            tran = np.array(self.mesh.tran, copy=False)
+            rhs = np.array(self.mesh.rhs, copy=False)
+            tran_biot = np.array(self.mesh.tran_biot, copy=False)
+            rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
 
-        # turn off some terms for evaluation of momentum equilibrium
-        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
-        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
-        vol_strain_tran[:] = 0.0
-        vol_strain_rhs[:] = 0.0
+            tran[12::16] = 0.0
+            tran[13::16] = 0.0
+            tran[14::16] = 0.0
+            tran[15::16] = 0.0
+            rhs[3::4] = 0.0
 
-        if zero_conduction:
-            self.darcy_tran = np.array(self.mesh.darcy_tran, copy=True)
-            self.darcy_rhs = np.array(self.mesh.darcy_rhs, copy=True)
-            darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
-            darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
-            darcy_tran[:] = 0.0
-            darcy_rhs[:] = 0.0
+            tran_biot[12::16] = 0.0
+            tran_biot[13::16] = 0.0
+            tran_biot[14::16] = 0.0
+            tran_biot[15::16] = 0.0
+            rhs_biot[3::4] = 0.0
 
-            if self.thermoporoelasticity:
-                self.fourier_tran = np.array(self.mesh.fourier_tran, copy=True)
-                fourier_tran = np.array(self.mesh.fourier_tran, copy=False)
-                fourier_tran[:] = 0.0
+            self.unstr_discr.f[3::4] = 0.0  # self.p_init - self.unstr_discr.p_ref[:]
+            self.f[:] = self.unstr_discr.f
+        elif self.discretizer_name == 'mech_discretizer':
+            # store original transmissibilities
+            self.vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=True)
+            self.vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=True)
+    
+            # turn off some terms for evaluation of momentum equilibrium
+            vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+            vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+            vol_strain_tran[:] = 0.0
+            vol_strain_rhs[:] = 0.0
+    
+            if zero_conduction:
+                self.darcy_tran = np.array(self.mesh.darcy_tran, copy=True)
+                self.darcy_rhs = np.array(self.mesh.darcy_rhs, copy=True)
+                darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
+                darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
+                darcy_tran[:] = 0.0
+                darcy_rhs[:] = 0.0
+    
+                if self.thermoporoelasticity:
+                    self.fourier_tran = np.array(self.mesh.fourier_tran, copy=True)
+                    fourier_tran = np.array(self.mesh.fourier_tran, copy=False)
+                    fourier_tran[:] = 0.0
 
     def turn_off_equilibrium(self, zero_conduction: bool=False):
-        vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
-        vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
-        vol_strain_tran[:] = self.vol_strain_tran
-        vol_strain_rhs[:] = self.vol_strain_rhs
+        if self.discretizer_name == 'pm_discretizer':
+            tran = np.array(self.mesh.tran, copy=False)
+            rhs = np.array(self.mesh.rhs, copy=False)
+            tran_biot = np.array(self.mesh.tran_biot, copy=False)
+            rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
+            tran[12::16] = self.tran[12::16]
+            tran[13::16] = self.tran[13::16]
+            tran[14::16] = self.tran[14::16]
+            tran[15::16] = self.tran[15::16]
+            rhs[3::4] = self.rhs[3::4]
 
-        if zero_conduction:
-            darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
-            darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
-            darcy_tran[:] = self.darcy_tran
-            darcy_rhs[:] = self.darcy_rhs
+            tran_biot[12::16] = self.tran_biot[12::16]
+            tran_biot[13::16] = self.tran_biot[13::16]
+            tran_biot[14::16] = self.tran_biot[14::16]
+            tran_biot[15::16] = self.tran_biot[15::16]
+            
+            rhs_biot[3::4] = self.rhs_biot[3::4]
+            
+        elif self.discretizer_name == 'mech_discretizer':
+            vol_strain_tran = np.array(self.mesh.vol_strain_tran, copy=False)
+            vol_strain_rhs = np.array(self.mesh.vol_strain_rhs, copy=False)
+            vol_strain_tran[:] = self.vol_strain_tran
+            vol_strain_rhs[:] = self.vol_strain_rhs
+    
+            if zero_conduction:
+                darcy_tran = np.array(self.mesh.darcy_tran, copy=False)
+                darcy_rhs = np.array(self.mesh.darcy_rhs, copy=False)
+                darcy_tran[:] = self.darcy_tran
+                darcy_rhs[:] = self.darcy_rhs
+    
+                if self.thermoporoelasticity:
+                    fourier_tran = np.array(self.mesh.fourier_tran, copy=False)
+                    fourier_tran[:] = self.fourier_tran
 
-            if self.thermoporoelasticity:
-                fourier_tran = np.array(self.mesh.fourier_tran, copy=False)
-                fourier_tran[:] = self.fourier_tran
+    def apply_geomehcanics_mode(self, physics, full: bool = False):
+        if self.discretizer_name == 'pm_discretizer':
+            geom_mode = np.array(physics.engine.geomechanics_mode, copy=False)
+    
+            cell_m = np.array(self.mesh.block_m, copy=False)
+            cell_p = np.array(self.mesh.block_p, copy=False)
+            offset = np.array(self.mesh.offset, copy=False)
+            tran = np.array(self.mesh.tran, copy=False)
+            tran_biot = np.array(self.mesh.tran_biot, copy=False)
+            rhs = np.array(self.mesh.rhs, copy=False)
+            rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
+    
+            if full:
+                geom_mode[:] = 1
+                tran[12::16] = 0.0
+                tran[13::16] = 0.0
+                tran[14::16] = 0.0
+                tran[15::16] = 0.0
+                rhs[3::4] = 0.0
+    
+            tran_biot[12::16] = 0.0
+            tran_biot[13::16] = 0.0
+            tran_biot[14::16] = 0.0
+            tran_biot[15::16] = 0.0
+            rhs_biot[3::4] = 0.0
+            
+        elif self.discretizer_name == 'mech_discretizer':
+            assert False, 'Not implemented'
 
     def init_matrix_stiffness(self, props):
         self.unstr_discr.stiffness = {}

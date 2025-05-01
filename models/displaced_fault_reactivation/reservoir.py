@@ -25,6 +25,7 @@ from utils import dict_hash, hash_array
 
 class UnstructReservoir(UnstructReservoirMech):
     def __init__(self, timer, fluid_density, rock_density, mesh_file, cache_discretizer: bool = True):
+        super().__init__(timer, discretizer='pm_discretizer', fluid_vars=['p'], thermoporoelasticity=False)
         self.timer = timer
         self.rho_s = rock_density
         self.rho_f = fluid_density
@@ -202,103 +203,7 @@ class UnstructReservoir(UnstructReservoirMech):
 
     def init_reservoir(self, verbose):
         pass
-    def set_equilibrium(self):
-        # store original transmissibilities
-        self.tran = np.array(self.mesh.tran, copy=True)
-        self.rhs = np.array(self.mesh.rhs, copy=True)
-        self.tran_biot = np.array(self.mesh.tran_biot, copy=True)
-        self.rhs_biot = np.array(self.mesh.rhs_biot, copy=True)
-        # turn off some terms for evaluation of momentum equilibrium
-        tran = np.array(self.mesh.tran, copy=False)
-        rhs = np.array(self.mesh.rhs, copy=False)
-        tran_biot = np.array(self.mesh.tran_biot, copy=False)
-        rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
 
-        tran[12::16] = 0.0
-        tran[13::16] = 0.0
-        tran[14::16] = 0.0
-        tran[15::16] = 0.0
-        rhs[3::4] = 0.0
-
-        tran_biot[12::16] = 0.0
-        tran_biot[13::16] = 0.0
-        tran_biot[14::16] = 0.0
-        tran_biot[15::16] = 0.0
-        rhs_biot[3::4] = 0.0
-
-        self.unstr_discr.f[3::4] = 0.0#self.p_init - self.unstr_discr.p_ref[:]
-        self.f[:] = self.unstr_discr.f
-    def turn_off_equilibrium(self, zero_conduction: bool = None):
-        tran = np.array(self.mesh.tran, copy=False)
-        rhs = np.array(self.mesh.rhs, copy=False)
-        tran_biot = np.array(self.mesh.tran_biot, copy=False)
-        rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
-        tran[12::16] = self.tran[12::16]
-        tran[13::16] = self.tran[13::16]
-        tran[14::16] = self.tran[14::16]
-        tran[15::16] = self.tran[15::16]
-        rhs[3::4] = self.rhs[3::4]
-
-        tran_biot[12::16] = self.tran_biot[12::16]
-        tran_biot[13::16] = self.tran_biot[13::16]
-        tran_biot[14::16] = self.tran_biot[14::16]
-        tran_biot[15::16] = self.tran_biot[15::16]
-        rhs_biot[3::4] = self.rhs_biot[3::4]
-
-        # self.unstr_discr.f[:] = 0.0
-        # self.f[:] = 0.0
-    def apply_geomehcanics_mode(self, physics, full: bool = False):
-        geom_mode = np.array(physics.engine.geomechanics_mode, copy=False)
-
-        cell_m = np.array(self.mesh.block_m, copy=False)
-        cell_p = np.array(self.mesh.block_p, copy=False)
-        offset = np.array(self.mesh.offset, copy=False)
-        tran = np.array(self.mesh.tran, copy=False)
-        tran_biot = np.array(self.mesh.tran_biot, copy=False)
-        rhs = np.array(self.mesh.rhs, copy=False)
-        rhs_biot = np.array(self.mesh.rhs_biot, copy=False)
-
-        if full:
-            geom_mode[:] = 1
-            tran[12::16] = 0.0
-            tran[13::16] = 0.0
-            tran[14::16] = 0.0
-            tran[15::16] = 0.0
-            rhs[3::4] = 0.0
-
-        tran_biot[12::16] = 0.0
-        tran_biot[13::16] = 0.0
-        tran_biot[14::16] = 0.0
-        tran_biot[15::16] = 0.0
-        rhs_biot[3::4] = 0.0
-
-        # for conn_id in range(len(cell_m)):
-        #     cell_id1 = cell_m[conn_id]
-        #     if cell_id1 < self.unstr_discr.mat_cells_tot:
-        #         if self.unstr_discr.mat_cell_info_dict[cell_id1].prop_id == 99992:
-        #             geom_mode[cell_id1] = 1
-        #             tran[12+16 * offset[conn_id]:12+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[13+16 * offset[conn_id]:13+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[14+16 * offset[conn_id]:14+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[15+16 * offset[conn_id]:15+16 * offset[conn_id + 1]:16] = 0.0
-        #             rhs[3 + 4 * conn_id] = 0.0
-        #             tran_biot[12+16 * offset[conn_id]:12+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran_biot[13+16 * offset[conn_id]:13+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran_biot[14+16 * offset[conn_id]:14+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran_biot[15+16 * offset[conn_id]:15+16 * offset[conn_id + 1]:16] = 0.0
-        #             rhs_biot[3 + 4 * conn_id] = 0.0
-        #             continue
-        #
-        #     cell_id2 = cell_p[conn_id]
-        #     if cell_id2 < self.unstr_discr.mat_cells_tot:
-        #         if self.unstr_discr.mat_cell_info_dict[cell_id2].prop_id == 99992:
-        #             geom_mode[cell_id2] = 1
-        #             tran[12+16 * offset[conn_id]:12+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[13+16 * offset[conn_id]:13+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[14+16 * offset[conn_id]:14+16 * offset[conn_id + 1]:16] = 0.0
-        #             tran[15+16 * offset[conn_id]:15+16 * offset[conn_id + 1]:16] = 0.0
-        #             rhs[3 + 4 * conn_id] = 0.0
-        #             continue
     def update(self, dt, time):
         # update local array
         #if time > dt:

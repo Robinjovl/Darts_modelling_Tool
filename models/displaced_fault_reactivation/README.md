@@ -1,7 +1,7 @@
 
 ## Description
 This geomechanical poroelastic model with contact mechanics is single-phase and single-component.
-The model contains a single displaced fault, where the slip condition is evaluated with a constant or slip-weakening friction coefficient.
+The model contains a single displaced fault, where the slip condition is evaluated using a constant friction coefficient or dynamic friction coefficient evaluated by slip-weakening law or RSF.
 The numerical slip solution is compared against the analytical solution. The fault slip is triggered by stress changes induced by pore pressure change,
 whereas the pore pressure can be changes by setting uniform depletion or adding a production well.
 Geomechanics in this model is based on the quasi-static formulation before the slip, and can be changed to dynamic formulation during the slip.
