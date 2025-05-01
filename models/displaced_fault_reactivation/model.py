@@ -109,6 +109,7 @@ class Model(THMCModel):
             self.physics.engine.ls_params.append(ls2)
     def set_wells(self):
         if self.depletion_mode == 'well':
+            well_index = 1.E+10
             x = 2000.0
             centroids = np.array([c.centroid for c in self.reservoir.unstr_discr.mat_cell_info_dict.values()])
 
@@ -117,14 +118,14 @@ class Model(THMCModel):
 
             # self.reservoir.add_well("INJ001", depth=self.reservoir.depth[self.id_inj])
             # self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_inj),
-            #                                well_index=self.reservoir.well_index)
+            #                                well_index=well_index)
 
             pt_right = np.array([x, (-self.reservoir.a + self.reservoir.b) / 2, 0.0])
             self.id_prod = np.linalg.norm(centroids - pt_right, axis=1).argmin()
 
             self.reservoir.add_well("PROD001", depth=self.reservoir.depth[self.id_prod])
             self.reservoir.add_perforation(self.reservoir.wells[-1], int(self.id_prod),
-                                           well_index=self.reservoir.well_index)
+                                           well_index=well_index)
     def set_input_data(self):
         pass
     def set_initial_conditions(self):

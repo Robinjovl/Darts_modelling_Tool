@@ -180,28 +180,12 @@ class UnstructReservoir(UnstructReservoirMech):
         self.pz_bounds[:self.unstr_discr.bound_faces_tot] = self.unstr_discr.pz_bounds
         self.p_ref[:] = self.unstr_discr.p_ref
         self.f[:] = self.unstr_discr.f
-
-        # Calculate well_index (very primitive way....):
-        rw = 0.1
-        coords = self.unstr_discr.mat_cell_info_dict[0].coord_nodes_to_cell
-        dx = np.max(coords[:,0]) - np.min(coords[:,0])
-        dy = np.max(coords[:,1]) - np.min(coords[:,1])
-        dz = np.max(coords[:,2]) - np.min(coords[:,2])
-        # WIx
-        wi_x = 0.0
-        # WIy
-        wi_y = 0.0
-        # WIz
-        hz = dz
-        rp_z = 0.28 * np.sqrt((self.permy / self.permx) ** 0.5 * dx ** 2 +
-                              (self.permx / self.permy) ** 0.5 * dy ** 2) / \
-               ((self.permx / self.permy) ** 0.25 + (self.permy / self.permx) ** 0.25)
-        wi_z = 2 * np.pi * np.sqrt(self.permx * self.permy) * hz / np.log(rp_z / rw)
-        self.well_index = 1.E+10#TC.darcy_constant * np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
         # Create empty list of wells:
         self.wells = []
 
     def init_reservoir(self, verbose):
+        pass
+    def set_wells(self, verbose):
         pass
 
     def update(self, dt, time):
@@ -222,7 +206,7 @@ class UnstructReservoir(UnstructReservoirMech):
         # update boundaries at n+1 / n timesteps
         self.bc[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs
         self.bc_prev[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_prev
-        #self.init_wells()
+
     def update_contact_condition(self, x, ith_iter):
         self.unstr_discr.ith_iter = ith_iter
         if ith_iter == 1:
@@ -653,61 +637,7 @@ class UnstructReservoir(UnstructReservoirMech):
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
-    def set_wells(self, verbose):
-        pass
-    def add_well(self, name, depth):
-        """
-        Class method which adds wells heads to the reservoir (Note: well head is not equal to a perforation!)
-        :param name:
-        :param depth:
-        :return:
-        """
-        well = ms_well()
-        well.name = name
-        well.segment_volume = 0.0785 * 40  # 2.5 * pi * 0.15**2 / 4
-        well.well_head_depth = depth
-        well.well_body_depth = depth
-        well.segment_transmissibility = 1e5
-        well.segment_depth_increment = 1
-        self.wells.append(well)
-        return 0
-    def add_perforation(self, well, res_block, well_index):
-        """
-        Class method which ads perforation to each (existing!) well
-        :param well: data object which contains data of the particular well
-        :param res_block: reservoir block in which the well has a perforation
-        :param well_index: well index (productivity index)
-        :return:
-        """
-        well_block = 0
-        well.perforations = well.perforations + [(well_block, res_block, well_index, 0.0)]
-        return 0
-    def init_wells(self):
-        """
-        Class method which initializes the wells (adding wells and their perforations to the reservoir)
-        :return:
-        """
-        # Add injection well:
-        # self.add_well("I1", 0.5)
-        # # Perforate all boundary cells:
-        # for nth_perf in range(len(self.left_boundary_cells)):
-        #     well_index = self.mesh.volume[self.left_boundary_cells[nth_perf]] / self.max_well_vol * self.well_index
-        #     self.add_perforation(well=self.wells[-1], res_block=self.left_boundary_cells[nth_perf],
-        #                          well_index=well_index)
-        #
-        # # Add production well:
-        # self.add_well("P1", 0.5)
-        # # Perforate all boundary cells:
-        # for nth_perf in range(len(self.right_boundary_cells)):
-        #     well_index = self.mesh.volume[self.right_boundary_cells[nth_perf]] / self.max_well_vol * self.well_index
-        #     self.add_perforation(self.wells[-1], res_block=self.right_boundary_cells[nth_perf],
-        #                          well_index=well_index)
-        #
-        # # Add wells to the DARTS mesh object and sort connection (DARTS related):
-        self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
-        self.mesh.reverse_and_sort_pm()
-        #self.mesh.init_grav_coef()
-        return 0
+
     def get_normal_to_bound_face(self, b_id):
         cell = self.unstr_discr.bound_face_info_dict[b_id]
         cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
