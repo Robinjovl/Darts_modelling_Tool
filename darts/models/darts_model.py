@@ -345,6 +345,8 @@ class DartsModel:
 
         self.data_ts.print()
 
+        self.runtime = runtime
+
         # copy to params since theay are still used in engines
         self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.newton_type = self.data_ts.newton_type
