@@ -525,20 +525,15 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # m.physics.engine.find_equilibrium = False
 
     # m.physics.engine.print_linear_system = True
-    if discretizer == 'mech_discretizer':
-        m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, 0, m.physics.engine)
-    elif discretizer == 'pm_discretizer':
-        m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, 0, m.physics.engine)
+    m.reservoir.write_to_vtk(m.output_directory, 0, m.physics.engine)
+
     time = 0.0
     for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
         m.params.first_ts = dt
         m.params.max_ts = dt
         run_python(m, dt)
-        if discretizer == 'mech_discretizer':
-            m.reservoir.write_to_vtk_mech_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
-        elif discretizer == 'pm_discretizer':
-            m.reservoir.write_to_vtk_pm_discretizer(m.output_directory, ith_step + 1, m.physics.engine)
+        m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
 
     m.print_timers()
 
