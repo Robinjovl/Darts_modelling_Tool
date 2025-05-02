@@ -335,7 +335,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             for (uint8_t p = 0; p < NP; p++)
             { // loop over number of phases for convective operator
 
-              // calculate gravity term for phase p
+                // calculate gravity term for phase p
                 value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
 
                 // p = 1 means oil phase, it's reference phase. pw=po-pcow, pg=po-(-pcog).
@@ -451,6 +451,17 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 //phase_B_vels_ders[conn_idx] = - phase_B_vels_ders[conn_idx];
                             }
                         }
+                        else if (p == 2)
+                        {
+                            if (phase_B_vels[conn_idx] >= 0)
+                            {
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                            }
+                            else if (phase_B_vels[conn_idx] < 0)
+                            {
+                                phase_p_diff = 1;   // positive (its value is not important)
+                            }
+                        }
                     }
 
                     if (j < i)
@@ -467,6 +478,17 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                             }
                         }
                         else if (p == 1)
+                        {
+                            if (phase_B_vels[conn_idx] >= 0)
+                            {
+                                phase_p_diff = 1;   // positive (its value is not important)
+                            }
+                            else if (phase_B_vels[conn_idx] < 0)
+                            {
+                                phase_p_diff = -1;   // nagative (its value is not important)
+                            }
+                        }
+                        else if (p == 2)
                         {
                             if (phase_B_vels[conn_idx] >= 0)
                             {
@@ -506,7 +528,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         value_t phase_velocity;
                         if (p == 0)
                             phase_velocity = phase_A_vels[conn_idx];
-                        else if (p == 1)
+                        else if (p == 1 || p == 2)
                             phase_velocity = phase_B_vels[conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[i * N_OPS + SAT_OP + p] * phase_velocity;
@@ -529,7 +551,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
                                 }
                             }
-                            else if (p == 1)
+                            else if (p == 1 || p == 2)
                             {
                                 if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
                                 {
@@ -606,7 +628,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         value_t phase_velocity;
                         if (p == 0)
                             phase_velocity = phase_A_vels[conn_idx];
-                        else if (p == 1)
+                        else if (p == 1 || p == 2)
                             phase_velocity = phase_B_vels[conn_idx];
 
                         phase_volumetric_rate = wells[0]->well_transmissibility * op_vals_arr[j * N_OPS + SAT_OP + p] * phase_velocity;
@@ -629,7 +651,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                     std::cerr << "Error: Element at index " << conn_idx << " is not a std::vector<value_t>\n";
                                 }
                             }
-                            else if (p == 1)
+                            else if (p == 1 || p == 2)
                             {
                                 if (auto vec_ptr = std::get_if<std::vector<value_t>>(&phase_B_vels_ders[conn_idx]))
                                 {

@@ -22,13 +22,29 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     T = np.zeros((num_segments))
 
     sG = np.zeros(num_segments)
-    sL = np.zeros(num_segments)
+    if property_container.nph == 2:
+        sL = np.zeros(num_segments)
+    elif property_container.nph == 3:
+        sL_a = np.zeros(num_segments)
+        sL_b = np.zeros(num_segments)
     rhoG = np.zeros(num_segments)
-    rhoL = np.zeros(num_segments)
+    if property_container.nph == 2:
+        rhoL = np.zeros(num_segments)
+    elif property_container.nph == 3:
+        rhoL_a = np.zeros(num_segments)
+        rhoL_b = np.zeros(num_segments)
     miuG = np.zeros(num_segments)
-    miuL = np.zeros(num_segments)
+    if property_container.nph == 2:
+        miuL = np.zeros(num_segments)
+    elif property_container.nph == 3:
+        miuL_a = np.zeros(num_segments)
+        miuL_b = np.zeros(num_segments)
     xG = np.zeros((num_segments, property_container.nc))
-    xL = np.zeros((num_segments, property_container.nc))
+    if property_container.nph == 2:
+        xL = np.zeros((num_segments, property_container.nc))
+    elif property_container.nph == 3:
+        xL_a = np.zeros((num_segments, property_container.nc))
+        xL_b = np.zeros((num_segments, property_container.nc))
     # Initialize an empty DataFrame to store the primary variables and phase props
     data_frame = pd.DataFrame()
 
@@ -52,13 +68,29 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
 
             property_container.evaluate(state)
             xG[j,:] = property_container.x[0,:]
-            xL[j,:] = property_container.x[1,:]
+            if property_container.nph == 2:
+                xL[j,:] = property_container.x[1,:]
+            elif property_container.nph == 3:
+                xL_a[j, :] = property_container.x[1, :]
+                xL_b[j, :] = property_container.x[2, :]
             sG[j] = property_container.sat[0]
-            sL[j] = property_container.sat[1]
+            if property_container.nph == 2:
+                sL[j] = property_container.sat[1]
+            elif property_container.nph == 3:
+                sL_a[j] = property_container.sat[1]
+                sL_b[j] = property_container.sat[2]
             rhoG[j] = property_container.dens[0]
-            rhoL[j] = property_container.dens[1]
+            if property_container.nph == 2:
+                rhoL[j] = property_container.dens[1]
+            elif property_container.nph == 3:
+                rhoL_a[j] = property_container.dens[1]
+                rhoL_b[j] = property_container.dens[2]
             miuG[j] = property_container.mu[0]
-            miuL[j] = property_container.mu[1]
+            if property_container.nph == 2:
+                miuL[j] = property_container.mu[1]
+            elif property_container.nph == 3:
+                miuL_a[j] = property_container.mu[1]
+                miuL_b[j] = property_container.mu[2]
 
         # Save phase velocities
         if i == 0:
@@ -77,13 +109,23 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
         vG = np.append(vG, np.nan)
         vL = np.append(vL, np.nan)
 
-        ts_primary_vars_and_phases_props = [p.copy(), z.copy(), T.copy(), xG.copy(), xL.copy(),
-                                            sG.copy(), sL.copy(), rhoG.copy(), rhoL.copy(),
-                                            miuG.copy(), miuL.copy(), vG.copy(), vL.copy()]
-
-        data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
-                                                         columns=["Pressure", "Overall mole fractions", "Temperature",
-                                                                  "xG", "xL", "sG", "sL", "rhoG", "rhoL", "miuG", "miuL"
-                                                                  , "vG", "vL"])])
+        if property_container.nph == 2:
+            ts_primary_vars_and_phases_props = [p.copy(), z.copy(), T.copy(), xG.copy(), xL.copy(),
+                                                sG.copy(), sL.copy(), rhoG.copy(), rhoL.copy(),
+                                                miuG.copy(), miuL.copy(), vG.copy(), vL.copy()]
+            data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
+                                                             columns=["Pressure", "Overall mole fractions",
+                                                                      "Temperature", "xG", "xL", "sG", "sL",
+                                                                      "rhoG", "rhoL", "miuG", "miuL", "vG", "vL"])])
+        elif property_container.nph == 3:
+            ts_primary_vars_and_phases_props = [p.copy(), z.copy(), T.copy(), xG.copy(), xL_a.copy(), xL_b.copy(),
+                                                sG.copy(), sL_a.copy(), sL_b.copy(), rhoG.copy(), rhoL_a.copy(),
+                                                rhoL_b.copy(), miuG.copy(), miuL_a.copy(), miuL_b.copy(), vG.copy(),
+                                                vL.copy()]
+            data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
+                                                             columns=["Pressure", "Overall mole fractions",
+                                                                      "Temperature", "xG", "xL_a", "xL_a", "sG",
+                                                                      "sL_a", "sL_b", "rhoG", "rhoL_a", "rhoL_b",
+                                                                      "miuG", "miuL_a", "miuL_b", "vG", "vL"])])
 
     data_frame.to_pickle("output/stored_primary_vars_and_phase_props.pkl")
