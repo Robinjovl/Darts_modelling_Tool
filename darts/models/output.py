@@ -1264,7 +1264,7 @@ class Output:
             plt.figure()
             plt.plot(time, BHT, marker='o')
             plt.xlabel('Time [day]')
-            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.ylabel('Bottom-hole temperature [K]')
             plt.tight_layout()
             plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
             plt.close()
