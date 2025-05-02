@@ -1295,7 +1295,8 @@ class Output:
         :type rtype: str
         :param well_name: Name of the well
         :type well_name: str
-        :param perf_idx: Index of the perforation
+        :param perf_idx: Index of the perforation. This index starts from zero and the order depends on the order
+        at which perforations are added to the wellbore using the add_perforation method.
         :type perf_idx: int
         """
         pc = self.physics.property_containers[0]
