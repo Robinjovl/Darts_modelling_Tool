@@ -1322,22 +1322,22 @@ class Output:
         pc = self.physics.property_containers[0]
         keys = []
         tag = f'well_{well_name}_perf_{perf_idx}_'
-        type = rtype.split('_')[1]
-        unit = self.unit_dict[type]
+        rate_type = rtype.split('_')[1]
+        unit = self.unit_dict[rate_type]
         if rtype.startswith('phases_'):
             for phase_name in pc.phases_name:
-                key = f'{tag}{type}_rate_{phase_name}'
-                ylabel = f'{phase_name} {type} rate [{unit}]'
+                key = f'{tag}{rate_type}_rate_{phase_name}'
+                ylabel = f'{phase_name} {rate_type} rate [{unit}]'
                 keys.append((key, ylabel))
         elif rtype.startswith('components_'):
             for component_name in pc.components_name:
-                key = f'{tag}{type}_rate_{component_name}'
-                ylabel = f'{component_name} {type} rate [{unit}]'
+                key = f'{tag}{rate_type}_rate_{component_name}'
+                ylabel = f'{component_name} {rate_type} rate [{unit}]'
                 keys.append((key, ylabel))
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
                 key = f'{tag}advective_heat_rate_{phase_name}'
-                ylabel = f'{phase_name} advective {type} rate [{unit}]'
+                ylabel = f'{phase_name} advective {rate_type} rate [{unit}]'
                 keys.append((key, ylabel))
         return keys
 
@@ -1354,27 +1354,27 @@ class Output:
         pc = self.physics.property_containers[0]
         keys = []
         base = f'well_{well_name}_'
-        type = rtype.split('_')[1]
-        unit = self.unit_dict[type]
+        rate_type = rtype.split('_')[1]
+        unit = self.unit_dict[rate_type]
         if rtype.startswith('phases_'):
             for phase_name in pc.phases_name:
                 keys.extend([
                     (
-                    f'{base}{type}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {type} rate [{unit}]'),
-                    (f'{base}{type}_rate_{phase_name}_at_wh', f'{phase_name} {type} rate [{unit}]')
+                    f'{base}{rate_type}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {rate_type} rate [{unit}]'),
+                    (f'{base}{rate_type}_rate_{phase_name}_at_wh', f'{phase_name} {rate_type} rate [{unit}]')
                 ])
         elif rtype.startswith('components_'):
             for component_name in pc.components_name:
                 keys.extend([
-                    (f'{base}{type}_rate_{component_name}_by_sum_perfs',
-                     f'{component_name} {type} rate [{unit}]'),
-                    (f'{base}{type}_rate_{component_name}_at_wh', f'{component_name} {type} rate [{unit}]')
+                    (f'{base}{rate_type}_rate_{component_name}_by_sum_perfs',
+                     f'{component_name} {rate_type} rate [{unit}]'),
+                    (f'{base}{rate_type}_rate_{component_name}_at_wh', f'{component_name} {rate_type} rate [{unit}]')
                 ])
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
                 keys.extend([
-                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective {type} rate [{unit}]'),
-                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective {type} rate [{unit}]')
+                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective {rate_type} rate [{unit}]'),
+                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective {rate_type} rate [{unit}]')
                 ])
         elif rtype in ('BHP', 'BHT'):
             label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
