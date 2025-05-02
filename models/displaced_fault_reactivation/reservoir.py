@@ -445,28 +445,20 @@ class UnstructReservoir(UnstructReservoirMech):
         self.fh = lambda y: -self.K0 * (self.sigma_yy(y) + self.biot * self.p0(y)) + self.biot * self.p0(y)
         self.eps_yy = lambda y: (1 - 2 * nu) / 2 / self.mu / (1 - nu) * (self.sigma_yy(y) + self.biot * self.p0(y))
 
-        # data991 = pd.read_csv('sol_poromechanics/stage1_ddouble_width/xm.csv', delimiter=',')
-        data991 = pd.read_csv('xm.csv', delimiter=',')
+        data991 = pd.read_csv(os.path.join('data', 'analytics', 'xm.csv'), delimiter=',')
         self.pt991 = np.array(data991['Points:1'],  dtype=np.float64)
         self.ux991 = np.array(data991['u_x'],       dtype=np.float64)
-        #self.uy991 = np.array(data991['u_y'],       dtype=np.float64)
 
-        # data992 = pd.read_csv('sol_poromechanics/stage1_ddouble_width/xp.csv', delimiter=',')
-        data992 = pd.read_csv('xp.csv', delimiter=',')
+        data992 = pd.read_csv(os.path.join('data', 'analytics', 'xp.csv'), delimiter=',')
         self.pt992 = np.array(data992['Points:1'],  dtype=np.float64)
         self.ux992 = np.array(data992['u_x'],       dtype=np.float64)
-        #self.uy992 = np.array(data992['u_y'],       dtype=np.float64)
 
-        # data993 = pd.read_csv('sol_poromechanics/stage1_ddouble_width/ym.csv', delimiter=',')
-        data993 = pd.read_csv('ym.csv', delimiter=',')
+        data993 = pd.read_csv(os.path.join('data', 'analytics', 'ym.csv'), delimiter=',')
         self.pt993 = np.array(data993['Points:0'], dtype=np.float64)
-        #self.ux993 = np.array(data993['u_x'], dtype=np.float64)
         self.uy993 = np.array(data993['u_y'], dtype=np.float64)
 
-        # data994 = pd.read_csv('sol_poromechanics/stage1_ddouble_width/yp.csv', delimiter=',')
-        data994 = pd.read_csv('yp.csv', delimiter=',')
+        data994 = pd.read_csv(os.path.join('data', 'analytics','yp.csv'), delimiter=',')
         self.pt994 = np.array(data994['Points:0'], dtype=np.float64)
-        #self.ux994 = np.array(data994['u_x'], dtype=np.float64)
         self.uy994 = np.array(data994['u_y'], dtype=np.float64)
 
         self.unstr_discr.boundary_conditions[991] = {'flow': NO_FLOW,               'mech': STUCK_ROLLER(0.0), 'cells': []}
