@@ -611,7 +611,7 @@ if __name__ == '__main__':
               'timesteps': np.ones(25),
               'depletion': {'mode': 'uniform', 'value': -290.6 / 25},
               'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse_longer.msh'}
+              'mesh_file': 'meshes/new_setup_coarse_longer.geo'}
     # commented because it is very long
     #cases += [config]
 
@@ -619,28 +619,28 @@ if __name__ == '__main__':
               'timesteps': 5 * np.ones(4),
               'depletion': {'mode': 'well', 'value': -250.0},
               'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse.msh'}
+              'mesh_file': 'meshes/new_setup_coarse.geo'}
     #cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -250.0},
               'friction_law': 'static',
-              'mesh_file': 'meshes/new_setup_coarse.msh'}
+              'mesh_file': 'meshes/new_setup_coarse.geo'}
     cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': [1.0],
               'depletion': {'mode': 'uniform', 'value': -172.4}, # -172.685 is more precise, requires finer mesh
               'friction_law': 'slip_weakening',
-              'mesh_file': 'meshes/new_setup_coarse.msh'}
+              'mesh_file': 'meshes/new_setup_coarse.geo'}
     cases += [config]
 
     config = {'mode': 'quasi_static',
               'timesteps': 25 * [1.0],
               'depletion': {'mode': 'uniform', 'value': -290.6 / 25},
               'friction_law': 'rsf',
-              'mesh_file': 'meshes/new_setup_rsf.msh'}
+              'mesh_file': 'meshes/new_setup_rsf.geo'}
     # commented because it is very long
     # cases += [config]
 

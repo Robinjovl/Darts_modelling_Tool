@@ -211,7 +211,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.p_init0 = 350.0
         self.porosity = 0.15
         self.permx = self.permy = self.permz = 100.0
-        mesh_file = 'meshes/new_setup_three_point_stick1.msh'
+        mesh_file = 'meshes/new_setup_three_point_stick1.geo'
         self.file_path = mesh_file
         self.unstr_discr = UnstructDiscretizer(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=0,
                                                mesh_file=mesh_file)

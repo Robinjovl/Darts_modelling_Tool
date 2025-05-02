@@ -51,6 +51,15 @@ class UnstructDiscretizer:
 
         :param mesh_file: name of the mesh file (in string form)
         """
+        # create a mesh using gmsh if .geo file is passed
+        if mesh_file.endswith('.geo'):
+            try:
+                mesh_file_msh = mesh_file.replace('.geo', '.msh')
+                os.system("gmsh {:s} -o {:s} -save".format(mesh_file, mesh_file_msh))
+                mesh_file = mesh_file_msh
+            except:
+                print('Cannot write msh file! Possibly gmsh not in the PATH!\n')
+
         self.verbose = verbose
         self.mesh_file = mesh_file  # Name of the input meshfile
         self.mesh_data = []  # Initialize empty mesh data list
