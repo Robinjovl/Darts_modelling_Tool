@@ -15,19 +15,24 @@ from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
+
 class DataTS:
-    def __init__(self, nc):
-        self.eta = 1e20 * np.ones(nc)  # avoid limitation for changes
+
+    def __init__(self, n_vars):
+        self.eta = 1e20 * np.ones(n_vars)  # controls the timestep by the variable change from the previous newton iteration
+        # dX = Xn - X . Eta has a size of number of DOFs per cell. It set to a large value by default, so doesn't affect the timestep choice
 
         # default values
-        self.first_ts = 1.
-        self.dt_min = 1e-12
-        self.dt_mult = 2.
-        self.dt_max = 10.
-        self.tol_res = 1e-2
-        self.tol_wel_mult = 100.
-        self.tol_stationary = 1e-3
-        self.max_it_nonlin = 20
+        self.dt_first = 1.   # initial timestep [days]
+        self.dt_min = 1e-12  # minimal allowed timestep [days]
+        self.dt_mult = 2.    # timestep multiplier, affects the next timestep choice
+        self.dt_max = 10.    # maximal allowed timestep [days]
+        self.newton_tol = 1e-2  # newton solver residual
+        self.newton_tol_wel_mult = 100.   # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
+        self.newton_tol_stationary = 1e-3 # tolerance for stationary point detection in the newton solver (by residual)
+        self.newton_max_iter = 20    # maximum newton iterations allowed
+        self.line_search = False
+        self.min_line_search_update = 1.e-4
 
 class DartsModel:
     """
@@ -267,28 +272,29 @@ class DartsModel:
         """
         self.data_ts = DataTS(self.physics.n_vars)
 
-        self.data_ts.first_ts = first_ts if first_ts is not None else self.data_ts.first_ts
+        # Time stepping parameters. if None, default value will be used
+        self.data_ts.dt_first = first_ts if first_ts is not None else self.data_ts.first_ts
         self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
         self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
-        self.data_ts.max_it_nonlin = it_newton if it_newton is not None else self.data_ts.max_it_nonlin
-        self.data_ts.tol_res = tol_newton if tol_newton is not None else self.data_ts.tol_res
         self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
+        self.params.first_ts = self.data_ts.dt_first
+        self.params.max_ts = self.data_ts.dt_max
+        self.params.mult_ts = self.data_ts.dt_mult
 
-        self.params.first_ts = first_ts if first_ts is not None else self.params.first_ts
-        self.params.mult_ts = mult_ts if mult_ts is not None else self.params.mult_ts
-        self.params.max_ts = max_ts if max_ts is not None else self.params.max_ts
-        self.runtime = runtime
-
-        # Newton tolerance is relatively high because of L2-norm for residual and well segments
-        self.params.tolerance_newton = tol_newton if tol_newton is not None else self.params.tolerance_newton
-        self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
-        self.params.max_i_newton = it_newton if it_newton is not None else self.params.max_i_newton
-        self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
-
+        # Non linear solver parameters. if None, default value will be used
+        self.data_ts.newton_max_iter = it_newton if it_newton is not None else self.data_ts.newton_max_iter
+        self.params.max_i_newton = self.data_ts.newton_max_iter
+        self.data_ts.newton_tol = tol_newton if tol_newton is not None else self.data_ts.tol_res
+        self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
         self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
+        self.data_ts.line_search = line_search
 
-        self.params.line_search = line_search
+        # Linear solver parameters. if None, default value will be used
+        self.params.tolerance_linear = tol_linear if tol_linear is not None else self.params.tolerance_linear
+        self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
+
+        self.runtime = runtime
 
     def run_simple(self, physics, params, days):
         """
@@ -312,7 +318,7 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15:
-            dt = self.params.first_ts
+            dt = self.params.dt_first
         elif restart_dt > 0.:
             dt = restart_dt
         else:
@@ -385,7 +391,7 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = data_ts.first_ts
+            dt = data_ts.dt_first
         elif restart_dt > 0.:
             dt = restart_dt
         else:
@@ -398,7 +404,7 @@ class DartsModel:
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
-
+        
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.
         else:
@@ -422,8 +428,9 @@ class DartsModel:
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt))
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
+                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+                             dt_mult_new, np.round(max_dx, 3)))
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
@@ -477,7 +484,7 @@ class DartsModel:
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
-        max_newt = self.data_ts.max_it_nonlin
+        max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
@@ -490,7 +497,7 @@ class DartsModel:
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
             for j in range(i):
-                if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.data_ts.tol_stationary:
+                if abs(max_residual[i] - max_residual[j])/max_residual[i] < self.data_ts.newton_tol_stationary:
                     counter += 1
             if counter > 2:
                 if verbose:
@@ -500,14 +507,14 @@ class DartsModel:
             self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
             self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
-            if ((self.physics.engine.newton_residual_last_dt < self.data_ts.tol_res and
-                 self.physics.engine.well_residual_last_dt < self.data_ts.tol_res * self.data_ts.tol_wel_mult) or
+            if ((self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol and
+                 self.physics.engine.well_residual_last_dt < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult) or
                     self.physics.engine.n_newton_last_dt == max_newt):
                 if i > 0:  # min_i_newton
                     break
-
+                    
             # line search
-            if self.params.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:
+            if self.data_ts.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:
                 coef = np.array([0.0, 1.0])
                 history = np.array([residual_history[-2], residual_history[-1]])
                 residual_history[-1] = self.line_search(dt, t, coef, history, verbose)
@@ -585,8 +592,8 @@ class DartsModel:
                         coef = np.append(coef, (coef[id] + coef[right]) / 2)
                     else:
                         coef = np.append(coef, coef[id] - (coef[right] - coef[id]) / 2)
-                if coef[-1] <= 0: coef[-1] = self.min_line_search_update
-                if coef[-1] >= 1: coef[-1] = 1.0 - self.min_line_search_update
+                if coef[-1] <= 0: coef[-1] = self.data_ts.min_line_search_update
+                if coef[-1] >= 1: coef[-1] = 1.0 - self.data_ts.min_line_search_update
             else:
                 coef = np.append(coef, coef[-1] / 2)
 
@@ -717,7 +724,7 @@ class DartsModel:
 
         # resize storage for velocities inside engine
         self.physics.engine.darcy_velocities.resize(self.reservoir.mesh.n_res_blocks * self.physics.nph * 3)
-
+        
         # allocate & transfer data to device
         if self.platform == 'gpu':
             from darts.engines import copy_data_to_device, allocate_device_data
