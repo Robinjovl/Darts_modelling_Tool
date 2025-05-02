@@ -1,18 +1,19 @@
 import numpy as np
 import os
 import meshio
-
 import xml.dom.minidom
 
 from darts.engines import conn_mesh, index_vector, value_vector
+from darts.engines import contact, contact_vector, vector_matrix
 from darts.engines import ms_well, ms_well_vector
 from darts.engines import matrix33 as engine_matrix33
-from darts.discretizer import matrix33 as disc_matrix33
 from darts.engines import Stiffness as engine_stiffness
 from darts.engines import matrix, Face, vector_face_vector, face_vector, vector_matrix33, stf_vector, critical_stress
+from darts.engines import pm_discretizer
+
 from darts.discretizer import Stiffness as disc_stiffness
 from darts.discretizer import Mesh, Elem, elem_loc, elem_type, conn_type
-from darts.engines import pm_discretizer
+from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import poro_mech_discretizer, thermoporo_mech_discretizer
 from darts.discretizer import THMBoundaryCondition, BoundaryCondition
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
@@ -1092,8 +1093,8 @@ class UnstructReservoirMech():
             cell_data=cell_data)
         meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
 
-        # Faults
-        if self.unstr_discr.output_faces_tot > 0:
+        # Faults and boundary surfaces
+        if self.unstr_discr.frac_cells_tot > 0 or self.unstr_discr.output_faces_tot > 0:
             geom_id = 0
             Mesh.cells = []
             cell_data = {}
@@ -1117,14 +1118,14 @@ class UnstructReservoirMech():
                         Mesh.cells.append(meshio.CellBlock(ith_geometry, data=self.unstr_discr.mesh_data.cells[geom_id].data[out_ids]))
 
                 geom_id += 1
-            # fracture output
+            # faults output
             if self.unstr_discr.frac_cells_tot > 0:
                 #self.write_fault_props(output_directory, property_array, ith_step, engine)
                 frac_data = self.get_fault_props(property_array, ith_step, engine)
                 for key, val in frac_data.items():
                    if key not in cell_data: cell_data[key] = []
                    cell_data[key].append(val)
-            # just output
+            # boundary surfaces output
             if self.unstr_discr.output_faces_tot > 0:
                 out_data = self.get_props_over_output(property_array, ith_step, engine)
                 for key, val in out_data.items():
@@ -1168,8 +1169,8 @@ class UnstructReservoirMech():
         root.appendChild(self.matpvd_collection)
         self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'), indent="  ", addindent="  ", newl='\n')
 
-        # faults
-        if self.unstr_discr.output_faces_tot > 0:
+        # faults or boundary surfaces
+        if self.unstr_discr.frac_cells_tot > 0 or self.unstr_discr.output_faces_tot > 0:
             snap = self.faultpvd_doc.createElement("DataSet")
             snap.setAttribute("timestep", str(time))
             snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
