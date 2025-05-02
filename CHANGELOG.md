@@ -60,6 +60,8 @@
 	This is neccessary to ensure the libstdc++ provided with open-DARTS is loaded first. This doesn't impact Windows runs.
 	However, DARTS command line interface (CLI) can also be used on Windows. [Details](https://gitlab.com/open-darts/open-darts/-/merge_requests/182).
 
+	Any model should have a set_sim_params(...) call after physics initialization, where a DataTS instance is created.
+	
 # 1.2.2 [27-01-2025]
 - Remove rock thermal operators; linear rock compressibility is ignored in rock thermal terms
 - Temperature and pressure operators are added

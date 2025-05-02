@@ -1,6 +1,7 @@
+import os
 import numpy as np
-from dataclasses import dataclass, field
 
+from dataclasses import dataclass, field
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, index_vector, sim_params, conn_mesh
 
@@ -9,19 +10,17 @@ try:
 except ImportError:
     pass
 
+from darts.engines import well_control_iface
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-
 from darts.physics.properties.basic import PhaseRelPerm, CapillaryPressure, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-
 from dartsflash.libflash import NegativeFlash, FlashParams, InitialGuess
 from dartsflash.libflash import CubicEoS, AQEoS
 from dartsflash.components import CompData
-
 from scipy.special import erf
 
 # region Dataclasses
@@ -72,10 +71,120 @@ class Model(DartsModel):
         self.specs = specs
         self.components = self.specs['components']
         self.nc = len(self.components)
+
+    def set_wells(self):
+        if self.specs['RHS'] is False:
+            self.reservoir.well_cells = []
+            for name, center in self.reservoir.well_centers.items():
+                cell_index = self.reservoir.find_cell_index(center)
+                self.reservoir.well_cells.append(cell_index)
+
+            for well_nr in range(2):
+                k = int(self.reservoir.well_cells[well_nr] / (self.reservoir.nx * self.reservoir.ny) - 1)
+                i = int(np.abs(self.reservoir.nx - (self.reservoir.well_cells[well_nr] - k * (self.reservoir.nx * self.reservoir.ny))))
+                j = 1
+
+                try:
+                    assert k * self.reservoir.nx * self.reservoir.ny + j * self.reservoir.nx + i == self.reservoir.well_cells[well_nr]
+                except:
+                    print(f"Assertion Failed: (i={i}, j={j}, k={k})")
+                    print(f"Computed Index: {k * self.reservoir.nx * self.reservoir.ny + j * self.reservoir.nx + i}")
+                    print(f"Expected Index: {self.reservoir.well_cells[well_nr]}")
+                    raise
+
+                self.reservoir.add_well("I%d"%well_nr)
+                self.reservoir.add_perforation("I%d"%well_nr, cell_index = (i, j, k), well_index=100, well_indexD=100)
+
+            return
+        else:
+            self.reservoir.set_wells(False)
+            return
+
+    def set_well_controls(self):
+        if self.specs['RHS'] is False:
+            T_inj = 10+273.15
+            for i, w in enumerate(self.reservoir.wells):
+                if 'I' in w.name:
+                    if self.inj_rate[i] == 0:
+                        self.physics.set_well_controls(well = w,
+                                                       is_control = True,
+                                                       control_type = well_control_iface.MASS_RATE,
+                                                       is_inj = True,
+                                                       target = 0.01,
+                                                       phase_name = 'V',
+                                                       inj_composition = self.inj_stream[:-1],
+                                                       inj_temp = T_inj)
+                    else:
+                        self.physics.set_well_controls(well = w,
+                                                       is_control = True,
+                                                       control_type = well_control_iface.MASS_RATE,
+                                                       is_inj = True,
+                                                       target = self.inj_rate[i],
+                                                       phase_name = 'V',
+                                                       inj_composition = self.inj_stream[:-1],
+                                                       inj_temp = T_inj)
+
+                    print(f'Set well {w.name} to {self.inj_rate[i]} kg/day at 10°C')
+            return
+        else:
+            pass
+
+    def set_rhs_flux(self, t: float = None):
+        if self.specs['RHS'] is True:
+            nc = self.physics.nc
+            nv = self.physics.n_vars
+            nb = self.reservoir.mesh.n_res_blocks
+            rhs = np.zeros(nb * nv)
+
+            molar_masses = self.physics.property_containers[0].Mw
+            mole_fractions = self.inj_stream[:nc - 1]
+            n_comp = np.zeros(nc - 1)
+            enth_idx = list(self.physics.property_containers[0].output_props.keys()).index("enthV")
+
+            for i, well_cell in enumerate(self.reservoir.well_cells):
+                p_wellcell = self.physics.engine.X[well_cell * nv]
+                state = value_vector([p_wellcell] + self.inj_stream)
+                values = value_vector(np.zeros(self.physics.n_ops))
+                self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
+                enthV = values[enth_idx]
+
+                avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
+
+                tot_moles = self.inj_rate[i] / avg_molar_mass
+
+                for comp_idx in range(nc - 1):
+                    comp_flux_idx = well_cell * nv + comp_idx  # Index
+                    n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
+                    rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
+
+                if self.physics.thermal:
+                    temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
+                    rhs[temp_idx] -= enthV * np.sum(n_comp)
+            return rhs
+        else:
+            pass
+
         
-    def set_physics(self, corey: dict = {}, zero: float = 1e-12, temperature: float = None, n_points: int = 10001, diff = 1e-9):
-        
+    def set_physics(self, zero: float = 1e-12, temperature: float = None, n_points: int = 10001, diff = 1e-9):
         """Physical properties"""
+
+        # define the Corey parameters for each layer (rock type) according to the technical description of the CSP
+        corey = {
+            0: Corey(nw=1.5, ng=1.5, swc=0.32, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1.935314, pcmax=300,
+                     c2=1.5),
+            1: Corey(nw=1.5, ng=1.5, swc=0.14, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.08655, pcmax=300,
+                     c2=1.5),
+            2: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0612, pcmax=300,
+                     c2=1.5),
+            3: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.038706, pcmax=300,
+                     c2=1.5),
+            4: Corey(nw=1.5, ng=1.5, swc=0.12, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.0306, pcmax=300,
+                     c2=1.5),
+            5: Corey(nw=1.5, ng=1.5, swc=0.10, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=0.025602, pcmax=300,
+                     c2=1.5),
+            6: Corey(nw=1.5, ng=1.5, swc=1e-8, sgc=0.10, krwe=1.0, krge=1.0, labda=2., p_entry=1e-2, pcmax=300, c2=1.5)
+        }
+
         self.zero = zero
         self.salinity = 0
         
@@ -112,14 +221,14 @@ class Model(DartsModel):
                                      min_z=zero/10, max_z=1-zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec, 
                                      cache=False)
-        self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+        self.physics.n_axes_points[0] = 101  # sets OBL points for pressure
 
         dispersivity = 10.
         self.physics.dispersivity = {}
 
         for i, (region, corey_params) in enumerate(corey.items()):
-            diff_w = diff * 86400
-            diff_g = diff * 86400
+            diff_w = 1e-9 * 86400
+            diff_g = 2e-8 * 86400
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    min_z=zero / 10, temperature=temperature)
 
@@ -131,14 +240,10 @@ class Model(DartsModel):
                                                     ('Aq', Islam2012(self.components)), ])
             property_container.diffusion_ev = dict([('V', ConstFunc(np.ones(nc) * diff_g)),
                                                     ('Aq', ConstFunc(np.ones(nc) * diff_w))])
-
-            if thermal:
-                property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=pr)),
-                                                       ('Aq', EoSEnthalpy(eos=aq)), ])
-
-                property_container.conductivity_ev = dict([('V', ConstFunc(8.4)),
-                                                           ('Aq', ConstFunc(170.)), ])
-
+            property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=pr)),
+                                                   ('Aq', EoSEnthalpy(eos=aq)), ])
+            property_container.conductivity_ev = dict([('V', ConstFunc(8.4)),
+                                                       ('Aq', ConstFunc(170.)),])
             property_container.rel_perm_ev = dict([('V', ModBrooksCorey(corey_params, 'V')),
                                                    ('Aq', ModBrooksCorey(corey_params, 'Aq'))])
             property_container.capillary_pressure_ev = ModCapillaryPressure(corey_params)
@@ -182,7 +287,7 @@ class Model(DartsModel):
             copy_data_to_device(self.physics.engine.dispersivity, dispersivity_d)
 
     def set_initial_conditions(self):
-        if 0:
+        if 1:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
             
@@ -264,83 +369,24 @@ class Model(DartsModel):
                                                                  input_depth = init.depths,
                                                                  input_distribution = {v: X[:, i] for i, v in enumerate(self.physics.vars)})
 
-    def output_properties_old(self):
-        """
-        Function to return array of properties.
-        Primary variables (vars) are obtained from engine, secondary variables (props) are interpolated by property_itor.
-
-        :returns: property_array
-        :rtype: np.ndarray
-        """
-        # Initialize property_array
-        n_vars = self.physics.n_vars
-        n_props = self.physics.property_operators[next(iter(self.physics.property_operators))].n_ops
-        tot_props = n_vars + n_props
-        nb = self.reservoir.mesh.n_res_blocks
-        property_array = np.zeros((tot_props, nb))
-
-        # Obtain primary variables from engine
-        X = np.array(self.physics.engine.X, copy=False)
-        for j, variable in enumerate(self.physics.vars):
-            property_array[j, :] = X[j:nb * n_vars:n_vars]
-
-        n_ops = self.physics.n_ops
-        state = value_vector(property_array[:n_vars, :].T.flatten())
-        values = value_vector(np.zeros(n_ops * nb))
-        values_numpy = np.array(values, copy=False)
-        dvalues = value_vector(np.zeros(n_ops * nb * n_vars))
-        for region, prop_itor in self.physics.property_itor.items():
-            block_idx = np.where(self.op_num == region)[0].astype(np.int32)
-            prop_itor.evaluate_with_derivatives(state, index_vector(block_idx), values, dvalues)
-            # copy values immediately to avoid problems with host-device communication under GPU
-            for j in range(n_props):
-                property_array[j + n_vars, block_idx] = values_numpy[block_idx * n_ops + j]
-
-        return property_array
-
     def set_str_boundary_volume_multiplier(self):
         self.reservoir.boundary_volumes['yz_minus'] = 5e4 * (1200 / self.reservoir.nz)
         self.reservoir.boundary_volumes['yz_plus']  = 5e4 * (1200 / self.reservoir.nz)
-
         return
 
-    # def get_mass_CO2(self, property_array):
-    #     n_vars = self.physics.n_vars
-    #     M_CO2 = 44.01  # kg/kmol
-    #     M_H2O = 18.01528  # kg/kmol
-        
-    #     sg = property_array[n_vars]
-    #     xCO2 = property_array[n_vars + 1]
-    #     rhoV = property_array[n_vars + 2]
-    #     rho_m_Aq = property_array[n_vars + 3]
-    #     yCO2 = property_array[n_vars + 4]
-        
-    #     w_co2 = yCO2 * M_CO2 / (yCO2 * M_CO2 + (1 - yCO2) * M_H2O)  # co2 vapor mass fraction
-    #     V = np.asarray(self.reservoir.mesh.volume)[:self.reservoir.n]
-    #     phi = np.asarray(self.reservoir.mesh.poro)[:self.reservoir.n]
-        
-    #     mass_CO2 = 0
-    #     mass_CO2 += np.sum(V * phi * w_co2 * sg * rhoV)  # vapor CO2
-    #     mass_CO2 += np.sum(V * phi * (1 - sg) * xCO2 * rho_m_Aq * M_CO2)  # aqueous CO2 - m3*kmol/m3*kg/kmol = [kg]
-
-    #     return mass_CO2
-
     def get_mass_components(self, property_array):
-        n_vars = self.physics.n_vars
-        num_components = self.physics.nc
         component_names = self.physics.property_containers[0].components_name
         Mw = np.array(self.physics.property_containers[0].Mw).reshape(-1, 1)
-        
-    
+
         # Extract properties from property_array
-        sg = property_array[n_vars]
-        rhoV = property_array[n_vars + 1]
-        rho_m_Aq = property_array[n_vars + 2]
-    
+        sg = property_array['satV'][0]
+        rhoV = property_array['rhoV'][0]
+        rho_m_Aq = property_array['rho_mA'][0]
+
         self.x_components, self.y_components = [], []
-        for i in range(num_components):
-            self.y_components.append(property_array[n_vars + 4 + i])
-            self.x_components.append(property_array[n_vars + 4 + num_components + i])
+        for component_name in self.physics.components:
+            self.x_components.append(property_array['x' + component_name][0])
+            self.y_components.append(property_array['y' + component_name][0])
             
         self.x_components, self.y_components = np.array(self.x_components), np.array(self.y_components)
         
@@ -353,8 +399,7 @@ class Model(DartsModel):
         # Pore volume 
         V = np.array(self.reservoir.mesh.volume, copy=False)[:self.reservoir.n]
         phi = np.array(self.reservoir.mesh.poro, copy=False)[:self.reservoir.n]
-        # PV = V * phi
-    
+
         # Calculate total mass for each component
         mass_components = {}
         for i, component_name in enumerate(component_names):
@@ -367,7 +412,7 @@ class Model(DartsModel):
             # Total mass
             mass_components[component_name] = mass_vapor + mass_aqueous
     
-        return mass_components    
+        return mass_components, mass_vapor, mass_aqueous
 
     def set_top_bot_temp(self):
         nv = self.physics.n_vars
@@ -515,87 +560,8 @@ class Model(DartsModel):
         # End of newton loop
         converged = self.physics.engine.post_newtonloop(dt, t)
         self.timer.node['simulation'].stop()
+
         return converged
-
-    def set_wells(self):
-        self.reservoir.well_cells = []
-        for name, center in self.reservoir.well_centers.items():
-            cell_index = self.reservoir.find_cell_index(center)
-            self.reservoir.well_cells.append(cell_index)
-        
-        for well_nr in range(2-1):
-            
-            k = int(self.reservoir.well_cells[well_nr] / (self.reservoir.nx * self.reservoir.ny) - 1)
-            i = int(np.abs(self.reservoir.nx - (self.reservoir.well_cells[well_nr] - k * (self.reservoir.nx * self.reservoir.ny))))
-            j = 1 
-            
-            try:
-                assert k * self.reservoir.nx * self.reservoir.ny + j * self.reservoir.nx + i == self.reservoir.well_cells[well_nr]
-            except:
-                print(f"Assertion Failed: (i={i}, j={j}, k={k})")
-                print(f"Computed Index: {k * self.reservoir.nx * self.reservoir.ny + j * self.reservoir.nx + i}")
-                print(f"Expected Index: {self.reservoir.well_cells[well_nr]}")
-                raise
-                
-            self.reservoir.add_well("I%d"%well_nr)
-            self.reservoir.add_perforation("I%d"%well_nr, cell_index = (i, j, k), well_index=100, well_indexD=100)
-            
-            
-    def set_well_controls(self):
-        from darts.engines import well_control_iface
-        T_inj = 10
-        for i, w in enumerate(self.reservoir.wells):
-            if 'I' in w.name:
-                if self.inj_rate[i] == 0:
-                    self.physics.set_well_controls(well = w,
-                                                   is_control = True,
-                                                   control_type = well_control_iface.MASS_RATE,
-                                                   is_inj = True,
-                                                   target = 0.01,
-                                                   phase_name = 'V',
-                                                   inj_composition = self.inj_stream[:-1],
-                                                   inj_temp = 273.15+T_inj)
-                
-                else:
-                    self.physics.set_well_controls(well = w,
-                                                   is_control = True,
-                                                   control_type = well_control_iface.MASS_RATE,
-                                                   is_inj = True,
-                                                   target = self.inj_rate[i],
-                                                   phase_name = 'V',
-                                                   inj_composition = self.inj_stream[:-1],
-                                                   inj_temp = 273.15 + T_inj)
-                    
-                    print(f'Set well {w.name} to {self.inj_rate[i]} kg/day at 10°C')
-                    
-            
-            # else:
-            #     self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-            #                                    is_inj=False, target=self.p_prod)
-
-    # def set_rhs_flux(self, t: float = None):
-    #     M_CO2 = 44.01  # kg/kmol
-    #     nv = self.physics.n_vars
-    #     nb = self.reservoir.mesh.n_res_blocks
-    #     rhs_flux = np.zeros(nb * nv)
-    #     # wells
-    #     enth_idx = list(self.physics.property_containers[0].output_props.keys()).index("enthV")
-    #     for i, well_cell in enumerate(self.reservoir.well_cells):
-    #         # Obtain state from engine
-    #         p_wellcell = self.physics.engine.X[well_cell * nv]
-    #         CO2_idx = well_cell * nv + 1  # second equation
-    #         temp_idx = well_cell * nv + nv - 1  # last equation
-    #         state = value_vector([p_wellcell] + self.inj_stream)
-
-    #         # calculate properties
-    #         values = value_vector(np.zeros(self.physics.n_ops))
-    #         self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
-
-    #         enthV = values[enth_idx]
-    #         n_CO2 = self.inj_rate[i] / M_CO2
-    #         rhs_flux[CO2_idx] -= n_CO2
-    #         rhs_flux[temp_idx] -= enthV * n_CO2
-    #     return rhs_flux
 
 class ModBrooksCorey:
     def __init__(self, corey, phase):
@@ -689,7 +655,7 @@ class BrooksCorey:
 
         return k_r
 
-######################## HIDE THIS ######################## 
+######################## HIDE THIS ########################
 cmult = 86.4
 layer_props = {900001: PorPerm(type='7', poro=1e-6, perm=1e-6, anisotropy=[1, 1, 0.1], rcond=2.0 * cmult),
                900002: PorPerm(type='5', poro=0.25, perm=1013.24997, anisotropy=[1, 1, 0.1], rcond=0.92 * cmult),
