@@ -11,6 +11,8 @@ from convergence_plot import plot_conv_main
 
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
+import shutil
+
 rcParams["text.usetex"]=False
 plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
@@ -260,6 +262,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
 
     redirect_darts_output('log.txt')
     m.output_directory = 'sol_' + case + '_' + discretizer + '_' + mesh
+    shutil.rmtree(m.output_directory, ignore_errors=True)
+    os.makedirs(m.output_directory, exist_ok=True)
     m.timer.node["update"] = timer_node()
     # m.physics.engine.find_equilibrium = False
 
