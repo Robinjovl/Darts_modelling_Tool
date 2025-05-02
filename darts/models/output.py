@@ -5,6 +5,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import shutil
 import pandas as pd
+from typing import Union
 
 from darts.physics.blackoil import BlackOil
 from darts.physics.super.physics import Compositional
@@ -768,7 +769,7 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def store_well_time_data(self, types_of_well_rates=None):
+    def store_well_time_data(self, types_of_well_rates: list = None):
         """
         Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
@@ -871,7 +872,7 @@ class Output:
 
         return perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans
 
-    def store_perf_rates(self, time_data_dict, rates_perfs, rate_type):
+    def store_perf_rates(self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str):
         """
         This function stores perforation rates from the 3D numpy array rates_perfs for the rate type rate_type in the
         dict time_data_dict. This function is used in the method store_well_time_data of the current class.
@@ -903,7 +904,7 @@ class Output:
                         time_data_dict[f'{tag}_advective_heat_rate_{phase_name}'] = arr
                 perf_idx += 1
 
-    def store_well_rates_sums(self, time_data_dict, rates_perfs, rate_type):
+    def store_well_rates_sums(self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str):
         """
         This function stores summation of perforation rates for each well from the 3D numpy array rates_perfs for the
         rate type rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of
@@ -940,7 +941,7 @@ class Output:
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_by_sum_perfs'] = total
                 perf_idx += len(well.perforations)
 
-    def store_wellhead_rates(self, time_data_dict, wh_rates, rate_type):
+    def store_wellhead_rates(self, time_data_dict: dict, wh_rates: np.ndarray, rate_type: str):
         """
         This function stores wellhead rate for each well from the 3D numpy array rates_perfs for the rate type
         rate_type in the dict time_data_dict. This function is used in the method store_well_time_data of the
@@ -968,12 +969,13 @@ class Output:
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = wh_rates[:, well_idx, phase_idx]
 
-    def store_bhp_bht(self, h5_well_data, time_data_dict):
+    def store_bhp_bht(self, h5_well_data: dict, time_data_dict: dict):
         """
         This function stores bottom-hole pressure (BHP) and temperature (BHT) of wells over time in time_data_dict.
         This function is used in the method store_well_time_data of the current class.
 
         :param h5_well_data: Dictionary extracted from the HDF5 file that stores well primary variables, etc.
+        :type h5_well_data: dict
         :param time_data_dict: Dictionary in which well time series will be stored
         :type time_data_dict: dict
         """
@@ -983,7 +985,7 @@ class Output:
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
             BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
-            wellhead_cell_idx = self.find_one_array_in_another_indices([well.well_head_idx], dyn['cell_id'])
+            wellhead_cell_idx = self.find_values_in_an_array([well.well_head_idx], dyn['cell_id'])
             p_idx = dyn['variable_names'].index('pressure')
             for i in range(nt):
                 p = dyn['X'][i, :, p_idx]
@@ -1007,9 +1009,9 @@ class Output:
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
         :param conn_ids: IDs of connections
-        :type conn_ids: numpy.ndarray
+        :type conn_ids: list
         :param trans: Transmissibility (For perforations, it is geometric part of well index)
-        :type trans: numpy.ndarray
+        :type trans: np.ndarray
         :param thermal: If the model is thermal or not
         :type thermal: bool
         :param rate_type: Type of well rate to calculate
@@ -1018,8 +1020,8 @@ class Output:
         # Evaluate position of block_m, block_p in stored data, for every connection
         block_m = h5_well_data['static']['block_m']
         block_p = h5_well_data['static']['block_p']
-        cell_m = self.find_one_array_in_another_indices(block_m[conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
-        cell_p = self.find_one_array_in_another_indices(block_p[conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
+        cell_m = self.find_values_in_an_array(block_m[conn_ids], h5_well_data['dynamic']['cell_id'])   # well cells
+        cell_p = self.find_values_in_an_array(block_p[conn_ids], h5_well_data['dynamic']['cell_id'])   # reservoir cells
         assert (cell_m.size == len(conn_ids) and cell_p.size == len(conn_ids))
 
         num_ts = h5_well_data['dynamic']['time'].size
@@ -1108,12 +1110,12 @@ class Output:
         return rates
 
     #%% Operator functions
-    def components_molar_rates_operators(self, state, pc):
+    def components_molar_rates_operators(self, state: np.ndarray, pc):
         """
         This function is used for calculating advective molar rates of components in each phase [kmole/day]
 
         :param state: State of the fluid containing the primary variables
-        :type state: numpy.ndarray
+        :type state: np.ndarray
         :param pc: An instance of the class PropertyContainer
         :type pc: PropertyContainer
         """
@@ -1126,12 +1128,12 @@ class Output:
                     values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         return values
 
-    def components_mass_rates_operators(self, state, pc):
+    def components_mass_rates_operators(self, state: np.ndarray, pc):
         """
         This function is used for calculating advective mass rates of components in each phase [kg/day]
 
         :param state: State of the fluid containing the primary variables
-        :type state: numpy.ndarray
+        :type state: np.ndarray
         :param pc: An instance of the class PropertyContainer
         :type pc: PropertyContainer
         """
@@ -1144,12 +1146,12 @@ class Output:
                 values[pc.nc_fl * j + i] = pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
         return values
 
-    def heat_rate_operators(self, state, pc):
+    def heat_rate_operators(self, state: np.ndarray, pc):
         """
         This function is used for calculating advective heat rate operator for dead state only [kJ/day]
 
         :param state: State of the fluid containing the primary variables
-        :type state: numpy.ndarray
+        :type state: np.ndarray
         :param pc: An instance of the class PropertyContainer
         :type pc: PropertyContainer
         """
@@ -1161,16 +1163,16 @@ class Output:
         return values
 
     #%% Auxiliary functions
-    def find_conn_ids_for_perfs(self, perfs, block_m, block_p, n_res_blocks):
+    def find_conn_ids_for_perfs(self, perfs: list, block_m: np.ndarray, block_p: np.ndarray, n_res_blocks: int):
         """
         This function finds the connection IDs of perforations
 
         :param perfs: List of perforations (well_block_index, reservoir_block_index, well_index, well_indexD)
         :type perfs: List
         :param block_m: block_m of the connection list
-        :type block_m: numpy.ndarray
+        :type block_m: np.ndarray
         :param block_p: block_p of the connection list
-        :type block_p: numpy.ndarray
+        :type block_p: np.ndarray
         :param n_res_blocks: Number of reservoir blocks
         :type n_res_blocks: int
         """
@@ -1179,7 +1181,13 @@ class Output:
         assert (len(perfs_conn_ids) == len(perfs) and (block_m[perfs_conn_ids] > n_res_blocks).all())
         return perfs_conn_ids
 
-    def find_one_array_in_another_indices(self, to_find, in_array):
+    def find_values_in_an_array(self, to_find: Union[np.ndarray, list], in_array: np.ndarray):
+        """
+        :param to_find: The values the indices of which we want to find in in_array
+        :type to_find: np.ndarray or list
+        :param in_array: The array in which we want to find the values in to_find
+        :type in_array: np.ndarray
+        """
         indices = []
         for element in to_find:
             id = np.where(in_array == element)[0]
@@ -1187,11 +1195,20 @@ class Output:
                 indices.append(id[0])
         return np.array(indices, dtype=np.intp)
 
-    def plot_well_time_data(self, types_of_well_rates=None):
+    def plot_well_time_data(self, types_of_well_rates: list = None):
         """
         Plots well time data that are specified in the list types_of_well_time_data over time, including
         phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates, components_mass_rates,
         advective_heat_rate, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
+
+        :param types_of_well_rates: List of types of well rates that can be computed:
+                                    "phases_molar_rates"
+                                    "phases_mass_rates"
+                                    "phases_volumetric_rates"
+                                    "components_molar_rates"
+                                    "components_mass_rates"
+                                    "advective_heat_rate" for thermal scenarios
+        :type types_of_well_rates: list
         """
         main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
 
@@ -1217,7 +1234,7 @@ class Output:
             if self.physics.thermal:
                 types_of_well_rates.append("advective_heat_rate")
 
-        self.unit_dict = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}
+        self.unit_dict = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day', 'heat': 'kJ/day'}
 
         for rtype in types_of_well_rates:
             for w in self.reservoir.wells:
@@ -1273,13 +1290,14 @@ class Output:
 
         return df
 
-    def create_perf_dirs(self, main_dir):
+    def create_perf_dirs(self, main_dir: str):
         """
-        This function creates a new directory (folder) for each perforation of wells. The rates for each perforation
+        This function creates a new directory (folder) for each perforation of each well. The rates for each perforation
         will be stored in their corresponding directory later. This function is used in the method plot_well_time_data
         of the current class.
 
-        :param main_dir: Directory in which perforation directories will be created
+        :param main_dir: Directory in which a folder for each well already exists or will be created. Folder
+        for each perforation will be created in the corresponding well folder.
         :type main_dir: str
         """
         for well in self.reservoir.wells:
@@ -1288,7 +1306,7 @@ class Output:
             for perf in well.perforations:
                 os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
 
-    def create_perf_keys(self, rtype, well_name, perf_idx):
+    def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """
         This function creates keys for perforation rates. This function is used in the method plot_well_time_data
         of the current class.
@@ -1319,10 +1337,11 @@ class Output:
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
                 key = f'{tag}advective_heat_rate_{phase_name}'
-                keys.append((key, f'{phase_name} advective heat rate [kJ/day]'))
+                ylabel = f'{phase_name} advective {type} rate [{unit}]'
+                keys.append((key, ylabel))
         return keys
 
-    def create_total_keys(self, rtype, well_name):
+    def create_total_keys(self, rtype: str, well_name: str):
         """
         This function creates keys for summation rates, wellhead rates, and BHP and BHT. This function is used in the
         method plot_well_time_data of the current class.
@@ -1342,7 +1361,7 @@ class Output:
                 keys.extend([
                     (
                     f'{base}{type}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {type} rate [{unit}]'),
-                    (f'{base}{type}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
+                    (f'{base}{type}_rate_{phase_name}_at_wh', f'{phase_name} {type} rate [{unit}]')
                 ])
         elif rtype.startswith('components_'):
             for component_name in pc.components_name:
@@ -1354,8 +1373,8 @@ class Output:
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
                 keys.extend([
-                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective heat rate [kJ/day]'),
-                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective heat rate [kJ/day]')
+                    (f'{base}advective_heat_rate_{phase_name}_by_sum_perfs', f'{phase_name} advective {type} rate [{unit}]'),
+                    (f'{base}advective_heat_rate_{phase_name}_at_wh', f'{phase_name} advective {type} rate [{unit}]')
                 ])
         elif rtype in ('BHP', 'BHT'):
             label = 'Bottom-hole pressure [bar]' if rtype == 'BHP' else 'Bottom-hole temperature [K]'
