@@ -1217,6 +1217,8 @@ class Output:
             if self.physics.thermal:
                 types_of_well_rates.append("advective_heat_rate")
 
+        self.unit_dict = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}
+
         for rtype in types_of_well_rates:
             for w in self.reservoir.wells:
                 well_dir = os.path.join(main_dir, f'well_{w.name}')
@@ -1302,17 +1304,17 @@ class Output:
         pc = self.physics.property_containers[0]
         keys = []
         tag = f'well_{well_name}_perf_{perf_idx}_'
+        type = rtype.split('_')[1]
+        unit = self.unit_dict[type]
         if rtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
             for phase_name in pc.phases_name:
-                key = f'{tag}{rtype.split("_")[1]}_rate_{phase_name}'
-                ylabel = f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'
+                key = f'{tag}{type}_rate_{phase_name}'
+                ylabel = f'{phase_name} {type} rate [{unit}]'
                 keys.append((key, ylabel))
         elif rtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
             for component_name in pc.components_name:
-                key = f'{tag}{rtype.split("_")[1]}_rate_{component_name}'
-                ylabel = f'{component_name} {rtype.split("_")[1]} rate [{unit}]'
+                key = f'{tag}{type}_rate_{component_name}'
+                ylabel = f'{component_name} {type} rate [{unit}]'
                 keys.append((key, ylabel))
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
@@ -1333,21 +1335,21 @@ class Output:
         pc = self.physics.property_containers[0]
         keys = []
         base = f'well_{well_name}_'
+        type = rtype.split('_')[1]
+        unit = self.unit_dict[type]
         if rtype.startswith('phases_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day', 'volumetric': 'm^3/day'}[rtype.split('_')[1]]
             for phase_name in pc.phases_name:
                 keys.extend([
                     (
-                    f'{base}{rtype.split("_")[1]}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{rtype.split("_")[1]}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
+                    f'{base}{type}_rate_{phase_name}_by_sum_perfs', f'{phase_name} {type} rate [{unit}]'),
+                    (f'{base}{type}_rate_{phase_name}_at_wh', f'{phase_name} {rtype.split("_")[1]} rate [{unit}]')
                 ])
         elif rtype.startswith('components_'):
-            unit = {'molar': 'kmol/day', 'mass': 'kg/day'}[rtype.split('_')[1]]
             for component_name in pc.components_name:
                 keys.extend([
-                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_by_sum_perfs',
-                     f'{component_name} {rtype.split("_")[1]} rate [{unit}]'),
-                    (f'{base}{rtype.split("_")[1]}_rate_{component_name}_at_wh', f'{component_name} {rtype.split("_")[1]} rate [{unit}]')
+                    (f'{base}{type}_rate_{component_name}_by_sum_perfs',
+                     f'{component_name} {type} rate [{unit}]'),
+                    (f'{base}{type}_rate_{component_name}_at_wh', f'{component_name} {type} rate [{unit}]')
                 ])
         elif rtype.startswith('advective_heat_'):
             for phase_name in pc.phases_name:
