@@ -924,14 +924,16 @@ class UnstructReservoirMech():
 
             return frac_data
 
+    def add_initial_properties(self, cell_data):
+        pass
+
     def write_to_vtk(self, output_directory, ith_step, engine, dt=0.):
-        if self.discretizer_name == 'mesh_discretizer':
+        if self.discretizer_name == 'mech_discretizer':
             self.write_to_vtk_mech_discretizer(output_directory, ith_step, engine, dt)
         elif self.discretizer_name == 'pm_discretizer':
             self.write_to_vtk_pm_discretizer(output_directory, ith_step, engine, dt)
-
-    def add_initial_properties(self, cell_data):
-        pass
+        time = engine.t if ith_step > 0 else 0.0
+        self.write_pvd_file(ith_step, time, output_directory)
 
     def write_to_vtk_mech_discretizer(self, output_directory, ith_step, engine, dt):
         """
@@ -997,7 +999,7 @@ class UnstructReservoirMech():
             Mesh.points,
             Mesh.cells,
             cell_data=cell_data)
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write("{:s}/solution{:d}.vtu".format(output_directory, ith_step), mesh)
 
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
@@ -1041,16 +1043,17 @@ class UnstructReservoirMech():
         #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
 
         # Matrix
-        geom_id = 0
         Mesh.cells = []
         cell_data = {}
+        start_geom_cell_id = 0
         for ith_geometry in self.unstr_discr.mesh_data.cells_dict.keys():
             if ith_geometry in available_matrix_geometries:
-                Mesh.cells.append(self.unstr_discr.mesh_data.cells[geom_id])
+                Mesh.cells.append(next(cell for cell in self.unstr_discr.mesh_data.cells if cell.type == ith_geometry))
                 # Add matrix data to dictionary:
+                cell_size = self.unstr_discr.mesh_data.cells_dict[ith_geometry].shape[0]
                 for i in range(props_num):
                     if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                    cell_data[cell_property[i]].append(property_array[i:props_num * self.unstr_discr.mat_cells_tot:props_num])
+                    cell_data[cell_property[i]].append(property_array[props_num * start_geom_cell_id + i:props_num * (cell_size + start_geom_cell_id):props_num])
 
                 if 'eps_vol' not in cell_data: cell_data['eps_vol'] = []
                 if 'porosity' not in cell_data: cell_data['porosity'] = []
@@ -1059,14 +1062,14 @@ class UnstructReservoirMech():
 
                 cell_data['eps_vol'].append(np.array(self.mech_operators.eps_vol, copy=False))
                 cell_data['porosity'].append(np.array(self.mech_operators.porosities, copy=False))
-                cell_data['stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
-                cell_data['tot_stress'].append(np.zeros((self.unstr_discr.mat_cells_tot, 6), dtype=np.float64))
+                cell_data['stress'].append(np.zeros((cell_size, 6), dtype=np.float64))
+                cell_data['tot_stress'].append(np.zeros((cell_size, 6), dtype=np.float64))
 
                 stress = np.array(self.mech_operators.stresses, copy=False)
                 total_stress = np.array(self.mech_operators.total_stresses, copy=False)
                 for i in range(6):
-                    cell_data['stress'][-1][:, i] = stress[i::6]
-                    cell_data['tot_stress'][-1][:, i] = total_stress[i::6]
+                    cell_data['stress'][-1][:, i] = stress[6 * start_geom_cell_id + i:6 * (start_geom_cell_id + cell_size):6]
+                    cell_data['tot_stress'][-1][:, i] = total_stress[6 * start_geom_cell_id + i:6 * (start_geom_cell_id + cell_size):6]
 
                 if engine.momentum_inertia > 0.0 and dt != 0: # dynamic simulation
                     # velocity
@@ -1084,14 +1087,14 @@ class UnstructReservoirMech():
                 #     cell_data[ith_geometry]['permx'] = self.permx[:]
                 #     cell_data[ith_geometry]['permy'] = self.permy[:]
                 #     cell_data[ith_geometry]['permz'] = self.permz[:]
-            geom_id += 1
+                start_geom_cell_id += 1
 
         # Store solution for each time-step:
         mesh = meshio.Mesh(
             Mesh.points,
             Mesh.cells,
             cell_data=cell_data)
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write("{:s}/solution{:d}.vtu".format(output_directory, ith_step), mesh)
 
         # Faults and boundary surfaces
         if self.unstr_discr.frac_cells_tot > 0 or self.unstr_discr.output_faces_tot > 0:
@@ -1139,9 +1142,6 @@ class UnstructReservoirMech():
                 cell_data=cell_data)
             meshio.write("{:s}/solution_fault{:d}.vtu".format(output_directory, ith_step), mesh)
 
-        time = engine.t if ith_step > 0 else 0.0
-        self.write_pvd_file(ith_step, time, output_directory)
-
         print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
         return 0
 
@@ -1170,7 +1170,12 @@ class UnstructReservoirMech():
         self.matpvd_doc.writexml(open(str(output_directory) + '/solution.pvd', 'w'), indent="  ", addindent="  ", newl='\n')
 
         # faults or boundary surfaces
-        if self.unstr_discr.frac_cells_tot > 0 or self.unstr_discr.output_faces_tot > 0:
+        faults = False
+        if self.discretizer_name == 'pm_discretizer':
+            if self.unstr_discr.frac_cells_tot > 0 or self.unstr_discr.output_faces_tot > 0:
+                faults = True
+
+        if faults:
             snap = self.faultpvd_doc.createElement("DataSet")
             snap.setAttribute("timestep", str(time))
             snap.setAttribute("file", 'solution_fault{:d}.vtu'.format(ith_step))
