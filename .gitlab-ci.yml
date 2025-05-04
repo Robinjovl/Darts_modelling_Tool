@@ -573,6 +573,8 @@ test-windows-3.9-ODLS:
     artifacts:
       paths:
         - './models/_logs/*.log'
+        - './models/fracture_network/meshes*/*.log'
+        - './models/displaced_fault_reactivation/meshes/*.log'
         - './models/pkl_lin.tar.gz'
       when: always
       expire_in: 1 week
@@ -613,6 +615,8 @@ test-windows-3.9-ODLS:
     artifacts:
       paths:
         - './models/_logs/*.log'
+        - './models/fracture_network/meshes*/*.log'
+        - './models/displaced_fault_reactivation/meshes/*.log'
         - './models/pkl_lin.tar.gz'
       expire_in: 1 day
       when: always
@@ -658,6 +662,8 @@ test-windows-3.9-ODLS:
     artifacts:
       paths:
         - '.\models\_logs\*.log'
+        - './models/fracture_network/meshes*/*.log'
+        - './models/displaced_fault_reactivation/meshes/*.log'
         - '.\models\pkl_win.zip'
       when: always
       expire_in: 1 week
