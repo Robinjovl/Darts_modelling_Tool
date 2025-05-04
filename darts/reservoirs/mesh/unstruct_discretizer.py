@@ -53,12 +53,21 @@ class UnstructDiscretizer:
         """
         # create a mesh using gmsh if .geo file is passed
         if mesh_file.endswith('.geo'):
-            try:
-                mesh_file_msh = mesh_file.replace('.geo', '.msh')
-                os.system("gmsh {:s} -o {:s} -save".format(mesh_file, mesh_file_msh))
-                mesh_file = mesh_file_msh
-            except:
-                print('Cannot write msh file! Possibly gmsh not in the PATH!\n')
+            mesh_file_msh = mesh_file.replace('.geo', '.msh')
+            print('Start meshing', mesh_file_msh)
+            cmd = "gmsh {:s} -o {:s} -save".format(mesh_file, mesh_file_msh)
+            shell_flag = os.name == 'nt'
+            redirect_log = True
+            if redirect_log:
+                filename_log = mesh_file.replace('.geo', '.log')
+                with open(filename_log, "w") as file:
+                    r = subprocess.run(cmd.split(), text=True, shell=shell_flag, stderr=subprocess.STDOUT, stdout=file)
+                print('Gmsh output is written to the file ' + filename_log)
+            else:
+                r = subprocess.run(cmd.split(), text=True, shell=shell_flag, capture_output=True)
+            assert r.returncode == 0, 'ERROR meshing. ' + mesh_file_msh + 'Check gmsh in the PATH'
+            print('Finished meshing', mesh_file_msh)
+            mesh_file = mesh_file_msh
 
         self.verbose = verbose
         self.mesh_file = mesh_file  # Name of the input meshfile
