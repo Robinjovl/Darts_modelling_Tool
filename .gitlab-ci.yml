@@ -278,7 +278,7 @@ docker-image-builder:
     stage: build
     # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
     tags: 
-        - windows-shell
+        - windows_gpu
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
@@ -627,7 +627,7 @@ test-windows-3.9-ODLS:
     stage: test
     # Will be executed on runner with windows tag - that assumed to run on windows host
     tags:
-        - windows-shell
+        - windows_gpu
     before_script:
         - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
         # enable unbuffered output so that everything goes to log file in a correct order
