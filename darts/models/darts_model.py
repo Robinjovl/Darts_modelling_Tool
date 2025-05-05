@@ -69,7 +69,6 @@ class DartsModel:
         self.timer.node["output"] = timer_node()
         self.timer.node["initialization"] = timer_node()  # Create timer.node called "initialization" to record initialization time
         self.timer.node["initialization"].start()  # Start recording "initialization" time
-        self.min_line_search_update = 1.e-4
 
         self.params = sim_params()  # Create sim_params object to set simulation parameters
 
@@ -121,12 +120,11 @@ class DartsModel:
 
         self.set_op_list()
         self.set_boundary_conditions()
-        self.set_well_controls()
-
         self.restart = restart
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         if restart is False:
             self.set_initial_conditions()
+            self.set_well_controls()
             self.reset()
 
     def reset(self):
