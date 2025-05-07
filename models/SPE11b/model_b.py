@@ -110,7 +110,7 @@ class Model(DartsModel):
                                                        is_control = True,
                                                        control_type = well_control_iface.MASS_RATE,
                                                        is_inj = True,
-                                                       target = 0.01,
+                                                       target = 0.001,
                                                        phase_name = 'V',
                                                        inj_composition = self.inj_stream[:-1],
                                                        inj_temp = T_inj)
@@ -136,10 +136,11 @@ class Model(DartsModel):
             nb = self.reservoir.mesh.n_res_blocks
             rhs = np.zeros(nb * nv)
 
-            molar_masses = self.physics.property_containers[0].Mw
+            region = 0
+            molar_masses = self.physics.property_containers[region].Mw
             mole_fractions = self.inj_stream[:nc - 1]
             n_comp = np.zeros(nc - 1)
-            enth_idx = list(self.physics.property_containers[0].output_props.keys()).index("enthV")
+            enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthV")
 
             for i, well_cell in enumerate(self.reservoir.well_cells):
                 p_wellcell = self.physics.engine.X[well_cell * nv]
@@ -162,8 +163,8 @@ class Model(DartsModel):
                     rhs[temp_idx] -= enthV * np.sum(n_comp)
             return rhs
         else:
-            pass
-
+            rhs = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
+            return rhs
         
     def set_physics(self, zero: float = 1e-12, temperature: float = None, n_points: int = 10001, diff = 1e-9):
         """Physical properties"""
@@ -404,10 +405,10 @@ class Model(DartsModel):
         mass_components = {}
         for i, component_name in enumerate(component_names):
             # Vapor phase mass contribution
-            mass_vapor = np.sum(phi * V * w_components_vapor[i] * sg * rhoV)
+            mass_vapor = phi * V * w_components_vapor[i] * sg * rhoV
             
             # Aqueous phase mass contribution
-            mass_aqueous = np.sum(phi * V * (1 - sg) * self.x_components[i] * rho_m_Aq * Mw[i])
+            mass_aqueous = phi * V * (1 - sg) * self.x_components[i] * rho_m_Aq * Mw[i]
             
             # Total mass
             mass_components[component_name] = mass_vapor + mass_aqueous

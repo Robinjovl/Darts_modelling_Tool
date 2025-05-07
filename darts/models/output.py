@@ -468,7 +468,7 @@ class Output:
             self.timer.node['saving_reservoir_data'].stop(); self.timer.stop()
 
         else:
-            print("Please use either kind='well' or kind='solution' in save_data_to_h5")
+            print("Please use either kind='well' or kind='reservoir' in save_data_to_h5")
 
     def read_specific_data(self, filename: str, timestep: int = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
