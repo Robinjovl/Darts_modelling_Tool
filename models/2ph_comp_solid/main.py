@@ -54,7 +54,7 @@ if __name__ == '__main__':
     n.set_output()
 
     if True:
-        n.run(1000)
+        n.run(1000, save_well_data=False, save_reservoir_data=False)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()

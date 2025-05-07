@@ -190,7 +190,7 @@ def check_performance(mod):
 
     m.init(platform=platform)
     m.set_output()
-    m.run()
+    m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
     abort_redirection(log_stream)
     overwrite = 0
