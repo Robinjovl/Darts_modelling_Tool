@@ -34,6 +34,12 @@ class DataTS:
         self.line_search = False
         self.min_line_search_update = 1.e-4
 
+    def print(self):
+        print('Simulation parameters:')
+        for k in self.__dict__.keys():
+            value = self.__getattribute__(k)
+            print('\t', k, '=', value)
+
 class DartsModel:
     """
     This is a base class for creating a model in DARTS.
@@ -271,7 +277,7 @@ class DartsModel:
         self.data_ts = DataTS(self.physics.n_vars)
 
         # Time stepping parameters. if None, default value will be used
-        self.data_ts.dt_first = first_ts if first_ts is not None else self.data_ts.first_ts
+        self.data_ts.dt_first = first_ts if first_ts is not None else self.data_ts.dt_first
         self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
         self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
         self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
@@ -282,10 +288,13 @@ class DartsModel:
         # Non linear solver parameters. if None, default value will be used
         self.data_ts.newton_max_iter = it_newton if it_newton is not None else self.data_ts.newton_max_iter
         self.params.max_i_newton = self.data_ts.newton_max_iter
-        self.data_ts.newton_tol = tol_newton if tol_newton is not None else self.data_ts.tol_res
+
+        self.data_ts.newton_tol = tol_newton if tol_newton is not None else self.data_ts.newton_tol
         self.params.tolerance_newton = self.data_ts.newton_tol
+
         self.params.newton_type = newton_type if newton_type is not None else self.params.newton_type
         self.params.newton_params = newton_params if newton_params is not None else self.params.newton_params
+        
         self.data_ts.line_search = line_search
 
         # Linear solver parameters. if None, default value will be used
@@ -293,6 +302,8 @@ class DartsModel:
         self.params.max_i_linear = it_linear if it_linear is not None else self.params.max_i_linear
 
         self.runtime = runtime
+
+        self.data_ts.print()
 
     def run_simple(self, physics, params, days):
         """
@@ -521,7 +532,7 @@ class DartsModel:
                 # check stationary point after line search
                 counter = 0
                 for j in range(i):
-                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.params.stationary_point_tolerance:
+                    if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.data_ts.newton_tol_stationary:
                         counter += 1
                 if counter > 2:
                     if verbose:
