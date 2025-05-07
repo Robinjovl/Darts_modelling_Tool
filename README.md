@@ -37,9 +37,7 @@ Please refer to [LICENSE.md](LICENSE.md) for more information about the licensin
 
 ## Information
 
-The [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/home) contains information on [Troubleshooting](https://gitlab.com/open-darts/open-darts/-/wikis/Troubleshooting),
-[Frequently asked questions](https://gitlab.com/open-darts/open-darts/-/wikis/F.A.Q.), [Build instructions](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions),
-[Supported features](https://gitlab.com/open-darts/open-darts/-/wikis/Supported-features) etc.
+The [wiki](https://gitlab.com/open-darts/open-darts/-/wikis/home) contains information for developing cycle, in particular [Build instructions](https://gitlab.com/open-darts/open-darts/-/wikis/Build-instructions).
 
 ## How to cite
 
