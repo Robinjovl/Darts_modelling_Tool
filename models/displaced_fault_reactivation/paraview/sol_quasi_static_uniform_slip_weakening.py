@@ -17,7 +17,7 @@ materialLibrary1 = GetMaterialLibrary()
 
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
-renderView1.ViewSize = [1413, 626]
+renderView1.ViewSize = [1612, 794]
 renderView1.AxesGrid = 'Grid Axes 3D Actor'
 renderView1.CenterOfRotation = [0.0, 0.0, 250.0]
 renderView1.StereoType = 'Crystal Eyes'
@@ -39,7 +39,7 @@ SetActiveView(None)
 # create new layout object 'Layout #1'
 layout1 = CreateLayout(name='Layout #1')
 layout1.AssignView(0, renderView1)
-layout1.SetSize(1413, 626)
+layout1.SetSize(1612, 794)
 
 # ----------------------------------------------------------------
 # restore active view
@@ -205,13 +205,15 @@ solutionpvdDisplay.SetScalarBarVisibility(renderView1, True)
 # note: the Get..() functions create a new object, if needed
 # ----------------------------------------------------------------
 
+# get time animation track
+timeAnimationCue1 = GetTimeTrack()
+
+# initialize the animation scene
+
 # get the time-keeper
 timeKeeper1 = GetTimeKeeper()
 
 # initialize the timekeeper
-
-# get time animation track
-timeAnimationCue1 = GetTimeTrack()
 
 # initialize the animation track
 
@@ -224,11 +226,9 @@ animationScene1.Cues = timeAnimationCue1
 animationScene1.AnimationTime = 1.0
 animationScene1.PlayMode = 'Snap To TimeSteps'
 
-# initialize the animation scene
-
 # ----------------------------------------------------------------
 # restore active source
-SetActiveSource(solutionpvd)
+SetActiveSource(None)
 # ----------------------------------------------------------------
 
 
