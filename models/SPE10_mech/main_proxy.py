@@ -134,13 +134,13 @@ def run_geomech_proxy(case):
     z_min = 0.
     z_max = centroids[:, 2].max() + 3000.
     z_range = np.arange(z_min, z_max, 100)
-
+    m2mm = 1e3
     uz_thm = []
     uz_prx = []
     for z in z_range:
         point[2] = z
-        uz_thm.append(get_thm_solution(point))
-        uz_prx.append(get_proxy_solution(point))
+        uz_thm.append(get_thm_solution(point)*m2mm)
+        uz_prx.append(get_proxy_solution(point)*m2mm)
 
     from matplotlib import pyplot as plt
     plt.plot(uz_thm, z_range, label='uz_thm')
@@ -148,9 +148,9 @@ def run_geomech_proxy(case):
     plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
     plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
     plt.gca().invert_yaxis()
-    plt.xlabel('Vertical displacement, m.')
+    plt.xlabel('Vertical displacement, mm.')
     plt.ylabel('Depth, m.')
-    plt.title('Vertical displacement, m.')
+    plt.title('Vertical displacement, mm.')
     plt.legend()
     plt.grid()
     plt.savefig('U_z.png')
