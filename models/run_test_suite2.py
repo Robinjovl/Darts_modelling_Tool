@@ -97,6 +97,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
+    accepted_dirs += ['CCS']
+    if iter_solvers:  # run this case only for the build with iterative solvers
+        accepted_dirs += [ 'SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
