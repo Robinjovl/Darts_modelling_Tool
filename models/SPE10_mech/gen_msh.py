@@ -8,10 +8,11 @@ import gmsh
 import sys
 
 
+
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
                     fault_refinement_mult = 1.0, fault_angle : float = None, z_minus_hybrid = False, two_rocks = False,
-                    msh_ver=2.1, popup=False):
+                    msh_ver=2.1, popup=False, Xc=None, Yc=None, Zc=None):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size along X-axis
@@ -45,17 +46,11 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
         z = [0, lambda x_: a + x_ / np.tan(np.radians(fault_angle)), Z]
         lc_fault = lc * fault_refinement_mult
 
-    #field = False  # filed scale model, refined in the middle, coarse in surrounding, z up to the surface
-    field = True
-    if field:
-        #x = y = [-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000]
-        #z = [0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000]
-        x = y = [-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000]
-        z = [0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000]
-
-        # for debug
-        x = y = [-4000, -2000, -1000, 0, 1000, 2000, 4000]
-        z = [0, 1000, 2000, 2100, 2120, 3000]
+     # field scale model, refined in the middle, coarse in surrounding, z up to the surface
+    if Xc is not None:
+        x = Xc
+        y = Yc
+        z = Zc
 
         nx = len(x) - 1
         ny = len(y) - 1
@@ -108,7 +103,7 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     nz_mult = 1#refinement_mult
     NZ_F = [NZ] if len(z) == 1 else [NZ // 2, NZ // 2] # fault
 
-    if field:
+    if Xc is not None:
         NX_A = [1]*len(x)
         NY_A = [1]*len(y)
         NZ_F = [1]*len(z)

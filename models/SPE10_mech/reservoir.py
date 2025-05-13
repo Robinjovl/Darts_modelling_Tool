@@ -37,7 +37,40 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #return 273.15 + 10 + 30. / 1000 * depths
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
+
         self.mesh_filename = model_folder + '/spe10.msh'
+
+        generate_mesh = True
+        if generate_mesh:
+            tags = dict()
+            tags['BND_X-'] = 991
+            tags['BND_X+'] = 992
+            tags['BND_Y-'] = 993
+            tags['BND_Y+'] = 994
+            tags['BND_Z-'] = 995
+            tags['BND_Z-F'] = 997
+            tags['BND_Z+'] = 996
+            tags['MATRIX_1'] = 99991
+            tags['MATRIX_2'] = 99992
+
+            # 16x16
+            #self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+            # 22x22
+            self.Xc = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
+            # nz=12
+            #self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
+            #nz=60
+            self.Zc = np.arange(0, 3001, 50)
+
+            # for debug
+            #self.Xc = [-4000, -2000, -1000, 0, 1000, 2000, 4000]
+            #self.Zc = [0, 1000, 2000, 2100, 2120, 3000]
+
+            self.Yc = self.Xc
+            from gen_msh import generate_box_3d
+            generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags,
+                                       is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
+
         self.mesh_data = meshio.read(self.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
@@ -269,26 +302,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         y = centers[:, 1]
         z = centers[:, 2]
 
-        #xs = np.arange(x.min(), x.max(), (x.max()-x.min()) / self.nx)
-        #ys = np.arange(y.min(), y.max(), (y.max()-y.min()) / self.ny)
-        #zs = np.arange(z.min(), z.max(), (z.max()-z.min()) / self.nz)
-
-        # 16x16
-        #xs = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-        # 22x22
-        xs = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
-        zs = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
-
-        # for debug
-        xs = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
-        zs = np.array([0, 1000, 2000, 2100, 2120, 3000])
-
-        ys = xs
-
         # centers
-        xs = (xs[1:] + xs[:-1]) * 0.5
-        ys = (ys[1:] + ys[:-1]) * 0.5
-        zs = (zs[1:] + zs[:-1]) * 0.5
+        xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
+        ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
+        zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5
 
         centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
         centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
