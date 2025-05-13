@@ -108,7 +108,7 @@ def run_geomech_proxy(case):
     g = geomech()
     # just to set input data
     from model import Model
-    m = Model(model_folder='data_' + case, physics_type='single_phase', uniform_props=False)
+    m = Model(model_folder=case, physics_type='single_phase', uniform_props=False)
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
@@ -145,15 +145,16 @@ def run_geomech_proxy(case):
     from matplotlib import pyplot as plt
     plt.plot(uz_thm, z_range, label='uz_thm')
     plt.plot(uz_prx, z_range, label='uz_prx')
-    plt.axhline(y=m.reservoir.self.rsv_top, color='red', linestyle='--', label='rsv top')
-    plt.axhline(y=m.reservoir.self.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
+    plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
+    plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
     plt.gca().invert_yaxis()
     plt.xlabel('Vertical displacement, m.')
     plt.ylabel('Depth, m.')
     plt.title('Vertical displacement, m.')
     plt.legend()
     plt.grid()
-    plt.show()
+    plt.savefig('U_z.png')
+    #plt.show()
 
     # compare 1 point and print
     point[2] = 0. # surface
