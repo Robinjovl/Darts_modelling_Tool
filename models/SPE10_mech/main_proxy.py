@@ -88,7 +88,7 @@ def run_geomech_proxy(case):
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
 
-    msh_last    = read_vtk_darts_solution(folder=folder, timestep=20)
+    msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
 

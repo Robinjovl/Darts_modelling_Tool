@@ -156,7 +156,7 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    sim_time = 12
+    sim_time = 12 * size_report_step
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
@@ -244,11 +244,14 @@ if __name__ == '__main__':
                     is_finalize = True
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
-    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
-    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
-    run(model_folder='24_24_60', physics_type='single_phase', uniform_props=False)
+    #case='24_24_12'
+    case='24_24_60'
+
+    #run(model_folder=case, physics_type='single_phase', uniform_props=True)
+    run(model_folder=case, physics_type='single_phase', uniform_props=False)
+
     from main_proxy import run_geomech_proxy
-    run_geomech_proxy(case='24_24_60')
+    run_geomech_proxy(case=case)
 
     #run(model_folder='data_6_6_5', physics_type='single_phase', uniform_props=False)
 
