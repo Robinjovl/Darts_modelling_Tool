@@ -56,16 +56,10 @@ class Model(THMCModel):
                                     int(self.model_folder.split('_')[-1])
 
         # read properties
-        if self.uniform_props:
-            porosity = 0.375
-            permeability = 10.0 # [mD]
-            E = 10 # [GPa]
-            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
-        else:
-            porosity = 0.375
-            permeability = 10.0 # [mD]
-            E = 10 # [GPa]
-            p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
+        porosity = 0.375
+        permeability = 10.0 # [mD]
+        E = 10 # [GPa]
+        p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
 
         self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 

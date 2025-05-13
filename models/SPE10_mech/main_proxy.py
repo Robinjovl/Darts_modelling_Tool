@@ -145,6 +145,8 @@ def run_geomech_proxy(case):
     from matplotlib import pyplot as plt
     plt.plot(uz_thm, z_range, label='uz_thm')
     plt.plot(uz_prx, z_range, label='uz_prx')
+    plt.axhline(y=m.reservoir.self.rsv_top, color='red', linestyle='--', label='rsv top')
+    plt.axhline(y=m.reservoir.self.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
     plt.gca().invert_yaxis()
     plt.xlabel('Vertical displacement, m.')
     plt.ylabel('Depth, m.')
