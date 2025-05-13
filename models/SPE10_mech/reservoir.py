@@ -60,9 +60,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             # nz=12
             #self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
             #nz=60
-            self.Zc = np.linspace(0, 6000, num=61)
-            self.rsv_top = 2900
-            self.rsv_bottom = 3100
+            self.Zc = np.linspace(0, 3000, num=61)
+            self.rsv_top = 2100#2900
+            self.rsv_bottom = 2200#3100
 
             # for debug
             #self.Xc = [-4000, -2000, -1000, 0, 1000, 2000, 4000]

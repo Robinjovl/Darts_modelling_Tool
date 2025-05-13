@@ -56,7 +56,7 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
         ny = len(y) - 1
         nz = len(z) - 1
         suffix = str(nx) + '_' + str(ny) + '_' + str(nz)
-        folder = os.path.join('meshes', 'data_' + suffix)
+        folder = os.path.join('meshes', suffix)
         os.makedirs(folder, exist_ok=True)
         filename = os.path.join(folder, 'spe10.msh')
 

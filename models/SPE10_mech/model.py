@@ -51,9 +51,8 @@ class Model(THMCModel):
 
     def set_input_data(self):
         # figure out nx, ny, nz
-        self.nx, self.ny, self.nz = int(self.model_folder.split('_')[-3]), \
-                                    int(self.model_folder.split('_')[-2]), \
-                                    int(self.model_folder.split('_')[-1])
+        dims=os.path.basename(self.model_folder).split('_')
+        self.nx, self.ny, self.nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
 
         # read properties
         porosity = 0.375

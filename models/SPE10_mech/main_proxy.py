@@ -163,6 +163,7 @@ def run_geomech_proxy(case):
     print('THM   ', 'uz=', uz_thm, 'm.')
     print('Proxy ', 'uz=', uz_prx, 'm.')
 
-#run_geomech_proxy(case='6_6_5')
-#run_geomech_proxy(case='24_24_12')
-run_geomech_proxy(case='24_24_60')
+if __name__ == '__main__':
+    #run_geomech_proxy(case='6_6_5')
+    #run_geomech_proxy(case='24_24_12')
+    run_geomech_proxy(case='24_24_60')
