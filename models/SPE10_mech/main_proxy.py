@@ -158,11 +158,11 @@ def run_geomech_proxy(case):
 
     # compare 1 point and print
     point[2] = 0. # surface
-    uz_thm = get_thm_solution(point)
-    uz_prx = get_proxy_solution(point)
+    uz_thm = get_thm_solution(point)*m2mm
+    uz_prx = get_proxy_solution(point)*m2mm
     print('point ', point)
-    print('THM   ', 'uz=', uz_thm, 'm.')
-    print('Proxy ', 'uz=', uz_prx, 'm.')
+    print('THM   ', 'uz=', uz_thm, 'mm.')
+    print('Proxy ', 'uz=', uz_prx, 'mm.')
 
 if __name__ == '__main__':
     #run_geomech_proxy(case='6_6_5')
