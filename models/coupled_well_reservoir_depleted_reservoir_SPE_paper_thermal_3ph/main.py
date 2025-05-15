@@ -22,48 +22,10 @@ if 1:
     output_props = coupled_model.physics.property_operators[0].props_name
     coupled_model.output_to_vtk(ith_step=0, output_properties=output_props)   # saves initial conditions
 
-    time_steps = [1/24/60,   # 1 minute
-                  1.0001/24/30 - 1/24/60,   # 2 minute
-                  1/24/20 - 1.0001/24/30,   # 3 minute
-                  1.0001/24/12 - 1/24/20,   # 5 minute
-                  1.0001/24/6 - 1.0001/24/12,   # 10 minute
-                  1.00001/24/3 - 1.0001/24/6,   # 20 minute
-                  1/24/2 - 1.00001/24/3,   # 30 minute
-                  1/24/6*5 - 1.00001/24/2,   # 50 minute
-                  1/24 - 1.00001/24/6*5,   # 1 hour
-                  2/24 - 1.00001/24,   # 2 hour
-                  3/24 - 2.00001/24,   # 3 hour
-                  4.99/24 - 3.00001/24,   # 5 hour
-                  9.98/24 - 4.99/24,   # 10 hour
-                  1 - 9.98/24,   # 1 day
-                  2 - 1,   # 2 day
-                  3 - 2,   # 3 day
-                  5 - 3,   # 5 day
-                  10 - 5,   # 10 day
-                  19.99 - 10,   # 20 day
-                  30.002 - 19.99,   # 30 day
-                  49.99 - 30.002,   # 50 day
-                  100.02 - 49.99,   # 100 day
-                  200.001 - 100.02,   # 200 day
-                  365 - 200.001,   # 365 day
+    time_steps = [100/60/24/60,
                   ]
 
     for i, dt in enumerate(time_steps):
-        if i == 1:
-            coupled_model.params.max_ts = 2 / (24 * 60 * 60)
-        elif i == 2:
-            coupled_model.params.max_ts = 5 / (24 * 60 * 60)
-        elif i == 5:
-            coupled_model.params.max_ts = 10 / (24 * 60 * 60)
-        elif i == 7:
-            coupled_model.params.max_ts = 60 / (24 * 60 * 60)
-        elif i == 9:
-            coupled_model.params.max_ts = 600 / (24 * 60 * 60)
-        elif i == 11:
-            coupled_model.params.max_ts = 6000 / (24 * 60 * 60)
-        elif i == 16:
-            coupled_model.params.max_ts = 60000 / (24 * 60 * 60)
-
         coupled_model.run(dt)
         coupled_model.output_to_vtk(ith_step=i+1, output_properties=output_props)
 

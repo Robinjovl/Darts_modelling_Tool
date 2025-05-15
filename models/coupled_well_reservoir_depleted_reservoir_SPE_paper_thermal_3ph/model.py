@@ -36,27 +36,27 @@ class Model(CICDModel):
         self.set_physics()
 
         # If 0.1 is chosen as the max time step size, no stationary points will be observed, and the max NR iterations will be 3.
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=1/(24*60*60), tol_newton=1e-4, tol_linear=1e-4,
-                            it_newton=50, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.05/(24*60*60), tol_newton=1e-13, tol_linear=1e-4,
+                            it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
 
         # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
-        p_init_res = 21.383199   # from the pressure of the perforated segment of the wellbore
-        T_init_res = 371.90   # from the temperature of the perforated segment of the wellbore
+        p_init_res = 42.834068   # from the pressure of the perforated segment of the wellbore
+        T_init_res = 301.90   # from the temperature of the perforated segment of the wellbore
 
-        zCO2_init_res = self.zero
-        zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
-        for zC1 in zC1_range:
-            state = [p_init_res, zCO2_init_res, zC1, T_init_res]
-            self.physics.property_containers[0].compute_saturation_full(state)
-            if self.physics.property_containers[0].sat[self.physics.phases.index("aqueous")] < self.sw_init_res:
-                break
+        # zCO2_init_res = self.zero
+        # zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
+        # for zC1 in zC1_range:
+        #     state = [p_init_res, zCO2_init_res, zC1, T_init_res]
+        #     self.physics.property_containers[0].compute_saturation_full(state)
+        #     if self.physics.property_containers[0].sat[self.physics.phases.index("aqueous")] < self.sw_init_res:
+        #         break
 
-        self.initial_values = {self.physics.vars[0]: state[0],
-                               self.physics.vars[1]: state[1],
-                               self.physics.vars[2]: state[2],
-                               self.physics.vars[3]: state[3]
+        self.initial_values = {self.physics.vars[0]: p_init_res,
+                               self.physics.vars[1]: self.zero * 10,
+                               self.physics.vars[2]: T_init_res,
+                               # self.physics.vars[3]: state[3]
                                }
 
     def set_reservoir(self):
@@ -99,7 +99,7 @@ class Model(CICDModel):
         if 1:
             from nearwellbore import RadialStruct
             self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=permr, permz=permz, poro=poro,
-                                          R1=1000, logspace=True, depth=2850)    # depth is the depth of the top exterface of the reservoir
+                                          R1=1000, logspace=True, depth=850)    # depth is the depth of the top exterface of the reservoir
 
         else:
             from nearwellbore import RadialUnstruct
@@ -108,50 +108,78 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        components_names = ['CO2', 'C1', 'H2O']
-        h2o_idx = components_names.index('H2O')
-        phases_names = ['aqueous', 'gas', 'LCO2']    # Why are the results wrong if the list is like this: ['gas', 'aqueous', "LCO2"] the order based on flash order is important
+        components_names = ['CO2', 'C1']
+        # components_names = ['CO2', 'C1', 'H2O']
+        # h2o_idx = components_names.index('H2O')
+        # co2_idx = components_names.index('CO2')
+        phases_names = ['gas', 'LCO2']
+        # phases_names = ['gas', 'aqueous', 'LCO2']
         comp_data = CompData(components_names, setprops=True)
 
-        """ Activate physics """
-        self.physics = Compositional(components_names, phases_names, self.timer, thermal=True, n_points=1001,
-                                     min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
-                                     min_t=200, max_t=500)
-
-        """ Initialize flash """
         flash_params = FlashParams(comp_data)
-
-        # EoS-related parameters
         pr = CubicEoS(comp_data, CubicEoS.PR)
-        pr.set_preferred_roots(h2o_idx, 0.75, EoS.MAX)
-        aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                               AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                               })
-        aq.set_eos_range(h2o_idx, [0.6, 1.])
 
         flash_params.add_eos("PR", pr)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["AQ", "PR"]
+        flash_params.eos_order = ["PR"]
         flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
+        # flash_params.eos_params["PR"].rich_phase_order = [h2o_idx, co2_idx]
 
-        # Define initial guesses for stability + flash
         params = flash_params.eos_params["PR"]
         params.initial_guesses = [i for i in range(comp_data.nc)]
-        params.stability_tol = 1e-20
-        params.stability_switch_tol = 1e-2
+        params.stability_tol = 1e-8
+        params.stability_switch_tol = 1e-10
         params.stability_max_iter = 50
         params.use_gmix = False
-
-        params = flash_params.eos_params["AQ"]
-        params.initial_guesses = [h2o_idx]
-        params.stability_max_iter = 10
-        params.use_gmix = True
-
-        # Flash-related parameters
-        # flash_params.split_switch_tol = 1e-3
-        # flash_params.split_tol = 1e-14
         flash_params.comp_tol = 1e-2
-        # flash_params.verbose = True
+
+        self.physics = Compositional(components_names, phases_names, self.timer, thermal=True, n_points=10000,
+                                     min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
+                                     min_t=150, max_t=500)
+
+        # components_names = ['CO2', 'C1', 'H2O']
+        # h2o_idx = components_names.index('H2O')
+        # phases_names = ['aqueous', 'gas', 'LCO2']    # Why are the results wrong if the list is like this: ['gas', 'aqueous', "LCO2"] the order based on flash order is important
+        # comp_data = CompData(components_names, setprops=True)
+        #
+        # """ Activate physics """
+        # self.physics = Compositional(components_names, phases_names, self.timer, thermal=True, n_points=10000,
+        #                              min_p=1, max_p=500, min_z=self.zero / 10, max_z=1 - self.zero / 10,
+        #                              min_t=150, max_t=500)
+        #
+        # """ Initialize flash """
+        # flash_params = FlashParams(comp_data)
+        #
+        # # EoS-related parameters
+        # pr = CubicEoS(comp_data, CubicEoS.PR)
+        # pr.set_preferred_roots(h2o_idx, 0.75, EoS.MAX)
+        # aq = AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
+        #                        AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
+        #                        })
+        # aq.set_eos_range(h2o_idx, [0.6, 1.])
+        #
+        # flash_params.add_eos("PR", pr)
+        # flash_params.add_eos("AQ", aq)
+        # flash_params.eos_order = ["AQ", "PR"]
+        # flash_params.eos_params["PR"].root_order = [EoS.MAX, EoS.MIN]
+        #
+        # # Define initial guesses for stability + flash
+        # params = flash_params.eos_params["PR"]
+        # params.initial_guesses = [i for i in range(comp_data.nc)]
+        # params.stability_tol = 1e-8
+        # params.stability_switch_tol = 1e-10
+        # params.stability_max_iter = 50
+        # params.use_gmix = False
+        #
+        # params = flash_params.eos_params["AQ"]
+        # params.initial_guesses = [h2o_idx]
+        # params.stability_max_iter = 10
+        # params.use_gmix = True
+        #
+        # # Flash-related parameters
+        # # flash_params.split_switch_tol = 1e-3
+        # # flash_params.split_tol = 1e-14
+        # flash_params.comp_tol = 1e-2
+        # # flash_params.verbose = True
 
         """ PropertyContainer object and correlations """
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, min_z=self.zero / 10,
@@ -161,10 +189,12 @@ class Model(CICDModel):
 
         property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                               ('LCO2', EoSDensity(eos=pr, Mw=comp_data.Mw)),
-                                              ('aqueous', Garcia2001(components_names)), ])
+                                              # ('aqueous', Garcia2001(components_names)),
+                                              ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
                                                 ('LCO2', Fenghour1998()),
-                                                ('aqueous', Islam2012(components_names)), ])
+                                                # ('aqueous', Islam2012(components_names)),
+                                                ])
 
         # diff = 8.64e-6
         # property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(len(components_names)) * diff)),
@@ -173,17 +203,20 @@ class Model(CICDModel):
 
         property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr)),
                                                ('LCO2', EoSEnthalpy(eos=pr)),
-                                               ('aqueous', EoSEnthalpy(eos=aq)), ])
+                                               # ('aqueous', EoSEnthalpy(eos=pr)),
+                                               ])
 
         property_container.conductivity_ev = dict([('gas', ConstFunc(10.)),
                                                    ('LCO2', ConstFunc(10.)),
-                                                   ('aqueous', ConstFunc(180.)), ])
+                                                   # ('aqueous', ConstFunc(180.)),
+                                                   ])
 
         self.sw_init_res = 0.25
         swc = self.sw_init_res
         property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas", swc=swc, sgr=swc, n=1.5)),
                                                ('LCO2', PhaseRelPerm("oil", swc=swc, sgr=swc, n=1.5)),
-                                               ('aqueous', PhaseRelPerm("wat", swc=swc, sgr=swc, n=4))])
+                                               # ('aqueous', PhaseRelPerm("wat", swc=swc, sgr=swc, n=4))
+                                               ])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
 
@@ -207,7 +240,7 @@ class Model(CICDModel):
         well_1_ms_type = ms_well.MS_Type.DFM
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = 50 * np.ones(60)  # From top to bottom of the wellbore
+        well_1_segments_lengths = 50 * np.ones(20)  # From top to bottom of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0.  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5
@@ -216,12 +249,12 @@ class Model(CICDModel):
                                        well_1_wall_roughness, verbose)
 
         #%% Set initial conditions in the pipe using SingleAmbientTemperature
-        pipe_head_pressure = 18  # bar
-        pipe_head_temperature = 25 + 273.15  # Kelvin
+        pipe_head_pressure = 40  # bar
+        pipe_head_temperature = 5 + 273.15  # Kelvin
         temp_grad = 0.025  # deg C/meter
         pipe_head_segment_index = 0  # index starts from zero
 
-        initial_conditions_dict = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - 2 * self.zero, self.zero]],
+        initial_conditions_dict = {'phases_names': ['gas'], 'phases_compositions': [[self.zero, 1 - self.zero]],
                                    'pipe_intervals': [[0, well_1_geometry.pipe_length]]}  # 0 is the beginning of the pipe and pipe_intervals are TVD
 
         well_1_initial_conditions = LinearAmbientTemperature(well_1_name, well_1_geometry, self.physics,
@@ -234,7 +267,7 @@ class Model(CICDModel):
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with a single perforation
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=60, well_ID=well_1_geometry.pipe_ID)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 3), well_seg_idx=well_1_geometry.num_segments, well_ID=well_1_geometry.pipe_ID)
 
         # Add lateral heat exchange
         # Import rock data from the library
@@ -252,51 +285,17 @@ class Model(CICDModel):
                                                                verbose=verbose)
         self.wells["I1"].lateral_heat_flux = well_1_lateral_heat_transfer
 
-    def set_well_controls(self):
-        # The following dict will be used in set_rhs_flux and PipeVelocityEvaluator
-        inj_segment_idx = 0
-        inj_rate = 58895.98   # kmol/day
-        inj_comp = np.array([1.0 - 2 * self.zero, self.zero, self.zero])
-        self.wells["I1"].source_props = {"segment_idx_source": inj_segment_idx, "rate_source": inj_rate, "comp_source": inj_comp}
+        self.reservoir.large_wellhead_volume = {well_1_name: {"flag": True,
+                                                              "volume": 1e20,
+                                                              "pressure": 60, # 52
+                                                              "composition": [1 - 2 * self.zero],
+                                                              "temperature": 273.15 + 15}}
 
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        inj_segment_idx = self.wells["I1"].source_props["segment_idx_source"]
-
-        # Calc ramp-up injection rate
-        ramp_up_period = 4 / (24 * 60)   # 4 minutes
-        inj_rate = self.calc_ramp_up_rate(self.wells["I1"].source_props["rate_source"], ramp_up_period, t)
-
-        inj_comp = self.wells["I1"].source_props["comp_source"]
-        inj_flux = inj_rate * inj_comp
-
-        injected_fluid_pressure = 20
-        injected_fluid_temperature = (35 + 273.15) * Kelvin()
-        injected_fluid_mole_fractions = inj_comp
-
-        # injected_fluid_specific_enthalpy = self.physics.property_containers[0].enthalpy_ev['gas'].evaluate(
-        #     injected_fluid_pressure,
-        #     injected_fluid_temperature,
-        #     injected_fluid_mole_fractions)  # Constant injection specific enthalpy
-        injected_fluid_specific_enthalpy = - 2000   # Now you can use a lower injected specific enthalpy for CO2
-        injected_heat_rate = inj_rate * injected_fluid_specific_enthalpy
-        inj_flux = np.append(inj_flux, injected_heat_rate)
-
-        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_flux   # inflow (e.g., injection) becomes minus for rhs
-
-        return rhs_flux
-
-    def calc_ramp_up_rate(self, target_rate, ramp_up_period, simulation_time) -> float:
-
-        if simulation_time == 0:
-            rate = (self.params.first_ts / ramp_up_period) * target_rate
-        elif simulation_time < ramp_up_period:
-            rate = ((simulation_time + self.params.first_ts) / ramp_up_period) * target_rate
-        else:
-            rate = target_rate
-
-        return rate
+        # self.reservoir.large_wellhead_volume = {well_1_name: {"flag": True,
+        #                                                       "volume": 1e20,
+        #                                                       "pressure": 80,
+        #                                                       "composition": [1 - 2 * self.zero],
+        #                                                       "temperature": 273.15 + 35}}
 
     def plot(self, output_properties: list, fig=None, lims: dict = None, i: int = -1):
         output_data = self.output_properties()
