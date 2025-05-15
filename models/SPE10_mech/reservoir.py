@@ -42,6 +42,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         generate_mesh = True
         if generate_mesh:
+            print('Mesh generation started')
             tags = dict()
             tags['BND_X-'] = 991
             tags['BND_X+'] = 992
@@ -53,16 +54,21 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             tags['MATRIX_1'] = 99991
             tags['MATRIX_2'] = 99992
 
+            self.rsv_top = 2100
+            self.rsv_bottom = 2200
+
             # 16x16
             #self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
             # 22x22
-            self.Xc = np.array([-4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000])
+            self.Xc = np.array([-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000])
+            # 41x41
+            #rsv = np.arange(-900, 1000, 200)
+            #side = np.arange(1000, 6500, 1000)
+            #self.Xc = np.hstack([-side, rsv, side])
             # nz=12
             #self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
             #nz=60
             self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
-            self.rsv_top = 2100#2900
-            self.rsv_bottom = 2200#3100
 
             # for debug
             #self.Xc = [-4000, -2000, -1000, 0, 1000, 2000, 4000]
@@ -72,9 +78,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags,
                                        is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
+            print('Mesh generation finished')
 
+        print('Mesh reading...')
         self.mesh_data = meshio.read(self.mesh_filename)
-
+        print('Init reservoir...')
         self.set_uniform_initial_conditions(idata=idata)
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
@@ -110,6 +118,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_interface_approximations()
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
+        print('Init reservoir finished')
 
     def set_boundary_conditions(self, idata: InputData):
         self.boundary_conditions = {}

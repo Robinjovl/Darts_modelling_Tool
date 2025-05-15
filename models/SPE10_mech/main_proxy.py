@@ -128,36 +128,41 @@ def run_geomech_proxy(case):
         uz_proxy = upz1[0]
         return uz_proxy
 
-    point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point
+    def compare_vert_line(z_min, z_max, suffix, z_step=100):
+        z_range = np.arange(z_min, z_max+1., z_step)
+        uz_thm = []
+        uz_prx = []
+        for z in z_range:  # use XY from point and different Z
+            point[2] = z
+            uz_thm.append(get_thm_solution(point) * m2mm)
+            uz_prx.append(get_proxy_solution(point) * m2mm)
 
-    # compare 1 line along z-axis
-    z_min = 0.
-    z_max = centroids[:, 2].max() + 3000.
-    z_range = np.arange(z_min, z_max, 100)
+        from matplotlib import pyplot as plt
+        plt.plot(uz_thm, z_range, label='uz_thm')
+        plt.plot(uz_prx, z_range, label='uz_prx')
+        plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
+        plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
+        plt.gca().invert_yaxis()
+        plt.xlabel('Vertical displacement, mm.')
+        plt.ylabel('Depth, m.')
+        plt.title('Vertical displacement, mm.')
+        plt.legend()
+        plt.grid()
+        plt.savefig('U_z_' + suffix + '.png')
+        plt.close()
+
+    point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point of the mesh
     m2mm = 1e3
-    uz_thm = []
-    uz_prx = []
-    for z in z_range:
-        point[2] = z
-        uz_thm.append(get_thm_solution(point)*m2mm)
-        uz_prx.append(get_proxy_solution(point)*m2mm)
 
-    from matplotlib import pyplot as plt
-    plt.plot(uz_thm, z_range, label='uz_thm')
-    plt.plot(uz_prx, z_range, label='uz_prx')
-    plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
-    plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
-    plt.gca().invert_yaxis()
-    plt.xlabel('Vertical displacement, mm.')
-    plt.ylabel('Depth, m.')
-    plt.title('Vertical displacement, mm.')
-    plt.legend()
-    plt.grid()
-    plt.savefig('U_z.png')
-    #plt.show()
+    # compare U-Z at a line along z-axis
+    z_min = 0.
+    z_max = centroids[:, 2].max() #+ 1000.
+    compare_vert_line(z_min, z_max, 'all')
+
+    compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., 'rsv')
 
     # compare 1 point and print
-    point[2] = 0. # surface
+    point[2] = 0. # at the surface (depth=0)
     uz_thm = get_thm_solution(point)*m2mm
     uz_prx = get_proxy_solution(point)*m2mm
     print('point ', point)
@@ -167,4 +172,5 @@ def run_geomech_proxy(case):
 if __name__ == '__main__':
     #run_geomech_proxy(case='6_6_5')
     #run_geomech_proxy(case='24_24_12')
-    run_geomech_proxy(case='24_24_60')
+    #run_geomech_proxy(case='24_24_60')
+    run_geomech_proxy(case = '28_28_60')  # 6x2 km XY, 6 km Z

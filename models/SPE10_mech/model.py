@@ -197,6 +197,7 @@ class Model(THMCModel):
 
     def set_wells(self):
         #return
+        #well_init_depth = (self.rsv_bottom + self.rsv_top) * 0.5
         well_init_depth = 2150.
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]

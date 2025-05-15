@@ -244,14 +244,18 @@ if __name__ == '__main__':
                     is_finalize = True
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
-    #case='24_24_12'
-    case='24_24_60'
+    #case = '24_24_12'
+    #case = '24_24_60'  # 4x2 km XY, 6 km Z
+    case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '21_21_60' # assert r2>0
+    #case = '40_40_60' # 'bad allocation' error
 
     #run(model_folder=case, physics_type='single_phase', uniform_props=True)
     run(model_folder=case, physics_type='single_phase', uniform_props=False)
 
     from main_proxy import run_geomech_proxy
     run_geomech_proxy(case=case)
+    print('case', case, 'done')
 
     #run(model_folder='data_6_6_5', physics_type='single_phase', uniform_props=False)
 
