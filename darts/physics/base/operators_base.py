@@ -25,7 +25,7 @@ class OperatorsBase(operator_set_evaluator_iface):
     def apply_extrapolation(self, state, values):
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1:self.nc], 1 - np.sum(state[1:self.nc]))
-        if zc[-1] < -self.min_z / 10:
+        if zc[-1] < -1e-12 / 10:
             self.extrapolate(state, values)
             return 1
         else:
@@ -33,102 +33,153 @@ class OperatorsBase(operator_set_evaluator_iface):
 
     def extrapolate(self, state, values):
         """
-        Extrapolates the operator value at (z1, z2) using known valid ref points.
-        Should be called when z3 < self.min_z (i.e., unphysical composition).
+        When ∑z_i > 1 (or some z_i < 0), fit a hyperplane through nearby valid points
+        in the d = (n_comps)-dimensional z-space and use it to extrapolate all n_ops operators.
 
-        Parameters:
-            z1, z2    : coordinates (compositions) at current point
-            op_index  : which operator to extrapolate (e.g., DELTA index)
+        State layout: [ p, z₁, z₂, …, z_d, T ]
         """
-        vec_state = state.to_numpy()
-        z1 = vec_state[1]
-        z2 = vec_state[2]
-        p = vec_state[0]
-        T = vec_state[3]
-        # dz = self.min_z
-        # dz = (1.+self.min_z*10)/200
-        dz = abs(1 - z1 - z2)
+        vec = state.to_numpy()
+        p, T = vec[0], vec[-1]
+        z = vec[1:-1]  # array of length d
+        dz = abs(1.0 - z.sum())  # “distance” outside the simplex
+        d = z.size
 
-        # vec_values = values.to_numpy()
+        # build candidate reference points: d of them by subtracting dz along each axis,
+        # plus one extra “diagonal” point
         vec_values = np.array(values, copy=False)
-        ref_points = [
-            (z1 - dz, z2),
-            (z1 - dz, z2 - dz),
-            (z1, z2 - dz),
-            (z1 - dz / 2, z2 - dz / 2)
-        ]
+        cand = []
+        for i in range(d):
+            zp = z.copy()
+            zp[i] -= dz
+            cand.append(zp)
+        cand.append(z - dz / d)  # diagonal
+        cand.append(z - dz)
 
-        A = []
-        B = []
+        A_rows = []
+        B_rows = []
+        # gather only the valid ones (0 ≤ ∑z ≤ 1 and each z_i ≥ 0)
+        for zp in cand:
+            if (zp >= 0).all() and zp.sum() <= 1.0:
+                # make a DARTS state with this composition
+                ref_state = value_vector(np.concatenate(([p], zp, [T])))
+                ref_vals = value_vector(np.zeros(self.n_ops))
+                # evaluate your normal operator function
+                self.evaluate(ref_state, ref_vals)
 
-        for ref_z1, ref_z2 in ref_points:
-            # for rz1, rz2 in ref_points:
-            #     rz3 = 1.0 - rz1 - rz2
-            #     if rz1 < 0 or rz2 < 0 or rz3 < 0:
-            #         continue  #  skip bad ref point
-            rz3 = 1.0 - ref_z1 - ref_z2
-            if ref_z1 < 0 or ref_z2 < 0 or rz3 < 0:
-                continue
-            ref_state_np = np.array([p, ref_z1, ref_z2, T])
-            ref_state = value_vector(ref_state_np)
-            ref_values = value_vector(np.zeros(self.n_ops))
+                A_rows.append(np.concatenate((zp, [1.0])))  # [z₁, …, z_d, 1]
+                B_rows.append(ref_vals.to_numpy())  # shape (n_ops,)
 
-            self.evaluate(ref_state, ref_values)
-            # comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
+        A = np.vstack(A_rows)  # shape (M, d+1)
+        B = np.vstack(B_rows)  # shape (M, n_ops)
 
-            # comp = np.array([ref_z1, ref_z2, 1])
-            # A.append(list(comp/np.sum(comp)))
-            A.append([ref_z1, ref_z2, 1])
-            B.append(ref_values.to_numpy())
+        # solve A · C = B in a least-squares sense → C has shape (d+1, n_ops)
+        C, *_ = np.linalg.lstsq(A, B, rcond=None)
 
-            # A.append([ref_z1, ref_z2, 1.0])
-            # b_matrix.append(ref_val.to_numpy())
-            # acc_flux_itor = self.property.acc_flux_itor
-            # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
-            # # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
-            # ref_operator_vectors.append(ref_val.to_numpy())
-        # # Fit plane per operator
-        # A = np.array(A)
-        # b_matrix = np.array(b_matrix)
-        # Fit linear plane to each operator across z1/z2
-        A = np.array(A)
-        B = np.array(B)  # shape: (3, n_ops)
-        coeffs = np.linalg.lstsq(A, B, rcond=None)[0]  # shape: (3, n_ops)
-
-        # # Fit plane for each operator
-        # coeffs = np.linalg.lstsq(A, b_matrix, rcond=None)[0]
-        # extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
-        # Evaluate extrapolated operator values
-        extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
-        # 1) Get the raw numpy array backing your DARTS `values`
-        # out = values.to_numpy()
-        #
-        # # 2) Copy your extrapolated operators directly into it
-        # out[:] = extrapolated
-        # print("extrapolated", extrapolated)
-
-        # vec_extrapolated = extrapolated.to_numpy()
-
-        # values[:] = extrapolated
-        # values.copy_from(value_vector(extrapolated))
-        for i, value in enumerate(extrapolated):
+        # now extrapolate at our original z:  ext = z·C[0:d,:] + C[d,:]
+        ext = z.dot(C[:d, :]) + C[d, :]  # shape (n_ops,)
+        for i, value in enumerate(ext):
             vec_values[i] = np.float64(value)
-
-        # values.copy_from(value_vector(extrapolated.tolist()))
-        # values_np = values.to_numpy()
-        # values_np[:] = extrapolated
-        # # A = np.column_stack([
-        #     [pt[0] for pt in ref_points],
-        #     [pt[1] for pt in ref_points],
-        #     np.ones(len(ref_points))
-        # ])
-        # v_np = values.to_numpy()
-        # for op in range(self.n_ops):
-        #     b = np.array([rv[op] for rv in ref_values])
-        #     coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
-        #     v_np[op] = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+        # copy into the DARTS values vector
 
         return vec_values
+    # def extrapolate(self, state, values):
+    #     """
+    #     Extrapolates the operator value at (z1, z2) using known valid ref points.
+    #     Should be called when z3 < self.min_z (i.e., unphysical composition).
+    #
+    #     Parameters:
+    #         z1, z2    : coordinates (compositions) at current point
+    #         op_index  : which operator to extrapolate (e.g., DELTA index)
+    #     """
+    #     vec_state = state.to_numpy()
+    #     z1 = vec_state[1]
+    #     z2 = vec_state[2]
+    #     p = vec_state[0]
+    #     T = vec_state[3]
+    #     # dz = self.min_z
+    #     # dz = (1.+self.min_z*10)/200
+    #     dz = abs(1 - z1 - z2)
+    #
+    #     # vec_values = values.to_numpy()
+    #     vec_values = np.array(values, copy=False)
+    #     ref_points = [
+    #         (z1 - dz, z2),
+    #         (z1 - dz, z2 - dz),
+    #         (z1, z2 - dz),
+    #         (z1 - dz / 2, z2 - dz / 2)
+    #     ]
+    #
+    #     A = []
+    #     B = []
+    #
+    #     for ref_z1, ref_z2 in ref_points:
+    #         # for rz1, rz2 in ref_points:
+    #         #     rz3 = 1.0 - rz1 - rz2
+    #         #     if rz1 < 0 or rz2 < 0 or rz3 < 0:
+    #         #         continue  #  skip bad ref point
+    #         rz3 = 1.0 - ref_z1 - ref_z2
+    #         if ref_z1 < 0 or ref_z2 < 0 or rz3 < 0:
+    #             continue
+    #         ref_state_np = np.array([p, ref_z1, ref_z2, T])
+    #         ref_state = value_vector(ref_state_np)
+    #         ref_values = value_vector(np.zeros(self.n_ops))
+    #
+    #         self.evaluate(ref_state, ref_values)
+    #         # comp = np.array([ref_z1, ref_z2, 1-ref_z1-ref_z2+self.min_z])
+    #
+    #         # comp = np.array([ref_z1, ref_z2, 1])
+    #         # A.append(list(comp/np.sum(comp)))
+    #         A.append([ref_z1, ref_z2, 1])
+    #         B.append(ref_values.to_numpy())
+    #
+    #         # A.append([ref_z1, ref_z2, 1.0])
+    #         # b_matrix.append(ref_val.to_numpy())
+    #         # acc_flux_itor = self.property.acc_flux_itor
+    #         # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+    #         # # acc_flux_itor[0].evaluate_with_derivatives(ref_state, indices, ref_val, ref_dval)
+    #         # ref_operator_vectors.append(ref_val.to_numpy())
+    #     # # Fit plane per operator
+    #     # A = np.array(A)
+    #     # b_matrix = np.array(b_matrix)
+    #     # Fit linear plane to each operator across z1/z2
+    #     A = np.array(A)
+    #     B = np.array(B)  # shape: (3, n_ops)
+    #     coeffs = np.linalg.lstsq(A, B, rcond=None)[0]  # shape: (3, n_ops)
+    #
+    #     # # Fit plane for each operator
+    #     # coeffs = np.linalg.lstsq(A, b_matrix, rcond=None)[0]
+    #     # extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+    #     # Evaluate extrapolated operator values
+    #     extrapolated = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]  # shape: (n_ops,)
+    #     # 1) Get the raw numpy array backing your DARTS `values`
+    #     # out = values.to_numpy()
+    #     #
+    #     # # 2) Copy your extrapolated operators directly into it
+    #     # out[:] = extrapolated
+    #     # print("extrapolated", extrapolated)
+    #
+    #     # vec_extrapolated = extrapolated.to_numpy()
+    #
+    #     # values[:] = extrapolated
+    #     # values.copy_from(value_vector(extrapolated))
+    #     for i, value in enumerate(extrapolated):
+    #         vec_values[i] = np.float64(value)
+    #
+    #     # values.copy_from(value_vector(extrapolated.tolist()))
+    #     # values_np = values.to_numpy()
+    #     # values_np[:] = extrapolated
+    #     # # A = np.column_stack([
+    #     #     [pt[0] for pt in ref_points],
+    #     #     [pt[1] for pt in ref_points],
+    #     #     np.ones(len(ref_points))
+    #     # ])
+    #     # v_np = values.to_numpy()
+    #     # for op in range(self.n_ops):
+    #     #     b = np.array([rv[op] for rv in ref_values])
+    #     #     coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
+    #     #     v_np[op] = coeffs[0] * z1 + coeffs[1] * z2 + coeffs[2]
+    #
+    #     return vec_values
 
 
 class WellControlOperators(OperatorsBase):
