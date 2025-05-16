@@ -296,7 +296,7 @@ def run(specs):
 #%%
 
 """Define realization ID"""
-nx = 840
+nx = 840//3
 nz = 120
 zero = 1e-10
 model_specs = [
