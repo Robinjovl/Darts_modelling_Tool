@@ -36,6 +36,7 @@ void pybind_operator_set_interpolator_super(py::module &m)
   expose_recursive_exposer<
     /*  engine_super_*
         N_OPS = NC * (2 * NP + 2) + 4 * NP + 3
+        N_OPS = (NC - 1) * (2 * NP + 2) + 4 * NP + 3
     */
 
     // NP = 1: A =  4, B =  7 (th)
@@ -43,6 +44,7 @@ void pybind_operator_set_interpolator_super(py::module &m)
 
     // NP = 2: A =  6, B = 11 (th)
     ABPair<6, 11>,    // thermal problem, two phase
+    ABPair<6, 5>,    // thermal problem, two phase
 
     // NP = 3: A =  8, B = 15 (th) ???
     ABPair<8, 15>,    // Three phase thermal

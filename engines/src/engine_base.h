@@ -259,6 +259,9 @@ public:
 	  }
 	};
 	
+	virtual void extract_Xop();
+	virtual void extract_xop_ders();
+
 	/// @} // end of Methods
 
 	// properties
@@ -348,6 +351,9 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+	std::vector<value_t> sg_max;			// [n_block] maximum gas saturations for hysteresis in capillary curves
+	std::vector<value_t> Xop;
+	std::vector<value_t> xop_ders_arr;
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -876,6 +882,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	//Xn.resize (n_vars * mesh->n_blocks);
 	RHS.resize(n_vars * mesh->n_blocks);
 	dX.resize(n_vars * mesh->n_blocks);
+	sg_max.resize(mesh->n_blocks);
+	std::fill(sg_max.begin(), sg_max.end(), (int)1);
 
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
@@ -916,8 +924,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
+	extract_Xop();
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, xop_ders_arr);
+	extract_xop_ders();
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();

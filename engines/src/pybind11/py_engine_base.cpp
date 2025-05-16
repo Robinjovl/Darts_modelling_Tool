@@ -22,6 +22,7 @@ void pybind_engine_base (py::module &m)
 		.def("post_newtonloop", &engine_base::post_newtonloop, py::call_guard<py::gil_scoped_release>())  \
 		.def("solve_linear_equation", &engine_base::solve_linear_equation, py::call_guard<py::gil_scoped_release>())  \
 		.def_readwrite("X", &engine_base::X) \
+		.def_readwrite("Xop", &engine_base::Xop) \
 		.def_readwrite("Xn", &engine_base::Xn) \
 		.def_readwrite("RHS", &engine_base::RHS) \
 		.def_readwrite("t", &engine_base::t) \
@@ -45,6 +46,7 @@ void pybind_engine_base (py::module &m)
 		.def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
 		.def_readwrite("molar_weights", &engine_base::molar_weights) \
 		.def_readwrite("dispersivity", &engine_base::dispersivity) \
+		.def_readwrite("sg_max", &engine_base::sg_max) \
 		.def_readwrite("newton_update_coefficient", &engine_base::newton_update_coefficient) \
 		.def_readwrite("e_dim", &engine_base::e_dim) \
 		.def_readwrite("p_dim", &engine_base::p_dim) \
