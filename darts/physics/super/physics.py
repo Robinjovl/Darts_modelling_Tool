@@ -136,7 +136,7 @@ class Compositional(PhysicsBase):
         return
 
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray]):
+                                                input_depth: Union[list, np.ndarray], global_to_local=None):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
@@ -144,6 +144,7 @@ class Compositional(PhysicsBase):
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
         :param input_depth: Array of depths over which depth table has been specified
+        :param global_to_local: array of indices mapping to active elements
         """
         # Assertions of consistent depth table specification
         assert np.all([variable in input_distribution.keys() for variable in self.vars[1:self.nc]]), \
@@ -159,6 +160,8 @@ class Compositional(PhysicsBase):
 
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)[:mesh.n_res_blocks]
+        if global_to_local is not None:
+            depths = depths[global_to_local]
 
         # adjust the size of initial_state array in c++
         mesh.initial_state.resize(mesh.n_res_blocks * self.n_vars)

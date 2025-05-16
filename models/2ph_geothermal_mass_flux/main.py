@@ -66,6 +66,7 @@ def run_darts(mode):
             time_data_df = pd.DataFrame.from_dict(time_data_dict)
             time_data_df.plot(x='time', y=['well_P1_BHP'])
             time_data_df.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
+            #plt.show()
             plt.close()
 
         Xn = np.array(n.physics.engine.X, copy=False)

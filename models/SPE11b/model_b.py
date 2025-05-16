@@ -76,7 +76,7 @@ class Model(DartsModel):
     def set_well_controls(self):
         if self.specs['RHS'] is False:
             for i, w in enumerate(self.reservoir.wells):
-                self.physics.set_well_controls(well = w,
+                self.physics.set_well_controls(wctrl = w.control,
                                                control_type = well_control_iface.MASS_RATE,
                                                is_inj = True,
                                                target = self.inj_rate[i],

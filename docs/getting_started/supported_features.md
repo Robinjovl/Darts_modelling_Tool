@@ -1,3 +1,5 @@
+# Supported features
+
 There is a list of supported/non-supported features:
 
 * Configurations/parallelization:

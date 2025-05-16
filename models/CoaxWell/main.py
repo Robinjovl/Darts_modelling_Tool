@@ -11,10 +11,10 @@ m.init()
 m.set_output()
 m.output.output_to_vtk(ith_step = 0, engine = True)
 
-m.run(365/10)
+m.run(365)
 m.print_timers()
 m.print_stat()
-m.output.output_to_vtk(ith_step = 1, engine = True)
+m.output.output_to_vtk(ith_step = 1, engine = False)
 
 ########################################### SAJJAD, PLS UPDATE THE RATE CALCULATORS
 # # compute well time data

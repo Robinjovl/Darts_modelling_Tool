@@ -1,4 +1,4 @@
-# How is built openDARTS?
+# How is built open-DARTS?
 
 The source code of openDARTS is located in a repository hosted in [gitlab.com](https://gitlab.com/open-darts/open-darts) and is built and tested automatically via continuous integration / continuous deployment (CI/CD) service. openDARTS is a python package with binary extensions, built from C++/OpenMP/CUDA code. The python part of openDARTS is located in the folder *darts*. The extension engines lives in the folder *engines*.
 

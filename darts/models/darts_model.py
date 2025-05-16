@@ -130,11 +130,13 @@ class DartsModel:
 
         self.set_op_list()
         self.set_boundary_conditions()
+        self.set_well_controls()
+
         self.restart = restart
+
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         if restart is False:
             self.set_initial_conditions()
-            self.set_well_controls()
             self.reset()
         self.data_ts.print()
 

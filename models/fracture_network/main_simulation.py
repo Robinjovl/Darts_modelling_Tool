@@ -61,21 +61,22 @@ def run_simulation(idata : InputData, platform : str ='cpu'):
 
     if 0:
         # old C++ timedata
-        time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
-        time_data['Time (years)'] = time_data['time'] / 365.
+        time_data_df = pd.DataFrame.from_dict(m.physics.engine.time_data)
 
-        pkl_fname = os.path.join(output_directory, 'time_data.pkl')
-        pickle.dump(time_data, open(pkl_fname, 'wb'))
     else:
         # compute well time data
         time_data_dict = m.output.store_well_time_data()
-
-        # save well time data
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
-        writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
-        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
-        writer.close()
+
+    time_data_df['Time[years]'] = time_data_df['time'] / 365.
+
+    # save well time data
+    time_data_df.to_pickle(os.path.join(m.output_folder, "well_time_data.pkl"))  # as a pickle file
+
+    writer = pd.ExcelWriter(os.path.join(m.output_folder, "well_time_data.xlsx"))  # as an excel file
+    time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
+    writer.close()
+
     return m
 
 if __name__ == "__main__":

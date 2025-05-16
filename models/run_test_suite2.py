@@ -52,6 +52,26 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                 test_args_mech_spe10.append([mesh, physics])
         test_args_mech += [test_args_mech_spe10]
 
+        test_dirs_mech += ['displaced_fault_reactivation']
+        test_args_fault = []
+        config = {'mode': 'quasi_static',
+                  'timesteps': [1.0],
+                  'depletion': {'mode': 'uniform', 'value': -250.0},
+                  'friction_law': 'static',
+                  'mesh_file': 'meshes/new_setup_coarse.geo',
+                  'cache_discretizer': False}
+        config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+        test_args_fault += [config]
+        config = {'mode': 'quasi_static',
+                  'timesteps': [1.0],
+                  'depletion': {'mode': 'uniform', 'value': -172.4},  # -172.685 is more precise, requires finer mesh
+                  'friction_law': 'slip_weakening',
+                  'mesh_file': 'meshes/new_setup_coarse.geo',
+                  'cache_discretizer': False}
+        config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+        test_args_fault += [config]
+        test_args_mech += [test_args_fault]
+
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']

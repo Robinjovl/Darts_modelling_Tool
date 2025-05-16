@@ -62,8 +62,6 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     if ret != 0:
         exit(1)
 
-    m.reservoir.centers_to_vtk(out_dir)
-
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     m.print_timers()
 
@@ -84,6 +82,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m.reservoir.create_vtk_wells(output_directory=out_dir)
         for ith_step in range(len(m.idata.sim.time_steps)+1):
             m.output.output_to_vtk(ith_step=ith_step, output_properties=output_properties)
+
+        m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
@@ -119,7 +119,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    m.output.store_well_time_data()
+    m.output.store_well_time_data(save_as_pkl=True)
     m.output.plot_well_time_data()
 
     if compare_with_ref:
@@ -269,8 +269,7 @@ if __name__ == '__main__':
     #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
-    #cases_list += ['case_40x40x10']
-    #cases_list += ['brugge']
+    cases_list += ['case_40x40x10']
 
     well_controls = []
     well_controls += ['wrate']

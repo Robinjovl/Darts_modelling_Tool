@@ -29,7 +29,9 @@ class ModelDeadOil(Model_CPG):
             input_distribution = {'pressure': [P_at_surface, P_at_surface + input_depth[1] * 0.1],  # gradient 0.1 bar/m
                                   self.physics.vars[1]: [self.ini[0], self.ini[0]]
                                   }
-            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+            g2l = np.asarray(self.reservoir.discr_mesh.global_to_local)[:self.reservoir.mesh.n_res_blocks]
+            return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                        global_to_local=g2l,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         else:

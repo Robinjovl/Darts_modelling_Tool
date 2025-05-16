@@ -915,13 +915,16 @@ def read_arrays(gridfile: str, propfile: str):
 
     arrays['PERMX'] = read_float_array(propfile, 'PERMX')
     arrays['PERMY'] = read_float_array(propfile, 'PERMY')
-    for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
-        if arrays['PERMX'].size == 0 or arrays['PERMY'].size == 0:
-            arrays['PERMX'] = read_float_array(propfile, perm_str)
-            arrays['PERMY'] = arrays['PERMX']
     if arrays['PERMY'].size == 0:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
+    for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
+        if arrays['PERMX'].size == 0 and arrays['PERMY'].size == 0:
+            a = read_float_array(propfile, perm_str)
+            if a.size > 0:
+                arrays['PERMX'] = a
+                arrays['PERMY'] = a
+                print('No PERMX and PERMY found in input files. PERMY=PERMX=', perm_str, 'will be used')
     arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
     if arrays['PERMZ'].size == 0:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1

@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to DARTS documentation!
+Welcome to open-DARTS documentation!
 ###############################
 
 .. toctree::
@@ -22,14 +22,13 @@ Welcome to DARTS documentation!
    getting_started/supported_features.md
    getting_started/troubleshooting.md
    getting_started/F.A.Q..md
-   
+   getting_started/configure_hardware.md
    
 .. toctree::
    :maxdepth: 2
    :caption: FOR DEVELOPERS
    
    for_developers/darts_gitlab_setup.md
-   for_developers/configure_hardware.md
 
 .. toctree::
    :maxdepth: 2
@@ -37,8 +36,7 @@ Welcome to DARTS documentation!
    
    technical_reference/glossary.md
    technical_reference/reservoir.md
-   technical_reference/on_multi_segment_in_add_perforation.md
-   technical_reference/well_time_data_guide.md
+   technical_reference/wells.md
 
 .. toctree::
    :maxdepth: 2

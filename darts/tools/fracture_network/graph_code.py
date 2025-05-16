@@ -958,17 +958,24 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     else:
         bottom_idx = 0
 
+    #This list returned by Extrude() contains the "top" of the extruded surface (in `out[0]'),
+    #the newly created volume (in `out[1]') and the tags of the lateral surfaces (in `out[2]', `out[3]', ...).
+
     # reservoir top and bottom
     surf_str_prefix = [''] * 6
     surf_str = ['']*6
-    for side_idx in range(6):
+    side_idx = 0
+    for idx in range(7):
+        if idx == 1:  # skip volume
+            continue
         surf_str_prefix[side_idx] = 'Physical Surface('+ str(side_idx + 1) +') = {'
         if side_idx == 0 and top_idx == 0: # if no overburden then the reservor top is a top boundary
             surf_str[0] += 'sr[' + str(side_idx) + ']'
-        if side_idx == 0 and bottom_idx == 0: # if no underburden then the reservor bottom is a bottom boundary
-            surf_str[1] += 'sr[' + str(side_idx) + ']'
+        if side_idx == 1 and bottom_idx == 0: # if no underburden then the reservor bottom is a bottom boundary
+            surf_str[1] += '1'
         if side_idx > 1:  # lateral boundary
             surf_str[side_idx] += 'sr[' + str(side_idx) + ']'
+        side_idx += 1
     comments_str = ['top','bottom','Y-','X+','Y+','X-']
 
     if input_data['overburden_layers'] > 0:

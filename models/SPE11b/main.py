@@ -55,8 +55,7 @@ def set_well_rates(m, Dt, inj_rate, event1, event2):
     if m.physics.engine.t >= 25 * Dt and m.physics.engine.t < 50 * Dt and event1:
         print('At 25 years, start injecting in the second well')
         m.inj_rate = [inj_rate, inj_rate]
-        m.physics.set_well_controls(well = m.reservoir.wells[1],
-                                    is_control = True,
+        m.physics.set_well_controls(wctrl = m.reservoir.wells[1].control,
                                     control_type=well_control_iface.MASS_RATE, 
                                     is_inj = True,
                                     target = m.inj_rate[1], 
@@ -71,8 +70,7 @@ def set_well_rates(m, Dt, inj_rate, event1, event2):
         print('At 50 years, stop injection in both wells')
         m.inj_rate = [m.zero, m.zero]
         for i in range(2):
-            m.physics.set_well_controls(well = m.reservoir.wells[i],
-                                        is_control = True,
+            m.physics.set_well_controls(wctrl = m.reservoir.wells[i].control,
                                         control_type = well_control_iface.MASS_RATE,
                                         is_inj = True,
                                         target = m.inj_rate[i],
@@ -142,7 +140,7 @@ def run(specs):
     # define injection stream of the wells
     m.inj_stream = specs['inj_stream']
     inj_rate = 3024 # mass rate per well, kg/day
-    m.inj_rate = [inj_rate, zero]
+    m.inj_rate = [inj_rate, zero] if specs['1000years'] is False else [0, 0]
 
     """ Init model """
     # now that the reservoir and physics is defined, you can init the DartsModel()
@@ -154,7 +152,7 @@ def run(specs):
 
     if specs['post_process'] is None:
         m.init(discr_type='tpfa', platform=m.platform)
-        m.set_output(output_folder=output_dir, sol_filename='single_reservoir_solution.h5', precision='s', )
+        m.set_output(output_folder=output_dir, sol_filename='single_reservoir_solution.h5', save_initial = not specs['1000years'], precision='s', verbose = True)
     else:
         print(f'Post processing into {output_dir}...')
         m.init(discr_type='tpfa', platform=m.platform)
@@ -162,7 +160,13 @@ def run(specs):
         
     # simulate a thousand years 
     if specs['1000years']:
-        m.run(1000)
+        for i in range(100):
+            print(f'-------- Year {i}/100 --------')
+            m.run(365, restart_dt=365/2, save_reservoir_data=False, save_well_data=False)
+        m.physics.engine.t = 0.
+        m.output.save_data_to_h5(kind = 'reservoir')
+        m.inj_rate = [inj_rate, 0]
+    m.output.verbose = False
     
     if specs['dispersion']:
         m.init_dispersion()        
@@ -176,24 +180,25 @@ def run(specs):
         grid = np.meshgrid(np.linspace(0, 8400, nx),
                            np.linspace(0, 1200, nz))
         poro = m.reservoir.global_data['poro']
+        op_num = np.array(m.reservoir.mesh.op_num)[:m.reservoir.n] + 1
 
         plt.figure(dpi = 100, figsize = (10, 2))
-        plt.title('Porosity')
-        c = plt.pcolor(grid[0], grid[1], poro.reshape(nz, nx))
-        plt.colorbar(c)
+        plt.title('Facies')
+        c = plt.pcolor(grid[0], grid[1], op_num.reshape(nz, nx), cmap = 'jet', vmin=min(op_num), vmax=max(op_num))
+        plt.colorbar(c, ticks = np.arange(1, 8))
         plt.xlabel('x [m]'); plt.ylabel('z [m]')
         # centroids = m.reservoir.discretizer.centroids_all_cells
         centroids = m.reservoir.centroids
         plt.scatter(centroids[m.reservoir.well_cells[0], 0], centroids[m.reservoir.well_cells[0], 2], marker='x', c='r', s=5)
         plt.scatter(centroids[m.reservoir.well_cells[1], 0], centroids[m.reservoir.well_cells[1], 2], marker='x', c='r', s=5)
-        plt.savefig(os.path.join(m.output_folder, f'porosity.png'), bbox_inches='tight')
+        plt.savefig(os.path.join(m.output_folder, f'op_num.png'), bbox_inches='tight')
         plt.close()
 
         solution_vector = np.array(m.physics.engine.X)
         for i, name in enumerate(vars):
             plt.figure(figsize = (10, 2))
             plt.title(name)
-            c = plt.pcolor(grid[0], grid[1], solution_vector[i::n_vars][:nb].reshape(nz, nx), cmap = 'jet')
+            c = plt.pcolor(grid[0], grid[1], np.round(solution_vector[i::n_vars][:nb], 2).reshape(nz, nx), cmap = 'jet')
             plt.colorbar(c, aspect = 10)
             plt.xlabel('x [m]'); plt.ylabel('z [m]')
             plt.savefig(os.path.join(m.output_folder, f'initial_conditions_{name}.png'), bbox_inches='tight')
@@ -223,7 +228,7 @@ def run(specs):
 
     for ts in range(Nt):
         print(f'----------------------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} -----------------------------------')
-        m.run(Dt, restart_dt=1.0, save_reservoir_data=False, save_well_data=~specs['RHS'], verbose=True)
+        m.run(Dt, restart_dt = 1.0, save_reservoir_data = False, save_well_data = not specs['RHS'], verbose=True)
 
         if specs['check_rates']:
             time_vector, property_array = m.output.output_properties(output_properties=output_props, engine=True)
@@ -295,39 +300,39 @@ nx = 840
 nz = 120
 zero = 1e-10
 model_specs = [
-    # BINARY ISOTHERMAL MODEL
-        # RHS CORRECTION WITH DISPERSION OFF
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-1e-10, 283.15], 
-          'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
-    
-        # RHS CORRECTION WITH DISPERSION ON 
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-1e-10, 283.15], 
-          'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
-    
-        # WELLS WITH DISPERSION OFF 
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
-        'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False}, 
-    
-        # WELLS WITH DISPERSION ON 
-    {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
-        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False}, 
+    # # BINARY ISOTHERMAL MODEL
+    #     # RHS CORRECTION WITH DISPERSION OFF
+    # {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-1e-10, 283.15],
+    #       'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
+    #
+    #     # RHS CORRECTION WITH DISPERSION ON
+    # {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-1e-10, 283.15],
+    #       'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
+    #
+    #     # WELLS WITH DISPERSION OFF
+    # {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    #     'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
+    #
+    #     # WELLS WITH DISPERSION ON
+    # {'check_rates': True, 'temperature': 273.15+40, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    #     'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
 
     # BINARY NON-ISOTHERMAL MODEL
         # RHS CORRECTION WITH DISPERSION OFF
-    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
+    # {'check_rates': True, 'temperature': None, '1000years': True, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    #     'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
+         
+    #     # RHS CORRECTION WITH DISPERSION ON
+    # {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    #     'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
+    #
+        # WELLS WITH DISPERSION OFF
+    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
         'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
-         
-        # RHS CORRECTION WITH DISPERSION ON 
-    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
-        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},    
-         
-        # WELLS WITH DISPERSION OFF 
-    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
-        'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
-         
-        # WELLS WITH DISPERSION ON 
-    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15], 
-        'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},    
+    #
+    #     # WELLS WITH DISPERSION ON
+    # {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    #     'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
     
     #{'check_rates': True, 'temperature': None, 'components': ['H2S', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_H2S_5', 'gpu_device': None},
     #{'check_rates': True, 'temperature': None, 'components': ['C1', 'CO2', 'H2O'], 'inj_stream': [0.05-1e-10, 0.95-1e-10, 283.15], 'nx': nx, 'nz': nz, 'output_dir': 'ternary_C1_5', 'gpu_device': None},
@@ -342,9 +347,7 @@ if __name__ == '__main__':
         m, avg_rates = run(specs)
         m.print_timers()
         m.output.output_to_vtk(output_properties = m.physics.vars + m.output.properties)
-        
-        
-    
+
         if specs['RHS'] is False:
             time_data = m.output.store_well_time_data(["components_mass_rates"])
             m.output.plot_well_time_data(["components_mass_rates"])

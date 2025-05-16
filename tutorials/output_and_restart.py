@@ -35,7 +35,9 @@ def read_data(sol_filepath, well_filepath, timestep = None):
 
 #%%
 
-RESTART = True
+RESTART = True # if true the models will be restarted
+
+# list of models
 accepted_dirs = [
     '2ph_comp',
     '2ph_comp_solid',
@@ -46,11 +48,8 @@ accepted_dirs = [
     '3ph_comp_w',
     '3ph_do',
     '3ph_bo',
-        ## 'Uniform_Brugge',
-    ## 'Chem_benchmark_new', # something strange is happening here
-        ## 'CO2_foam_CCS',
-    # 'GeoRising',
-    # 'CoaxWell'
+    'GeoRising',
+    'CoaxWell'
     ] # directory of cicd models
 
 #%%
@@ -72,6 +71,7 @@ for mdir in accepted_dirs:
     model = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(model)
 
+    """ --------------------- RUN A MODEL --------------------- """
     # init model
     n = model.Model()
     n.init()
@@ -89,7 +89,7 @@ for mdir in accepted_dirs:
     # run model
     Nt = 2
     for i in range(Nt):
-        n.run(365/2, verbose=True, save_well_data=True, save_reservoir_data=True, save_well_data_after_run=False)
+        n.run(365/10/2, verbose=True, save_well_data=True, save_reservoir_data=True, save_well_data_after_run=False)
     # read_data(n.sol_filepath, n.well_filepath)
 
     """ --------------------- EVALUATING PROPERTIES --------------------- """
@@ -108,7 +108,9 @@ for mdir in accepted_dirs:
     # default behaviour for dartsmodel.output.output_properties() returns a dictionary of primary variables
     # for all timesteps saved in .../dartsmodel.output_folder/reservoir_solution.h5
     time_vector, property_array = n.output.output_properties(filepath = None, output_properties = None, timestep = None, engine = False)
-    n.output.save_property_array(time_vector, property_array) # save property array in the output folder
+    # save property array in the output folder
+    n.output.save_property_array(time_vector, property_array)
+    # load property array
     loaded_time_vector, loaded_property_array = n.output.load_property_array(file_directory=n.output_folder + '/property_array.h5')
 
     try:
@@ -153,24 +155,21 @@ for mdir in accepted_dirs:
     time_data_dict = n.output.store_well_time_data()
     time_data_df = pd.DataFrame.from_dict(time_data_dict) # data frame for plotting
 
-    if 1:
-        n.output.plot_well_time_data_2(time_data_df)
-    else:
-        n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
-
     # save well time data
     time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
     writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
     time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
     writer.close()
 
+    n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
+
     """ ------------------------ POST PROCESSING ------------------------ """
-    m = model.Model()
+    m = model.Model() # a new model
     m.init()
     output_folder = os.path.join(os.getcwd(), 'output_data/n')
     m.set_output(output_folder=output_folder,
                  sol_filename='reservoir_solution_double.h5',
-                 save_initial=False, # SET SAVE INITIAL TO FALSE OTHERWISE YOU WILL OVERWRITE YOUR DATA
+                 save_initial=False, # !! SET SAVE INITIAL TO FALSE OTHERWISE YOU WILL OVERWRITE YOUR DATA !!
                  all_phase_props=True,
                  precision='d',
                  verbose=False)
@@ -201,19 +200,16 @@ for mdir in accepted_dirs:
 
     """ --------------------- RESTART MODEL --------------------- """
     if RESTART:
+        print('----------------- Restarting model ------------------')
         m_restarted = model.Model()
         m_restarted.init(restart=True)
         m_restarted.set_output(output_folder='output_data/n_restarted', # ensure you use a different output folder
-                               #save_initial=True,
-                               all_phase_props=True)
+                               all_phase_props=True
+                               )
 
-        # path to the data you want to restart from
-        reservoir_filename = n.sol_filepath
-        well_filename = n.well_filepath
-        m_restarted.load_restart_data(reservoir_filename,
-                                      # well_filename,
-                                      timestep=1)
-        m_restarted.run(1+365/2, restart_dt=1e-5)
+        reservoir_filename = n.sol_filepath # path to the data you want to restart from
+        m_restarted.load_restart_data(reservoir_filename, timestep=1)
+        m_restarted.run(1+365/10/2, restart_dt=1e-5) # use a smaller timestep than normal
 
         output_props = m_restarted.physics.vars + m_restarted.output.properties
         xarray_dataset = m_restarted.output.output_to_xarray(output_properties=output_props)
@@ -237,9 +233,8 @@ for mdir in accepted_dirs:
             plt.savefig('output_data/' + f'{var}_comparison_restart.png')
             plt.close()
 
-            X[i::n.physics.n_vars] = X[i::n.physics.n_vars]/(np.max(X[i::n.physics.n_vars])-np.min(X[i::n.physics.n_vars]))
-            X_restarted[i::n.physics.n_vars] = X_restarted[i::n.physics.n_vars] / (np.max(X_restarted[i::n.physics.n_vars]) - np.min(X_restarted[i::n.physics.n_vars]))
-
+            # X[i::n.physics.n_vars] = X[i::n.physics.n_vars]/(np.max(X[i::n.physics.n_vars])-np.min(X[i::n.physics.n_vars]))
+            # X_restarted[i::n.physics.n_vars] = X_restarted[i::n.physics.n_vars] / (np.max(X_restarted[i::n.physics.n_vars]) - np.min(X_restarted[i::n.physics.n_vars]))
         # assert np.isclose(X, X_restarted, rtol=0, atol=0.1).all()
 
     os.chdir(models_dir)
