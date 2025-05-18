@@ -121,7 +121,7 @@ def run(specs):
     m.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-2, tol_newton=1e-3,
                      it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
     m.params.newton_params[0] = 0.05*2
-    m.data_ts.eta=np.ones(m.physics.n_vars)
+    # m.data_ts.eta=np.ones(m.physics.n_vars)
     
     m.params.nonlinear_norm_type = m.params.LINF # linf if you use m.set_rhs() for injection
 
@@ -221,10 +221,10 @@ def run(specs):
     event2 = True
 
     if specs['post_process'] is None:
-        Nt = 1
+        Nt = 3
     else:
-        Nt = 0 # skip simulation
-    Dt = 365
+        Nt = 0  # skip simulation
+    Dt = 300
 
     for ts in range(Nt):
         print(f'----------------------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} -----------------------------------')
@@ -296,8 +296,8 @@ def run(specs):
 #%%
 
 """Define realization ID"""
-nx = 840
-nz = 120
+nx = 140
+nz = 20
 zero = 1e-10
 model_specs = [
     # # BINARY ISOTHERMAL MODEL
@@ -327,7 +327,7 @@ model_specs = [
     #     'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': None, 'post_process': None, 'gpu_device': False},
     #
         # WELLS WITH DISPERSION OFF
-    {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
+    {'check_rates': True, 'temperature': 350, '1000years': False, 'RHS': False, 'components': ['CO2', 'H2O'], 'inj_stream': [1-zero, 283.15],
         'nx': nx, 'nz': nz, 'dispersion': False, 'output_dir': None, 'post_process': None, 'gpu_device': False},
     #
     #     # WELLS WITH DISPERSION ON
