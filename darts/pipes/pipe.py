@@ -269,9 +269,9 @@ class Pipe:
                     rhoG0_face[i] = rhoG0[i]
                     xG_mass0_face[i] = xG_mass0[i]
                 else:
-                    # If both segments have gas, use arithmetic averaging
-                    rhoG0_face[i] = (rhoG0[i] + rhoG0[i + 1]) / 2
-                    xG_mass0_face[i] = (xG_mass0[i] + xG_mass0[i + 1]) / 2
+                    # If both segments have gas, use averaging
+                    rhoG0_face[i] = (rhoG0[i] * sG0[i] + rhoG0[i + 1] * sG0[i + 1]) / (sG0[i] + sG0[i + 1])
+                    xG_mass0_face[i] = (xG_mass0[i] * rhoG0[i] * sG0[i] + xG_mass0[i + 1] * rhoG0[i + 1] * sG0[i + 1]) / (rhoG0[i] * sG0[i] + rhoG0[i + 1] * sG0[i + 1])
 
                 if sG0[i] == 1:
                     # If no liquid in segment i, use properties from segment i+1
@@ -282,9 +282,9 @@ class Pipe:
                     rhoL0_face[i] = rhoL0[i]
                     xL_mass0_face[i] = xL_mass0[i]
                 else:
-                    # If both segments have liquid, use arithmetic averaging
-                    rhoL0_face[i] = (rhoL0[i] + rhoL0[i + 1]) / 2
-                    xL_mass0_face[i] = (xL_mass0[i] + xL_mass0[i + 1]) / 2
+                    # If both segments have liquid, use averaging
+                    rhoL0_face[i] = (rhoL0[i] * (1 - sG0[i]) + rhoL0[i + 1] * (1 - sG0[i + 1])) / (2 - sG0[i] - sG0[i + 1])
+                    xL_mass0_face[i] = (xL_mass0[i] * rhoL0[i] * (1 - sG0[i]) + xL_mass0[i + 1] * rhoL0[i + 1] * (1 - sG0[i + 1])) / (rhoL0[i] * (1 - sG0[i]) + rhoL0[i + 1] * (1 - sG0[i + 1]))
 
             self.iter_phases_props0_face = [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face]
 
@@ -310,8 +310,8 @@ class Pipe:
                 # If no gas in segment i+1, use properties from segment i
                 rhoG_face[i] = rhoG[i]
             else:
-                # If both segments have gas, use arithmetic averaging
-                rhoG_face[i] = (rhoG[i] + rhoG[i + 1]) / 2
+                # If both segments have gas, use averaging
+                rhoG_face[i] = (rhoG[i] * sG[i] + rhoG[i + 1] * sG[i + 1]) / (sG[i] + sG[i + 1])
 
             if sG[i] == 1:
                 # If no liquid in segment i, use properties from segment i+1
@@ -320,8 +320,8 @@ class Pipe:
                 # If no liquid in segment i+1, use properties from segment i
                 rhoL_face[i] = rhoL[i]
             else:
-                # If both segments have liquid, use arithmetic averaging
-                rhoL_face[i] = (rhoL[i] + rhoL[i + 1]) / 2
+                # If both segments have liquid, use averaging
+                rhoL_face[i] = (rhoL[i] * (1 - sG[i]) + rhoL[i + 1] * (1 - sG[i + 1])) / (2 - sG[i] - sG[i + 1])
 
         self.iter_phases_props_face = [sG_face, rhoG_face, rhoL_face]
 
@@ -429,6 +429,17 @@ class Pipe:
             if sG_face[i] != 1:
                 self.vL[i] = ((1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
                          - sG_face[i] * rhoG_face[i] * self.vD0[i] / ((1 - sG_face[i]) * self.rhoM_adjusted_face[i]))
+
+        for i in range(self.geometry.num_interfaces):
+            if self.vG[i] > 0 and sG[i] == 0:
+                self.vG[i] = 0
+            elif self.vG[i] < 0 and sG[i + 1] == 0:
+                self.vG[i] = 0
+
+            if self.vL[i] > 0 and (sG[i] - 1) == 0:
+                self.vL[i] = 0
+            elif self.vL[i] < 0 and (sG[i + 1] - 1) == 0:
+                self.vL[i] = 0
 
         # Concatenate phase velocities and convert m/s to m/day
         phase_velocities = np.concatenate((self.vG * 24 * 60 * 60, self.vL * 24 * 60 * 60))
