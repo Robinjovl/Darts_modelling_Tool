@@ -1,6 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import shutil
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
@@ -12,6 +14,13 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     :param h5_well_data: HDF5 file containing well solution. It's used here to get the time step sizes
     :param coupled_model: An instance of DartsModel
     """
+    main_dir = os.path.join(coupled_model.output_folder, 'line_graphs')
+
+    # Reset_directory
+    if os.path.exists(main_dir):
+        shutil.rmtree(main_dir)
+    os.makedirs(main_dir)
+
     # Load primary vars and phase props
     data_frame = pd.read_pickle(primary_vars_and_phase_props_file_address)
 
@@ -33,6 +42,8 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
 
     #%% Pressure profile
 
+    # Use figure counter for name of the saved figure
+    figure_counter = 0
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
@@ -61,12 +72,15 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     # plt.legend(loc='upper right')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Component/components overall mole fraction profile
 
     for comp_idx in range(num_components):
-
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 
@@ -103,10 +117,14 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
         # plt.legend(loc='upper right')
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Temperature profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Temperature profile is plotted if the system is non-isothermal.
     if coupled_model.physics.thermal is True:
 
@@ -138,10 +156,14 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
         # plt.legend(loc='upper right')
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Temperature.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Gas saturation profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
@@ -162,12 +184,15 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     plt.title('Gas saturation profile/profiles along the wellbore', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Profile/profiles of components mole fractions in the gaseous phase
 
     for c, comp_name in enumerate(components_names):
-
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 
@@ -190,12 +215,15 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
                   fontsize=14, fontweight='bold')
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Profile/profiles of components mole fractions in the liquid phase
 
     for c, comp_name in enumerate(components_names):
-
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 
@@ -218,16 +246,25 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
                   fontsize=14, fontweight='bold')
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Gas density profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
         rhoG_profile = data_frame["rhoG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        plt.plot(rhoG_profile, list(range(num_segments)), color=colors[ts_counter])
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        rhoG_profile_masked = np.ma.masked_where(rhoG_profile == threshold, rhoG_profile)
+
+        plt.plot(rhoG_profile_masked, list(range(num_segments)), color=colors[ts_counter])
 
     # Reverse the y-axis
     plt.gca().invert_yaxis()
@@ -242,16 +279,25 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     plt.title('Gas density profile/profiles along the wellbore', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Liquid density profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
         rhoL_profile = data_frame["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        plt.plot(rhoL_profile, list(range(num_segments)), color=colors[ts_counter])
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        rhoL_profile_masked = np.ma.masked_where(rhoL_profile == threshold, rhoL_profile)
+
+        plt.plot(rhoL_profile_masked, list(range(num_segments)), color=colors[ts_counter])
 
     # Reverse the y-axis
     plt.gca().invert_yaxis()
@@ -266,16 +312,25 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     plt.title('Liquid density profile/profiles along the wellbore', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density.png")
+    plt.savefig(file_address)
     plt.show()
 
     # %% Gas viscosity profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
         miuG_profile = data_frame["miuG"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        plt.plot(miuG_profile, list(range(num_segments)), color=colors[ts_counter])
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        miuG_profile_masked = np.ma.masked_where(miuG_profile == threshold, miuG_profile)
+
+        plt.plot(miuG_profile_masked, list(range(num_segments)), color=colors[ts_counter])
 
     # Reverse the y-axis
     plt.gca().invert_yaxis()
@@ -290,16 +345,25 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     plt.title('Gas viscosity profile/profiles along the wellbore', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.png")
+    plt.savefig(file_address)
     plt.show()
 
     # %% Liquid viscosity profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the plot
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
         miuL_profile = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        plt.plot(miuL_profile, list(range(num_segments)), color=colors[ts_counter])
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        miuL_profile_masked = np.ma.masked_where(miuL_profile == threshold, miuL_profile)
+
+        plt.plot(miuL_profile_masked, list(range(num_segments)), color=colors[ts_counter])
 
     # Reverse the y-axis
     plt.gca().invert_yaxis()
@@ -314,4 +378,6 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     plt.title('Liquid viscosity profile/profiles along the wellbore', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity.png")
+    plt.savefig(file_address)
     plt.show()

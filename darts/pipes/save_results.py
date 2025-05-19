@@ -18,7 +18,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     num_segments = len(h5_well_data["dynamic"]["X"][0,:,0]) - num_perfs
 
     p = np.zeros(num_segments)
-    z = np.zeros((num_segments, property_container.nc - 1))
+    z = np.zeros((num_segments, property_container.nc))
     T = np.zeros((num_segments))
 
     sG = np.zeros(num_segments)
@@ -61,9 +61,13 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
             p[j] = state[0]
 
             if not coupled_model.physics.property_containers[0].thermal:
-                z[j, :] = state[1:]
+                z_full = state[1:]
+                z_full = np.append(z_full, 1 - sum(state[1:]))
+                z[j, :] = z_full
             elif coupled_model.physics.property_containers[0].thermal:
-                z[j, :] = state[1:-1]
+                z_full = state[1:-1]
+                z_full = np.append(z_full, 1 - sum(state[1:-1]))
+                z[j, :] = z_full
                 T[j] = state[-1]
 
             property_container.evaluate(state)

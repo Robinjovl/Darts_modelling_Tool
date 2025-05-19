@@ -1,6 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import shutil
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
@@ -23,6 +25,13 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     :type x_axis: str
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     """
+    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps')
+
+    # Reset_directory
+    if os.path.exists(main_dir):
+        shutil.rmtree(main_dir)
+    os.makedirs(main_dir)
+
     # This line gets the geometry object of the first well (by insertion order) from the wells_geometry dictionary
     # and assigns it to well_geom.
     well_geom = next(iter(coupled_model.wells.values())).geometry
@@ -34,7 +43,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         interfaces_TVD = well_geom.TVD_interfaces
 
     # Get components names
-    components_names = coupled_model.physics.property_containers[0].components_name
+    pc = coupled_model.physics.property_containers[0]
+    components_names = pc.components_name
     num_components = len(components_names)
     num_segments = well_geom.num_segments
     num_interfaces = num_segments - 1
@@ -80,6 +90,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     #%% Pressure profile
 
+    # Use figure counter for name of the saved figure
+    figure_counter = 0
     # Initialize the pressure matrix
     p_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -113,11 +125,15 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Pressure [bar]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.png")
+    plt.savefig(file_address)
     plt.show()
 
     # %% Overall mole fraction profiles
 
     for comp_idx in range(num_components):
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
         # Initialize the overall mole fraction matrix
         z_c_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -127,10 +143,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             z = z.tolist()
             z_c = np.zeros(num_segments)
             for segment_idx in range(num_segments):
-                try:
-                    z_c[segment_idx] = z[segment_idx][comp_idx]
-                except:
-                    z_c[segment_idx] = 1 - sum(z[segment_idx])
+                z_c[segment_idx] = z[segment_idx][comp_idx]
             z_c_matrix[:, ts_counter] = z_c
 
         # Initialize the plot
@@ -158,10 +171,14 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Temperature profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     if coupled_model.physics.thermal is True:
         # Initialize the temperature matrix
         T_matrix = np.zeros((num_segments, num_selected_ts))
@@ -196,10 +213,14 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Temperature [\u00B0C]', fontsize=14)
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Temperature.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Gas saturation profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the gas saturation matrix
     sG_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -233,11 +254,99 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas saturation [-]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation.png")
+    plt.savefig(file_address)
     plt.show()
+
+    #%% Liquid L_a saturation profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_a saturation matrix
+        sL_a_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_a saturation matrix
+        for ts_counter in time_step_idx_range:
+            sL_a = data_frame["sL_a"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            sL_a_matrix[:, ts_counter] = sL_a
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, sL_a_matrix, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_a saturation values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_a saturation [-]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation.png")
+        plt.savefig(file_address)
+        plt.show()
+
+    # %% Liquid L_b saturation profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_b saturation matrix
+        sL_b_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_b saturation matrix
+        for ts_counter in time_step_idx_range:
+            sL_b = data_frame["sL_b"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            sL_b_matrix[:, ts_counter] = sL_b
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, sL_b_matrix, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_b saturation values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_b saturation [-]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation.png")
+        plt.savefig(file_address)
+        plt.show()
 
     #%% Profile/profiles of components mole fractions in the gaseous phase
 
     for c, comp_name in enumerate(components_names):
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
         # Initialize the xG_mole_c matrix
         xG_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -272,49 +381,150 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
 
         plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.png")
+        plt.savefig(file_address)
         plt.show()
 
     #%% Profile/profiles of components mole fractions in the liquid phase
 
-    for c, comp_name in enumerate(components_names):
-        # Initialize the xL_mole_c matrix
-        xL_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
+    if pc.nph == 2:
+        for c, comp_name in enumerate(components_names):
+            # Update figure counter for name of the saved figure
+            figure_counter += 1
+            # Initialize the xL_mole_c matrix
+            xL_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the xL_mole_c matrix
-        for ts_counter in time_step_idx_range:
-            xL = data_frame["xL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-            xL_c = np.array([x[c] for x in xL])
-            xL_mole_c_matrix[:, ts_counter] = xL_c
+            # Fill the xL_mole_c matrix
+            for ts_counter in time_step_idx_range:
+                xL = data_frame["xL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+                xL_c = np.array([x[c] for x in xL])
+                xL_mole_c_matrix[:, ts_counter] = xL_c
 
-        # Initialize the plot
-        fig, ax = plt.subplots(figsize=(12, 6))
+            # Initialize the plot
+            fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+            # Create the heatmap
+            cax = ax.pcolormesh(x, y_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
 
-        # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+            # Set the y-axis ticks
+            if y_axis == "segment_index":
+                ax.yaxis.set_major_locator(MultipleLocator(1))
 
-        # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+            # Add axes labels
+            ax.set_xlabel(x_label, fontsize=14)
+            ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
+            # Reverse the y-axis
+            ax.invert_yaxis()
 
-        # Add title
-        ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
+            # Add title
+            ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
 
-        # Add a colorbar to show the xL_mole values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
+            # Add a colorbar to show the xL_mole values
+            cbar = fig.colorbar(cax, ax=ax)
+            cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
 
-        plt.tight_layout()
-        plt.show()
+            plt.tight_layout()
+            file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase.png")
+            plt.savefig(file_address)
+            plt.show()
+
+        # %% Profile/profiles of components mole fractions in the liquid phase L_a
+
+        if pc.nph == 3:
+            for c, comp_name in enumerate(components_names):
+                # Update figure counter for name of the saved figure
+                figure_counter += 1
+                # Initialize the xL_a_mole_c matrix
+                xL_a_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
+
+                # Fill the xL_a_mole_c matrix
+                for ts_counter in time_step_idx_range:
+                    xL_a = data_frame["xL_a"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+                    xL_a_c = np.array([x[c] for x in xL_a])
+                    xL_a_mole_c_matrix[:, ts_counter] = xL_a_c
+
+                # Initialize the plot
+                fig, ax = plt.subplots(figsize=(12, 6))
+
+                # Create the heatmap
+                cax = ax.pcolormesh(x, y_segments, xL_a_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+
+                # Set the y-axis ticks
+                if y_axis == "segment_index":
+                    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+                # Add axes labels
+                ax.set_xlabel(x_label, fontsize=14)
+                ax.set_ylabel(y_segments_label, fontsize=14)
+
+                # Reverse the y-axis
+                ax.invert_yaxis()
+
+                # Add title
+                ax.set_title(
+                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
+                    fontsize=14, fontweight='bold')
+
+                # Add a colorbar to show the xL_a_mole values
+                cbar = fig.colorbar(cax, ax=ax)
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=14)
+
+                plt.tight_layout()
+                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a.png")
+                plt.savefig(file_address)
+                plt.show()
+
+        # %% Profile/profiles of components mole fractions in the liquid phase L_b
+
+        if pc.nph == 3:
+            for c, comp_name in enumerate(components_names):
+                # Update figure counter for name of the saved figure
+                figure_counter += 1
+                # Initialize the xL_b_mole_c matrix
+                xL_b_mole_c_matrix = np.zeros((num_segments, num_selected_ts))
+
+                # Fill the xL_b_mole_c matrix
+                for ts_counter in time_step_idx_range:
+                    xL_b = data_frame["xL_b"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+                    xL_b_c = np.array([x[c] for x in xL_b])
+                    xL_b_mole_c_matrix[:, ts_counter] = xL_b_c
+
+                # Initialize the plot
+                fig, ax = plt.subplots(figsize=(12, 6))
+
+                # Create the heatmap
+                cax = ax.pcolormesh(x, y_segments, xL_b_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+
+                # Set the y-axis ticks
+                if y_axis == "segment_index":
+                    ax.yaxis.set_major_locator(MultipleLocator(1))
+
+                # Add axes labels
+                ax.set_xlabel(x_label, fontsize=14)
+                ax.set_ylabel(y_segments_label, fontsize=14)
+
+                # Reverse the y-axis
+                ax.invert_yaxis()
+
+                # Add title
+                ax.set_title(
+                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
+                    fontsize=14, fontweight='bold')
+
+                # Add a colorbar to show the xL_b_mole values
+                cbar = fig.colorbar(cax, ax=ax)
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=14)
+
+                plt.tight_layout()
+                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b.png")
+                plt.savefig(file_address)
+                plt.show()
 
     #%% Gas density profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the gas density matrix
     rhoG_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -352,51 +562,152 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas density [kg/m$^3$]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Liquid density profile
 
-    # Initialize the liquid density matrix
-    rhoL_matrix = np.zeros((num_segments, num_selected_ts))
+    if pc.nph == 2:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid density matrix
+        rhoL_matrix = np.zeros((num_segments, num_selected_ts))
 
-    # Fill the liquid density matrix
-    for ts_counter in time_step_idx_range:
-        rhoL = data_frame["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        rhoL_matrix[:, ts_counter] = rhoL
+        # Fill the liquid density matrix
+        for ts_counter in time_step_idx_range:
+            rhoL = data_frame["rhoL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            rhoL_matrix[:, ts_counter] = rhoL
 
-    # Apply a mask to hide values equal to zero
-    threshold = 0  # Set your threshold here
-    rhoL_matrix_masked = np.ma.masked_where(rhoL_matrix == threshold, rhoL_matrix)
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        rhoL_matrix_masked = np.ma.masked_where(rhoL_matrix == threshold, rhoL_matrix)
 
-    # Initialize the plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
 
-    # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
 
-    # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
-    # Add title
-    ax.set_title('Liquid density profile along the wellbore over time', fontsize=14, fontweight='bold')
+        # Add title
+        ax.set_title('Liquid density profile along the wellbore over time', fontsize=14, fontweight='bold')
 
-    # Add a colorbar to show the liquid density values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
+        # Add a colorbar to show the liquid density values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density.png")
+        plt.savefig(file_address)
+        plt.show()
+
+    # %% Liquid L_a density profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_a density matrix
+        rhoL_a_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_a density matrix
+        for ts_counter in time_step_idx_range:
+            rhoL_a = data_frame["rhoL_a"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            rhoL_a_matrix[:, ts_counter] = rhoL_a
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        rhoL_a_matrix_masked = np.ma.masked_where(rhoL_a_matrix == threshold, rhoL_a_matrix)
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, rhoL_a_matrix_masked, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_a density values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density.png")
+        plt.savefig(file_address)
+        plt.show()
+
+    # %% Liquid L_b density profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_b density matrix
+        rhoL_b_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_b density matrix
+        for ts_counter in time_step_idx_range:
+            rhoL_b = data_frame["rhoL_b"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            rhoL_b_matrix[:, ts_counter] = rhoL_b
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        rhoL_b_matrix_masked = np.ma.masked_where(rhoL_b_matrix == threshold, rhoL_b_matrix)
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, rhoL_b_matrix_masked, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_b density values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density.png")
+        plt.savefig(file_address)
+        plt.show()
 
     #%% Gas viscosity profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the gas viscosity matrix
     miuG_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -434,51 +745,152 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas viscosity [cP]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Liquid viscosity profile
 
-    # Initialize the liquid viscosity matrix
-    miuL_matrix = np.zeros((num_segments, num_selected_ts))
+    if pc.nph == 2:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid viscosity matrix
+        miuL_matrix = np.zeros((num_segments, num_selected_ts))
 
-    # Fill the liquid density matrix
-    for ts_counter in time_step_idx_range:
-        miuL = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
-        miuL_matrix[:, ts_counter] = miuL
+        # Fill the liquid density matrix
+        for ts_counter in time_step_idx_range:
+            miuL = data_frame["miuL"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            miuL_matrix[:, ts_counter] = miuL
 
-    # Apply a mask to hide values equal to zero
-    threshold = 0  # Set your threshold here
-    miuL_matrix_masked = np.ma.masked_where(miuL_matrix == threshold, miuL_matrix)
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        miuL_matrix_masked = np.ma.masked_where(miuL_matrix == threshold, miuL_matrix)
 
-    # Initialize the plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
 
-    # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
 
-    # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
-    # Add title
-    ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+        # Add title
+        ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
 
-    # Add a colorbar to show the liquid viscosity values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
+        # Add a colorbar to show the liquid viscosity values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity.png")
+        plt.savefig(file_address)
+        plt.show()
+
+    # %% Liquid L_a viscosity profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_a viscosity matrix
+        miuL_a_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_a density matrix
+        for ts_counter in time_step_idx_range:
+            miuL_a = data_frame["miuL_a"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            miuL_a_matrix[:, ts_counter] = miuL_a
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        miuL_a_matrix_masked = np.ma.masked_where(miuL_a_matrix == threshold, miuL_a_matrix)
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, miuL_a_matrix_masked, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_a viscosity values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity.png")
+        plt.savefig(file_address)
+        plt.show()
+
+    # %% Liquid L_b viscosity profile
+
+    if pc.nph == 3:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid L_b viscosity matrix
+        miuL_b_matrix = np.zeros((num_segments, num_selected_ts))
+
+        # Fill the liquid L_b density matrix
+        for ts_counter in time_step_idx_range:
+            miuL_b = data_frame["miuL_b"][ts_counter * num_segments:(ts_counter + 1) * num_segments]
+            miuL_b_matrix[:, ts_counter] = miuL_b
+
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        miuL_b_matrix_masked = np.ma.masked_where(miuL_b_matrix == threshold, miuL_b_matrix)
+
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # Create the heatmap
+        cax = ax.pcolormesh(x, y_segments, miuL_b_matrix_masked, cmap=cmap, shading='auto')
+
+        # Set the y-axis ticks
+        if y_axis == "segment_index":
+            ax.yaxis.set_major_locator(MultipleLocator(1))
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_ylabel(y_segments_label, fontsize=14)
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add title
+        ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+
+        # Add a colorbar to show the liquid L_b viscosity values
+        cbar = fig.colorbar(cax, ax=ax)
+        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=14)
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity.png")
+        plt.savefig(file_address)
+        plt.show()
 
     #%% Gas velocity profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the gas velocity matrix
     vG_matrix = np.zeros((num_interfaces, num_selected_ts))
 
@@ -516,10 +928,14 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity.png")
+    plt.savefig(file_address)
     plt.show()
 
     #%% Liquid velocity profile
 
+    # Update figure counter for name of the saved figure
+    figure_counter += 1
     # Initialize the liquid velocity matrix
     vL_matrix = np.zeros((num_interfaces, num_selected_ts))
 
@@ -557,4 +973,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Liquid velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
+    file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity.png")
+    plt.savefig(file_address)
     plt.show()
