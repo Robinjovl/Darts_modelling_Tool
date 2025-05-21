@@ -145,9 +145,9 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
     // If BHP controlled - pressure constraint
 	
 	//state.assign(X.begin() + (well_head_idx + 0) * n_block_size + P_VAR, X.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars+1);
-	  state.assign(Xopw.begin() + (well_head_idx + 0) * n_block_size + P_VAR, Xopw.begin() + (well_head_idx + 0) * n_block_size + P_VAR + n_vars+1);
-	  well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, well_control_ops_derivs);
-	  //extract_xop_ders();
+	  state.assign(Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR, Xopw.begin() + (well_head_idx + 0) * (n_block_size + 1) + P_VAR + n_vars+1);
+	  well_controls_etor->evaluate_with_derivatives(state, block_idx, well_control_ops, xopw_ders_arr);
+	  extract_xopw_ders();
 
 	index_t pres_op_idx = WellControlType::NUMBER_OF_RATE_TYPES * n_phases;
 	RHS_well_head[0] = well_control_ops[pres_op_idx] - this->target;
@@ -155,7 +155,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	// BHP operator derivatives
 	for (int jj = 0; jj < n_vars; jj++)
 	{
-	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[pres_op_idx * (n_vars+1) + jj];
+	  jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_control_ops_derivs[pres_op_idx * (n_vars) + jj];
 	}
   }
   else
