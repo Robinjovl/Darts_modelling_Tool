@@ -4,7 +4,6 @@
 #include <vector>
 #include "globals.h"
 #include "evaluator_iface.h"
-
 /* 
 
  A well control assumed to fill one (blocked) row of jacobian for the well head block.
@@ -29,6 +28,15 @@ public:
   // MOLAR_RATE is 0 because it is the first rate operator type in the WellControlOperators
   enum WellControlType : int { NONE = -2, BHP, MOLAR_RATE, MASS_RATE, VOLUMETRIC_RATE, ADVECTIVE_HEAT_RATE, NUMBER_OF_RATE_TYPES };
   static const int n_state_ctrls = 2;  // pressure (BHP) and temperature (BHT) operators
+  
+public:
+    /// @brief pointer to mesh
+  std::vector<value_t> sgw_max;
+  // [n_block] maximum gas saturations for hysteresis in capillary curves
+  std::vector<value_t> Xopw;
+  std::vector<value_t> xopw_ders_arr;
+  virtual void extract_xopw_ders();
+  virtual void extract_Xopw(std::vector<value_t>& X);
 
 protected:
   WellControlType control_type = NONE;
