@@ -60,15 +60,34 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             # 16x16
             #self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
             # 22x22
-            self.Xc = np.array([-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000])
+            self.Xc = np.array([-15000,-10000,-8000,-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000,8000,10000,15000])
             # 41x41
             #rsv = np.arange(-900, 1000, 200)
             #side = np.arange(1000, 6500, 1000)
             #self.Xc = np.hstack([-side, rsv, side])
-            # nz=12
-            #self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000])
+            # nz=16
+            self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
             #nz=60
-            self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+            #self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+
+            #nz=63
+            #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100)])
+
+            # refine also around rsv
+            #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
+
+            # extend by Z more
+            #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100), np.array([6500, 10000, 15000])])
+
+            # check layers boundaries defined without layers deterioration
+            assert np.unique(self.Xc).size == self.Xc.size
+            assert np.unique(self.Zc).size == self.Zc.size
+
+            print('nx = ', self.Xc.size-1, 'nz = ', self.Zc.size-1)
+            print('self.rsv_top', self.rsv_top)
+            print('self.rsv_bottom', self.rsv_bottom)
+            print(self.Zc)
+            #exit()
 
             # for debug
             #self.Xc = [-4000, -2000, -1000, 0, 1000, 2000, 4000]
@@ -243,6 +262,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         if not hasattr(self, 'displs_initial'):
             self.displs_initial = dict()
+        if not hasattr(self, 'tot_stress_initial'):
+            self.tot_stress_initial = total_stresses.copy()
 
         # Matrix
         cells = []
@@ -255,17 +276,30 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     if self.cell_property[i] in ['ux', 'uy', 'uz']:
                         if self.cell_property[i] not in self.displs_initial:
                             self.displs_initial[self.cell_property[i]] = property_array[props_num * cell_ids + i]
+                    if self.cell_property[i] == 'pressure':
+                        pressure = property_array[props_num * cell_ids + i]
+                        if not hasattr(self, 'pressure_initial') :
+                            self.pressure_initial = property_array[props_num * cell_ids + i].copy()
 
                     if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
-                    if self.cell_property[i] in ['ux', 'uy', 'uz']:
+                    if self.cell_property[i] in ['ux', 'uy', 'uz']:  # eliminate displacements got after the initialization stage (equilibration)
                         cell_data[self.cell_property[i]].append(property_array[props_num * cell_ids + i] - self.displs_initial[self.cell_property[i]])
                     else:
                         cell_data[self.cell_property[i]].append(property_array[props_num * cell_ids + i])
 
                 if 'tot_stress' not in cell_data: cell_data['tot_stress'] = []
                 cell_data['tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                for i in range(6):
-                    cell_data['tot_stress'][-1][:, i] = total_stresses[i::6]
+                for j in range(6):
+                    cell_data['tot_stress'][-1][:, j] = total_stresses[j::6]
+
+                if 'tot_delta_stress' not in cell_data: cell_data['tot_delta_stress'] = []
+                cell_data['tot_delta_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
+                for j in range(6):
+                    cell_data['tot_delta_stress'][-1][:, j] = total_stresses[j::6] - self.tot_stress_initial[j::6]
+
+                if 'delta_pressure' not in cell_data: cell_data['delta_pressure'] = []
+                cell_data['delta_pressure'].append(np.zeros(self.n_matrix, dtype=np.float64))
+                cell_data['delta_pressure'][-1][:] = pressure - self.pressure_initial
 
                 if True:#ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []
@@ -313,7 +347,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         y = centers[:, 1]
         z = centers[:, 2]
 
-        # centers
+        # rsv cell centers
         xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
         ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
         zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5

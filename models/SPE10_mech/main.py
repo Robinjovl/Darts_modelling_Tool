@@ -246,7 +246,16 @@ if __name__ == '__main__':
 
     #case = '24_24_12'
     #case = '24_24_60'  # 4x2 km XY, 6 km Z
-    case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '28_28_34'  # 6x2 km XY, 6 km Z
+    #case = '28_28_63'  # 6x2 km XY, 6 km Z
+    #case = '34_34_52'  # -15..15 km XY, 15 km Z
+    #case = '34_34_66'  # -15..15 km XY, 15 km Z
+    #case = '34_34_71'  # refine also around rsv
+    #case = '34_34_63'   # -15..15 km XY, 6 km Z
+    case = '34_34_15'  # -15..15 km XY, 6 km Z coarser
+
     #case = '21_21_60' # assert r2>0
     #case = '40_40_60' # 'bad allocation' error
 

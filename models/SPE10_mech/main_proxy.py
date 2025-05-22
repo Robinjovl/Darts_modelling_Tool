@@ -85,6 +85,7 @@ def geomech_init_geometry(mesh_data):
 def run_geomech_proxy(case):
     folder = 'sol_cpp_single_phase_' + case
 
+    #TODO do not use the whole mesh - use only the permeable part
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
     p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
 
@@ -118,6 +119,7 @@ def run_geomech_proxy(case):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
         uz_thm = uz_last[cell]
+        print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return uz_thm
 
     def get_proxy_solution(point):
@@ -128,7 +130,7 @@ def run_geomech_proxy(case):
         uz_proxy = upz1[0]
         return uz_proxy
 
-    def compare_vert_line(z_min, z_max, suffix, z_step=100):
+    def compare_vert_line(z_min, z_max, suffix, z_step=100, output_folder='.'):
         z_range = np.arange(z_min, z_max+1., z_step)
         uz_thm = []
         uz_prx = []
@@ -148,7 +150,7 @@ def run_geomech_proxy(case):
         plt.title('Vertical displacement, mm.')
         plt.legend()
         plt.grid()
-        plt.savefig('U_z_' + suffix + '.png')
+        plt.savefig(os.path.join(output_folder, 'U_z_' + suffix + '.png'))
         plt.close()
 
     point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point of the mesh
@@ -157,9 +159,9 @@ def run_geomech_proxy(case):
     # compare U-Z at a line along z-axis
     z_min = 0.
     z_max = centroids[:, 2].max() #+ 1000.
-    compare_vert_line(z_min, z_max, 'all')
+    compare_vert_line(z_min, z_max, 'all', z_step=20, output_folder=folder)
 
-    compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100., 'rsv')
+    compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder)
 
     # compare 1 point and print
     point[2] = 0. # at the surface (depth=0)
@@ -173,4 +175,5 @@ if __name__ == '__main__':
     #run_geomech_proxy(case='6_6_5')
     #run_geomech_proxy(case='24_24_12')
     #run_geomech_proxy(case='24_24_60')
-    run_geomech_proxy(case = '28_28_60')  # 6x2 km XY, 6 km Z
+    #run_geomech_proxy(case = '28_28_60')  # 6x2 km XY, 6 km Z
+    run_geomech_proxy(case='28_28_63')  # 6x2 km XY, 6 km Z
