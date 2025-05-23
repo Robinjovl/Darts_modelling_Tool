@@ -56,7 +56,7 @@ class Model(THMCModel):
 
         # read properties
         porosity = 0.375
-        permeability = 100.0 # [mD]
+        permeability = 500.0 # [mD]
         E = 10 # [GPa]
         p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
 
@@ -67,9 +67,9 @@ class Model(THMCModel):
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        self.idata.rock.biot = 0.5
+        self.idata.rock.biot = 1.
         self.idata.rock.E = 1.e+4 * E  # to bars
-        self.idata.rock.nu = 0.2
+        self.idata.rock.nu = 0.25
 
         self.idata.rock.poro_non_rsv = 0.01
         self.idata.rock.perm_non_rsv = 0.01
