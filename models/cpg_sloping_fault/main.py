@@ -48,6 +48,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         m.init_reservoir(arrays=arrays)
     else: # struct_reservoir
         m.init_struct_reservoir()
+        # these functions are not implemented for struct reservoir, so suppress them
         m.reservoir.save_grdecl = lambda arrays_save, fname: None
         m.reservoir.create_vtk_wells = lambda output_directory: None
         m.reservoir.centers_to_vtk = lambda out_dir: None
@@ -263,6 +264,7 @@ if __name__ == '__main__':
     cases_list = []
     cases_list += ['generate_5x3x4']
     #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1_no_burden']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
