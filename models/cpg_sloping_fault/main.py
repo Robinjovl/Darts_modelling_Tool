@@ -44,7 +44,14 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     # custom arrays can be read here
     # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
     # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
-    m.init_reservoir(arrays=arrays)
+    if True: # cpg_reservoir
+        m.init_reservoir(arrays=arrays)
+    else: # struct_reservoir
+        m.init_struct_reservoir()
+        m.reservoir.save_grdecl = lambda arrays_save, fname: None
+        m.reservoir.create_vtk_wells = lambda output_directory: None
+        m.reservoir.centers_to_vtk = lambda out_dir: None
+        m.reservoir.input_arrays = {'PRESSURE': None, 'TEMPERATURE': None}
 
     # time stepping and convergence parameters
     m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
@@ -286,7 +293,8 @@ if __name__ == '__main__':
                 label_list = [None]
 
                 # compare the current results with another run
-                #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom
+                #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom + '_' + wctrl
+                #pkl1_dir = r'results_' + physics_type + '_' + case_geom + '_' + wctrl + '_struct'
                 #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
                 #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
                 #time_data_list = [time_data_1, time_data]
