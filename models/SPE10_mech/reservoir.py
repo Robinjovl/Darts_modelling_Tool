@@ -56,6 +56,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
             self.rsv_top = 2100
             self.rsv_bottom = 2200
+            #self.rsv_xy = 1000
+            self.rsv_xy = 100000  # "infinite" laterally
 
             # 16x16
             #self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
@@ -356,10 +358,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
 
         from functools import reduce
-        border_xy = 1000.
         rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                      -border_xy <= centers_struct_y,  centers_struct_y <= border_xy,
-                                      -border_xy <= centers_struct_x,  centers_struct_x <= border_xy])
+                                      -self.rsv_xy <= centers_struct_y,  centers_struct_y <= self.rsv_xy,
+                                      -self.rsv_xy <= centers_struct_x,  centers_struct_x <= self.rsv_xy])
         porosity_struct[rsv] = idata.rock.porosity
         permeability_struct[rsv] = idata.rock.permx # [mD]
         E_struct[rsv] = idata.rock.E #[bars]
