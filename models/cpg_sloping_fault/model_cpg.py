@@ -84,6 +84,22 @@ class Model_CPG(CICDModel):
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
                                            'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l) })
 
+    def init_struct_reservoir(self):
+        # no over/under burden layers
+        from darts.reservoirs.struct_reservoir import StructReservoir
+        self.reservoir = StructReservoir(self.timer, nx=self.idata.geom.nx, ny=self.idata.geom.ny, nz=self.idata.geom.nz,
+                                         dx=self.idata.geom.dx, dy=self.idata.geom.dy, dz=self.idata.geom.dz,
+                                         permx=self.idata.rock.permx, permy=self.idata.rock.permy,
+                                         permz=self.idata.rock.permz, poro=self.idata.rock.poro,
+                                         hcap=self.idata.rock.hcap_sand, rcond=self.idata.rock.conduction_sand,
+                                         start_z=self.idata.geom.start_z)
+        # discretize right away
+        self.reservoir.discretize()
+        self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume
+        self.reservoir.boundary_volumes['xz_plus'] = self.idata.geom.bound_volume
+
     def set_wells(self):
         # read perforation data from a file
         if hasattr(self.idata, 'schfile'):
