@@ -93,12 +93,11 @@ class Model_CPG(CICDModel):
                                          permz=self.idata.rock.permz, poro=self.idata.rock.poro,
                                          hcap=self.idata.rock.hcap_sand, rcond=self.idata.rock.conduction_sand,
                                          start_z=self.idata.geom.start_z)
-        # discretize right away
-        self.reservoir.discretize()
         self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_plus'] = self.idata.geom.bound_volume
+        self.reservoir.discretize()
 
     def set_wells(self):
         # read perforation data from a file
