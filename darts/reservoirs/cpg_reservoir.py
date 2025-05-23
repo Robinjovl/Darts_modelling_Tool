@@ -94,6 +94,8 @@ class CPG_Reservoir(ReservoirBase):
         self.discretize_cpg()
         # self.discretizer.write_mpfa_results('conn.dat')
 
+        self.global_to_local = self.discr_mesh.global_to_local
+
         self.global_data = {'volume': self.volume_all_cells[:self.discr_mesh.n_cells],
                             'global_to_local': self.discr_mesh.global_to_local,
                             'poro': self.poro, 'permx': self.permx, 'permy': self.permy, 'permz': self.permz,
