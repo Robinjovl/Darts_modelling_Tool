@@ -121,7 +121,7 @@ class Geothermal(PhysicsBase):
 
         # Get depths and primary variable arrays from mesh object
         depths = np.asarray(mesh.depth)[:mesh.n_res_blocks]
-        if global_to_local is not None:
+        if global_to_local is not None and not np.isscalar(global_to_local):
             depths = depths[global_to_local]
 
         # adjust the size of initial_state array in c++
