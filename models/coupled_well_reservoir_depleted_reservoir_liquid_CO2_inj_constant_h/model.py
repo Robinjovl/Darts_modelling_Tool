@@ -35,14 +35,14 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=1/(24*60*60), tol_newton=1e-13, tol_linear=1e-4,
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-13, tol_linear=1e-4,
                             it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
 
         # calculate the state of the reservoir for the following p_init_res, sw_init_res, and zCO2_init_res
-        p_init_res = 21.347435   # from the pressure of the perforated segment of the wellbore
-        T_init_res = 301.90   # from the temperature of the perforated segment of the wellbore
+        p_init_res = 22.728160   # from the pressure of the perforated segment of the wellbore
+        T_init_res = 326.90   # from the temperature of the perforated segment of the wellbore
 
         # zCO2_init_res = self.zero
         # zC1_range = np.linspace(self.zero, 1 - self.zero, 10000)
@@ -98,7 +98,7 @@ class Model(CICDModel):
         if 1:
             from nearwellbore import RadialStruct
             self.reservoir = RadialStruct(self.timer, nr=nr, nz=nz, dr=dr, dz=dz, permr=permr, permz=permz, poro=poro,
-                                          R1=1000, logspace=True, depth=850)    # depth is the depth of the top exterface of the reservoir
+                                          R1=1000, logspace=True, depth=1850)    # depth is the depth of the top exterface of the reservoir
 
         else:
             from nearwellbore import RadialUnstruct
@@ -239,7 +239,7 @@ class Model(CICDModel):
         well_1_ms_type = ms_well.MS_Type.DFM
         # Lengths of the well segments are specified here.
         # The lengths of the well segments in front of the reservoir must be equal to the height of the reservoir cells.
-        well_1_segments_lengths = 50 * np.ones(20)  # From top to bottom of the wellbore
+        well_1_segments_lengths = 50 * np.ones(40)  # From top to bottom of the wellbore
         well_1_ID = 0.1
         well_1_inclination_angle = 0.  # in degrees relative to the vertical direction
         well_1_wall_roughness = 2.5e-5

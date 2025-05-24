@@ -30,6 +30,11 @@ if 1:
                   59.999 / 60 / 24 / 60,   # 3 minute
                   60.001 / 60 / 24 / 60,   # 4 minute
                   60.01 / 60 / 24 / 60,   # 5 minute
+                  60.01 / 60 / 24 / 60,
+                  60.01 / 60 / 24 / 60,
+                  60.01 / 60 / 24 / 60,
+                  60.01 / 60 / 24 / 60,
+                  60.01 / 60 / 24 / 60,
                   ]
 
     for i, dt in enumerate(time_steps):
@@ -43,4 +48,4 @@ else:
 
     primary_vars_and_phase_props_file_address = "output/stored_primary_vars_and_phase_props.pkl"
     visualize_results_heat_maps(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model)
-    # visualize_results_line_graphs(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, 3)
+    visualize_results_line_graphs(primary_vars_and_phase_props_file_address, h5_well_data, coupled_model, 3)
