@@ -233,6 +233,8 @@ class Model(CICDModel):
         # Calc ramp-up injection rate
         ramp_up_period = 4 / (24 * 60)   # 4 minutes
         inj_rate = self.calc_ramp_up_rate(self.wells["I1"].source_props["rate_source"], ramp_up_period, t)
+        # Update injection rate in source_props
+        self.wells["I1"].source_props["rate_source"] = inj_rate
 
         inj_comp = self.wells["I1"].source_props["comp_source"]
         inj_flux = inj_rate * inj_comp
