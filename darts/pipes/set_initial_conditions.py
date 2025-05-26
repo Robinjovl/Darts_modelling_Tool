@@ -43,6 +43,8 @@ class SingleAmbientTemperature:
         self.physics = physics
         self.ambient_temperature = ambient_temperature
         self.pipe_head_pressure = pipe_head_pressure * 1e5   # Convert bar to Pa
+        assert pipe_head_segment_index in (0, self.pipe_geom.num_segments - 1), \
+            f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
         self.pipe_head_segment_index = pipe_head_segment_index
 
         self.check_initial_fluid_conditions(initial_conditions_dict)
@@ -163,6 +165,8 @@ class LinearAmbientTemperature:
         self.pipe_head_pressure = pipe_head_pressure * 1e5   # Convert bar to Pa
         self.pipe_head_temperature = pipe_head_temperature
         self.temp_grad = temp_grad
+        assert pipe_head_segment_index in (0, self.pipe_geom.num_segments - 1), \
+            f"The specified pipe_head_segment_index is neither 0 nor {self.pipe_geom.num_segments - 1}"
         self.pipe_head_segment_index = pipe_head_segment_index
 
         self.check_initial_fluid_conditions(initial_conditions_dict)
