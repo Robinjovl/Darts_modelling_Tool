@@ -353,7 +353,7 @@ class Pipe:
             momentum_at_first_last_exterfaces = [0, 0]
             if self.source_props:
                 segment_idx_source = self.source_props["segment_idx_source"]
-                rate_source = self.source_props["rate_source"]
+                rate_source = self.source_props["rate_source"] if "rate_source" in self.source_props else self.source_props['target_rate_source']
                 comp_source = self.source_props["comp_source"]
                 Mw = self.physics.property_containers[0].Mw
                 mass_rate = sum(rate_source * np.array(comp_source) * np.array(Mw)) / (24 * 60 * 60)   # must be in kg/s
