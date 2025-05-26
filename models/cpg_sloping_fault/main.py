@@ -11,7 +11,7 @@ from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
+def run(rsv : str, physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
@@ -44,7 +44,16 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     # custom arrays can be read here
     # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
     # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
-    m.init_reservoir(arrays=arrays)
+
+    if rsv == 'cpg': # cpg_reservoir
+        m.init_reservoir(arrays=arrays)
+    elif rsv == 'struct': # struct_reservoir
+        m.init_struct_reservoir()
+        # these functions are not implemented for struct reservoir, so suppress them
+        m.reservoir.save_grdecl = lambda arrays_save, fname: None
+        m.reservoir.create_vtk_wells = lambda output_directory: None
+        m.reservoir.centers_to_vtk = lambda out_dir: None
+        m.reservoir.input_arrays = {'PRESSURE': None, 'TEMPERATURE': None}
 
     # time stepping and convergence parameters
     m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
@@ -249,6 +258,10 @@ if __name__ == '__main__':
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
             platform = 'gpu'
 
+    rsv_list = []
+    rsv_list += ['struct']
+    rsv_list += ['cpg']
+
     physics_list = []
     physics_list += ['geothermal']
     physics_list += ['deadoil']
@@ -256,6 +269,7 @@ if __name__ == '__main__':
     cases_list = []
     cases_list += ['generate_5x3x4']
     #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1_no_burden']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
@@ -265,34 +279,39 @@ if __name__ == '__main__':
     well_controls += ['wbhp']
     well_controls += ['wperiodic']
 
-    for physics_type in physics_list:
-        for case_geom in cases_list:
-            for wctrl in well_controls:
-                if physics_type == 'deadoil' and wctrl == 'wrate':
-                    continue
-                case = case_geom + '_' + wctrl
-                out_dir = 'results_' + physics_type + '_' + case
-                failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(physics_type=physics_type,
-                                                                                        case=case, out_dir=out_dir,
-                                                                                        redirect_log=False,
-                                                                                        platform=platform)
+    for rsv in rsv_list:
+        for physics_type in physics_list:
+            for case_geom in cases_list:
+                for wctrl in well_controls:
+                    if physics_type == 'deadoil' and wctrl == 'wrate':
+                        continue
+                    case = case_geom + '_' + wctrl
+                    out_dir = 'results_' + rsv + '_' + physics_type + '_' + case
+                    failed, sim_time, time_data, time_data_report, wells, well_is_inj = run(rsv=rsv,
+                                                                                            physics_type=physics_type,
+                                                                                            case=case,
+                                                                                            out_dir=out_dir,
+                                                                                            redirect_log=False,
+                                                                                            platform=platform)
 
-                # one can read well results from pkl file to add/change well plots without re-running the model
-                pkl1_dir = '.'
-                pkl_fname = 'time_data.pkl'
-                pkl_report_fname = 'time_data_report.pkl'
-                time_data_list = [time_data]
-                time_data_report_list = [time_data_report]
-                label_list = [None]
+                    # one can read well results from pkl file to add/change well plots without re-running the model
+                    pkl1_dir = '.'
+                    pkl_fname = 'time_data.pkl'
+                    pkl_report_fname = 'time_data_report.pkl'
+                    time_data_list = [time_data]
+                    time_data_report_list = [time_data_report]
+                    label_list = [None]
 
-                # compare the current results with another run
-                #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom
-                #time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
-                #time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
-                #time_data_list = [time_data_1, time_data]
-                #time_data_report_list = [time_data_report_1, time_data_report]
-                #label_list = ['1', 'current']
+                    # compare the current results with another run
+                    #pkl1_dir = r'../../../open-darts_dev/models/cpg_sloping_fault/results_' + physics_type + '_' + case_geom + '_' + wctrl
+                    if rsv == 'cpg':
+                        pkl1_dir = r'results_' + 'struct' + '_' + physics_type + '_' + case_geom + '_' + wctrl
+                        time_data_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_fname))
+                        time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
+                        time_data_list = [time_data_1, time_data]
+                        time_data_report_list = [time_data_report_1, time_data_report]
+                        label_list = ['1', 'current']
 
-                plot_results(wells=wells, well_is_inj=well_is_inj,
-                             time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
-                             physics_type=physics_type, out_dir=out_dir)
+                    plot_results(wells=wells, well_is_inj=well_is_inj,
+                                 time_data_list=time_data_list, time_data_report_list=time_data_report_list, label_list=label_list,
+                                 physics_type=physics_type, out_dir=out_dir)
