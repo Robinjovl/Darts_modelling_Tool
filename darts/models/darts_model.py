@@ -1,8 +1,7 @@
 from math import fabs
 import pickle
-import xarray as xr
-import h5py
 import os
+import warnings
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -132,13 +131,15 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
-        self.restart = restart
-
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
+        self.restart = restart
         if restart is False:
             self.set_initial_conditions()
             self.reset()
         self.data_ts.print()
+        if self.params.linear_type == sim_params.linear_solver_t.cpu_superlu and \
+            self.reservoir.mesh.n_res_blocks > 30000:
+            warnings.warn('The number of cells looks too big to use a direct linear solver: ' + str(self.reservoir.mesh.n_res_blocks) + ' > 30000')
 
     def reset(self):
         """
@@ -324,7 +325,7 @@ class DartsModel:
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:
-            m.params.linear_type = self.data_ts.linear_type
+            self.params.linear_type = self.data_ts.linear_type
 
     def run_simple(self, physics, data_ts, days):
         """
@@ -412,6 +413,7 @@ class DartsModel:
         :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
         """
+        assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
 

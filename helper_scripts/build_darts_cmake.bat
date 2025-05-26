@@ -151,6 +151,7 @@ echo ************************************************************************
 python darts/print_build_info.py
 if %wheel%==true (
   echo -- build darts.whl for windows started
+  copy CHANGELOG.md darts
   rem copy VS redist libraries 
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts

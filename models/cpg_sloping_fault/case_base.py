@@ -49,6 +49,10 @@ def input_data_base(idata: InputData, case: str):
     #     perm - to avoid convergence issues
     geom.min_poro = 1e-5
 
+    # allow small flow to avoid pressure jumps
+    # since there might pressure change appear due to the temperature change
+    geom.min_perm = 1e-5
+
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
 

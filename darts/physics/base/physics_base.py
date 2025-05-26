@@ -243,7 +243,7 @@ class PhysicsBase:
         Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param well: ms_well object on which the control/constraint is defined
+        :param wctrl: well_control_iface object responsible for control/constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
@@ -251,7 +251,6 @@ class PhysicsBase:
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
         :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
-        :param is_control: Is control (true) or constraint (false), default is true
         """
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
         inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(

@@ -1,4 +1,4 @@
-# 1.3.0 [15-05-2025]
+# 1.3.0 [16-05-2025]
 - Unify well controls:
   - A single C++ class well_control_iface class has been generalized to handle bhp and different rate controls (inj/prod) for all engines
   - An instance of well_control_iface is created for every ms_well object upon init_rate_parameters()

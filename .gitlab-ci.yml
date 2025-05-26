@@ -549,6 +549,8 @@ test-windows-3.9-ODLS:
         - pip install --force-reinstall --no-deps ./dist/*.whl
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
         - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
+        # remove flash installed by its pipelines, and get one from pip (not needed actually since Linux pipeline runs in a docker, but let's keep consistency with windows pipelines)
+        - pip install --force-reinstall open-darts-flash
     script:
         # run simulation fot test models set
         - cd models
@@ -641,6 +643,8 @@ test-windows-3.9-ODLS:
         - pip install --force-reinstall --no-deps .\dist\$WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
         - pip install --upgrade --upgrade-strategy eager .\dist\$WHEEL_NAME
+        # remove flash installed by its pipelines, and get one from pip
+        - pip install --force-reinstall open-darts-flash
     script:
         # run simulation fot test models set
         - cd models

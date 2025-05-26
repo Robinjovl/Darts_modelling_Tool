@@ -64,7 +64,7 @@ if __name__ == '__main__':
         n.print_stat()
 
         # compute well time data
-        time_data_dict = n.output.store_well_time_data(save_as_pkl=True)
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
 
         n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])

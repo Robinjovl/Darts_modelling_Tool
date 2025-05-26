@@ -60,7 +60,7 @@ engine_base_gpu::~engine_base_gpu()
 
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 {
-	int converged = engine_base::post_newtonloop(dt, time);
+	int converged = engine_base::post_newtonloop(deltat, time);
 	if (!converged)
 	{
 		copy_data_to_device(X, X_d);

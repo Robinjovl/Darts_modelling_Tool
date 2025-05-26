@@ -40,11 +40,13 @@ class Model_CPG(CICDModel):
 
     def init_reservoir(self, arrays):
         check_arrays(arrays)
-        if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
+        if not self.physics.thermal:  # set inactive cells with small porosity (isothermal case)
             arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
-        elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
-            for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-                arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+        else:  # process cells with small poro (thermal case)
+            arrays['PORO'][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+            # allow small flow since there might pressure change appear due to the temperature change
+            for arr in ['PERMX', 'PERMY', 'PERMZ']:
+                arrays[arr][arrays[arr] < self.idata.geom.min_perm] = self.idata.geom.min_perm
 
         if self.idata.geom.burden_layers > 0:
             # add over- and underburden layers

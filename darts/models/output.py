@@ -230,6 +230,37 @@ class Output:
 
         return
 
+    def save_array(self, array, filename, compression_level=1):
+        """
+        This function saved any dictionary as an h5 file with compression
+
+        : param array: data
+        : type array: dict
+        : param filename: filename in the format filename.h5
+        : type filename: str
+        : param compression_level : int value between 0 and 9
+        : type : int
+        """
+        output_directory = os.path.join(m.output_folder, filename)
+        with h5py.File(output_directory, "w") as h5f:
+            for key, array in array.items():
+                h5f.create_dataset(key, data=array, compression='gzip', compression_opts=compression_level)
+        return 0
+
+    def load_array(self, file_directory):
+        """
+        This function loads any saved data in h5 file format
+
+        : param file_directory: filename in the format filename.h5
+        : type file_directory: str
+        """
+
+        array = {}
+        with h5py.File(file_directory, "r") as h5f:
+            for key in h5f.keys():
+                array[key] = np.array(h5f[key])
+        return array
+
     def save_property_array(self, time_vector, property_array, filename="property_array.h5"):
         """
         Saves property_array to an HDF5 file.
@@ -769,7 +800,7 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def store_well_time_data(self, types_of_well_rates: list = None, save_as_pkl: bool = False):
+    def store_well_time_data(self, types_of_well_rates: list = None, save_output_files: bool = False):
         """
         Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
@@ -785,8 +816,8 @@ class Output:
                                     "components_mass_rates"
                                     "advective_heat_rate" for thermal scenarios
         :type types_of_well_rates: list
-        :param save_as_pkl: flag to save time_data as a .pkl and .xlsx file in the output folder, default false
-        :type save_as_pkl: bool
+        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
+        :type save_output_files: bool
 
         Well data is saved as a *.pkl file and .xlsx file in the dartsmodel.output_folder.
         """
@@ -828,7 +859,7 @@ class Output:
             self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
 
         # Export time_data_dict
-        if save_as_pkl:
+        if save_output_files:
             df = pd.DataFrame(time_data_dict)
             df.to_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
             with pd.ExcelWriter(os.path.join(self.output_folder, 'well_time_data.xlsx')) as w:

@@ -26,17 +26,9 @@ using namespace opendarts::linear_solvers;
 
 int engine_base::print_header()
 {
-	std::cout << engine_name << "\nSim params: \n"
-			  << "\tFirst ts: \t" << params->first_ts << std::endl;
-	std::cout << "\tMax ts: \t" << params->max_ts << std::endl;
-	std::cout << "\tMult ts: \t" << params->mult_ts << std::endl;
-
-	std::cout << "\tMax i newton: \t" << params->max_i_newton << std::endl;
-	std::cout << "\tMax i linear: \t" << params->max_i_linear << std::endl;
-	std::cout << "\tTol newton: \t" << params->tolerance_newton << std::endl;
-	std::cout << "\tTol linear: \t" << params->tolerance_linear << std::endl;
+	std::cout << "Engine: \t" << engine_name << "\n";
 #ifdef _OPENMP
-	std::cout << "\tOpenMP threads: \t" << omp_get_max_threads() << std::endl;
+	std::cout << "OpenMP threads: \t" << omp_get_max_threads() << std::endl;
 #endif
 	//  std::cout << "\tResolution: \t" << acc_flux_op_set->axis_points[0] << std::endl;
 

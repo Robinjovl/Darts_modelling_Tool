@@ -61,6 +61,8 @@ class Geothermal(PhysicsBase):
         self.PT_axes_min = value_vector([min_p, 273.15])
         self.PT_axes_max = value_vector([max_p, 273.15 + 300.])
 
+        self.thermal = True
+
     def determine_obl_bounds(self, min_p: float, max_p: float, min_z: float = None, max_z: float = None,
                              min_t: float = None, max_t: float = None,
                              state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.PH):
