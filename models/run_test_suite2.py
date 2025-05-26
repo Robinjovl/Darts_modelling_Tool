@@ -211,7 +211,12 @@ def check_performance(mod):
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         platform='gpu'
 
+    if os.getenv('GPU_DEVICE') != None:
+        from darts.engines import set_gpu_device
+        set_gpu_device(int(os.getenv('GPU_DEVICE')))
+
     m.init(platform=platform)
+    
     m.set_output()
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
