@@ -173,9 +173,9 @@ class Pipe:
                     xG_mass0[i, :], xL_a_mass_0[i, :], xL_b_mass_0[i, :] = x_mass0[0, :], x_mass0[1, :], x_mass0[2, :]
 
                     # Calculate averaged liquid props
-                    rhoL0[i] = (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i]) / (sL_a_0[i] + sL_b_0[i])
-                    miuL0[i] = (miuL_a_0[i] * sL_a_0[i] + miuL_b_0[i] * sL_b_0[i]) / (sL_a_0[i] + sL_b_0[i])
-                    xL_mass0[i, :] = (xL_a_mass_0[i, :] * rhoL_a_0[i] * sL_a_0[i] + xL_b_mass_0[i, :] * rhoL_b_0[i] * sL_b_0[i]) / (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i])
+                    rhoL0[i] = (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i]) / (sL_a_0[i] + sL_b_0[i]) if (sL_a_0[i] + sL_b_0[i]) > 0 else 0
+                    miuL0[i] = (miuL_a_0[i] * sL_a_0[i] + miuL_b_0[i] * sL_b_0[i]) / (sL_a_0[i] + sL_b_0[i]) if (sL_a_0[i] + sL_b_0[i]) > 0 else 0
+                    xL_mass0[i, :] = (xL_a_mass_0[i, :] * rhoL_a_0[i] * sL_a_0[i] + xL_b_mass_0[i, :] * rhoL_b_0[i] * sL_b_0[i]) / (rhoL_a_0[i] * sL_a_0[i] + rhoL_b_0[i] * sL_b_0[i]) if (sL_a_0[i] + sL_b_0[i]) > 0 else 0
 
             self.iter_phases_props0 = [xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0]
 
@@ -230,9 +230,9 @@ class Pipe:
                 xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = x_mass[0, :], x_mass[1, :], x_mass[2, :]
 
                 # Calculate averaged liquid props
-                rhoL[i] = (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i])
-                miuL[i] = (miuL_a[i] * sL_a[i] + miuL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i])
-                xL_mass[i, :] = (xL_a_mass[i, :] * rhoL_a[i] * sL_a[i] + xL_b_mass[i, :] * rhoL_b[i] * sL_b[i]) / (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i])
+                rhoL[i] = (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i]) if (sL_a[i] + sL_b[i]) > 0 else 0
+                miuL[i] = (miuL_a[i] * sL_a[i] + miuL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i]) if (sL_a[i] + sL_b[i]) > 0 else 0
+                xL_mass[i, :] = (xL_a_mass[i, :] * rhoL_a[i] * sL_a[i] + xL_b_mass[i, :] * rhoL_b[i] * sL_b[i]) / (rhoL_a[i] * sL_a[i] + rhoL_b[i] * sL_b[i]) if (sL_a[i] + sL_b[i]) > 0 else 0
 
         self.iter_phases_props = [xG_mass, xL_mass, sG, rhoG, rhoL, miuG, miuL]
 
