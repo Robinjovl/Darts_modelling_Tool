@@ -516,7 +516,7 @@ class Pipe:
         return self.ff0
 
     def calc_Reynolds_number(self):
-        _, _, _, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
+        _, _, _, _, _, miuG0, miuL0 = self.iter_phases_props0
 
         _, _, sG0_face, _, _ = self.iter_phases_props0_face
         [_, vM0, _, _] = self.velocities0
