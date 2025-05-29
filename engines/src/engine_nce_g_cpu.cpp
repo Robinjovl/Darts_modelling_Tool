@@ -63,11 +63,14 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
 
     index_t n_blocks = mesh->n_blocks;
     index_t n_conns = mesh->n_conns;
+	index_t n_res_blocks = mesh->n_res_blocks;
     std::vector<index_t> &block_m = mesh->block_m;
     std::vector<index_t> &block_p = mesh->block_p;
     std::vector<value_t> &tran = mesh->tran;
     std::vector<value_t> &tranD = mesh->tranD;
     std::vector<value_t> &hcap = mesh->heat_capacity;
+	std::vector<value_t>& velocity_appr = mesh->velocity_appr;
+	std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     std::vector<value_t> &grav_coef = mesh->grav_coef;
 
     value_t *Jac = jacobian->get_values();
@@ -76,6 +79,11 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
     index_t *cols = jacobian->get_cols_ind();
     index_t *row_thread_starts = jacobian->get_row_thread_starts();
 
+	// for reconstruction of phase velocities
+	if (!mesh->velocity_appr.empty() && darcy_velocities.empty())
+		darcy_velocities.resize(n_res_blocks * NP * ND);
+
+	std::fill(darcy_velocities.begin(), darcy_velocities.end(), 0.0);
     CFL_max = 0;
 
 #ifdef _OPENMP
@@ -93,6 +101,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
         index_t j, diag_idx, jac_idx;
         value_t p_diff, gamma_p_diff;
         value_t t_diff, gamma_t_diff;
+		index_t cell_conn_idx, cell_conn_num;
+		std::array<value_t, NP> phase_fluxes;
 
         numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
 
@@ -106,6 +116,10 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
             //multitable->interpolate_acc_val_only (&Xn[N_VARS * i], op_vals_tmp);
             // index of diagonal block entry for block i in CSR values array
             diag_idx = N_VARS_SQ * diag_ind[i];
+
+			// for velocity reconstruction
+			if (!velocity_offset.empty() && i < n_res_blocks)
+				cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
 
             // fill diagonal part
             // [NC] mass eqns
@@ -138,6 +152,7 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
             index_t conn_idx = csr_idx_start - i;
 
             jac_idx = N_VARS_SQ * csr_idx_start;
+			cell_conn_idx = 0;
 
             // fill offdiagonal part + contribute to diagonal
             for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
@@ -166,6 +181,7 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
 
                     value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] * H2O_MW;
                     double phase_gamma_p_diff = tran[conn_idx] * dt * phase_p_diff;
+					phase_fluxes[p] = 0.0;
 
                     if (phase_p_diff < 0)
                     {
@@ -173,7 +189,7 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         for (uint8_t c = 0; c < NC; c++)
                         {
                             value_t c_flux = tran[conn_idx] * dt * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c];
-
+							phase_fluxes[p] += op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c] * H2O_MW;
                             RHS[i * N_VARS + c] -= phase_gamma_p_diff * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c]; // flux operators only
 							if (enabled_flux_output)
 							  cur_darcy_fluxes[p * NC + c] = -phase_gamma_p_diff * op_vals_arr[i * N_OPS + FLUX_OP + p * NC + c] / dt;
@@ -216,6 +232,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                             //    Jac[jac_idx + NC * N_VARS + v] = 0;
                             //}
                         }
+						if (phase_fluxes[p] != 0.0)
+							phase_fluxes[p] *= - tran[conn_idx] * phase_p_diff / op_vals_arr[i * N_OPS + DENS_OP + p];
                     }
                     else
                     {
@@ -225,6 +243,7 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         for (uint8_t c = 0; c < NC; c++)
                         {
                             value_t c_flux = tran[conn_idx] * dt * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c];
+							phase_fluxes[p] += op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c] * H2O_MW;
                             RHS[i * N_VARS + c] -= phase_gamma_p_diff * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c]; // flux operators only
 							if (enabled_flux_output)
 							  cur_darcy_fluxes[p * NC + c] = -phase_gamma_p_diff * op_vals_arr[j * N_OPS + FLUX_OP + p * NC + c] / dt;
@@ -241,6 +260,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                                 }
                             }
                         }
+						if (phase_fluxes[p] != 0.0)
+							phase_fluxes[p] *= - tran[conn_idx] * phase_p_diff / op_vals_arr[j * N_OPS + DENS_OP + p];
 
                         // energy flux
                         RHS[i * N_VARS + E_VAR] -= phase_gamma_p_diff * op_vals_arr[j * N_OPS + FE_FLUX_OP + p]; // energy flux operator
@@ -260,6 +281,21 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                         }
                     }
                 }
+
+				if (i < n_res_blocks && j < n_res_blocks)
+				{
+
+					// assemble velocities
+					if (!velocity_appr.empty())
+					{
+						index_t vel_idx = ND * velocity_offset[i];
+						for (uint8_t p = 0; p < NP; p++)
+						{
+							for (uint8_t d = 0; d < ND; d++)
+								darcy_velocities[NP * ND * i + p * ND + d] += velocity_appr[vel_idx + d * cell_conn_num + cell_conn_idx] * phase_fluxes[p];
+						}
+					}
+				}
 
                 if (t_diff < 0)
                 {
@@ -299,6 +335,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
                     }
                 }
                 conn_idx++;
+				if (j < n_res_blocks)
+					cell_conn_idx++;
             }
         }
 #ifdef _OPENMP
