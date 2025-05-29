@@ -66,9 +66,10 @@ class Compositional(PhysicsBase):
 
         n_vars = len(variables)
         # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
-        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/
+        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
+        # + 2 /*temperature and pressure*/
         # = NE * (2 * nph + 2) + 4 * nph + 3
-        n_ops = n_vars * (2 * nph + 2) + 4 * nph + 3
+        n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
 
         # axes_min
         if axes_min is None:
@@ -124,10 +125,10 @@ class Compositional(PhysicsBase):
             self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
             self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
 
-        if self.thermal:
-            self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
-        else:
-            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+        # if self.thermal:
+        #     self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)   # This works well for the non-isothermal scenarios with basic wells.
+        # else:
+        self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)   # This works well for the non-isothermal scenarios with multi-segment wells.
 
         self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
         self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,

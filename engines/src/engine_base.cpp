@@ -1036,8 +1036,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                         if (opt_phase == phase)
                         {
                             // adding minus sign on "q_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_Q[ww][p]);
-                            vals_term += rates[p_idx] * w->segment_transmissibility * (-q_Q[ww][p]);
+                            ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_Q[ww][p]);
+                            vals_term += rates[p_idx] * w->well_transmissibility * (-q_Q[ww][p]);
                         }
                         p++;
                     }
@@ -1150,8 +1150,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 						if (opt_phase == phase)
 						{
                             // adding minus sign on "q_inj_Q" to move Temp_dj_dx to the right hand side of eq.(18) and eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
-							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->segment_transmissibility * (-q_inj_Q[ww][p]);
-							vals_term += rates[p_idx] * w->segment_transmissibility * (-q_inj_Q[ww][p]);
+							ders_term += rates_derivs[p_idx * n_vars_well + v] * p_diff * w->well_transmissibility * (-q_inj_Q[ww][p]);
+							vals_term += rates[p_idx] * w->well_transmissibility * (-q_inj_Q[ww][p]);
 						}
                         p++;
 					}
@@ -1602,7 +1602,7 @@ engine_base::calc_newton_residual_L2()
 	std::vector<value_t> res(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 
-	for (int i = 0; i < mesh->n_res_blocks; i++)
+	for (int i = 0; i < mesh->n_blocks; i++)
 	{
 		for (int c = 0; c < n_vars; c++)
 		{
@@ -1691,26 +1691,43 @@ engine_base::calc_well_residual_L2()
 
 	for (ms_well *w : wells)
 	{
-		// first sum up RHS for well segments which have perforations
-		int nperf = w->perforations.size();
-		for (int ip = 0; ip < nperf; ip++)
+		if (w->ms_type == ms_well::MS_Type::EPM)
 		{
+			// first sum up RHS for well segments which have perforations
+			int nperf = w->perforations.size();
+			for (int ip = 0; ip < nperf; ip++)
+			{
+				for (int v = 0; v < n_vars; v++)
+				{
+					index_t i_w, i_r;
+					value_t wi, wid;
+					std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
+
+					res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
+					norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				}
+			}
+			// and then add RHS for well control equations
 			for (int v = 0; v < n_vars; v++)
 			{
-				index_t i_w, i_r;
-				value_t wi, wid;
-				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
-
-				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
-				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				// well constraints should not be normalized, so pre-multiply by norm
+				res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
 			}
 		}
-		// and then add RHS for well control equations
-		for (int v = 0; v < n_vars; v++)
-		{
-			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
-		}
+		//else if (w->ms_type == ms_well::MS_Type::DFM)
+		//{
+		//	for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
+		//	{
+		//		for (int c = 0; c < n_vars; c++)
+		//		{
+		//			res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
+		//		}
+		//	}
+		//	for (int c = 0; c < n_vars; c++)   ///////////////////////////////////////
+		//	{
+		//		norm[c] = 1;                   ///////////////////////////////////////   This works only if we have ms_well
+		//	}                                  ///////////////////////////////////////
+		//}
 	}
 
 	for (int v = 0; v < n_vars; v++)
@@ -2716,7 +2733,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		for (ms_well *w : wells)
 		{
-			w->calc_rates(X, op_vals_arr, time_data);
+			if (w->ms_type == ms_well::MS_Type::EPM)
+			{
+				w->calc_rates(X, op_vals_arr, time_data);
+			}
 		}
 
 		// calculate FIPS

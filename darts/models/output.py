@@ -899,7 +899,7 @@ class Output:
         # Get well indices for each perforation
         geometric_WI = np.array([p[2] for well in self.reservoir.wells for p in well.perforations])
         # Get transmissibility for each wellhead connection
-        well_head_conn_trans = np.array([well.segment_transmissibility for well in self.reservoir.wells])
+        well_head_conn_trans = np.array([well.well_transmissibility for well in self.reservoir.wells])
 
         # This change is done to make sure that if the user has not set multi_segment to True in the function
         # add_perforation, the perforations have different indices.

@@ -26,7 +26,9 @@ class OperatorsSuper(OperatorsBase):
         self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
         self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
         self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
-        self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
+        self.LAMBDA_OP = self.PORO_OP + 1
+        self.SAT_OP = self.LAMBDA_OP + self.nph
+        self.ENTH_OP = self.SAT_OP + self.nph  # enthalpy operator - nph
         self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
@@ -51,8 +53,10 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
-        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("POROSITY", values[self.PORO_OP])
+        print("LAMBDA", values[self.LAMBDA_OP:self.SAT_OP])
+        print("SAT", values[self.SAT_OP:self.ENTH_OP])
+        print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
@@ -91,9 +95,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:
-            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
+            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+                self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         # fluid diffusive flux sat: c_r phi_f s_j (-)
@@ -112,7 +116,6 @@ class ReservoirOperators(OperatorsSuper):
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
         vec_values_as_np[self.KIN_OP:self.KIN_OP + self.nc] = self.property.mass_source
 
-
         """ Gravity and Capillarity operators """
         # E3-> gravity
         vec_values_as_np[self.GRAV_OP + self.property.ph] = self.property.dens[self.property.ph]
@@ -122,6 +125,14 @@ class ReservoirOperators(OperatorsSuper):
 
         # E5_> porosity
         vec_values_as_np[self.PORO_OP] = self.phi_f
+
+        """ Lambda operator for velocity calculations """
+        for j in self.property.ph:
+            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
+
+        """ Saturation operator for phase volumetric calculations in the wellbore """
+        # Not used for reservoir
 
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
@@ -158,10 +169,9 @@ class ReservoirOperators(OperatorsSuper):
         values[self.ACC_OP + self.nc] -= self.compr * 100 * pressure
 
         """ Beta operator represents flux term: """
-        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kJ/m3.bar.day)
-        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * \
-            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
-
+        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
+        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * \
+                                                                      self.property.dens_m[self.property.ph]
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
@@ -224,34 +234,33 @@ class WellOperators(OperatorsSuper):
         # Composition vector and pressure from state:
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
-        pressure = vec_state_as_np[0]
 
         vec_values_as_np[:] = 0
 
         self.property.evaluate(vec_state_as_np)
 
-        self.compr = self.property.rock_compr_ev.evaluate(pressure)
-
         density_tot = np.sum(self.property.sat[:self.np_fl] * self.property.dens_m[:self.np_fl])
         zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-        self.phi_f = 1.
+        # self.phi_f = 1.
+        self.phi_s = np.sum(zc[self.nc_fl:])
+        self.phi_f = 1. - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
         # fluid mass accumulation: c_r phi^T z_c* [-] rho_m^T [kmol/m3]
-        vec_values_as_np[self.ACC_OP:self.ACC_OP + self.nc_fl] = self.compr * density_tot * zc[:self.nc_fl]
+        vec_values_as_np[self.ACC_OP:self.ACC_OP + self.nc_fl] = density_tot * zc[:self.nc_fl]
 
         """ and alpha for mineral components """
         # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
-        vec_values_as_np[self.ACC_OP + self.nc_fl:self.ACC_OP + self.nc_fl + self.ns] = self.compr * \
+        vec_values_as_np[self.ACC_OP + self.nc_fl:self.ACC_OP + self.nc_fl + self.ns] = \
                 self.property.dens_m[self.np_fl:self.np_fl + self.ns] * zc[self.nc_fl:self.nc_fl + self.ns]
 
         """ Beta operator represents flux term: """
         for j in self.property.ph:
-            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] k_rj [-] / mu_j [cP ∝ bar.day] (kmol/m3.bar.day)
+            # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
-                self.property.x[j][:self.nc_fl] * self.property.dens_m[j] * self.property.kr[j] / self.property.mu[j]
+                self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
 
@@ -268,6 +277,15 @@ class WellOperators(OperatorsSuper):
         # E5_> porosity
         vec_values_as_np[self.PORO_OP] = 1.
 
+        """ Lambda operator for velocity calculations """
+        for j in self.property.ph:
+            # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
+            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
+
+        """ Saturation operator for phase volumetric calculations in the wellbore """
+        for j in self.property.ph:
+            # phase saturation: s_j [-]
+            vec_values_as_np[self.SAT_OP + j] = self.property.sat[j]
 
         # Pressure operator
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
@@ -280,8 +298,51 @@ class WellOperators(OperatorsSuper):
         return 0
 
     def evaluate_thermal(self, state, values):
-        values[self.TEMP_OP] = state[-1]
-        return
+        """
+        Method to evaluate operators for energy conservation equation
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temp]
+        :param values: values of the operators (used for storing the operator values)
+        :return: updated value for operators, stored in values
+        """
+        pressure = state[0]
+        temperature = state[-1]
+
+        # Evaluate thermal properties at current state
+        self.property.evaluate_thermal(state)
+
+        """ Alpha operator represents accumulation term: """
+        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        values[self.ACC_OP + self.nc] += self.phi_f * \
+            np.sum(self.property.sat[self.property.ph] * self.property.dens_m[self.property.ph] * self.property.enthalpy[self.property.ph])  # fluid enthalpy (kJ/m3)
+        # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        values[self.ACC_OP + self.nc] += self.phi_s * \
+            np.sum(self.property.sat[self.np_fl:self.np_fl + self.ns] * self.property.dens_m[self.np_fl:self.np_fl + self.ns] * self.property.enthalpy[self.np_fl:self.np_fl + self.ns])
+        # Enthalpy to internal energy conversion
+        values[self.ACC_OP + self.nc] -= 100 * pressure
+
+        """ Beta operator represents flux term: """
+        # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
+        values[self.FLUX_OP + self.property.ph * self.ne + self.nc] = self.property.enthalpy[self.property.ph] * \
+                                                                      self.property.dens_m[self.property.ph]
+
+        """ Chi operator for temperature in conduction """
+        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
+        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = temperature * self.property.cond[self.property.ph]
+
+        """ Delta operator for reaction """
+        # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
+        values[self.KIN_OP + self.nc] = self.property.energy_source
+
+        # Phase enthalpy
+        for j in range(self.nph):
+            values[self.ENTH_OP + j] = self.property.enthalpy[j]
+
+        """ Additional energy operators """
+        # Temperature operator
+        values[self.TEMP_OP] = temperature
+
+        return 0
 
 
 class SinglePhaseGeomechanicsOperators(OperatorsBase):

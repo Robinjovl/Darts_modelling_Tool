@@ -817,6 +817,7 @@ conn_mesh::reverse_and_sort()
 
   // with reversed connections
   n_conns *= 2;
+  n_res_conns *= 2;
 
   std::vector<value_t> test_t;
   std::vector<value_t> test_tD;
@@ -825,6 +826,163 @@ conn_mesh::reverse_and_sort()
   set_res_tran(test_t, test_tD);
 
   return 0;
+}
+
+std::vector<value_t>
+conn_mesh::reverse_and_sort_wells_velocities(std::vector<value_t> one_way_phase_velocities)
+{
+	std::vector<value_t> phase_velocities;
+	phase_velocities.resize(n_conns);
+
+	// Sort connection list + add reversed connections
+	n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
+	n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
+
+	tmp_index.assign(n_blocks + 1, 0);
+
+	// run 1 - calc indices
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		tmp_index[one_way_block_m[j] + 1]++;  // 1 for direct connection
+		tmp_index[one_way_block_p[j] + 1]++;  // and 1 for reverse connection
+	}
+	// run 2 - sum indices
+	for (index_t i = 0; i < n_blocks; ++i)
+	{
+		tmp_index[i + 1] += tmp_index[i]; // 1 for direct and 1 for reverse connection
+	}
+	// run 2 - set values and check
+	index_t idx;
+	index_t need_sort = 0;
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		idx = tmp_index[one_way_block_m[j]]++;
+
+		phase_velocities[idx] = one_way_phase_velocities[j];
+
+
+		if (!need_sort && idx > 0 && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
+		{
+			// columns were not sorted in initial file
+			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
+			need_sort = 1;
+		}
+
+		// reverse
+
+		idx = tmp_index[one_way_block_p[j]]++;
+		phase_velocities[idx] = one_way_phase_velocities[j];
+
+
+		if (!need_sort && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
+		{
+			// columns were not sorted in initial file
+			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
+			need_sort = 1;
+		}
+	}
+
+	// run 3 - bubble sort columns within each block
+	if (need_sort)
+	{
+		index_t j = 0;
+		value_t v_tmp;
+		for (index_t i = 0; i < n_blocks; ++i)
+		{
+			for (; j < tmp_index[i] - 1; j++)
+				for (index_t k = j + 1; k < tmp_index[i]; k++)
+				{
+					if (block_p[k] < block_p[j])
+					{
+						v_tmp = phase_velocities[k];
+						phase_velocities[k] = phase_velocities[j];
+						phase_velocities[j] = v_tmp;
+					}
+				}
+			j++;
+		}
+	}
+
+	return phase_velocities;
+}
+
+using MixedType = std::variant<int, std::vector<value_t>>;
+std::vector<MixedType>
+conn_mesh::reverse_and_sort_wells_velocities_derivatives(std::vector<MixedType> one_way_phase_velocities_derivatives)
+{
+	std::vector<MixedType> phase_velocities_derivatives;
+	phase_velocities_derivatives.resize(n_conns);
+
+	// Sort connection list + add reversed connections
+	n_blocks = *(std::max_element(one_way_block_m.begin(), one_way_block_m.end())) + 1;
+	n_blocks = std::max(n_blocks, *(std::max_element(one_way_block_p.begin(), one_way_block_p.end())) + 1);
+
+	tmp_index.assign(n_blocks + 1, 0);
+
+	// run 1 - calc indices
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		tmp_index[one_way_block_m[j] + 1]++;  // 1 for direct connection
+		tmp_index[one_way_block_p[j] + 1]++;  // and 1 for reverse connection
+	}
+	// run 2 - sum indices
+	for (index_t i = 0; i < n_blocks; ++i)
+	{
+		tmp_index[i + 1] += tmp_index[i]; // 1 for direct and 1 for reverse connection
+	}
+	// run 2 - set values and check
+	index_t idx;
+	index_t need_sort = 0;
+	for (index_t j = 0; j < n_conns / 2; ++j)
+	{
+		idx = tmp_index[one_way_block_m[j]]++;
+
+		phase_velocities_derivatives[idx] = one_way_phase_velocities_derivatives[j];
+
+
+		if (!need_sort && idx > 0 && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
+		{
+			// columns were not sorted in initial file
+			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
+			need_sort = 1;
+		}
+
+		// reverse
+
+		idx = tmp_index[one_way_block_p[j]]++;
+		phase_velocities_derivatives[idx] = one_way_phase_velocities_derivatives[j];
+
+
+		if (!need_sort && block_m[idx] == block_m[idx - 1] && block_p[idx] < block_p[idx - 1])
+		{
+			// columns were not sorted in initial file
+			//cout << "Warning: block " << block_m[idx] << " has unsorted connections to " << block_p[idx] << " and " << block_p[idx - 1] << endl;
+			need_sort = 1;
+		}
+	}
+
+	// run 3 - bubble sort columns within each block
+	//if (need_sort)
+	//{
+	//	index_t j = 0;
+	//	value_t v_tmp;
+	//	for (index_t i = 0; i < n_blocks; ++i)
+	//	{
+	//		for (; j < tmp_index[i] - 1; j++)
+	//			for (index_t k = j + 1; k < tmp_index[i]; k++)
+	//			{
+	//				if (block_p[k] < block_p[j])
+	//				{
+	//					v_tmp = phase_velocities_derivatives[k];
+	//					phase_velocities_derivatives[k] = phase_velocities_derivatives[j];
+	//					phase_velocities_derivatives[j] = v_tmp;
+	//				}
+	//			}
+	//		j++;
+	//	}
+	//}
+
+	return phase_velocities_derivatives;
 }
 
 int
@@ -1817,9 +1975,10 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
   index_t well_head_idx = n_res_blocks;
   n_perfs = 0;
+  n_res_conns = n_conns;
 
-  // Wells are modeled as a 1D sequence of small grid blocks (W-blocks) representing segments, 
-  // which are connected to the reservoir. In addition, there is one more grid block (H-block)
+  // Wells are modeled as a 1D sequence of small grid blocks representing segments, 
+  // which are connected to the reservoir. In addition, there is one more grid block
   // per well, which is at the top, connected to the first well segment,
   // served as a container for well control equations.
 
@@ -1840,28 +1999,49 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
-    // connections between segments
-    for (index_t p = 0; p < n_segments; p++)
-    {
-      add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0); // connection between them
-    }
+	// this if-block can affect the number of segments if the well is of the ms_well type and there is or are unperforated segments below the lowermost perforated segment of the well.
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	{
+		n_segments = max(n_segments, wells[iw]->num_segments - 1);
+	}
+	// connections between segments of EPM well
+	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
+	{
+		for (index_t p = 0; p < n_segments; p++)
+		{
+			add_conn(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0); // connection between them
+		}
+	}
+	// connections between segments of DFM well
+	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	{
+		for (index_t seg = 0; seg < (wells[iw]->num_segments - 1); seg++)
+		{
+			add_conn(well_head_idx + seg, well_head_idx + seg + 1, wells[iw]->well_transmissibility, 0); // connection between them
+		}
+	}
     well_head_idx += n_segments + 1;
     wells[iw]->n_segments = n_segments;
   }
 
   // connect_segments(wells[0], wells[1], wells[0]->n_segments, wells[1]->n_segments);
 
-  // Resize mesh arrays by number of well blocks and head blocks (one per well)
-  n_blocks = well_head_idx;
-  volume.resize(n_blocks);
-  poro.resize(n_blocks);
-  initial_state.resize(n_blocks * n_vars);
-  op_num.resize(n_blocks);
-  depth.resize(n_blocks + n_bounds);
+  index_t total_num_segments = 0;
+  for (index_t iw = 0; iw < wells.size(); iw++)
+  {
+	  total_num_segments += wells[iw]->n_segments + 1;   // 1 is the wellhead segment
+  }
+  index_t total_num_cells_segments = total_num_segments + n_blocks;
 
-  heat_capacity.resize(n_blocks);
-  rock_cond.resize(n_blocks + n_bounds);
-  mob_multiplier.resize(2 * n_blocks);
+  volume.resize(total_num_cells_segments);
+  poro.resize(total_num_cells_segments);
+  initial_state.resize(total_num_cells_segments * n_vars);
+  op_num.resize(total_num_cells_segments);
+  depth.resize(total_num_cells_segments + n_bounds);
+
+  heat_capacity.resize(total_num_cells_segments);
+  rock_cond.resize(total_num_cells_segments + n_bounds);
+  mob_multiplier.resize(2 * total_num_cells_segments);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
@@ -1887,16 +2067,64 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
     }
   }
 
+  for (index_t iw = 0; iw < wells.size(); iw++)
+  {
+	  if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
+	  {
+		  // depth of the wellhead segment - well controls work at this depth
+		  depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
+		  for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		  {
+			  volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
+			  poro[wells[iw]->well_head_idx + p] = 1;
+			  op_num[wells[iw]->well_head_idx + p] = 0;
+			  heat_capacity[wells[iw]->well_head_idx + p] = 0;
+			  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
+			  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
+			  if (p > 0)// p==0 is a ghost cell for the well treatment
+			  {
+				  int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
+				  int w_i = wells[iw]->well_head_idx + p;
+				  // copy properties for the well blocks from the reservoir blocks
+				  //pressure[w_i] = pressure[r_i];
+				  //temperature[w_i] = temperature[r_i];
+				  rock_cond[w_i] = rock_cond[r_i];
+				  // depth of well segments
+				  depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
+				  //std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
+			  }
+		  }
+	  }
+	  if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	  {
+		  std::copy(wells[iw]->segments_depths.begin(), wells[iw]->segments_depths.end(), depth.begin() + wells[iw]->well_head_idx);
+		  std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);
+		  std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
+		  std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
+		  std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
+		  // The following lines are not applied to DFM-MS yet.
+		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
+		  //{
+		  //	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
+		  //	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
+		  //}
+
+		  // The rest of the varialbles of the wellbore segments, such as pressure, temperature, and composition, will be specified by the user later.
+	  }
+  }
+
+  n_blocks = total_num_cells_segments;
+
   return 0;
 }
 
-// segment_transmissibility of the first well used
+// well_transmissibility of the first well used
 int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int iseg2, int verbose)
 {
 	if (verbose)
 		cout << "Added connection between well " << well1->name << " head idx=" << well1->well_head_idx << " segment idx="  << iseg1 << " and well " <<
 																								well2->name << " head idx=" << well2->well_head_idx << " segment idx="  << iseg2 << endl;
-	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->segment_transmissibility, 0);
+	add_conn(well1->well_head_idx + iseg1, well2->well_head_idx + iseg2, well1->well_transmissibility, 0);
 	return 0;
 }
 
@@ -1962,7 +2190,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// connections between segments
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->segment_transmissibility, 0, P_VAR); // connection between them
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR); // connection between them
 		}
 		well_head_idx += n_segments + 1;
 		wells[iw]->n_segments = n_segments;

@@ -38,16 +38,27 @@ public:
     INJECTOR = 1
   };
 
+  enum class MS_Type
+  {
+      EPM,
+      DFM
+  };
+
   ms_well()
   {
-    segment_volume = 0.07; // 1 m high, 0.3 m diameter
-    segment_transmissibility = 100000;
+    segment_volume = 0;
+    well_transmissibility = 100000;   // used for multi-segment wells of the type EPM
     well_head_depth = 0;
     well_body_depth = 0;
     segment_depth_increment = 0;
     segment_diameter = 0;
     segment_roughness = 0;
     well_type = PRODUCER;
+
+    segments_volumes = {};
+    segments_depths = {};
+    num_segments = 0;
+    ms_type = MS_Type::EPM;
   };
 
   void init_rate_parameters(int n_vars_, int n_ops_, std::vector<std::string> phase_names_, 
@@ -134,14 +145,20 @@ public:
   // These properties are only used in discretization, before simulation starts
   std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
   value_t segment_volume;
-  value_t segment_transmissibility;
+  value_t well_transmissibility;
   value_t well_head_depth;
   value_t well_body_depth;
   value_t segment_depth_increment;
   value_t segment_diameter;
   value_t segment_roughness;
 
+  std::vector<value_t> segments_depths;
+  std::vector<value_t> segments_volumes;
+  index_t num_segments;
+
   // Properties for simulation
+
+  MS_Type ms_type;
 
   index_t well_head_idx;        // index of the well head block, where well controls apply
   index_t well_body_idx;        // index of the first well segment block, which connects to ghost well block
@@ -149,6 +166,9 @@ public:
 
   well_control_iface control;
   well_control_iface constraint;
+
+  std::vector<value_t> phase_vels;           // phase velocities for DFM wells
+  std::vector<value_t> phase_vels_ders;      // phase velocities derivatives for DFM wells
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method

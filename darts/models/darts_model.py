@@ -9,7 +9,7 @@ from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.base.physics_base import PhysicsBase
 from darts.models.output import Output
 
-from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
+from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector, ms_well
 from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
@@ -431,7 +431,7 @@ class DartsModel:
 
         self.prev_dt = dt
 
-        ts = 0
+        ts_counter = 0
 
         nc = self.physics.n_vars
         nb = self.reservoir.mesh.n_res_blocks
@@ -449,7 +449,7 @@ class DartsModel:
             if converged:
                 t += dt
                 self.physics.engine.t = t
-                ts += 1
+                ts_counter += 1
 
                 x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
                 dt_mult_new = data_ts.dt_mult
@@ -461,7 +461,7 @@ class DartsModel:
 
                 if verbose:
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+                          % (ts_counter, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
                              dt_mult_new, np.round(max_dx, 3)))
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -520,9 +520,25 @@ class DartsModel:
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
+
+        self.iter_counter = 0
+
         for i in range(max_newt+1):
+            # Evaluate well phase velocities and derivatives if DFM wells are used
+            for w in self.reservoir.wells:
+                if w.ms_type == ms_well.MS_Type.DFM:
+                    well_head_idx = w.well_head_idx
+                    well_bottom_idx = w.well_head_idx + w.num_segments - 1
+                    n_vars = self.physics.n_vars
+                    Xn_ms_well = np.array(self.physics.engine.Xn[well_head_idx * n_vars:well_bottom_idx * n_vars + n_vars])
+                    X_ms_well = np.array(self.physics.engine.X[well_head_idx * n_vars:well_bottom_idx * n_vars + n_vars])
+                    well_phase_v, well_phase_v_d = self.wells[w.name].evaluate_phase_velocities_and_derivatives(Xn_ms_well, X_ms_well, dt, self.iter_counter)
+                    w.phase_vels = value_vector(well_phase_v)
+                    w.phase_vels_ders = value_vector(well_phase_v_d)
+
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
+            self.apply_well_lateral_heat_flux(dt, t)
 
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
@@ -543,7 +559,9 @@ class DartsModel:
                  self.physics.engine.well_residual_last_dt < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult) or
                     self.physics.engine.n_newton_last_dt == max_newt):
                 if i > 0:  # min_i_newton
+                    self.iter_counter = 0
                     break
+                self.iter_counter += 1
                     
             # line search
             if self.data_ts.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:
@@ -571,6 +589,13 @@ class DartsModel:
 
         self.timer.node['simulation'].stop()
         return converged
+
+    def apply_well_lateral_heat_flux(self, dt, t):
+        for well in self.reservoir.wells:
+            if well.ms_type == ms_well.MS_Type.DFM and self.wells[well.name].lateral_heat_flux is not None:
+                well_lateral_heat_rate = self.wells[well.name].lateral_heat_flux.evaluate(self.physics.engine.X[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars], t + dt)
+                rhs = np.array(self.physics.engine.RHS, copy=False)
+                rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
         """
@@ -694,8 +719,8 @@ class DartsModel:
             # If the function has not been overloaded, pass
             return
         rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+        # n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
+        rhs += self.set_rhs_flux(t) * dt
         return
 
     def print_timers(self):
@@ -729,7 +754,7 @@ class DartsModel:
             assert (self.well_perf_conn_ids[well.name].size == len(well.perforations) and \
                     (block_m[self.well_perf_conn_ids[well.name]] > self.reservoir.mesh.n_res_blocks).all())
             # find id of well_head -> well_body connection in the connection list
-            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_body_idx))[0]
+            well_head_conn_id = np.where(np.logical_and(block_m == well.well_head_idx, block_p == well.well_head_idx + 1))[0]
             assert(len(well_head_conn_id) == 1)
             self.well_head_conn_id[well.name] = well_head_conn_id[0]
 

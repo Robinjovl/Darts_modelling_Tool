@@ -2,6 +2,7 @@ from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.physics.super.property_container import PropertyContainer
+from darts.engines import ms_well
 
 from darts.physics.properties.black_oil import *
 from darts.physics.blackoil import BlackOil, BlackOilFluidProps
@@ -40,10 +41,11 @@ class Model(CICDModel):
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", cell_index=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", cell_index=(10, 10, 3))
+        well_type = ms_well.MS_Type.EPM
+        self.reservoir.add_well("I1", well_type)
+        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
+        self.reservoir.add_well("P1", well_type)
+        self.reservoir.add_perforation("P1", res_cell_idx=(10, 10, 3))
 
     def set_physics(self, idata: InputData):
         self.physics = BlackOil(idata, self.timer, thermal=False)

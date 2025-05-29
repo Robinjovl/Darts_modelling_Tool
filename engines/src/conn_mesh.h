@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <variant>
 #include "globals.h"
 #include "ms_well.h"
 
@@ -30,6 +31,7 @@ public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)
   index_t n_blocks;                                         // number of all blocks in the mesh including ghost  (R+W+G)
   index_t n_conns;                                          // number of connections between the blocks
+  index_t n_res_conns;                                      // number of connections between reservoir blocks
   index_t n_perfs;                                          // number of well perforations
   index_t n_matrix;                                         // number of matrix blocks
   index_t n_bounds = 0;                                     // number of boundary blocks
@@ -172,6 +174,11 @@ public:
 
   /// @brief reverse connections and sort them by both row and col
   int reverse_and_sort(); 
+  /// @brief reverse connections and sort them by both row and col for velocities at connections of wells
+  std::vector<value_t> reverse_and_sort_wells_velocities(std::vector<value_t> phase_velocities);
+  /// @brief reverse connections and sort them by both row and col for derivatives of velocities at connections of wells
+  using MixedType = std::variant<int, std::vector<value_t>>;
+  std::vector<MixedType> reverse_and_sort_wells_velocities_derivatives(std::vector<MixedType> phase_velocities_derivatives);
   /// @brief reverse connections and renumerate velocity mappers and sort them by both row and col
   int reverse_and_sort_dvel();
   /// @brief reverse mpsa connections and sort them by both row and col

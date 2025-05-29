@@ -883,6 +883,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
+		//if (w->control != nullptr)   // if control is defined for the well, the if block will be executed.
 		w->initialize_control(X_init);
 	}
 
@@ -950,8 +951,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// prepare dg_dx_n_temp
 		init_adjoint_structure(dg_dx_n_temp);
 
-		// here we remove wells.size() transmissibility between well head and well body (i.e. segment_transmissibility)
-		// because there is no need to optimize segment_transmissibility, which is usually a large value of 100000
+		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
 		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);  
 		col_dT_du = Temp_1;
 

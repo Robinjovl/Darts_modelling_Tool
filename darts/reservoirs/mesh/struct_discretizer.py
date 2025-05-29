@@ -689,14 +689,14 @@ class StructDiscretizer:
         np.seterr(**old_settings)
         return cell_m_local, cell_p_local, tran_local, tran_thermal_local, arrays_local
 
-    def calc_well_index(self, i, j, k, well_radius=0.1524, segment_direction='z_axis', skin=0):
+    def calc_well_index(self, i, j, k, well_ID, segment_direction='z_axis', skin=0):
         """
         Class method which construct the well index for each well segment/perforation
 
         :param i: "human" counting of x-location coordinate of perforation
         :param j: "human" counting of y-location coordinate of perforation
         :param k: "human" counting of z-location coordinate of perforation
-        :param well_radius: radius of the well-bore
+        :param well_ID: Internal diameter of the wellbore
         :param segment_direction: direction in which the segment perforates the reservoir block
         :param skin: skin factor for pressure loss around well-bore due to formation damage
         :return well_index: well-index of particular perforation
@@ -729,6 +729,8 @@ class StructDiscretizer:
             kx = self.perm_x_cell[i, j, k]
             ky = self.perm_y_cell[i, j, k]
             kz = self.perm_z_cell[i, j, k]
+
+            well_radius = well_ID / 2
 
             if segment_direction == 'z_axis':
                 if kx * ky != 0:

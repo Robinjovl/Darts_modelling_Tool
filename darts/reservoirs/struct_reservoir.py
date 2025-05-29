@@ -136,18 +136,26 @@ class StructReservoir(ReservoirBase):
         # apply actnum and assign to mesh.volume
         self.volume[:] = volume[self.discretizer.local_to_global]
 
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.0762,
-                        well_index: float = None, well_indexD: float = 0., segment_direction: str = 'z_axis',
-                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None,
+                        well_ID: float = 0.1524, well_index: float = None, well_indexD: float = None,
+                        segment_direction: str = 'z_axis', skin: float = 0, multi_segment: bool = None,
+                        verbose: bool = False):
         """
         Function to add perforations to wells.
         """
         well = self.get_well(well_name)
 
         # calculate well index and get local index of reservoir block
-        i, j, k = cell_index
-        res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_radius=well_radius,
-                                                                    segment_direction=segment_direction, skin=skin)
+        i, j, k = res_cell_idx
+        if well.ms_type == ms_well.MS_Type.EPM:
+            assert well_seg_idx is None, "If the well is of the EPM type, well_seg_idx must not be specified!"
+            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
+                                                                        segment_direction=segment_direction, skin=skin)
+        elif well.ms_type == ms_well.MS_Type.DFM:
+            assert well_seg_idx is not None, "If the well is of the DFM type, well_seg_idx must be specified!"
+            assert multi_segment is None, "If the well is of the DFM type, multi_segment must not be specified!"
+            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
+                                                                        segment_direction=segment_direction, skin=skin)
 
         if well_index is None:
             well_index = wi
@@ -155,33 +163,37 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
-        # set well segment index (well block) equal to index of perforation layer
-        if multi_segment:
-            well_block = len(well.perforations)
-        else:
-            well_block = 0
+        if well.ms_type == ms_well.MS_Type.EPM:
+            # set well segment index (well block) equal to index of perforation layer
+            if multi_segment:
+                well_block = len(well.perforations)
+            else:
+                well_block = 0
+        elif well.ms_type == ms_well.MS_Type.DFM:
+            well_block = well_seg_idx - 2
 
         # add completion only if target block is active
         if res_block_local > -1:
-            if len(well.perforations) == 0:  # if adding the first perforation
-                well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_block_local]
-                well.well_body_depth = well.well_head_depth
-                if self.discretizer.is_cpg:
-                    dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
-                    # TODO: need segment_depth_increment and segment_length logic
-                    if segment_direction == 'z_axis':
-                        well.segment_depth_increment = dz
-                    elif segment_direction == 'x_axis':
-                        well.segment_depth_increment = dx
+            if well.ms_type == ms_well.MS_Type.EPM:
+                if len(well.perforations) == 0:  # if adding the first perforation
+                    well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_block_local]
+                    well.well_body_depth = well.well_head_depth
+                    if self.discretizer.is_cpg:  # No modification is made for cpg
+                        dx, dy, dz = self.discretizer.calc_cell_dimensions(i - 1, j - 1, k - 1)
+                        # TODO: need segment_depth_increment and segment_length logic
+                        if segment_direction == 'z_axis':
+                            well.segment_depth_increment = dz
+                        elif segment_direction == 'x_axis':
+                            well.segment_depth_increment = dx
+                        else:
+                            well.segment_depth_increment = dy
                     else:
-                        well.segment_depth_increment = dy
-                else:
-                    well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
+                        well.segment_depth_increment = self.discretizer.len_cell_zdir[i - 1, j - 1, k - 1]
 
-                well.segment_volume *= well.segment_depth_increment
-            else:  # update well depth
-                well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
-                well.well_body_depth = well.well_head_depth
+                    well.segment_volume *= well.segment_depth_increment
+                else:  # update well depth
+                    well.well_head_depth = min(well.well_head_depth, np.array(self.mesh.depth, copy=False)[res_block_local])
+                    well.well_body_depth = well.well_head_depth
                 
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:

@@ -69,5 +69,5 @@ for t in range(2):
 
     plt.savefig('step' + str(t+1) + '.png', format='png')
 
-    # compute and save well time data in m.output_folder 
-    time_data_dict = m.output.store_well_time_data()
+# compute and save well time data in m.output_folder
+time_data_dict = m.output.store_well_time_data()
