@@ -138,12 +138,12 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].phase_props[ii][jj]
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
                     for j in range(pc.x.shape[0]):
-                        temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda i=i, j=j: pc.x[j, i]
+                        temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].x[jj, ii]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, self.physics.thermal, temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
@@ -172,7 +172,7 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].phase_props[ii][jj]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, thermal = False, props = temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
@@ -219,13 +219,17 @@ class Output:
 
             self.physics.property_containers[region].output_props = output_dictionary
 
-            # Initialize physics and engine settings
-            self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh,
-                                     ms_well_vector(self.reservoir.wells),
-                                     op_vector(self.op_list),
-                                     self.params,
-                                     self.master_timer.node["simulation"])
+            self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region],
+                                                                        self.physics.thermal,
+                                                                        output_dictionary)
+            self.physics.property_itor[region] = self.physics.create_interpolator(
+                self.physics.property_operators[region],
+                n_ops=self.physics.n_ops,
+                axes_min=self.physics.axes_min, axes_max=self.physics.axes_max,
+                platform='cpu', algorithm='multilinear',
+                mode='adaptive', precision='d',
+                timer_name='property %d interpolation' % region,
+                region=str(region))
             self.properties = list(output_dictionary.keys())
 
         return
