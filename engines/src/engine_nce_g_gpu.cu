@@ -247,14 +247,14 @@ int engine_nce_g_gpu<NC, NP>::init(conn_mesh *mesh_, std::vector<ms_well *> &wel
 {
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
-  allocate_device_data(RV, &RV_d);
+  allocate_device_data(mesh->RV, &RV_d);
   allocate_device_data(mesh->heat_capacity, &mesh_hcap_d);
   allocate_device_data(mesh->tranD, &mesh_tranD_d);
   allocate_device_data(mesh->rock_cond, &mesh_rcond_d);
   allocate_device_data(mesh->poro, &mesh_poro_d);
   allocate_device_data(mesh->grav_coef, &mesh_grav_coef_d);
 
-  copy_data_to_device(RV, RV_d);
+  copy_data_to_device(mesh->RV, RV_d);
   copy_data_to_device(mesh->heat_capacity, mesh_hcap_d);
   copy_data_to_device(mesh->tranD, mesh_tranD_d);
   copy_data_to_device(mesh->rock_cond, mesh_rcond_d);
@@ -317,11 +317,11 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_L2()
   {
     for (int c = 0; c < NC; c++)
     {
-      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+      res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
       res_m += res * res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
     res_e += res * res;
   }
   residual = sqrt(res_m + res_e);
@@ -339,12 +339,12 @@ engine_nce_g_gpu<NC, NP>::calc_newton_residual_Linf()
   {
     for (int c = 0; c < NC; c++)
     {
-      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+      res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
       if (res > residual)
         residual = res;
     }
 
-    res = fabs(RHS[i * N_VARS + E_VAR] / (PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
+    res = fabs(RHS[i * N_VARS + E_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + FE_ACC_OP] + mesh->RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
     if (res > residual)
       residual = res;
   }
@@ -373,18 +373,18 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_L2()
       for (int c = 0; c < nc; c++)
       {
         res[c] += RHS[(w->well_body_idx + i_w) * n_vars + c] * RHS[(w->well_body_idx + i_w) * n_vars + c];
-        norm[c] += PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c];
+        norm[c] += mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c] * mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c];
       }
       res[E_VAR] += RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] * RHS[(w->well_body_idx + i_w) * n_vars + E_VAR];
-      norm[E_VAR] += PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
+      norm[E_VAR] += mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
     }
     // and then add RHS for well control equations
     for (int c = 0; c < nc; c++)
     {
       // well constraints should not be normalized, so pre-multiply by norm
-      res[c] += RHS[w->well_head_idx * n_vars + c] * RHS[w->well_head_idx * n_vars + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
+      res[c] += RHS[w->well_head_idx * n_vars + c] * RHS[w->well_head_idx * n_vars + c] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + c];
     }
-    res[E_VAR] += RHS[(w->well_head_idx) * n_vars + E_VAR] * RHS[(w->well_head_idx) * n_vars + E_VAR] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
+    res[E_VAR] += RHS[(w->well_head_idx) * n_vars + E_VAR] * RHS[(w->well_head_idx) * n_vars + E_VAR] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP] * mesh->PV[w->well_body_idx] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP];
   }
 
   for (int v = 0; v < n_vars; v++)
@@ -412,10 +412,10 @@ engine_nce_g_gpu<NC, NP>::calc_well_residual_Linf()
 
       for (int c = 0; c < nc; c++)
       {
-        res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + c] / (PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c]));
+        res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + c] / (mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + c]));
         residual = std::max(residual, res);
       }
-      res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] / (PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP]));
+      res = fabs(RHS[(w->well_body_idx + i_w) * n_vars + E_VAR] / (mesh->PV[w->well_body_idx + i_w] * op_vals_arr[w->well_body_idx * N_OPS + FE_ACC_OP]));
       residual = std::max(residual, res);
     }
     // and then add RHS for well control equations

@@ -182,8 +182,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   z_var = get_z_var();
 
   X_init.resize(n_vars * mesh->n_res_blocks);
-  PV.resize(mesh->n_blocks);
-  RV.resize(mesh->n_blocks);
   old_z.resize(nc);
   new_z.resize(nc);
   FIPS.resize(nc);
@@ -208,12 +206,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	X_init[n_vars * i + P_VAR] = mesh->initial_state[i];
   }
   X_init.resize(n_vars * mesh->n_blocks);
-
-  for (index_t i = 0; i < mesh->n_blocks; i++)
-  {
-	PV[i] = mesh->volume[i] * mesh->poro[i];
-	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-  }
 
   op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
   op_ders_arr.resize(n_ops * nc * (mesh->n_blocks + mesh->n_bounds));
@@ -1516,7 +1508,7 @@ engine_pm_cpu::calc_well_residual_L2()
 				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
 				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
-				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				norm[v] += mesh->PV[w->well_body_idx + i_w] * av_op[v] * mesh->PV[w->well_body_idx + i_w] * av_op[v];
 			}
 		}
 		// and then add RHS for well control equations
@@ -1524,7 +1516,7 @@ engine_pm_cpu::calc_well_residual_L2()
 		{
 			// well constraints should not be normalized, so pre-multiply by norm
 			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * 
-				PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
+				mesh->PV[w->well_body_idx] * av_op[v] * mesh->PV[w->well_body_idx] * av_op[v];
 		}
 	}
 
@@ -1825,7 +1817,7 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 			for (uint8_t c = 0; c < nc; c++)
 			{
 				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+				FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 			}
 		}
 
@@ -1901,7 +1893,7 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
 	for (uint8_t c = 0; c < nc; c++)
 	{
 	  // assuming ACC_OP is 0
-	  FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+	  FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 	}
   }
 

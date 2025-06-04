@@ -114,6 +114,8 @@ class StructReservoir(ReservoirBase):
         # copy the values of mesh.volume instead of using the pointer
         self.global_data['volume'] = np.array(mesh.volume, copy=True)
 
+        mesh.set_volume(value_vector(self.volume))
+
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):

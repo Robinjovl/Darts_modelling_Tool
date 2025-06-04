@@ -249,8 +249,6 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	fluxes.resize(N_VARS * mesh->n_conns);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
@@ -258,8 +256,6 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 		{
 			X_init[n_vars * i + j] = mesh->displacement[n_vars * i + j];
 		}
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
 
 	op_vals_arr.resize(n_ops * mesh->n_blocks);

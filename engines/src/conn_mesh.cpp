@@ -1813,6 +1813,81 @@ int conn_mesh::set_wells_tran(std::vector<value_t>& well_tran)
   return 0;
 }
 
+int conn_mesh::set_volume_and_poro(std::vector<value_t> &volume_, std::vector<value_t> &poro_)
+{
+	// Class method to set cell volumes and porosity and calculate PV and RV arrays
+	if (volume_.size() != this->n_blocks)
+	{
+		std::cout << "Error: size of volume array " << volume_.size() << " is not compatible with n_blocks " << this->n_blocks << " for conn_mesh::set_volume_and_poro()\n";
+		exit(1);
+	}
+	else if (poro_.size() != this->n_blocks)
+	{
+		std::cout << "Error: size of poro array " << poro_.size() << " is not compatible with n_blocks " << this->n_blocks << " for conn_mesh::set_volume_and_poro()\n";
+		exit(1);
+	}
+
+	// If volume array has compatible size with mesh
+	this->volume = volume_;
+	this->poro = poro_;
+
+	PV.resize(this->n_blocks);
+	RV.resize(this->n_blocks);
+
+	for (index_t i = 0; i < this->n_blocks; i++)
+	{
+		PV[i] = this->volume[i] * this->poro[i];
+		RV[i] = this->volume[i] * (1. - this->poro[i]);
+	}
+	return 0;
+}
+
+int conn_mesh::set_volume(std::vector<value_t> &volume_)
+{
+	// Class method to set cell volumes and adjust PV and RV arrays consistently
+	if (volume_.size() != this->n_blocks)
+	{
+		std::cout << "Error: size of volume array " << volume_.size() << " is not compatible with n_blocks " << this->n_blocks << " for conn_mesh::set_volume()\n";
+		exit(1);
+	}
+
+	// If volume array has compatible size with mesh
+	this->volume = volume_;
+
+	PV.resize(this->n_blocks);
+	RV.resize(this->n_blocks);
+
+	for (index_t i = 0; i < this->n_blocks; i++)
+	{
+		PV[i] = this->volume[i] * this->poro[i];
+		RV[i] = this->volume[i] * (1. - this->poro[i]);
+	}
+	return 0;
+}
+
+int conn_mesh::set_poro(std::vector<value_t> &poro_)
+{
+	// Class method to set cell porosities and adjust PV and RV arrays consistently
+	if (poro_.size() != this->n_blocks)
+	{
+		std::cout << "Error: size of poro array " << poro_.size() << " is not compatible with n_blocks " << this->n_blocks << " for conn_mesh::set_poro()\n";
+		exit(1);
+	}
+
+	// If poro array has compatible size with mesh
+	this->poro = poro_;
+
+	PV.resize(this->n_blocks);
+	RV.resize(this->n_blocks);
+
+	for (index_t i = 0; i < this->n_blocks; i++)
+	{
+		PV[i] = this->volume[i] * this->poro[i];
+		RV[i] = this->volume[i] * (1. - this->poro[i]);
+	}
+	return 0;
+}
+
 int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 {
   index_t well_head_idx = n_res_blocks;

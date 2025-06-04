@@ -26,6 +26,11 @@ public:
 
   int set_wells_tran(std::vector<value_t> &wells_tran);     // set trans for wells part (well indexes)
 
+  int set_volume_and_poro(std::vector<value_t> &volume_,
+                          std::vector<value_t> &poro_);     // set volume, porosity and calculate PV/RV
+  int set_volume(std::vector<value_t> &volume_);            // set volume and adjust PV/RV
+  int set_poro(std::vector<value_t> &poro_);                // set porosity and adjust PV/RV
+
 public:
   index_t n_res_blocks;                                     // number of reservoir blocks in the mesh            (R)
   index_t n_blocks;                                         // number of all blocks in the mesh including ghost  (R+W+G)
@@ -261,7 +266,11 @@ public:
   std::vector<value_t> volume;          
   /// [n_blocks] array of porosities of mesh blocks                        
   std::vector<value_t> poro;            
-  /// [n_blocks] array of depths                        
+  /// [n_blocks] array of PV of mesh blocks
+  std::vector<value_t> PV;
+  /// [n_blocks] array of RV of mesh blocks
+  std::vector<value_t> RV;
+  /// [n_blocks] array of depths
   std::vector<value_t> depth;           
   /// [n_blocks] array of heat capacity of rock                        
   std::vector<value_t> heat_capacity;

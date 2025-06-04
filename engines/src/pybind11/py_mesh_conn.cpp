@@ -63,6 +63,8 @@ void pybind_mesh_conn(py::module &m)
 	  .def("set_wells_tran", &conn_mesh::set_wells_tran, "Set well indexes", "tran"_a)
 	  .def("set_wells_tran", &conn_mesh::set_wells_tran, "Set well indexes", "tran"_a)
 	  .def("connect_segments", &conn_mesh::connect_segments)
+	  .def("set_volume", &conn_mesh::set_volume, "Set cell volumes", "volume"_a)
+	  .def("set_poro", &conn_mesh::set_poro, "Set cell porosities", "poro"_a)
 	  //properties
 	  .def_readwrite("n_blocks", &conn_mesh::n_blocks)
 	  .def_readwrite("n_res_blocks", &conn_mesh::n_res_blocks)

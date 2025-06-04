@@ -266,9 +266,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	z_var = get_z_var();
 	nc_fl = get_n_comps();
 
-	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
+	X_init.resize(n_vars * mesh->n_res_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -281,11 +279,6 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	X_init = mesh->initial_state;
 	X_init.resize(n_vars * mesh->n_blocks);
 	Xn = X = X_init;
-	for (index_t i = 0; i < mesh->n_blocks; i++)
-	{
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
 	op_ders_arr.resize(n_ops * n_state * (mesh->n_blocks + mesh->n_bounds));
@@ -928,7 +921,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 							r_ind = upwd_idx[p] * N_OPS + FLUX_OP + p * NE + c;						// flux upwind multiplier
 							r_ind1 = (stencil[conn_st_id] * N_OPS + PC_OP + p) * N_VARS;			// capillary operator
 							r_ind2 = i * N_OPS + UPSAT_OP + p;										// diffusion multipliers
-							r_ind4 = j * N_OPS + UPSAT_OP + p;										
+							r_ind4 = j * N_OPS + UPSAT_OP + p;
 							r_ind3 = (stencil[conn_st_id] * N_OPS + GRAD_OP + p * NE + c) * N_VARS;	// diffusion operator
 							// pressure contribution to flux
 							Jac[l_ind1 + P_VAR] += dt * op_vals_arr[r_ind] * tran[conn_st_id];
@@ -938,7 +931,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 								Jac[l_ind1 + v] -= dt * op_vals_arr[r_ind] * tran[conn_st_id] * op_ders_arr[r_ind1 + v];
 								// component diffusion
 								if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
-									Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 * 
+									Jac[l_ind1 + v] += dt * (mesh->poro[i] * op_vals_arr[r_ind2] + mesh->poro[j] * op_vals_arr[r_ind4]) * 0.5 *
 								  phase_presence_mult * tranD[conn_st_id] * op_ders_arr[r_ind3 + v];
 							}
 						}
@@ -993,8 +986,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 						else
 						  phase_presence_mult = 0.0;
 
-						RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] * 
-							(mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + 
+						RHS[i * N_VARS + c] += dt * phase_presence_mult * diff_diff[p * NE + c] *
+							(mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
 							 mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) * 0.5; // diffusion term
 
 						l_ind = diag_ind[i] * N_VARS_SQ + c * N_VARS;
@@ -1030,19 +1023,19 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		// [7] accumulation terms
 		for (c = 0; c < NE; c++)
 		{
-			RHS[i * N_VARS + P_VAR + c] += PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
+			RHS[i * N_VARS + P_VAR + c] += mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
 			for (v = 0; v < N_STATE; v++)
 			{
-				Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] += PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v];
+				Jac[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] += mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v];
 			}
 		}
 		if (THERMAL)
 		{
-			RHS[i * N_VARS + T_VAR] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+			RHS[i * N_VARS + T_VAR] += mesh->RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
 			for (v = 0; v < NE; v++)
 			{
-				Jac[diag_idx + T_VAR * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
+				Jac[diag_idx + T_VAR * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
 			}
 		}
 
@@ -1051,10 +1044,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		{
 			for (c = 0; c < NC; c++)
 			{
-				if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+				if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
 				{
-					CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-					CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+					CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+					CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
 				}
 			}
 		}
@@ -1351,14 +1344,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		{
 			for (v = 0; v < N_STATE; v++)
 			{
-				Jac_n[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] -= (PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v]);
+				Jac_n[diag_idx + (P_VAR + c) * N_VARS + P_VAR + v] -= (mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_STATE + v]);
 			}
 		}
 		if (THERMAL)
 		{
 			for (v = 0; v < NE; v++)
 			{
-				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i]);
+				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i]);
 			}
 		}
 
@@ -1504,14 +1497,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_linear_system(value_t deltat)
 //	{
 //		for (int c = 0; c < NC; c++)
 //		{
-//			res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+//			res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
 //			if (res > residual)
 //				residual = res;
 //		}
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + NC] + mesh->RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

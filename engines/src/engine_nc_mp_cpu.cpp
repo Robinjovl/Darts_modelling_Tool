@@ -233,20 +233,12 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	nc = get_n_comps();
 	z_var = get_z_var();
 
-	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
 
 	X_init = mesh->initial_state;
 	X_init.resize(n_vars * mesh->n_blocks);
-	for (index_t i = 0; i < mesh->n_blocks; i++)
-	{
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
 	op_ders_arr.resize(n_ops * n_vars * (mesh->n_blocks + mesh->n_bounds));
@@ -469,12 +461,12 @@ int engine_nc_mp_cpu<NC>::assemble_jacobian_array(value_t dt, std::vector<value_
 			// fill diagonal part
 			for (uint8_t c = 0; c < NC; c++)
 			{
-				RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+				RHS[i * N_VARS + c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 				CFL_out[c] = 0;
 				CFL_in[c] = 0;
 				for (uint8_t v = 0; v < N_VARS; v++)
 				{
-					Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
+					Jac[diag_idx + c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v];
 				}
 			}
 			// index of first entry for block i in CSR cols array
@@ -563,10 +555,10 @@ int engine_nc_mp_cpu<NC>::assemble_jacobian_array(value_t dt, std::vector<value_
 			{
 				for (uint8_t c = 0; c < NC; c++)
 				{
-					if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+					if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
 					{
-						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+						CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
 					}
 				}
 			}

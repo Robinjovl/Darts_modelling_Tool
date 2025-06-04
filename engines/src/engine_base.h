@@ -25,7 +25,7 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_bos_cpr.h"
 #include "linsolv_bos_fs_cpr.h"
 #include "csr_matrix.h"
-#endif // OPENDARTS_LINEAR_SOLVERS 
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
 #include "linsolv_bos_cpr_gpu.h"
@@ -218,9 +218,9 @@ public:
 	  }
 
 	  // compute inverses
-	  for (index_t i = 0; i < n_blocks; i++) 
+	  for (index_t i = 0; i < n_blocks; i++)
 	  {
-		for (uint8_t c = 0; c < N_VARS; c++) 
+		for (uint8_t c = 0; c < N_VARS; c++)
 		{
 		  value_t& val = max_row_values_inv[i * N_VARS + c];
 		  if (val != 0.0)
@@ -243,12 +243,12 @@ public:
 		  inv_vals[c] = max_row_values_inv[i * N_VARS + c];
 
 		// scale jacobian
-		for (index_t j = csr_start; j < csr_end; j++) 
+		for (index_t j = csr_start; j < csr_end; j++)
 		{
 		  const index_t base = j * N_VARS_SQ;
-		  for (uint8_t c = 0; c < N_VARS; c++) 
+		  for (uint8_t c = 0; c < N_VARS; c++)
 		  {
-			for (uint8_t v = 0; v < N_VARS; v++) 
+			for (uint8_t v = 0; v < N_VARS; v++)
 			  Jac[base + c * N_VARS + v] *= inv_vals[c];
 		  }
 		}
@@ -258,7 +258,7 @@ public:
 		  RHS[i * N_VARS + c] *= inv_vals[c];
 	  }
 	};
-	
+
 	/// @} // end of Methods
 
 	// properties
@@ -297,7 +297,7 @@ public:
 
 	// @brief python wrapper for jacobian values
 	py::array_t<value_t> jac_vals;
-	
+
 	// @brief python wrappers for storing BCSR jacobian structure
 	py::array_t<index_t> jac_rows, jac_cols, jac_diags;
 
@@ -334,8 +334,6 @@ public:
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
-	std::vector<value_t> PV;					   // [n_blocks]     array of initial pore volumes
-	std::vector<value_t> RV;					   // [n_blocks]     array of initial rock volumes
 	std::vector<std::vector<index_t>> block_idxs;  // [N_OPS_NUM] array of block indices corresponding to given operator set number
 	std::vector<std::vector<value_t>> op_axis_min; // [N_OPS_NUM] array of axis minimum values for each operator set
 	std::vector<std::vector<value_t>> op_axis_max; // [N_OPS_NUM] array of axis minimum values for each operator set
@@ -827,8 +825,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	z_var = get_z_var();
 	nc_fl = get_n_comps();
 
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -837,11 +833,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
 	X_init.resize(n_vars * mesh->n_blocks);
-	for (index_t i = 0; i < mesh->n_blocks; i++)
-	{
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
 
 	op_vals_arr.resize(n_ops * mesh->n_blocks);
 	op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);

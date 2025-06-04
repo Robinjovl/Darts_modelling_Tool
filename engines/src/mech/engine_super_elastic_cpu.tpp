@@ -288,8 +288,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
-	PV.resize(mesh->n_blocks);
-	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
@@ -334,15 +332,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	}
 	X_init.resize(n_vars * mesh->n_blocks);
 
-	for (index_t i = 0; i < mesh->n_blocks; i++)
-	{
-		PV[i] = mesh->volume[i] * mesh->poro[i];
-	  	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
-
 	if (THERMAL)
 	{
-	  for (index_t i = 0; i < mesh_->n_blocks; i++)
+	  for (index_t i = 0; i < mesh->n_blocks; i++)
 	  {
 		// reference
 		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
@@ -603,7 +595,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 	fill(thermal_forces.begin(), thermal_forces.end(), 0.0);
   }
 
-  index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0, 
+  index_t j, upwd_jac_idx[NP], nebr_jac_idx, upwd_idx[NP], diag_idx, conn_id = 0, st_id = 0, conn_st_id = 0,
 	  csr_idx_start, csr_idx_end;
   index_t l_ind, r_ind, l_ind1, r_ind1, l_ind2, r_ind2, r_ind3, r_ind4, r_ind5;
   value_t *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, *n;
@@ -817,7 +809,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					r_ind1 = conn_st_id * N_HOOKE + d * NT;
 					for (v = 0; v < NT; v++)
 					{
-					  // Hooke's forces 
+					  // Hooke's forces
 					  hooke_forces[l_ind + d] += hooke_tran[r_ind1 + v] * X[r_ind + T2U[v]];
 					  Jac[l_ind1 + T2U[v]] += hooke_tran[r_ind1 + v];
 					}
@@ -826,7 +818,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					biot_forces[l_ind + d] += biot_tran[conn_st_id * N_BIOT + d] * X[r_ind + P_VAR];
 					Jac[l_ind1 + P_VAR] += biot_tran[conn_st_id * N_BIOT + d];
 
-					// Thermal forces 					
+					// Thermal forces
 					if constexpr (THERMAL)
 					{
 					  thermal_forces[l_ind + d] += thermal_traction_tran[conn_st_id * N_BIOT + d] * X[r_ind + T_VAR];
@@ -901,7 +893,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  l_ind = ND * conn_id;
 				  for (d = 0; d < ND; d++)
 				  {
-					  // Hooke's forces 
+					  // Hooke's forces
 					  r_ind = conn_st_id * N_HOOKE + d * NT;
 					  for (v = 0; v < NT; v++)
 					  {
@@ -1010,7 +1002,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  r_ind3 = (i * N_OPS + SAT_OP + p) * N_STATE;
 				  r_ind4 = (j * N_OPS + GRAV_OP + p) * N_STATE;
 				  r_ind5 = (j * N_OPS + SAT_OP + p) * N_STATE;
-				  
+
 				  RHS[l_ind2] += avg_weigthed_density * biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c];
 				  for (v = 0; v < NE; v++)
 				  {
@@ -1039,12 +1031,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 						else if (density_cond == 2)
 						  Jac[l_ind1 + v] += biot_vol_strain_rhs[conn_id] * op_vals_arr[i * N_OPS + ACC_OP + c] *
 							(op_vals_arr[j * N_OPS + SAT_OP + p] * op_ders_arr[r_ind4 + v] + op_ders_arr[r_ind5 + v] * op_vals_arr[j * N_OPS + GRAV_OP + p]);
-					  } 
+					  }
 				  }
 			  }
 			  // 4. derivatives of density coming with (gravitational) free term to porosity in gravitational forces
 			  // note that gravitational free term is from Darcy fluxes, gravitational forces are in momentum balance
-			  // for clarity: 
+			  // for clarity:
 			  // biot * vol_strain * \rho_{fluid} + (1 - biot * vol_strain) * \rho_{sk} = (\sum_{stencil, vars} (biot_vol_strain_tran * X) + rho_{fluid} * biot_vol_strain_rhs) * eff_density +
 			  // + \rho_{sk}
 			  /*for (d = 0; d < ND; d++)
@@ -1200,10 +1192,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
       {
         for (c = 0; c < NC; c++)
         {
-          if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+          if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
           {
-            CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-            CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+            CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+            CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
           }
         }
       }
@@ -1228,7 +1220,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 				  }
 			  }
 			  RHS[i * N_VARS + U_VAR + d] -= (1 - poro[i]) * V[i] * gravity[d] * rho_s;
-			  
+
 			  //Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += comp_mult * V[i] * gravity[d] * rho_s;
 			  //if constexpr (THERMAL)
 				// Jac[diag_idx + (U_VAR + d) * N_VARS + T_VAR] += th_poro[i] * V[i] * gravity[d] * rho_s;*/
@@ -1316,7 +1308,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities()
 		p_grad_vals[d] += (op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p]) * p_grad.rhs(d, 0);
 	  }
 	}
-	// stencil assembly 
+	// stencil assembly
 	for (index_t k = 0; k < p_grad.stencil.size(); k++)
 	{
 	  for (uint8_t d = 0; d < ND; d++)
@@ -1666,7 +1658,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 			for (uint8_t c = 0; c < nc; c++)
 			{
 				// assuming ACC_OP is 0
-				FIPS[c] += PV[i] * op_vals_arr[i * n_ops + 0 + c];
+				FIPS[c] += mesh->PV[i] * op_vals_arr[i * n_ops + 0 + c];
 			}
 		}
 
@@ -1800,14 +1792,14 @@ double engine_super_elastic_cpu<NC, NP, THERMAL>::calc_well_residual_L2()
 				std::tie(i_w, i_r, wi, wid) = w->perforations[ip];
 
 				res[v] += RHS[(w->well_body_idx + i_w) * n_vars + v] * RHS[(w->well_body_idx + i_w) * n_vars + v];
-				norm[v] += PV[w->well_body_idx + i_w] * av_op[v] * PV[w->well_body_idx + i_w] * av_op[v];
+				norm[v] += mesh->PV[w->well_body_idx + i_w] * av_op[v] * mesh->PV[w->well_body_idx + i_w] * av_op[v];
 			}
 		}
 		// and then add RHS for well control equations
 		for (int v = 0; v < NE; v++)
 		{
 			// well constraints should not be normalized, so pre-multiply by norm
-			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * PV[w->well_body_idx] * av_op[v] * PV[w->well_body_idx] * av_op[v];
+			res[v] += RHS[w->well_head_idx * n_vars + v] * RHS[w->well_head_idx * n_vars + v] * mesh->PV[w->well_body_idx] * av_op[v] * mesh->PV[w->well_body_idx] * av_op[v];
 		}
 	}
 
@@ -2220,14 +2212,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //	{
 //		for (int c = 0; c < NC; c++)
 //		{
-//			res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+//			res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
 //			if (res > residual)
 //				residual = res;
 //		}
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + NC] + mesh->RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

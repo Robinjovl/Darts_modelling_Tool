@@ -175,20 +175,20 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
         for (uint8_t c = 0; c < NE; c++)
         {
-            RHS[i * N_VARS + c] = PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
+            RHS[i * N_VARS + c] = mesh->PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]); // acc operators only
 
             // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
-            if (i < n_res_blocks)
-                RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+            if (i < mesh->n_res_blocks)
+                RHS[i * N_VARS + c] += (mesh->PV[i] + mesh->RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
 
             for (uint8_t v = 0; v < N_VARS; v++)
             {
-                Jac[diag_idx + c * N_VARS + v] = PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
+                Jac[diag_idx + c * N_VARS + v] = mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]; // der of accumulation term
 
                 // Include derivatives for reaction term if part of reservoir cells:
-                if (i < n_res_blocks)
+                if (i < mesh->n_res_blocks)
                 {
-                    Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+                    Jac[diag_idx + c * N_VARS + v] += (mesh->PV[i] + mesh->RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
                 }
             }
         }
@@ -462,23 +462,23 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       // + rock energy (no rock compressibility included in these computations)
       if (THERMAL)
       {
-        RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+        RHS[i * N_VARS + NC] += mesh->RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
         for (uint8_t v = 0; v < N_VARS; v++)
         {
-          Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+          Jac[diag_idx + NC * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
         } // end of fill offdiagonal part + contribute to diagonal
       }
 
         // calc CFL for reservoir cells, not connected with wells
-        if (i < n_res_blocks && !connected_with_well)
+        if (i < mesh->n_res_blocks && !connected_with_well)
         {
             for (uint8_t c = 0; c < NC; c++)
             {
-                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
+                if ((mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
                 {
-                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
+                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
                 }
             }
         }
@@ -685,12 +685,12 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
     {
       for (uint8_t v = 0; v < N_VARS; v++)
       {
-        Jac_n[diag_idx + c * N_VARS + v] = -(PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]); // der of accumulation term
+        Jac_n[diag_idx + c * N_VARS + v] = -(mesh->PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]); // der of accumulation term
 
         // Include derivatives for reaction term if part of reservoir cells:
         if (i < mesh->n_res_blocks)
         {
-          Jac_n[diag_idx + c * N_VARS + v] -= ((PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]); // derivative kinetics
+          Jac_n[diag_idx + c * N_VARS + v] -= ((mesh->PV[i] + mesh->RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]); // derivative kinetics
         }
       }
     }
@@ -891,11 +891,11 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
     //// + rock energy (no rock compressibility included in these computations)
     //if (THERMAL)
     //{
-    //  RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+    //  RHS[i * N_VARS + NC] += mesh->RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
     //  for (uint8_t v = 0; v < N_VARS; v++)
     //  {
-    //    Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+    //    Jac[diag_idx + NC * N_VARS + v] += mesh->RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
     //  } // end of fill offdiagonal part + contribute to diagonal
     //}
 
@@ -1010,14 +1010,14 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 //  {
 //    for (int c = 0; c < NC; c++)
 //    {
-//      res = fabs(RHS[i * N_VARS + c] / (PV[i] * op_vals_arr[i * N_OPS + c]));
+//      res = fabs(RHS[i * N_VARS + c] / (mesh->PV[i] * op_vals_arr[i * N_OPS + c]));
 //      if (res > residual)
 //        residual = res;
 //    }
 //
 //    if (THERMAL)
 //    {
-//      res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
+//      res = fabs(RHS[i * N_VARS + T_VAR] / (mesh->PV[i] * op_vals_arr[i * N_OPS + NC] + mesh->RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //      if (res > residual)
 //        residual = res;
 //    }
