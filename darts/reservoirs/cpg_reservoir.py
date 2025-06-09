@@ -752,9 +752,9 @@ class CPG_Reservoir(ReservoirBase):
 
     def get_ijk_from_xyz(self, x, y, z):
         '''
-        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        :return: tuple of I,J,K indices (1-based) of a cell with the closest center to the point with coordinates x,y,z
         '''
-        def find_cell_index(centers_flattened, coord) -> int:
+        def find_cell_index(centers_flattened, coord) -> int: # returns the local index (only active cells) of the closest cell center
             min_dis = None
             idx = None
             for j, centroid in enumerate(centers_flattened):
@@ -771,7 +771,7 @@ class CPG_Reservoir(ReservoirBase):
 
         centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
         idx = find_cell_index(centers, np.array([x, y, z]))
-        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        ijk = get_ijk(self.discr_mesh.local_to_global[idx], self.nx, self.ny, self.nz)
         return ijk
 
     def centers_to_vtk(self, out_dir):

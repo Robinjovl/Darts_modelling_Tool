@@ -14,6 +14,7 @@ set skip_req=false
 set config=Release
 set NT=8
 set skip_req=false
+set phreeqc=false
 
 :parse_args
 if "%~1"=="" goto :process_input
@@ -30,6 +31,7 @@ if "%option%"=="-d" set config=%1 & shift & goto parse_args
 if "%option%"=="-j" set NT=%1 & shift & goto parse_args
 if "%option%"=="-a" set bos_solvers_artifact=true & set iter_solvers=true & goto parse_args
 if "%option%"=="-b" set bos_solvers_dir=%1 & set iter_solvers=true & shift & goto parse_args
+if "%option%"=="-p" set phreeqc=true & goto parse_args
 goto parse_args
 
 :process_input
@@ -62,6 +64,7 @@ echo    gpu = %GPU%
 echo    testing = %testing%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
+echo    Phreeqc support = %phreeqc%
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
@@ -77,7 +80,15 @@ if %clean_mode%==true (
 if %skip_req%==false (
   echo - Update submodules: START
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
-  git submodule update --recursive --init || goto :error
+  git submodule sync --recursive
+  git submodule update --init --recursive -- ^
+             thirdparty\eigen ^
+             thirdparty\pybind11 ^
+             thirdparty\MshIO ^
+             thirdparty\hypre || goto :error
+  if %phreeqc%==true (
+    git submodule update --init --recursive thirdparty\iphreeqc || goto :error
+  )
   echo - Update submodules: DONE!
 
   cd thirdparty
@@ -89,21 +100,36 @@ if %skip_req%==false (
   cd build
   mkdir eigen
   cd eigen
-  cmake -D CMAKE_INSTALL_PREFIX=../../install ../../eigen/ > ../../../make_eigen.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% >> ../../../make_eigen.log || goto :error
+  cmake -D CMAKE_INSTALL_PREFIX=..\..\install ..\..\eigen\ > ..\..\..\make_eigen.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_eigen.log || goto :error
   cd ..\..
 
   rem -- Install Hypre
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
-  cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=../../../install .. > ../../../../make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ../../../../make_hypre.log || goto :error
+  cmake -D HYPRE_BUILD_TESTS=ON -D HYPRE_BUILD_EXAMPLES=ON -D HYPRE_WITH_MPI=OFF -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
 
   echo -- Install SuperLU
   cd SuperLU_5.2.1
-  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ../../make_superlu.log || goto :error
+  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\..\make_superlu.log || goto :error
   cd ..\..
+
+  if %phreeqc%==true (
+    echo -- Install IPhreeqc: START
+    cd thirdparty\build
+    if not exist iphreeqc mkdir iphreeqc
+    cd iphreeqc	  
+	  cmake ^
+      -D CMAKE_INSTALL_PREFIX=..\..\install\iphreeqc ^
+      -D BUILD_TESTING=OFF ^
+      -D BUILD_SHARED_LIBS=ON ^
+      ..\..\iphreeqc > ..\..\..\make_iphreeqc.log 2>&1
+    msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_iphreeqc.log || goto :error
+    cd ..\..\..
+  )
+
   echo - Install requirements: DONE!
 )
 
@@ -126,6 +152,12 @@ if %MT%==true (
 if %GPU%==true (
   set cmake_options=%cmake_options% -D OPENDARTS_CONFIG=GPU
 )
+if %phreeqc%==true (
+  set cmake_options=%cmake_options% -D WITH_PHREEQC=ON
+  echo Phreeqc support: ENABLED
+) else (
+  echo Phreeqc support: DISABLED
+)
 if not %bos_solvers_dir%=="" (
   set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%
 )
@@ -134,8 +166,8 @@ echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ../make_darts.log || goto :error
-msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% || goto :error
+msbuild openDARTS.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
+msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\make_darts.log || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
@@ -148,7 +180,7 @@ echo ************************************************************************
 echo   Building python package open-darts: START 
 echo ************************************************************************
 
-python darts/print_build_info.py
+python darts\print_build_info.py
 if %wheel%==true (
   echo -- build darts.whl for windows started
   copy CHANGELOG.md darts
@@ -187,5 +219,6 @@ echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers)
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
 echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
 echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
+echo    -p : Enable Phreeqc. Default: false
 goto :eof
 REM ----------------------------------------------------------------

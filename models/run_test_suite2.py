@@ -18,7 +18,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'Chem_benchmark_new',
                      #'CO2_foam_CCS',
                      'GeoRising',
-                     'CoaxWell'
+                     'CoaxWell',
+                     'phreeqc_dissolution'
                      ]       
 
 

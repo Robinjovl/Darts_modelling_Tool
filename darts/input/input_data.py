@@ -263,7 +263,7 @@ class WellData():
                                     #TODO support time>0
                                     self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k), 
                                                          status='open', well_radius=well_radius,
-                                                         well_index=well_index, well_indexD=None, 
+                                                         well_index=well_index, well_indexD=0.,
                                                          multi_segment=False)
                             if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
