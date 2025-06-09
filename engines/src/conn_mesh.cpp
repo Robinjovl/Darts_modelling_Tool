@@ -2004,6 +2004,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	{
 		n_segments = max(n_segments, wells[iw]->num_segments - 1);
 	}
+
 	// connections between segments of EPM well
 	if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
 	{
@@ -2013,7 +2014,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		}
 	}
 	// connections between segments of DFM well
-	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		for (index_t seg = 0; seg < (wells[iw]->num_segments - 1); seg++)
 		{
@@ -2045,30 +2046,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
-    // depth of the well head block - well controls work at this depth
-    depth[wells[iw]->well_head_idx] = wells[iw]->well_head_depth;
-    for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
-    {
-      volume[wells[iw]->well_head_idx + p] = wells[iw]->segment_volume;
-      poro[wells[iw]->well_head_idx + p] = 1;
-      op_num[wells[iw]->well_head_idx + p] = 0;
-      heat_capacity[wells[iw]->well_head_idx + p] = 0;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
-	  mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
-      if (p > 0)// p==0 is a ghost cell for the well treatment
-      {
-        int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-        int w_i = wells[iw]->well_head_idx + p;
-        // copy properties for the well blocks from the reservoir blocks
-        rock_cond[w_i] = rock_cond[r_i];
-        // depth of well segments
-        depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-      }
-    }
-  }
-
-  for (index_t iw = 0; iw < wells.size(); iw++)
-  {
 	  if (wells[iw]->ms_type == ms_well::MS_Type::EPM)
 	  {
 		  // depth of the wellhead segment - well controls work at this depth
@@ -2095,7 +2072,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 			  }
 		  }
 	  }
-	  if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
+	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	  {
 		  std::copy(wells[iw]->segments_depths.begin(), wells[iw]->segments_depths.end(), depth.begin() + wells[iw]->well_head_idx);
 		  std::copy(wells[iw]->segments_volumes.begin(), wells[iw]->segments_volumes.end(), volume.begin() + wells[iw]->well_head_idx);

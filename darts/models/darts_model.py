@@ -561,7 +561,7 @@ class DartsModel:
                 if i > 0:  # min_i_newton
                     self.iter_counter = 0
                     break
-                self.iter_counter += 1
+            self.iter_counter += 1
                     
             # line search
             if self.data_ts.line_search and i > 0 and residual_history[-1][0] > 0.9 * residual_history[-2][0]:

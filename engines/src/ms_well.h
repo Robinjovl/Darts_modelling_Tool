@@ -155,6 +155,7 @@ public:
   std::vector<value_t> segments_depths;
   std::vector<value_t> segments_volumes;
   index_t num_segments;
+  std::vector<value_t> init_state;
 
   // Properties for simulation
 

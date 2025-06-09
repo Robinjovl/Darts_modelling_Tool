@@ -988,8 +988,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   {
       //if (w->control != nullptr)   // if control is defined for the well, the if block will be executed.
       //{
-      value_t* jac_well_head = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
-      w->add_to_jacobian(dt, X, jac_well_head, RHS);
+      if (w->ms_type == ms_well::MS_Type::EPM)
+      {
+          value_t* jac_well_head = &(jacobian->get_values()[jacobian->get_rows_ptr()[w->well_head_idx] * n_vars * n_vars]);
+          w->add_to_jacobian(dt, X, jac_well_head, RHS);
+      }
       //}
   }
 

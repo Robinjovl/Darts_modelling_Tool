@@ -880,11 +880,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
 
-	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		//if (w->control != nullptr)   // if control is defined for the well, the if block will be executed.
-		w->initialize_control(X_init);
+		// initialize the state of well blocks of the type EPM
+		if (w->ms_type == ms_well::MS_Type::EPM)
+			w->initialize_control(X_init);
+		// initialize the state of well blocks of the type DFM
+		else if (w->ms_type == ms_well::MS_Type::DFM)
+			std::copy(w->init_state.begin(), w->init_state.end(), X_init.begin() + w->well_head_idx * n_vars);
 	}
 
 	Xn = X = X_init;

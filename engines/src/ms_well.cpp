@@ -208,25 +208,22 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   }
   std::cout << "Well " << name << " initialized with " << control.get_well_control_type_str() << std::endl;
 
-  if (ms_type == ms_well::MS_Type::EPM)
+  // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
+  for (auto& p : perforations)
   {
-      // Initialize state in well blocks for each perforation - state neighbour is reservoir cell, state is well block
-      for (auto& p : perforations)
-      {
-          index_t i_w, i_r;
-          value_t wi, wid;
-          std::tie(i_w, i_r, wi, wid) = p;
-          i_w += well_body_idx;
+      index_t i_w, i_r;
+      value_t wi, wid;
+      std::tie(i_w, i_r, wi, wid) = p;
+      i_w += well_body_idx;
 
-          // move the state from X
-          std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
-          // copy neighbour state
-          std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
-          // initialize
-          control.initialize_well_block(state, state_neighbour);
-          // move initialized state back to X
-          std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
-      }
+      // move the state from X
+      std::move(X.begin() + i_w * n_block_size + P_VAR, X.begin() + i_w * n_block_size + P_VAR + n_vars, state.begin());
+      // copy neighbour state
+      std::copy(X.begin() + i_r * n_block_size + P_VAR, X.begin() + i_r * n_block_size + P_VAR + n_vars, state_neighbour.begin());
+      // initialize
+      control.initialize_well_block(state, state_neighbour);
+      // move initialized state back to X
+      std::move(state.begin(), state.end(), X.begin() + i_w * n_block_size + P_VAR);
   }
   // Initialize state in well head - state neighbour is well body, state is well head
   // move the state from X
@@ -235,11 +232,6 @@ int ms_well::initialize_control(std::vector<value_t>& X)
   std::copy(X.begin() + well_body_idx * n_block_size + P_VAR, X.begin() + well_body_idx * n_block_size + P_VAR + n_vars, state_neighbour.begin());
   // initialize
   control.initialize_well_block(state, state_neighbour);
-  // if well model is ms_well, there is not need to change the pressure. The following if statement places the original value of wellhead pressure in wellhead state.
-  if (ms_type == ms_well::MS_Type::DFM)
-  {
-      state[0] = X[well_head_idx * n_block_size + P_VAR];
-  }
   // move initialized state back to X
   std::move(state.begin(), state.end(), X.begin() + well_head_idx * n_block_size + P_VAR);
   return 0;
