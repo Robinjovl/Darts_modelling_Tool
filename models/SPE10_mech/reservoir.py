@@ -72,7 +72,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             elif nx == 6: # for debugging
                 self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
             else:
-                print('not found an option to mesh with nz = ', nz)
+                print('not found an option to mesh with nx = ', nx)
                 exit(1)
 
             if nz == 16:

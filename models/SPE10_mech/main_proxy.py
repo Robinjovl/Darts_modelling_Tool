@@ -101,7 +101,7 @@ def run_geomech_proxy(case):
     g = geomech()
     # just to set input data
     from model import Model
-    m = Model(model_folder=case, physics_type='single_phase', uniform_props=False)
+    m = Model(model_folder=case, physics_type='single_phase', uniform_props=False, decouple_geomech=True, generate_mesh=True)
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     # run THM with no mechanics->flow impact
-    run(model_folder=case, physics_type='single_phase', uniform_props=uniform_props, decouple_geomech=True)
+    run(model_folder=case, physics_type='single_phase', uniform_props=uniform_props, decouple_geomech=True, generate_mesh=True)
 
     # run geomech proxy
     run_geomech_proxy(case=case)

@@ -119,8 +119,9 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decouple_geomech=False):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, decouple_geomech=decouple_geomech)
+def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decouple_geomech=False, generate_mesh=False):
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props,
+              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
     m.params.finalize_mpi = is_finalize
     m.init()
 
@@ -252,7 +253,9 @@ if __name__ == '__main__':
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
 
-    #run(model_folder='10_10_10', physics_type='single_phase_thermal')
+    #run(model_folder='6_6_5', physics_type='single_phase_thermal', uniform_props=True, decouple_geomech=True)
+
+    #run(model_folder='10_10_10', physics_type='single_phase_thermal')#, uniform_props=True, decouple_geomech=True)
     #run(model_folder='10_10_10', physics_type='dead_oil')
     #run(model_folder='10_10_10', physics_type='dead_oil_thermal')
 
