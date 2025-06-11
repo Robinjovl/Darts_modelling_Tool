@@ -253,9 +253,7 @@ if __name__ == '__main__':
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
     #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
 
-    #run(model_folder='6_6_5', physics_type='single_phase_thermal', uniform_props=True, decouple_geomech=True)
-
-    #run(model_folder='10_10_10', physics_type='single_phase_thermal')#, uniform_props=True, decouple_geomech=True)
+    #run(model_folder='10_10_10', physics_type='single_phase', uniform_props=True, decouple_geomech=True)
     #run(model_folder='10_10_10', physics_type='dead_oil')
     #run(model_folder='10_10_10', physics_type='dead_oil_thermal')
 
@@ -263,3 +261,7 @@ if __name__ == '__main__':
     #run(model_folder='20_40_40', physics_type='single_phase_thermal')
     #run(model_folder='20_40_40', physics_type='dead_oil')
     #run(model_folder='20_40_40', physics_type='dead_oil_thermal')
+
+
+    #run(model_folder='6_6_5', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+    run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)

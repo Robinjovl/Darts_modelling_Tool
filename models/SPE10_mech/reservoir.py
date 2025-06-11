@@ -33,8 +33,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         return 1. + 0.1 * depths  # by gradient 0.1 bars/m
 
     def get_reservoir_temperature(self, depths):
-        return 273.15 + 0. * depths # uniform initial temperature
-        #return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
+        #return 273.15 + 0. * depths # uniform initial temperature
+        return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
@@ -75,7 +75,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 print('not found an option to mesh with nx = ', nx)
                 exit(1)
 
-            if nz == 16:
+            if nz == 15:
                 self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
             #elif nz == 60:
             #    self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
