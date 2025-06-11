@@ -19,7 +19,7 @@ from darts.input.input_data import InputData
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False):
+    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False, decouple_geomech=False):
         self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
@@ -29,6 +29,7 @@ class Model(THMCModel):
             self.thermal = True
         else:
             self.thermal = False
+        self.decouple_geomech = decouple_geomech
 
         # call base class constructor
         super().__init__()

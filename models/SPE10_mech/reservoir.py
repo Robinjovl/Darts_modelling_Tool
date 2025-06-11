@@ -29,16 +29,17 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
     def get_reservoir_pressure(self, depths):
-        #return 290. + 0.0 * depths
-        return 1. + 0.1 * depths  # bars/m
+        #return 290. + 0.0 * depths  # uniform initial pressure
+        return 1. + 0.1 * depths  # by gradient 0.1 bars/m
 
     def get_reservoir_temperature(self, depths):
-        return 273.15 + 0. * depths
-        #return 273.15 + 10 + 30. / 1000 * depths
+        return 273.15 + 0. * depths # uniform initial temperature
+        #return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False):
 
         self.mesh_filename = model_folder + '/spe10.msh'
+        nx, ny, nz = list(map(int, os.path.basename(model_folder).split('_')))
 
         generate_mesh = True
         if generate_mesh:
@@ -54,23 +55,36 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             tags['MATRIX_1'] = 99991
             tags['MATRIX_2'] = 99992
 
+            # define permeable reservoir geometric boundaries
             self.rsv_top = 2100
             self.rsv_bottom = 2200
-            #self.rsv_xy = 1000
+            #self.rsv_xy = 1000   # laterally limited
             self.rsv_xy = 100000  # "infinite" laterally
 
-            # 16x16
-            #self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-            # 22x22
-            self.Xc = np.array([-15000,-10000,-8000,-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000,8000,10000,15000])
-            # 41x41
-            #rsv = np.arange(-900, 1000, 200)
-            #side = np.arange(1000, 6500, 1000)
-            #self.Xc = np.hstack([-side, rsv, side])
-            # nz=16
-            self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
-            #nz=60
-            #self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+            if nx == 16:
+                self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
+            elif nx == 22:
+                self.Xc = np.array([-15000,-10000,-8000,-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000,8000,10000,15000])
+            elif nx == 41:# 41x41
+                pass
+                #rsv = np.arange(-900, 1000, 200)
+                #side = np.arange(1000, 6500, 1000)
+                #self.Xc = np.hstack([-side, rsv, side])
+            elif nx == 6: # for debugging
+                self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
+            else:
+                print('not found an option to mesh with nz = ', nz)
+                exit(1)
+
+            if nz == 16:
+                self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
+            #elif nz == 60:
+            #    self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+            elif nz == 5: # for debugging
+                self.Zc = np.array([0, 1000, 2000, 2100, 2120, 3000])
+            else:
+                print('not found an option to mesh with nz = ', nz)
+                exit(1)
 
             #nz=63
             #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100)])
@@ -88,16 +102,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('nx = ', self.Xc.size-1, 'nz = ', self.Zc.size-1)
             print('self.rsv_top', self.rsv_top)
             print('self.rsv_bottom', self.rsv_bottom)
-            print(self.Zc)
-            #exit()
-
-            # for debug
-            #self.Xc = [-4000, -2000, -1000, 0, 1000, 2000, 4000]
-            #self.Zc = [0, 1000, 2000, 2100, 2120, 3000]
+            print('self.rsv_xy', self.rsv_xy)
+            print('Zc', self.Zc)
 
             self.Yc = self.Xc
             from gen_msh import generate_box_3d
-            generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags,
+            generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=tags,  # XYZ are ignored since Xc, Yc, Zc are passed
                                        is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)
             print('Mesh generation finished')
 
@@ -332,10 +342,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # first, create a struct grid to easily set heterogeneous rock properties
         # second, interpolate them to unstructured mesh used for computation
         self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
-        nx_ny_nz = self.nx * self.ny * self.nz
-
-        #rsv_start = 4 * self.ny * self.nx  # 4 overburden layers
-        #rsv_end = nx_ny_nz - 3 * self.ny * self.nx  # 3 underburden layers
 
         # fill the whole array with non-rsv values, the rsv part will be replaced later on
         porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv

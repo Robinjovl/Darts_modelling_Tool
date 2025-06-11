@@ -1,15 +1,7 @@
 import numpy as np
 import os
 import meshio
-from darts.discretizer import elem_type, elem_loc
-from darts.discretizer import matrix33 as disc_matrix33
-from darts.discretizer import Stiffness as disc_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
-from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
-from darts.input.input_data import InputData
-from darts.engines import timer_node, ms_well, ms_well_vector
-import copy
-import vtk
+from main import run
 
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtk')
@@ -172,8 +164,30 @@ def run_geomech_proxy(case):
     print('Proxy ', 'uz=', uz_prx, 'mm.')
 
 if __name__ == '__main__':
-    #run_geomech_proxy(case='6_6_5')
-    #run_geomech_proxy(case='24_24_12')
-    #run_geomech_proxy(case='24_24_60')
-    #run_geomech_proxy(case = '28_28_60')  # 6x2 km XY, 6 km Z
-    run_geomech_proxy(case='28_28_63')  # 6x2 km XY, 6 km Z
+
+    case = '6_6_5'
+    #case = '24_24_12'
+    #case = '24_24_60'  # 4x2 km XY, 6 km Z
+    #case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '28_28_60'  # 6x2 km XY, 6 km Z
+    #case = '28_28_34'  # 6x2 km XY, 6 km Z
+    #case = '28_28_63'  # 6x2 km XY, 6 km Z
+    #case = '34_34_52'  # -15..15 km XY, 15 km Z
+    #case = '34_34_66'  # -15..15 km XY, 15 km Z
+    #case = '34_34_71'  # refine also around rsv
+    #case = '34_34_63'   # -15..15 km XY, 6 km Z
+    #case = '34_34_15'  # -15..15 km XY, 6 km Z coarser
+
+    #case = '21_21_60' # assert r2>0
+    #case = '40_40_60' # 'bad allocation' error
+
+    #uniform_props = True
+    uniform_props = False  # reservoir and non-reservoir in surrounding
+
+    # run THM with no mechanics->flow impact
+    run(model_folder=case, physics_type='single_phase', uniform_props=uniform_props, decouple_geomech=True)
+
+    # run geomech proxy
+    run_geomech_proxy(case=case)
+
+    print('case', case, 'done')

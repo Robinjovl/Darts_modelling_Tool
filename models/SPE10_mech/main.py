@@ -119,8 +119,8 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props)
+def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decouple_geomech=False):
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, decouple_geomech=decouple_geomech)
     m.params.finalize_mpi = is_finalize
     m.init()
 
@@ -152,7 +152,8 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False):
     m.params.first_ts = first_ts
     m.set_boundary_conditions_after_initialization()
 
-    m.reservoir.decouple_geomech()
+    if m.decouple_geomech:
+        m.reservoir.decouple_geomech()
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
@@ -235,7 +236,7 @@ if __name__ == '__main__':
     test_all = False
     #test_all = True
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-    meshes_list = ['data_10_10_10', 'data_20_40_40']
+    meshes_list = ['10_10_10', '20_40_40']
     if test_all:
         is_finalize = False
         for physics in physics_list:
@@ -244,41 +245,21 @@ if __name__ == '__main__':
                     is_finalize = True
                 run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
 
-    #case = '24_24_12'
-    #case = '24_24_60'  # 4x2 km XY, 6 km Z
-    #case = '28_28_60'  # 6x2 km XY, 6 km Z
-    #case = '28_28_60'  # 6x2 km XY, 6 km Z
-    #case = '28_28_34'  # 6x2 km XY, 6 km Z
-    #case = '28_28_63'  # 6x2 km XY, 6 km Z
-    #case = '34_34_52'  # -15..15 km XY, 15 km Z
-    #case = '34_34_66'  # -15..15 km XY, 15 km Z
-    #case = '34_34_71'  # refine also around rsv
-    #case = '34_34_63'   # -15..15 km XY, 6 km Z
-    case = '34_34_15'  # -15..15 km XY, 6 km Z coarser
 
-    #case = '21_21_60' # assert r2>0
-    #case = '40_40_60' # 'bad allocation' error
 
-    #run(model_folder=case, physics_type='single_phase', uniform_props=True)
-    run(model_folder=case, physics_type='single_phase', uniform_props=False)
+    run(model_folder='6_6_5', physics_type='single_phase', uniform_props=False)
 
-    from main_proxy import run_geomech_proxy
-    run_geomech_proxy(case=case)
-    print('case', case, 'done')
+    #run(model_folder='16_16_12', physics_type='single_phase_thermal', uniform_props=True)
+    #run(model_folder='16_16_12', physics_type='single_phase_thermal', uniform_props=False)
 
-    #run(model_folder='data_6_6_5', physics_type='single_phase', uniform_props=False)
+    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=True)
+    #run(model_folder='24_24_12', physics_type='single_phase', uniform_props=False)
 
-    #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=True)
-    #run(model_folder='data_16_16_12', physics_type='single_phase_thermal', uniform_props=False)
+    #run(model_folder='10_10_10', physics_type='single_phase_thermal')
+    #run(model_folder='10_10_10', physics_type='dead_oil')
+    #run(model_folder='10_10_10', physics_type='dead_oil_thermal')
 
-    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=True)
-    #run(model_folder='data_24_24_12', physics_type='single_phase', uniform_props=False)
-
-    #run(model_folder='data_10_10_10', physics_type='single_phase_thermal')
-    #run(model_folder='data_10_10_10', physics_type='dead_oil')
-    #run(model_folder='data_10_10_10', physics_type='dead_oil_thermal')
-
-    #run(model_folder='data_20_40_40', physics_type='single_phase')
-    #run(model_folder='data_20_40_40', physics_type='single_phase_thermal')
-    #run(model_folder='data_20_40_40', physics_type='dead_oil')
-    #run(model_folder='data_20_40_40', physics_type='dead_oil_thermal')
+    #run(model_folder='20_40_40', physics_type='single_phase')
+    #run(model_folder='20_40_40', physics_type='single_phase_thermal')
+    #run(model_folder='20_40_40', physics_type='dead_oil')
+    #run(model_folder='20_40_40', physics_type='dead_oil_thermal')
