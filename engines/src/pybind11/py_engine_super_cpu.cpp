@@ -34,7 +34,7 @@ struct engine_super_exposer
 
 void pybind_engine_super_cpu(py::module &m)
 {
-  recursive_exposer_nc_np_t<engine_super_exposer, py::module, 2, MAX_NC, 1, false> re;
+  recursive_exposer_nc_np_t<engine_super_exposer, py::module, 1, MAX_NC, 1, false> re;
   re.expose(m);
 
   recursive_exposer_nc_np_t<engine_super_exposer, py::module, 2, MAX_NC, 2, false> re1;

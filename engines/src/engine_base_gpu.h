@@ -46,7 +46,6 @@ public:
   virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override = 0;
   virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override = 0;
 
-  void apply_composition_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
 
@@ -167,13 +166,22 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     case sim_params::GPU_GMRES_CPR_AMG:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-      cpr->set_prec(new linsolv_bos_amg<1>);
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+        cpr->set_prec(new linsolv_bos_amg<1>);
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_bos_amg<1>);
+        linear_solver_type_str = "GPU_GMRES_AMG";
+      }
+
       break;
     }
 #ifdef WITH_AIPS
@@ -214,55 +222,82 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     case sim_params::GPU_GMRES_CPR_AMGX_ILU:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 0));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 0));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX";
+      }
+
       break;
     }
     case sim_params::GPU_GMRES_CPR_AMGX_ILU_SP:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      if constexpr (N_VARS > 1)
+      {
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 1));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU_SP";
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>(matrix_free, 1));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU_SP";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX_SP";
+      }
+
       break;
     }
     case sim_params::GPU_GMRES_CPR_AMGX_AMGX:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
-
-      int convert_to_bs1 = 0;
-      if (params->linear_params.size() > 0)
+      if constexpr (N_VARS > 1)
       {
-        convert_to_bs1 = params->linear_params[0];
+        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+
+        int convert_to_bs1 = 0;
+        if (params->linear_params.size() > 0)
+        {
+          convert_to_bs1 = params->linear_params[0];
+        }
+
+        // set p system prec
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        // set full system prec
+        cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, convert_to_bs1));
+        linear_solver->set_prec(cpr);
+        linear_solver_type_str = "GPU_GMRES_CPR_AMGX_AMGX";
+      }
+      else
+      {
+        linear_solver->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver_type_str = "GPU_GMRES_AMGX";
       }
 
-      // set p system prec
-      cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-      // set full system prec
-      cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, convert_to_bs1));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_AMGX";
       break;
     }
     case sim_params::GPU_GMRES_AMGX:
@@ -383,6 +418,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   old_z.resize(nc);
   new_z.resize(nc);
   FIPS.resize(nc);
+  old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
   op_vals_arr.resize(n_ops * mesh->n_blocks);
   //op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);

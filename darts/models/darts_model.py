@@ -8,6 +8,10 @@ from scipy.interpolate import interp1d
 from darts.reservoirs.reservoir_base import ReservoirBase
 from darts.physics.base.physics_base import PhysicsBase
 from darts.models.output import Output
+try:
+    from darts.engines import copy_data_to_device
+except ImportError:
+    pass
 
 from darts.engines import timer_node, sim_params, value_vector, index_vector, op_vector, ms_well_vector
 from darts.engines import print_build_info as engines_pbi
@@ -117,6 +121,7 @@ class DartsModel:
 
         # Initialize physics and Engine object
         assert self.physics is not None, "Physics object has not been defined"
+        self.platform = platform
         self.physics.init_physics(discr_type=discr_type, platform=platform, verbose=verbose,
                                   itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
         if platform == 'gpu':
@@ -520,9 +525,12 @@ class DartsModel:
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
         self.timer.node['simulation'].start()
+        residual_history = []
         for i in range(max_newt+1):
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
+            if self.platform == 'gpu':
+                copy_data_to_device(self.physics.engine.RHS, self.physics.engine.get_RHS_d())
 
             self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
@@ -537,6 +545,10 @@ class DartsModel:
                 break
 
             self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
+            residual_history.append((self.physics.engine.newton_residual_last_dt, # matrix residual
+                                     self.physics.engine.well_residual_last_dt,   # well residual
+                                     1.0))                                        # Newton update coefficient
+
             self.physics.engine.n_newton_last_dt = i
             #  check tolerance if it converges
             if ((self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol and
@@ -635,6 +647,8 @@ class DartsModel:
             self.timer.node["newton update"].stop()
             self.physics.engine.assemble_linear_system(dt)
             self.apply_rhs_flux(dt, t)
+            if self.platform == 'gpu':
+                copy_data_to_device(self.physics.engine.RHS, self.physics.engine.get_RHS_d())
             res = (self.physics.engine.calc_newton_residual(), self.physics.engine.calc_well_residual())
             res_history = np.append(res_history, res[0])
             if verbose:

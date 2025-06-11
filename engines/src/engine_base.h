@@ -88,6 +88,7 @@ public:
 		enabled_flux_output = false;
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
+		n_solid = 0;
 	};
 
 	~engine_base()
@@ -120,6 +121,9 @@ public:
 	// get the index of Z variable
 	virtual uint8_t get_z_var() const = 0;
 
+	// get the number of solid/mineral species
+	virtual uint8_t get_n_solid() const { return n_solid; };
+
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, sim_params *params, timer_node *timer_) = 0;
 
@@ -148,7 +152,6 @@ public:
 	virtual void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 	virtual void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
 
-	void apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 	void apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX);
 
 	void apply_composition_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX);
@@ -326,11 +329,11 @@ public:
 	uint8_t n_ops;
 	uint8_t nc;
 	uint8_t z_var;
+	// number of mineral/solid species
+	uint8_t n_solid;
 	double min_zc;
 	double max_zc;
 	std::vector<value_t> old_z, new_z; // [NC] array for local chop
-
-	uint8_t nc_fl;
 	std::vector<value_t> old_z_fl, new_z_fl; // [NC_FLUID] array for local chop
 
 	std::vector<value_t> X_init;				   // [N_VARS * n_blocks] array of initial solution
@@ -659,10 +662,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
-			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
-			cpr->set_prec(new linsolv_bos_amg<1>);
-			linear_solver->set_prec(cpr);
-			linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			if constexpr (N_VARS > 1)
+			{
+			  linsolv_iface* cpr = new linsolv_bos_cpr<N_VARS>;
+			  cpr->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver->set_prec(cpr);
+			  linear_solver_type_str = "CPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "CPU_GMRES_AMG";
+			}
+
 			break;
 		}
 #ifdef _WIN32
@@ -696,6 +708,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #ifdef WITH_GPU
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
@@ -704,11 +718,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_bos_amg<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMG";
+			}
 			break;
 		}
 #ifdef WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -737,12 +759,15 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			cpr->set_prec(new linsolv_aips<1>(n_terms, print_radius, aips_type, print_structure));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_AIPS";
 			break;
 		}
 #endif //WITH_AIPS
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
@@ -754,11 +779,19 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+			}
+			else
+			{
+			  linear_solver->set_prec(new linsolv_amgx<1>);
+			  linear_solver_type_str = "GPU_GMRES_AMGX";
+			}
 			break;
 		}
 #ifdef WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_CPR_NF:
 		{
+			if constexpr (N_VARS > 1)
+			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
 			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
@@ -799,6 +832,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
 			linear_solver->set_prec(cpr);
+			}
 			linear_solver_type_str = "GPU_GMRES_CPR_NF";
 			break;
 		}
@@ -806,7 +840,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-            linear_solver_type_str = "GPU_GMRES_ILU0";
+			linear_solver_type_str = "GPU_GMRES_ILU0";
 			break;
 		}
 #endif
@@ -825,15 +859,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	X_init = mesh->initial_state;  // initialize only reservoir blocks with mesh->initial_state array
 	X_init.resize(n_vars * mesh->n_blocks);
