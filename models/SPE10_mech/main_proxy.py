@@ -165,7 +165,7 @@ def run_geomech_proxy(case):
 
 if __name__ == '__main__':
 
-    case = '6_6_5'
+    case = '6_6_5'  # for debugging
     #case = '24_24_12'
     #case = '24_24_60'  # 4x2 km XY, 6 km Z
     #case = '28_28_60'  # 6x2 km XY, 6 km Z

@@ -11,7 +11,7 @@ from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
 
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False):
+    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
@@ -20,7 +20,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.bnd_tags = idata.mesh.bnd_tags
         self.domain_tags = set_domain_tags(matrix_tags=idata.mesh.matrix_tags, bnd_tags=list(self.bnd_tags.values()))
 
-        self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props)
+        self.spe10(model_folder=model_folder, idata=idata, uniform_props=uniform_props, generate_mesh=generate_mesh)
         self.init_reservoir_main(idata=idata)
         t1 = None
         if thermoporoelasticity:
@@ -36,12 +36,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         return 273.15 + 0. * depths # uniform initial temperature
         #return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
 
-    def spe10(self, idata: InputData, model_folder, uniform_props=False):
+    def spe10(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
         self.mesh_filename = model_folder + '/spe10.msh'
         nx, ny, nz = list(map(int, os.path.basename(model_folder).split('_')))
 
-        generate_mesh = True
         if generate_mesh:
             print('Mesh generation started')
             tags = dict()
