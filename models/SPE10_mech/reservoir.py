@@ -28,11 +28,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_pzt_bounds(p=np.mean(self.p_init), z=self.z_init, t=t1)
         self.wells = []
 
-    def get_reservoir_pressure(self, depths):
+    def get_reservoir_initial_pressure(self, depths):
         #return 290. + 0.0 * depths  # uniform initial pressure
         return 1. + 0.1 * depths  # by gradient 0.1 bars/m
 
-    def get_reservoir_temperature(self, depths):
+    def get_reservoir_initial_temperature(self, depths):
         #return 273.15 + 0. * depths # uniform initial temperature
         return 273.15 + 10 + 30. / 1000 * depths # by gradient 30 degrees/km
 
@@ -123,11 +123,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         #self.init_gravity(gravity_on=False)
 
         self.depths = np.array([c.values[2] for c in self.centroids])
-        self.p_init = self.get_reservoir_pressure(self.depths[:self.n_matrix])
-
-        # specify initial temperature
-        if self.thermoporoelasticity:
-            self.t_init = self.get_reservoir_temperature(self.depths[:self.n_matrix])
+        # specify initial temperature and pressure, which will be used for well controls setting, but overridden in model.set_initial_conditions()
+        self.p_init = self.get_reservoir_initial_pressure(self.depths[:self.n_matrix])
+        if self.thermoporoelasticity: # specify initial temperature
+            self.t_init = self.get_reservoir_initial_temperature(self.depths[:self.n_matrix])
 
         if uniform_props:
             self.init_uniform_properties(idata=idata)
@@ -176,7 +175,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             # energy
             if self.thermoporoelasticity:
                 self.bc_rhs[self.n_bc_vars * ids + self.t_bc_var] = \
-                    self.get_reservoir_temperature(self.depths[ids + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]])
+                    self.get_reservoir_initial_temperature(self.depths[ids + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]]) #TODO check this
             # mechanics
             for id in ids:
                 assert (self.adj_matrix_cols[self.id_sorted[id]] == id +
@@ -262,6 +261,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                         pressure = property_array[props_num * cell_ids + i]
                         if not hasattr(self, 'pressure_initial') :
                             self.pressure_initial = property_array[props_num * cell_ids + i].copy()
+                    if self.cell_property[i] == 'temperature':
+                        temperature = property_array[props_num * cell_ids + i]
+                        if not hasattr(self, 'temperature_initial') :
+                            self.temperature_initial = property_array[props_num * cell_ids + i].copy()
 
                     if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
                     if self.cell_property[i] in ['ux', 'uy', 'uz']:  # eliminate displacements got after the initialization stage (equilibration)
@@ -282,6 +285,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'delta_pressure' not in cell_data: cell_data['delta_pressure'] = []
                 cell_data['delta_pressure'].append(np.zeros(self.n_matrix, dtype=np.float64))
                 cell_data['delta_pressure'][-1][:] = pressure - self.pressure_initial
+
+                if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
+                cell_data['delta_temperature'].append(np.zeros(self.n_matrix, dtype=np.float64))
+                cell_data['delta_temperature'][-1][:] = temperature - self.temperature_initial
 
                 if True:#ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []

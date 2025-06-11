@@ -288,7 +288,7 @@ class Model(THMCModel):
                 inj = []
                 inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
                 elif self.physics_type == 'dead_oil_thermal':
@@ -320,7 +320,7 @@ class Model(THMCModel):
             max_depth = self.reservoir.depths.max()
             X = init.solve(depth_bottom=max_depth, depth_top=min_depth, depth_known=min_depth,
                            nb=nb, primary_specs=primary_specs, boundary_state=boundary_state,
-                           dTdh=0.).reshape((nb, self.physics.n_vars))
+                           dTdh=0.03).reshape((nb, self.physics.n_vars))
             input_distribution = {var: X[:, i] for i, var in enumerate(self.physics.vars)}
             set_initial_conditions_from_depth_table(self=self.physics, mesh=self.reservoir.mesh, input_depth=init.depths,
                                                                  input_distribution=input_distribution,
