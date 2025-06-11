@@ -117,8 +117,8 @@ def run(rsv : str, physics_type : str, case: str, out_dir: str, export_vtk=True,
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    m.output.store_well_time_data(save_output_files=True)
-    m.output.plot_well_time_data()
+    m.output.store_well_time_data()
+    # m.output.plot_well_time_data()
 
     if compare_with_ref:
         failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)

@@ -1,7 +1,8 @@
 import numpy as np
 import os
 
-from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, make_full_cube
+from darts.reservoirs.cpg_reservoir import CPG_Reservoir, save_array, read_arrays, check_arrays, make_burden_layers, \
+    make_full_cube
 from darts.discretizer import load_single_float_keyword
 from darts.engines import value_vector
 
@@ -9,8 +10,10 @@ from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
 
+
 def fmt(x):
     return '{:.3}'.format(x)
+
 
 #####################################################
 
@@ -55,7 +58,8 @@ class Model_CPG(CICDModel):
                                property_dictionary=arrays,
                                burden_layer_prop_value=self.idata.rock.burden_prop)
 
-        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv, faultfile=self.idata.geom.faultfile)
+        self.reservoir = CPG_Reservoir(self.timer, arrays, minpv=self.idata.geom.minpv,
+                                       faultfile=self.idata.geom.faultfile)
         # discretize right away to be able to modify the boundary volume
         self.reservoir.discretize()
 
@@ -67,7 +71,7 @@ class Model_CPG(CICDModel):
         print("Pore volume = " + str(sum(volume[:self.reservoir.mesh.n_blocks] * poro)))
 
         # imitate open-boundaries with a large volume
-        bv = self.idata.geom.bound_volume   # volume, will be assigned to each boundary cell [m3]
+        bv = self.idata.geom.bound_volume  # volume, will be assigned to each boundary cell [m3]
         self.reservoir.set_boundary_volume(xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv)
         self.reservoir.apply_volume_depth()
 
@@ -82,12 +86,50 @@ class Model_CPG(CICDModel):
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         self.reservoir.global_data.update({'heat_capacity': make_full_cube(self.reservoir.hcap.copy(), l2g, g2l),
-                                           'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l) })
+                                           'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g,
+                                                                             g2l)})
 
     def init_struct_reservoir(self):
         # no over/under burden layers
         from darts.reservoirs.struct_reservoir import StructReservoir
-        self.reservoir = StructReservoir(self.timer, nx=self.idata.geom.nx, ny=self.idata.geom.ny, nz=self.idata.geom.nz,
+        if self.idata.geom.burden_layers > 0:
+            # add more layers above and below the reservoir
+            burden_layers = self.idata.geom.burden_layers
+            nx, ny = self.idata.geom.nx, self.idata.geom.ny
+            size = nx * ny * burden_layers
+
+            # Create burden properties once and reuse
+            burden_prop = np.full(size, 1e-5)
+
+            rock = self.idata.rock
+            geom = self.idata.geom
+            total_cells = geom.nx * geom.ny * geom.nz
+
+            def expand_if_scalar(prop):
+                if np.isscalar(prop):
+                    return np.full(total_cells, prop)
+                return prop
+
+            # Process all rock properties in a loop
+            for prop_name in ['permx', 'permy', 'permz', 'poro']:
+                prop_value = getattr(rock, prop_name)
+                setattr(rock, prop_name, np.concatenate([
+                    burden_prop,
+                    expand_if_scalar(prop_value),
+                    burden_prop
+                ]))
+
+            geom.nz += 2 * burden_layers  # Both overburden and underburden
+
+            # Precompute dz additions
+            dz_additions = np.array([120, 60, 40, 10])
+            geom.dz = np.concatenate([
+                dz_additions,
+                geom.dz,
+                dz_additions[::-1]  # Reverse for underburden
+            ])
+        self.reservoir = StructReservoir(self.timer, nx=self.idata.geom.nx, ny=self.idata.geom.ny,
+                                         nz=self.idata.geom.nz,
                                          dx=self.idata.geom.dx, dy=self.idata.geom.dy, dz=self.idata.geom.dz,
                                          permx=self.idata.rock.permx, permy=self.idata.rock.permy,
                                          permz=self.idata.rock.permz, poro=self.idata.rock.poro,
@@ -119,13 +161,16 @@ class Model_CPG(CICDModel):
             # add wells and perforations, 1-based indices
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
-                for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
+                start_index = 1 + self.idata.geom.burden_layers
+                end_index = self.reservoir.nz - self.idata.geom.burden_layers + 1
+                for k in range(start_index, end_index):
                     self.reservoir.add_perforation(wname,
                                                    cell_index=(wdata.location.I, wdata.location.J, k),
-                                                   well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
+                                                   well_index=self.idata.geom.well_index,
+                                                   well_indexD=self.idata.geom.well_indexD,
                                                    multi_segment=False, verbose=True)
 
-    def well_is_inj(self, wname : str):  # determine well control by its name
+    def well_is_inj(self, wname: str):  # determine well control by its name
         return "INJ" in wname
 
     def do_after_step(self):
@@ -136,5 +181,3 @@ class Model_CPG(CICDModel):
 
     def set_well_controls(self):  # dummy. just to pass through model.init()
         self.set_well_controls_idata()
-
-

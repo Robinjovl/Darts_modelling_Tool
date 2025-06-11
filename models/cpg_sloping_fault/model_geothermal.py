@@ -32,7 +32,7 @@ class ModelGeothermal(Model_CPG):
                                   'temperature': [293.15, 293.15 + input_depth[1] * self.idata.initial.temperature_gradient/1000]
                                   }
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        global_to_local=self.reservoir.global_to_local,
+                                                                        # global_to_local=self.reservoir.global_to_local,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
