@@ -3,6 +3,7 @@ import pandas as pd
 
 from darts.engines import value_vector
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
+from darts.engines import well_control_iface
 
 from darts.input.input_data import InputData
 from set_case import set_input_data
@@ -15,10 +16,11 @@ class ModelGeothermal(Model_CPG):
         super().__init__()
 
     def set_physics(self):
+        # single component, two phase. Pressure and enthalpy are the main variables
         if self.iapws_physics:
-            self.physics = Geothermal(self.idata, self.timer)
+            self.physics = Geothermal(self.idata, self.timer)  # IAPWS
         else:
-            self.physics = GeothermalPH(self.idata, self.timer)
+            self.physics = GeothermalPH(self.idata, self.timer)  # Flash
             self.physics.determine_obl_bounds(state_min=[self.idata.obl.min_p, 250.],
                                               state_max=[self.idata.obl.max_p, 575.])
 
@@ -29,7 +31,9 @@ class ModelGeothermal(Model_CPG):
             input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient/1000],
                                   'temperature': [293.15, 293.15 + input_depth[1] * self.idata.initial.temperature_gradient/1000]
                                   }
-            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+            g2l = np.asarray(self.reservoir.discr_mesh.global_to_local)[:self.reservoir.mesh.n_res_blocks]
+            return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                        global_to_local=g2l,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
@@ -38,49 +42,7 @@ class ModelGeothermal(Model_CPG):
             return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                                   input_distribution=input_distribution)
 
-    def set_well_controls(self, time: float = 0., verbose=True):
-        '''
-        :param time: simulation time, [days]
-        :return:
-        '''
-        eps_time = 1e-15  # threshold between the current time and the time for the well control
-        for w in self.reservoir.wells:
-            # find next well control in controls list for different timesteps
-            wctrl = None
-            for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if np.fabs(wctrl_t[0] - time) < eps_time:  # check time
-                    wctrl = wctrl_t[1]
-                    break
-            if wctrl is None:  # no control is defined for the current timestep
-                continue
-            if wctrl.type == 'inj':  # INJ well
-                if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_inj(wctrl.rate, wctrl.inj_bht)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.bhp_constraint, wctrl.inj_bht)
-                elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_water_inj(wctrl.bhp, wctrl.inj_bht)
-                else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
-                    exit(1)
-            elif wctrl.type == 'prod':  # PROD well
-                if wctrl.mode == 'rate': # rate control
-                    w.control = self.physics.new_rate_water_prod(wctrl.rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.bhp_constraint)
-                elif wctrl.mode == 'bhp': # BHP control
-                    w.control = self.physics.new_bhp_prod(wctrl.bhp)
-                else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
-                    exit(1)
-            else:
-                print('Unknown well ctrl.type', wctrl.type)
-                exit(1)
-            if verbose:
-                print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
-        # check
-        for w in self.reservoir.wells:
-            assert w.control is not None, 'well control is not initialized for the well ' + w.name
-            if verbose and w.constraint is None and 'rate' in str(type(w.control)):
-                print('A constraint for the well ' + w.name + ' is not initialized!')
+
 
     def get_arrays(self):
         '''
@@ -89,7 +51,7 @@ class ModelGeothermal(Model_CPG):
         a = self.reservoir.input_arrays  # include initial arrays and the grid
 
         nv = self.physics.n_vars
-        n_ops = self.physics.n_ops
+        n_ops = self.output.n_ops
         nb = self.reservoir.mesh.n_res_blocks
         Xn = np.array(self.physics.engine.X, copy=False)
         state = value_vector(Xn.T.flatten())
@@ -142,6 +104,8 @@ class ModelGeothermal(Model_CPG):
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
 
+        self.idata.other.iapws_physics = True
+
         set_input_data(self.idata, case)
 
         if self.iapws_physics:
@@ -180,18 +144,18 @@ class ModelGeothermal(Model_CPG):
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, rate=5500, bhp_constraint=300, temperature=300)  # m3/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300)  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prd_rate_control(name=w, rate=5500, bhp_constraint=70) # m3/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70) # m3/day | bars
         elif 'wperiodic' in case:
             wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
             for i in range(0, len(self.idata.sim.time_steps), 4):
                 # iterate [inj - stop - prod - stop]
-                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, bhp_constraint=300, temperature=300)
-                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    bhp_constraint=5)
-                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, bhp_constraint=5)
-                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    bhp_constraint=5)
+                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300)
+                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
+                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
+                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5)
         else:
             assert False, 'Unknown wctrl_type' +  case
 

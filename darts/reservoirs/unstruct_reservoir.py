@@ -182,6 +182,9 @@ class UnstructReservoir(ReservoirBase):
         :param export_grid_data: Switch for mesh properties output, default is True
         :type export_grid_data: bool
         """
+
+        self.vtk_filenames_and_times = {}
+
         self.vtk_initialized = True
         self.discretizer.find_vtk_output_cells()
 
@@ -268,7 +271,7 @@ class UnstructReservoir(ReservoirBase):
             print('Writing mesh data to VTK file')
             meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
 
-    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         """
         Function to export results of unstructured reservoir at timestamp t into `.vtk` format.
 
@@ -283,6 +286,8 @@ class UnstructReservoir(ReservoirBase):
         :param data: Data for output
         :type data: dict
         """
+        from pyevtk.vtk import VtkGroup
+
         # First check if output directory already exists:
         os.makedirs(output_directory, exist_ok=True)
         if not self.vtk_initialized:
@@ -294,7 +299,8 @@ class UnstructReservoir(ReservoirBase):
         output_idxs = self.discretizer.vtk_output_cell_idxs['matrix'] if not self.discretizer.frac_cells_tot \
             else {**self.discretizer.vtk_output_cell_idxs['fracture'], **self.discretizer.vtk_output_cell_idxs['matrix']}
         geometries = output_nodes.keys()
-        cell_data = {prop: [[] for geometry in geometries] for prop in prop_names}
+
+        cell_data = {prop_names[prop]: [[] for geometry in geometries] for prop in prop_names}
 
         # Distinguish fracture cells from matrix cells
         cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
@@ -306,27 +312,27 @@ class UnstructReservoir(ReservoirBase):
             cell_data['matrix_cell_bool'][ith_geometry] += np.ones(len(cell_idxs)).tolist()  # fill matrix cells with ones
             ith_geometry += 1
 
-        for ts, t in enumerate(time_steps):
-            if ith_step is not None:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtk"
-                vtk_idx = ith_step
-            else:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ts) + ".vtk"
-                vtk_idx = ts
+        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtu"
 
-            # Loop over output properties
-            for prop in prop_names:
-                # Loop over fracture and matrix cells (in that order)
-                for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
-                    cell_data[prop][ith_geometry] = data[prop][ts][cell_idxs].tolist()
+        # Loop over output properties
+        for i, prop in enumerate(prop_names):
+            # Loop over fracture and matrix cells (in that order)
+            for ith_geometry, (geometry, cell_idxs) in enumerate(output_idxs.items()):
+                cell_data[prop_names[prop]][ith_geometry] = data[i][cell_idxs]
 
-            # Temporarily store mesh_data in copy:
-            mesh = meshio.Mesh(
-                points=self.discretizer.mesh_data.points,  # list of point coordinates
-                cells=output_nodes,  # list of cell geometries and idxs for reporting
-                # Each item in cell data must match the cells array
-                cell_data=cell_data
-            )
+        # Temporarily store mesh_data in copy:
+        mesh = meshio.Mesh(
+            points=self.discretizer.mesh_data.points,  # list of point coordinates
+            cells=output_nodes,  # list of cell geometries and idxs for reporting
+            # Each item in cell data must match the cells array
+            cell_data=cell_data
+        )
 
-            print('Writing data to VTK file for {:d}-th reporting step'.format(vtk_idx))
-            meshio.write(vtk_file_name, mesh)
+        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        meshio.write(vtk_file_name, mesh)
+
+        self.vtk_filenames_and_times[vtk_file_name] = t
+        vtk_group = VtkGroup(os.path.join(output_directory, 'solution'))
+        for fname, t in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, t)
+        vtk_group.save()

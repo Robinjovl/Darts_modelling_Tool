@@ -4,6 +4,7 @@ from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_ve
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
+from darts.engines import well_control_iface
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer
@@ -97,9 +98,11 @@ class Model(CICDModel):
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_water_inj(205, 300)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=205, phase_name='water', inj_temp=300.)
             else:
-                w.control = self.physics.new_bhp_prod(195)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=195., phase_name='water')
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_blocks

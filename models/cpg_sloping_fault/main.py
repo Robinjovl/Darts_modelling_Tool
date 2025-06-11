@@ -11,16 +11,17 @@ from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
 
-def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu'):
+def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=True):
     '''
     :param physics_type: "geothermal" or "dead_oil"
     :param case: input grid name
-    :param out_dir: directory name for outpult files
+    :param out_dir: directory name for output files
     :param export_vtk:
     :return:
     '''
     print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
+    out_dir = out_dir
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
     if redirect_log:
@@ -37,12 +38,24 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.set_input_data(case=case)
 
-    m.init_reservoir()
+    m.set_physics()
 
-    m.init(output_folder=out_dir, platform=platform)
+    arrays = m.init_input_arrays()
+    # custom arrays can be read here
+    # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
+    # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
+    m.init_reservoir(arrays=arrays)
+
+    # time stepping and convergence parameters
+    m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
+
+    m.timer.node["initialization"].stop()
+
+    m.init(platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.save_data_to_h5(kind = 'solution')
-    m.set_well_controls()
+    m.set_output(output_folder=out_dir, all_phase_props=True)
+    # m.output.save_data_to_h5(kind='reservoir')
+    m.set_well_controls_idata()
 
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
@@ -50,36 +63,35 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     if ret != 0:
         exit(1)
 
-    m.reservoir.centers_to_vtk(out_dir)
-
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
-    
     m.print_timers()
-    #m.print_stat()
 
     if export_vtk:
         # read h5 file and write vtk
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)):
-            m.output_to_vtk(ith_step=ith_step)
+        for ith_step in range(len(m.idata.sim.time_steps)+1):
+            m.output.output_to_vtk(ith_step=ith_step, output_properties=m.physics.vars + m.output.properties)
+
+        m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
+
     def add_columns_time_data(time_data):
-        time_data['Time (years)'] = time_data['time'] / 365.25
+        time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
         for k in time_data.keys():
-            if 'temperature' in k:
+            # extra column with temperature in celsius
+            if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
-            if physics_type == 'dead_oil' and 'm3/day' in k:
-                time_data[k.replace('m3/day', 'kmol/day')] = time_data[k]
-                time_data.drop(columns=k, inplace=True)
 
-    time_data = pd.DataFrame.from_dict(m.physics.engine.time_data)
+    # COMPUTE TIME DATA
+    td = m.output.store_well_time_data()
+    time_data = pd.DataFrame.from_dict(td)
     add_columns_time_data(time_data)
     time_data.to_pickle(os.path.join(out_dir, 'time_data.pkl'))
 
+    # COMPUTE TIME DATA AT FIXED REPORTING STEPS
     time_data_report = pd.DataFrame.from_dict(m.physics.engine.time_data_report)
     add_columns_time_data(time_data_report)
     time_data_report.to_pickle(os.path.join(out_dir, 'time_data_report.pkl'))
-
     writer = pd.ExcelWriter(os.path.join(out_dir, 'time_data.xlsx'))
     time_data.to_excel(writer, sheet_name='time_data')
     writer.close()
@@ -96,7 +108,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    m.output.store_well_time_data(save_output_files=True)
+    m.output.plot_well_time_data()
+
+    if compare_with_ref:
+        failed, sim_time = check_performance_local(m=m, case=case, physics_type=physics_type)
+    else:
+        failed, sim_time = 0, 0.0
 
     if redirect_log:
         abort_redirection(log_stream)
@@ -141,6 +159,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
                 #TODO need to get proper volumetric rates to compute the watercut
                 wcut = f'{well_name}' + ' watercut'
                 results[wcut] = results[well_name + ' : water rate (m3/day)'] / (results[well_name + ' : water rate (m3/day)'] + results[well_name + ' : oil rate (m3/day)'])
+                # results[wcut] = results['well_' + well_name + '_volumetric_rate_water_at_wh']/(results['well_' + well_name + '_volumetric_rate_water_at_wh'] + results['well_' + well_name + '_volumetric_rate_oil_at_wh'] )
+
                 ax3 = results.plot(x='time', y=wcut, label=wcut)
                 ax3.set_ylim(0, 1)
                 ax3.set(xlabel="Days", ylabel="Water cut [-]")
@@ -217,7 +237,7 @@ def run_test(args: list = [], platform='cpu'):
         physics_type = args[1]
 
         out_dir = 'results_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform)
+        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform, compare_with_ref=True)
         return ret[0], ret[1] #failed_flag, sim_time
     else:
         print('Not enough arguments provided')
@@ -236,9 +256,9 @@ if __name__ == '__main__':
     cases_list = []
     cases_list += ['generate_5x3x4']
     #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['case_40x40x10']
-    #cases_list += ['brugge']
 
     well_controls = []
     well_controls += ['wrate']

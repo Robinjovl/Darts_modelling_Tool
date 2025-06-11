@@ -138,75 +138,6 @@ def animate_solution_1d_single_plot(paths, n_cells, labels, lower_lim, upper_lim
     anim.save(paths[0] + video_fname, writer=writervideo)
     plt.close(fig)
 
-def plot_comparison0(params, path_prefix, pic_fname='comparison.png', L=1000):
-    lw = .7
-    fs_legend = 14
-    colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
-    fig, ax = plt.subplots(figsize=(10, 7))
-
-    n_res = len(params['itor_type'])
-    for i in range(n_res):
-        model_path = get_output_folder( itor_type = params['itor_type'][i], itor_mode = params['itor_mode'][i],
-                                        obl_points = params['obl_points'][i], n_comps = params['n_comps'][i],
-                                        reservoir_type = params['reservoir_type'][i], nx = params['nx'][i],
-                                        is_barycentric = params['barycentric'][i] )
-        path = os.path.join(path_prefix, model_path, 'solution.h5')
-        data = load_hdf5_to_dict(filename=path)['dynamic']
-
-        if params['reservoir_type'][i] == '1D':
-            n_cells = params['nx'][i]
-            dx = L / params['nx'][i]
-            c = np.linspace(dx / 2, L - dx / 2, params['nx'][i])
-        nc = params['n_comps'][i]
-        for j in range(nc - 1):
-            if i == 0:
-                label = f'{data['variable_names'][j + 1]}'
-            else:
-                label = None
-            ax.plot(c, data['X'][-1, :n_cells, j + 1], linewidth=lw, color=colors[j], linestyle=params['linestyles'][i], label=label)
-        last_component = 1.0 - np.sum(data['X'][-1, :n_cells, 1:], axis=1)
-        j = nc - 1
-        if i == 0:
-            label = 'C20' # f'{data['variable_names'][j + 1]}'
-        else:
-            label = None
-        ax.plot(c, last_component, linewidth=lw, color=colors[j], linestyle=params['linestyles'][i], label=label)
-
-    ax.set_xlabel('x, m', fontsize=14)
-    ax.set_ylabel('Composition', fontsize=14)
-    # ax.set_ylim(lower_lim, upper_lim)
-
-    # Primary legend for descriptive variables (colors)
-    handles, labels = ax.get_legend_handles_labels()
-    primary_legend = ax.legend(handles=handles, labels=labels, loc='upper right', fontsize=fs_legend)
-
-    # Custom legend for linestyles
-    linestyle_labels = {
-        '-': 'LinS',
-        '--': 'LinD',
-        ':': 'MLin'
-        # Add more linestyles and their descriptions if needed
-    }
-    custom_lines = [
-        Line2D([0], [0], color='k', linestyle=ls, linewidth=lw, label=label)
-        for ls, label in linestyle_labels.items()
-    ]
-    linestyle_legend = ax.legend(
-        handles=custom_lines,
-        title='Iterator Type',
-        loc='upper center',
-        fontsize=fs_legend,
-        title_fontsize=fs_legend
-    )
-
-    # Add both legends to the axes
-    ax.add_artist(primary_legend)
-    ax.add_artist(linestyle_legend)
-    #
-    # ax.legend(loc='upper right', fontsize=16)
-    fig.tight_layout()
-    fig.savefig(os.path.join(path_prefix, pic_fname))
-
 def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add_inset_figs=True):
     lw = 1.
     fs_legend = 12
@@ -574,17 +505,30 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
               itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
     n.init(itor_mode=itor_mode, itor_type=itor_type, output_folder=output_folder, is_barycentric=is_barycentric)
 
+    n_months = 2 * 12
     if reservoir_type != '1D':
         if vtk_output:
             n.output_to_vtk(ith_step=0)
         if reservoir_type != '2D':
-            n.well_ids = []
-            for pt in n.pt_wells:
-                dist = np.linalg.norm(n.reservoir.discretizer.centroids_all_cells[:, :2] - pt, axis=1)
-                id_dist_sort = np.argsort(dist)
-                n.well_ids.append(id_dist_sort[:n.reservoir.nz])
+            n.set_wells_spe10()
+            n_months = 10 * 12
 
-    for i in range(24):
+    for i in range(n_months):
+        if reservoir_type.split('_')[0] == 'spe10':
+            ts_mult == 4.0 if  reservoir_type == 'spe10_20_40_40' else 1.0
+            t = n.physics.engine.t
+            if t < 70:
+                n.params.max_ts = ts_mult * 0.25
+            elif t < 100:
+                n.params.max_ts = ts_mult * 0.35
+            elif t < 400:
+                n.params.max_ts = ts_mult * 0.5
+            elif t < 2000:
+                n.params.max_ts = ts_mult * 1.0
+            else:
+                n.params.max_ts = ts_mult * 1.5
+
+
         n.run(30.5, log_3d_body_path=log_3d_body_path)
         if reservoir_type != '1D' and vtk_output:
             n.output_to_vtk(ith_step=i + 1)

@@ -50,7 +50,7 @@ class Model(DartsModel):
                 self.physics.vars[0]: self.p_init,
                 **{self.physics.vars[i + 1]: self.ini_comp[i] for i in range(len(self.physics.vars) - 1)} }
         
-        self.inj_stream = self.inj_comp[:self.physics.nc-1]
+        self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
 
     def set_reservoir(self):
@@ -108,6 +108,30 @@ class Model(DartsModel):
                 self.reservoir.add_perforation("I1", cell_index=(self.well_cell_id[0][0], self.well_cell_id[0][1], k))
                 self.reservoir.add_perforation("P1", cell_index=(self.well_cell_id[1][0], self.well_cell_id[1][1], k))
         return
+
+    def set_wells_spe10(self):
+        # evaluate well cells and adjust transmissibilities between them
+        cell_m = np.asarray(self.reservoir.mesh.block_m)
+        cell_p = np.asarray(self.reservoir.mesh.block_p)
+        tran = np.asarray(self.reservoir.mesh.tran)
+        rw = 0.1
+        dz = np.unique(self.reservoir.global_data['dz'])[0]
+        k_poiselle = rw ** 2 / 8 / 0.9869e-15
+
+        self.well_ids = []
+        for pt in self.pt_wells:
+            # find well cells
+            dist = np.linalg.norm(self.reservoir.discretizer.centroids_all_cells[:, :2] - pt, axis=1)
+            id_dist_sort = np.argsort(dist)
+            id_closest_cells = id_dist_sort[:self.reservoir.nz]
+            self.well_ids.append(id_closest_cells)
+
+            # find connections
+            mask_m = np.isin(cell_m, id_closest_cells)
+            mask_p = np.isin(cell_p, id_closest_cells)
+            id_conn = np.where(mask_m & mask_p)[0]
+
+            # tran[id_conn] += k_poiselle * np.pi * rw ** 2 / dz
 
     def set_physics(self):
         """Physical properties"""
@@ -211,13 +235,13 @@ class Model(DartsModel):
         """ Activate physics """
         max_p = 500.
         if n_comps != 20:
-            axes_max = [max_p, 1.-self.zero/10, 0.7]
+            axes_max = [max_p, 1.-self.zero/10, 0.9]
             if n_comps > 3:
-                axes_max += [0.5]
+                axes_max += [0.7]
             if n_comps > 4:
                 axes_max += [0.5]
             if n_comps > 5:
-                axes_max += (n_comps - 5) * [0.2]
+                axes_max += (n_comps - 5) * [0.4]
             assert(len(axes_max) == n_comps)
         else:
             axes_max = np.array([max_p, 1-self.zero/10, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
@@ -227,6 +251,7 @@ class Model(DartsModel):
 
         if self.reservoir_type != '1D' and self.reservoir_type != '2D':
             max_p = 1.4 * np.max(self.p_init)
+            max_p = 500.0
             axes_max[0] = max_p
 
         thermal = False
@@ -285,20 +310,21 @@ class Model(DartsModel):
                                                                  input_distribution={var: X[:, i] for i, var in enumerate(self.physics.vars)})
 
     def set_well_controls(self):
+        from darts.engines import well_control_iface
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
 
         zero = self.physics.axes_min[1]
         if self.reservoir_type == '1D':
-            injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
+            self.physics.set_well_controls(wctrl=injector.control, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=1., phase_name='gas', inj_composition=self.inj_composition)
+            self.physics.set_well_controls(wctrl=producer.control, is_control=True, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=50.)
         elif self.reservoir_type == '2D':
-            injector.control = self.physics.new_rate_inj(300., self.inj_stream, 0)
-            producer.control = self.physics.new_bhp_prod(50.)
-        # else:
-        #     injector.control = self.physics.new_rate_inj(1., self.inj_stream, 0)
-        #     p_ref = np.asarray(self.reservoir.mesh.pressure).min()
-        #     producer.control = self.physics.new_bhp_prod(p_ref - 50.)
+            self.physics.set_well_controls(wctrl=injector.control, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=300., phase_name='gas', inj_composition=self.inj_composition)
+            self.physics.set_well_controls(wctrl=producer.control, is_control=True, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=50.)
 
     def set_rhs_flux(self, t: float = None):
         nv = self.physics.n_vars
@@ -312,6 +338,7 @@ class Model(DartsModel):
                 for c in range(len(self.components)):
                     rhs_flux[ids * nv + c] += self.inj_rate[k] * self.inj_comp[c] / Mw[c]
         return rhs_flux
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, min_z=1e-11, temperature = 1.):

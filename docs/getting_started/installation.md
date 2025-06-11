@@ -1,6 +1,6 @@
 # Installation of open-darts
 
-## Using pip
+### Using pip
 
 We recommend to use a python environment. Then installing open-darts is as simple as:
 

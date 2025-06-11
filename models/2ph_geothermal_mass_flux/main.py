@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
@@ -50,19 +51,23 @@ def run_darts(mode):
     redirect_darts_output('run_' + mode + '.log')
     n = Model(mode=mode)
     n.init()
+    n.set_output()
 
     if mode != 'plot':
         n.run()
         n.print_timers()
         n.print_stat()
 
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
-        writer.close()
+        if mode == 'wells':
+            # compute well time data
+            time_data_dict = n.output.store_well_time_data()
+
+            # save well time data
+            time_data_df = pd.DataFrame.from_dict(time_data_dict)
+            time_data_df.plot(x='time', y=['well_P1_BHP'])
+            time_data_df.plot(x='time', y=['well_P1_molar_rate_w_by_sum_perfs', 'well_P1_molar_rate_w_at_wh'])
+            #plt.show()
+            plt.close()
 
         Xn = np.array(n.physics.engine.X, copy=False)
         np.save(mode + '.npy', Xn)

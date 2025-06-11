@@ -246,17 +246,23 @@ class Model(THMCModel):
                 #exit()
 
     def set_boundary_conditions(self):
-        #return
-        self.reservoir.wells[0].control = self.physics.new_rate_prod(0, 0)
+        from darts.engines import well_control_iface
+        self.physics.set_well_controls(wctrl=self.reservoir.wells[0].control,
+                                       control_type=well_control_iface.MOLAR_RATE,
+                                       is_inj=False, target=0., phase_name='wat')
         if len(self.reservoir.wells) > 1:
             inj = []
+            inj_temp = None
             if self.physics_type == 'single_phase_thermal':
-                inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
+                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
             elif self.physics_type == 'dead_oil':
                 inj = [1.0 - self.idata.obl.zero]
             elif self.physics_type == 'dead_oil_thermal':
-                inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]])]
-            self.reservoir.wells[1].control = self.physics.new_rate_inj(0.0, inj, 0)
+                inj = [1.0 - self.idata.obl.zero]
+                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
+            self.physics.set_well_controls(wctrl=self.reservoir.wells[1].control,
+                                           control_type=well_control_iface.MOLAR_RATE,
+                                           is_inj=True, target=0., phase_name='wat', inj_composition=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         #return
@@ -266,42 +272,29 @@ class Model(THMCModel):
         """
         # Takes care of well controls, argument of the function is (in case of bhp) the bhp pressure and (in case of
         # rate) water/oil rate:
+        from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             p_cell = self.reservoir.p_init[self.well_cell_ids[i]]
 
-            delta_temp_inj = 40
-
-            bhp_prod = np.min(p_cell) - 50
-            bhp_inj = np.max(p_cell) + 50
-
-            #p_init = self.reservoir.p_init[self.well_cell_ids[1]]
-            #bhp_prod = p_init - 50
-            #bhp_prod = p_init + 50
-
-            # water molar density = 18.015 g/mol = 18 kg/kmol
-            # 7500 m3/day = 7500 * 1000 kg/day = 7500 * 1000 / 18 kmol/day
-            rate = 100  # 7500 # m3/day
-            m3_to_kmol = 1000. / 18  # for water
-            rate_inj = m3_to_kmol * rate # kmol/day
-            rate_prod = 0#m3_to_kmol * rate # kmol/day
+            delta_temp_inj = 40 # [K] - delta for temperature control
+            delta_p = 50  # [bar] - delta for BHP control
 
             if i == 0:
-                #w.control = self.physics.new_bhp_prod(bhp_prod)
-                #print(w.name, w.control, bhp_prod)
-                w.control = self.physics.new_rate_prod(rate_prod, 0)
-                #w.constraint = self.physics.new_bhp_prod(bhp_prod)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=np.min(p_cell) - delta_p)
             else:
                 inj = []
+                inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj = [np.mean(self.reservoir.t_init[self.well_cell_ids[1]] - delta_temp_inj)]
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
                 elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero, np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj]
-                #w.control = self.physics.new_bhp_inj(bhp_inj, inj)
-                #print(w.name, w.control, bhp_inj)
-                w.control = self.physics.new_rate_inj(rate_inj, inj, 0)
-                #w.constraint = self.physics.new_bhp_inj(bhp_inj, inj)
+                    inj = [1.0 - self.idata.obl.zero]
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=np.max(p_cell) + delta_p, inj_composition=inj,
+                                               inj_temp=inj_temp)
         return 0
 
     def set_initial_conditions(self):
