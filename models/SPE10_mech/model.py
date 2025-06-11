@@ -56,7 +56,7 @@ class Model(THMCModel):
 
         # read properties
         porosity = 0.375
-        permeability = 500.0 # [mD]
+        permeability = 100.0 # [mD]
         E = 10 # [GPa]
         p_init = 300 * np.ones(self.nx * self.ny * self.nz)  # [bar]
 
