@@ -198,8 +198,10 @@ class Model(THMCModel):
         return
 
     def set_wells(self):
-        #return
-        #well_init_depth = (self.rsv_bottom + self.rsv_top) * 0.5
+        # well locations:
+        # prod well - 250 m to the left from the center of the mesh
+        # inj well - 250 m to the right from the center of the mesh
+        # perforate only one cell of the mesh at depth  well_init_depth
         well_init_depth = 2150.
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]

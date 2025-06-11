@@ -303,7 +303,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.mesh_data.points,
             cells,
             cell_data=cell_data)
-        meshio.write("{:s}/solution{:d}.vtk".format(output_directory, ith_step), mesh)
+        meshio.write("{:s}/solution{:d}.vtu".format(output_directory, ith_step), mesh)
+
+        time = engine.t if ith_step > 0 else 0.0
+        self.write_pvd_file(ith_step, time, output_directory)
 
         return 0
 
