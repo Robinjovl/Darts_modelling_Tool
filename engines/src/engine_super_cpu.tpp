@@ -475,11 +475,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         {
             for (uint8_t c = 0; c < NC; c++)
             {
-                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
-                {
-                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-                }
+              double denominator = PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c];
+              if (denominator != 0.0)
+              {
+                CFL_max_local = std::max(CFL_max_local, CFL_in[c] / denominator);
+                CFL_max_local = std::max(CFL_max_local, CFL_out[c] / denominator);
+              }
             }
         }
 

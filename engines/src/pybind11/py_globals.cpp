@@ -69,6 +69,79 @@ void pybind_globals(py::module &m)
 {
   using namespace pybind11::literals;
 
+  // ---- begin uint128 binding ----
+  py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
+    .def(py::init<>())
+    .def(py::init([](py::int_ i){
+      const py::int_ two64 = py::int_(1) << 64;
+      const py::int_ hi_py = i / two64;
+      const py::int_ lo_py = i % two64;
+      // now cast each half to uint64_t
+      const uint64_t hi = hi_py.cast<uint64_t>();
+      const uint64_t lo = lo_py.cast<uint64_t>();
+      // rebuild the 128-bit value: (hi<<64) | lo
+      __uint128_t result = static_cast<__uint128_t>(hi);
+      result <<= 64;
+      result |= static_cast<__uint128_t>(lo);
+      return result;
+    }), "value"_a)
+
+  // conversion to Python int & use in slicing/indexing
+    .def("__int__", [](const __uint128_t& v) {
+#ifdef _MSC_VER
+      uint64_t lo = v._Word[0];
+      uint64_t hi = v._Word[1];
+#else
+      uint64_t lo = static_cast<uint64_t>(v);
+      uint64_t hi = static_cast<uint64_t>(v >> 64);
+#endif
+      py::int_ py_hi = py::int_(hi);
+      py::int_ py_lo = py::int_(lo);
+      return (py_hi << 64) | py_lo;
+    })
+    .def("__index__", [](const __uint128_t &v){
+#ifdef _MSC_VER
+      uint64_t lo = v._Word[0];
+      uint64_t hi = v._Word[1];
+#else
+      uint64_t lo = static_cast<uint64_t>(v);
+      uint64_t hi = static_cast<uint64_t>(v >> 64);
+#endif
+      py::int_ py_hi = py::int_(hi);
+      py::int_ py_lo = py::int_(lo);
+      return (py_hi << 64) | py_lo;
+    })
+    .def("__repr__", [](const __uint128_t &v){
+      std::ostringstream oss;
+      oss << "uint128(" << std::to_string(v) << ")";
+      return oss.str();
+    })
+
+    // make it picklable: store as two 64-bit words
+    .def(py::pickle(
+      /*__getstate__*/ [](const __uint128_t &v){
+#ifdef _MSC_VER
+        uint64_t lo = v._Word[0];
+        uint64_t hi = v._Word[1];
+#else
+        uint64_t lo = static_cast<uint64_t>(v);
+        uint64_t hi = static_cast<uint64_t>(v >> 64);
+#endif
+        return py::make_tuple(lo, hi);
+      },
+      /*__setstate__*/ [](py::tuple t){
+        if (t.size() != 2)
+          throw std::runtime_error("Invalid state for uint128");
+        uint64_t lo = t[0].cast<uint64_t>();
+        uint64_t hi = t[1].cast<uint64_t>();
+        __uint128_t result = static_cast<__uint128_t>(hi);
+        result <<= 64;
+        result |= static_cast<__uint128_t>(lo);
+        return result;
+      }
+    ));
+  // ---- end uint128 binding ----
+
   py::class_<sim_params> sim_params(m, "sim_params", "Class simulation parameters");
 
   sim_params.def(py::init<>())

@@ -1,3 +1,11 @@
+# 1.3.1 [07-06-2025]
+- Add IPhreeqc to thirdparty dependencies, added phreeqc_dissolution model with CO2 injection and dissolution-precipitation kinetics [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
+- Apply_rhs_flux supported for GPU platform [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
+- Added .pvd file generation for unstructured meshes for Time in ParaView [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/216)
+- Reconstruct Darcy velocity for water and steam phases in Geothermal engine [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/209)
+- Switched to Python 3.10 by default in CI/CD pipelines
+- well_indexD set to 0 by default in cpg_model [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/213)
+
 # 1.3.0 [16-05-2025]
 - Unify well controls:
   - A single C++ class well_control_iface class has been generalized to handle bhp and different rate controls (inj/prod) for all engines
