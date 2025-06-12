@@ -117,11 +117,11 @@ class Model(DartsModel):
 
         """Define physics"""
         self.set_physics(temperature=specs['temperature'], n_points=1001)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-2, tol_newton=1e-3,
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-3, tol_newton=1e-3,
                             it_linear=50, it_newton=12, newton_type=sim_params.newton_global_chop)
-        self.params.newton_params[0] = 0.05
+        self.params.newton_params[0] = 0.10
         self.data_ts.eta = np.ones(self.physics.n_vars)
-        self.params.nonlinear_norm_type = self.params.L1 #self.params.LINF  # linf if you use m.set_rhs() for injection
+        self.params.nonlinear_norm_type = self.params.LINF  # linf if you use m.set_rhs() for injection
 
         """Define the reservoir and wells """
         well_centers = {
@@ -278,7 +278,6 @@ class Model(DartsModel):
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    min_z=self.zero / 10, temperature=temperature)
 
-            # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
             property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
             property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                                   ('Aq', Garcia2001(self.components)), ])
@@ -303,7 +302,7 @@ class Model(DartsModel):
 
             for j, phase_name in enumerate(phases):
                 for c, component_name in enumerate(self.components):
-                    key = f"x_{phase_name}_{component_name}" #if phase_name == 'Aq' else f"y{component_name}"
+                    key = f"x_{phase_name}_{component_name}"
                     property_container.output_props[key] = lambda ii=i, jj=j, cc=c: self.physics.property_containers[ii].x[jj, cc]
             
             if region == 0 or region == 6:
@@ -326,7 +325,6 @@ class Model(DartsModel):
         for i, region in enumerate(self.physics.regions):
             dispersivity[i * nph * nc:(i + 1) * nph * nc] = self.physics.dispersivity[region].flatten()
 
-        # self.physics.engine.is_fickian_energy_transport_on = False
         print('Fickian energy is', self.physics.engine.is_fickian_energy_transport_on)
 
         # allocate & transfer dispersivities to device
@@ -336,7 +334,7 @@ class Model(DartsModel):
             copy_data_to_device(self.physics.engine.dispersivity, dispersivity_d)
 
     def set_initial_conditions(self):
-        if 0:
+        if 1:
             pres_in = 212
             input_depths = [np.amin(self.reservoir.mesh.depth), np.amax(self.reservoir.mesh.depth)]
             
@@ -812,14 +810,14 @@ class Model(DartsModel):
         self.ids_list = {'NS': ids_NS, 'SN': ids_SN, 'EW': ids_EW, 'WE': ids_WE}
         self.ids_cells_list = {'NS': ids_cells_NS, 'SN': ids_cells_SN, 'EW': ids_cells_EW, 'WE': ids_cells_WE}
 
-        return self.ids_list, self.ids_cells_list
+        return
 
     def plot_fluxes(self, property_array, time_vector, ts):
         nx, ny, nz = self.reservoir.nx, self.reservoir.ny, self.reservoir.nz
         figure_folder = os.path.join(self.output_folder, 'figures', 'fluxes')
         os.makedirs(figure_folder, exist_ok=True)
 
-        for id_key in ['SN', 'EW']:
+        for id_key in ['SN']:
             for phase_idx, phase_name in enumerate(self.physics.phases):
                 for comp_idx, comp_name in enumerate(self.components):
 
@@ -886,42 +884,45 @@ class Model(DartsModel):
                                 darcy_flux[i, j] = property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'][idx]
                                 disp_flux[i, j] = property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'][idx]
 
+                                xi = property_array[f'x_{phase_name}_{comp_name}']
+
                         plt.figure(dpi = 100, figsize=(8, 8))
                         plt.suptitle(f"{comp_name}, {phase_name}, in the {id_key} direction @ {time_vector[0]} days")
+                        plt.subplot(5, 1, 1)
+                        c = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), xi.reshape(nz, nx), cmap='coolwarm')
+                        plt.colorbar(c, label = f'x_{phase_name}_{comp_name}')
+                        plt.ylabel('z [m]')
 
-                        plt.subplot(4, 1, 1)
+                        plt.subplot(5, 1, 2)
                         # pc1 = plt.scatter(face_centroids_x, face_centroids_z, c=property_array[f'diff_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
                         pc1 = plt.pcolor(temp_x, temp_z, diff_flux, vmin = -np.max(np.abs(diff_flux)), vmax = np.max(np.abs(diff_flux)), cmap='coolwarm')
                         plt.colorbar(pc1, aspect = 10, label="Diffusion Flux")
                         plt.ylim(0, 1200); plt.xlim(0, 8400)
                         plt.ylabel('z [m]')
 
-                        plt.subplot(4, 1, 2)
+                        plt.subplot(5, 1, 3)
                         # pc2 = plt.scatter(self.centroids[:, 0], self.centroids[:, 2], c = property_array[f'vel_{phase_name}'], s=1, cmap='coolwarm')
                         velocity = property_array[f'vel_{phase_name}'].reshape(nz, nx)
-                        pc2 = plt.pcolor(self.centroids[:, 0].reshape(nz, nx),
-                                         self.centroids[:, 2].reshape(nz, nx),
-                                         velocity,
-                                         # vmin=-np.max(np.abs(velocity)), vmax=np.max(np.abs(velocity)),
-                                         cmap='coolwarm')
+                        pc2 = plt.pcolor(self.centroids[:, 0].reshape(nz, nx), self.centroids[:, 2].reshape(nz, nx), velocity, cmap='coolwarm')
                         plt.colorbar(pc2, aspect = 10, label="Velocities")
                         plt.ylim(0, 1200); plt.xlim(0, 8400)
                         plt.ylabel('z [m]')
 
-                        plt.subplot(4, 1, 3)
+                        plt.subplot(5, 1, 4)
                         # pc3 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'disp_fluxes_{phase_name}_{comp_idx}_{id_key}'], s=1, cmap='coolwarm')
                         pc3 = plt.pcolor(temp_x, temp_z, disp_flux, vmin = -np.max(np.abs(disp_flux)), vmax = np.max(np.abs(disp_flux)), cmap='coolwarm')
                         plt.colorbar(pc3, aspect = 10, label="Disp Flux")
                         plt.ylim(0, 1200); plt.xlim(0, 8400)
                         plt.ylabel('z [m]')
 
-                        plt.subplot(4, 1, 4)
+                        plt.subplot(5, 1, 5)
                         # pc4 = plt.scatter(face_centroids_x, face_centroids_z, c = property_array[f'darcy_fluxes_{phase_name}_{comp_idx}_{id_key}'] , s=1, cmap='coolwarm')
                         pc4 = plt.pcolor(temp_x, temp_z, darcy_flux, vmin = -np.max(np.abs(darcy_flux)), vmax = np.max(np.abs(darcy_flux)), cmap='coolwarm')
                         plt.colorbar(pc4, aspect = 10, label="Darcy Flux")
                         plt.ylim(0, 1200); plt.xlim(0, 8400)
-                        plt.xlabel('x [m]');
+                        plt.xlabel('x [m]')
                         plt.ylabel('z [m]')
+
                         plt.tight_layout()
                         plt.savefig(os.path.join(figure_folder, f'fluxes_{id_key}_{phase_name}_{comp_name}_at_ts_{ts}.png'))
                         plt.close()
@@ -935,7 +936,7 @@ class Model(DartsModel):
                 try:
                     plt.colorbar(c, aspect=10, label=self.output.variable_units[name])
                 except:
-                    pass
+                    plt.colorbar(c, aspect=10)
                 plt.xlabel('x [m]');
                 plt.ylabel('z [m]')
                 fig_dir = os.path.join(self.output_folder, 'figures', f'{name}')
