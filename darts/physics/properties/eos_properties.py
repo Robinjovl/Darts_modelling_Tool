@@ -66,7 +66,7 @@ class EoSEnthalpy:
         :returns: Phase enthalpy in J/mol
         :rtype: float
         """
-        H = self.eos.H_PT(pressure, temperature, x)  # H/R
+        H = self.eos.H(pressure, temperature, x)  # H/R
         return H * R  # J/mol == kJ/kmol
 
 
@@ -142,7 +142,7 @@ class VdWPEnthalpy:
         """
         X = self.xH if self.xH is not None else x
 
-        H = self.eos.H_PT(pressure, temperature, X)  # H/R
+        H = self.eos.H(pressure, temperature, X)  # H/R
 
         if self.xH is not None:
             nH = self.xH[0] / self.xH[1]
