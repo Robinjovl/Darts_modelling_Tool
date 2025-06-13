@@ -47,7 +47,7 @@ def plot_sol(n):
 if __name__ == '__main__':
     logging.set_file("run.log")
 
-    print('START')
+    logging.info('START')
 
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
@@ -86,7 +86,7 @@ if __name__ == '__main__':
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
-    print('END')
+    logging.info('END')
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 

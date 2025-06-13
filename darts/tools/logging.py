@@ -19,11 +19,10 @@ def abort_redirection(log_stream):
 
 # Logging usage example
 if __name__ == "__main__": 
-    from darts.engines import logging
+    from darts import logging
 
     logging.log("screen only")
-    logging.set_file()
-    logging.duplicate_output_to_file("log.log")
+    logging.set_file("log.log")
     logging.log("screen and log file")
     print("screen only")
 
@@ -31,11 +30,12 @@ if __name__ == "__main__":
     # Default logging verbosity level is : INFO
     logging.debug("debug that should not be shown")
     logging.info("info")
-    logging.set_logging_level(logging.LoggingLevel.ERROR)
+    logging.set_verbosity(logging.LoggingLevel.ERROR)
     logging.info("info that should not be shown")
     logging.error("error")
     logging.critical("critical")
 
+    logging.print_loggers()
 
     """
     # Results
