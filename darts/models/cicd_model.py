@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
-from darts import logging
 
 import numpy as np
 import pandas as pd
@@ -82,10 +81,10 @@ class CICDModel(DartsModel):
                         print('#%d parameter %s is %d (was %d, %+.2f%%)' % (fail, key, value, reference, rel_diff))
                         fail += 1
             if not fail:
-                logging.success('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                print('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 0
             else:
-                logging.error('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
+                print('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)

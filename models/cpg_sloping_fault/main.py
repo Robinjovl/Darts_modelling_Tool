@@ -6,6 +6,7 @@ import os, sys
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
 from darts.tools.logging import redirect_all_output, abort_redirection
+from darts import logging
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
@@ -19,13 +20,15 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     :param export_vtk:
     :return:
     '''
-    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
-
     out_dir = out_dir
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
     if redirect_log:
         log_stream = redirect_all_output(log_filename)
+    logging.set_file(log_filename)
+    logging.set_verbosity(logging.LoggingLevel.DEBUG)
+
+    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
     if physics_type == 'geothermal':
         m = ModelGeothermal(iapws_physics=True)
@@ -119,6 +122,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     if redirect_log:
         abort_redirection(log_stream)
     print('Failed' if failed else 'Ok')
+    logging.flush()
 
     return failed, sim_time, time_data, time_data_report, m.idata.well_data.wells.keys(), m.well_is_inj
 
@@ -251,7 +255,7 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    #physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
@@ -261,9 +265,9 @@ if __name__ == '__main__':
     #cases_list += ['case_40x40x10']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

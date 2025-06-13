@@ -30,7 +30,7 @@ if __name__ == "__main__":
     # Default logging verbosity level is : INFO
     logging.debug("debug that should not be shown")
     logging.info("info")
-    logging.set_verbosity(logging.LoggingLevel.ERROR)
+    logging.set_verbosity(logging.LoggingLevel.ERROR)  # output only errors
     logging.info("info that should not be shown")
     logging.error("error")
     logging.critical("critical")
