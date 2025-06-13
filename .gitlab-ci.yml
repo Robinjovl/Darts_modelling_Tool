@@ -48,7 +48,7 @@ build-linux-3.9:
         PY_SUF: 'cp39-cp39' # for python path selection in .build-linux-dockcross
         ODLS: '-a'
 
-build-linux-3.10-gpu:
+.build-linux-3.10-gpu:
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -433,7 +433,7 @@ test-linux-3.9:
 
 ###################################################################################
 
-test-linux-3.10-gpu:
+.test-linux-3.10-gpu:
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -756,7 +756,7 @@ upload_wheels:
         - build-linux-3.10
         - build-windows-3.10
 
-upload_wheels_gse:
+.upload_wheels_gse:
     stage: deploy
     image: python:3.10
     rules:
