@@ -111,7 +111,7 @@ build-linux-3.9-ODLS:
 build-linux-3.10-valgrind:
     stage: build
     tags:
-        - linux
+        - linux_wsl
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -242,7 +242,7 @@ build-windows-3.9-ODLS:
     image: "python:$PY_VER"
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
-        - linux
+        - linux_wsl
     before_script:
         - echo 'before build-linux'
         - apt-get update -qq && apt-get install -y -qq smbclient
@@ -559,7 +559,7 @@ test-windows-3.9-ODLS:
     image: "python:$PY_VER"
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
-        - linux
+        - linux_wsl
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
         - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev # for gmsh
