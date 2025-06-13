@@ -30,8 +30,9 @@ class THMCModel(DartsModel):
         self.set_reservoir()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
-        if self.idata.type_mech == 'thermoporoelasticity':
-            self.reservoir.T_VAR = self.physics.engine.T_VAR
+        if hasattr(self, 'idata'):
+            if self.idata.type_mech == 'thermoporoelasticity':
+                self.reservoir.T_VAR = self.physics.engine.T_VAR
         self.set_solver_params()
         self.timer.node["initialization"].stop()
 
@@ -41,6 +42,10 @@ class THMCModel(DartsModel):
         self.reservoir.eps_vol_ref = np.array(self.reservoir.mesh.ref_eps_vol, copy=False)
         self.reservoir.eps_vol_ref[:] = self.physics.engine.eps_vol[:]
         self.physics.engine.t = 0.0
+
+        if self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.contact_solver = contact_solver.RETURN_MAPPING  # local_iterations # flux_from_previous_iteration # return_mapping
+            self.setup_contact_friction(contact_algorithm=self.physics.engine.contact_solver)
 
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,
@@ -95,16 +100,21 @@ class THMCModel(DartsModel):
             property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))])
             property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=0.0)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+
+            thermal = True
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                          thermal=True, min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
+                                          min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t, state_spec=state_spec,
                                           discretizer=self.discretizer_name)
         else:
+            thermal = False
+            state_spec = Poroelasticity.StateSpecification.PT if thermal else Poroelasticity.StateSpecification.P
             self.physics = Poroelasticity(components, phases, self.timer, n_points=self.idata.obl.n_points,
                                           min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p, 
                                           min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                          discretizer=self.discretizer_name)
+                                          state_spec=state_spec, discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
@@ -142,6 +152,17 @@ class THMCModel(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.physics.engine.set_discretizer(self.reservoir.discr)
             self.physics.engine.gravity = self.reservoir.discr.grav_vec.values
+        elif self.discretizer_name == 'pm_discretizer' and hasattr(self.reservoir, 'contacts'):
+            for contact in self.reservoir.contacts:
+                contact.N_VARS = self.physics.engine.N_VARS
+                contact.U_VAR = self.physics.engine.U_VAR
+                contact.P_VAR = self.physics.engine.P_VAR
+                contact.NT = self.physics.engine.N_VARS
+                contact.U_VAR_T = self.physics.engine.U_VAR
+                contact.P_VAR_T = self.physics.engine.P_VAR
+                contact.init_friction(self.reservoir.pm, self.reservoir.mesh)
+                contact.init_fault()
+            self.physics.engine.contacts = self.reservoir.contacts
 
     def set_wells(self):
         pass
@@ -165,17 +186,14 @@ class THMCModel(DartsModel):
                                            well_index=self.reservoir.well_index)
 
     def set_initial_conditions(self):
+        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution.update({comp: self.reservoir.z_init[i] for i, comp in enumerate(self.physics.components[:-1])})
         if self.reservoir.thermoporoelasticity:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_temperature=self.reservoir.t_init,
-                                                        uniform_displacement=self.reservoir.u_init)
-        else:
-            self.physics.set_uniform_initial_conditions(self.reservoir.mesh,
-                                                        uniform_pressure=self.reservoir.p_init,
-                                                        uniform_composition=self.reservoir.z_init,
-                                                        uniform_displacement=self.reservoir.u_init)
+            input_distribution['temperature'] = self.reservoir.t_init
+
+        self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                       input_distribution=input_distribution,
+                                                       input_displacement=self.reservoir.u_init)
         return 0
 
     def set_boundary_conditions(self):
@@ -187,6 +205,9 @@ class THMCModel(DartsModel):
 
     def set_op_list(self):
         self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
+
+    def set_contact_friction(self, contact_algorithm: contact_solver):
+        pass
 
     def get_performance_data(self, is_last_ts: bool = False):
         """
@@ -226,6 +247,7 @@ class THMCModel(DartsModel):
         :param file_name:
         :return:
         """
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
@@ -239,6 +261,8 @@ class THMCModel(DartsModel):
         if os.path.exists(file_name):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
+        else:
+            print('PKL FILE', file_name, 'does not exist. Skipping.')
         return 0
     
     # it doesn't use model object, put inside the class just for the convenience of import 

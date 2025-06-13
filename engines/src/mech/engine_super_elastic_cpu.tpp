@@ -55,6 +55,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   discr = nullptr;
 
   init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  this->expose_jacobian();
 
   return 0;
 }
@@ -284,7 +285,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	PV.resize(mesh->n_blocks);
@@ -292,8 +292,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	darcy_fluxes.resize(mesh->n_conns);
 	structural_movement_fluxes.resize(mesh->n_conns);
@@ -316,32 +316,35 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+	for (index_t i = 0; i < mesh->n_res_blocks; i++)
 	{
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-	  X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-	  for (uint8_t c = 0; c < nc - 1; c++)
+	
+	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
-		  X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
+		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
 	  }
 	  for (uint8_t d = 0; d < ND; d++)
 	  {
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
-
-	  PV[i] = mesh->volume[i] * mesh->poro[i];
-	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
+	X_init.resize(n_vars * mesh->n_blocks);
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		PV[i] = mesh->volume[i] * mesh->poro[i];
+	  	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	}
+
 	if (THERMAL)
 	{
 	  for (index_t i = 0; i < mesh_->n_blocks; i++)
 	  {
 		// reference
 		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
-		// initial
-		X_init[n_vars * i + T_VAR] = mesh->temperature[i];
 	  }
 	}
 

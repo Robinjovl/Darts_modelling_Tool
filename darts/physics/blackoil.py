@@ -18,9 +18,11 @@ class BlackOilBase(Compositional):
 
 class BlackOil(Compositional):
     def __init__(self, idata: InputData, timer, thermal):
-        super().__init__(idata.fluid.components, idata.fluid.phases, timer,
-                         idata.obl.n_points, idata.obl.min_p, idata.obl.max_p, idata.obl.min_z, idata.obl.max_z,
-                         idata.obl.min_t, idata.obl.max_t)
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        super().__init__(components=idata.fluid.components, phases=idata.fluid.phases, timer=timer,
+                         n_points=idata.obl.n_points, min_p=idata.obl.min_p, max_p=idata.obl.max_p,
+                         min_z=idata.obl.min_z, max_z=idata.obl.max_z, min_t=idata.obl.min_t, max_t=idata.obl.max_t,
+                         state_spec=state_spec)
 
         temperature = None if thermal else 1.
         property_container = BlackOilProperties(phases_name=idata.fluid.phases, components_name=idata.fluid.components,
@@ -78,6 +80,7 @@ class BlackOilProperties(PropertyContainer):
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
+        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
 

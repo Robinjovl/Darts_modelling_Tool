@@ -51,20 +51,25 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.set_output()
 
     if True:
-        n.run(1000)
+        n.run(1000, save_well_data=True, save_reservoir_data=False)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
+
+        # compute well time data
+        time_data_dict = n.output.store_well_time_data()
+
+        # save well time data
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
         writer.close()
+
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')

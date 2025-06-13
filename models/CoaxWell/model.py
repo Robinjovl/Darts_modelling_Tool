@@ -4,6 +4,7 @@ from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_ve
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
+from darts.engines import well_control_iface
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer
@@ -25,13 +26,6 @@ class Model(CICDModel):
                             newton_params=value_vector([1]))
 
         self.timer.node["initialization"].stop()
-
-        T_init = 450.
-        state_init = value_vector([200., 0.])
-        enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, T_init)
-        self.initial_values = {self.physics.vars[0]: state_init[0],
-                               self.physics.vars[1]: enth_init
-                               }
 
     def set_reservoir(self, resolution):
         y_scale = 3
@@ -94,12 +88,21 @@ class Model(CICDModel):
 
         return
 
+    def set_initial_conditions(self):
+        input_distribution = {'pressure': 200.,
+                              'temperature': 450.
+                              }
+        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
+                                                              input_distribution=input_distribution)
+
     def set_well_controls(self):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                w.control = self.physics.new_bhp_water_inj(205, 300)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=True, target=205, phase_name='water', inj_temp=300.)
             else:
-                w.control = self.physics.new_bhp_prod(195)
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                               is_inj=False, target=195., phase_name='water')
 
     def compute_temperature(self, X):
         nb = self.reservoir.mesh.n_blocks

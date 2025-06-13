@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 
@@ -28,8 +29,14 @@ n.reservoir.unstr_discr.write_to_vtk('results', property_array, n.cell_property,
 
 n.print_timers()
 n.print_stat()
-time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-time_data.to_pickle("darts_time_data.pkl")
 n.save_restart_data()
 
+# compute well time data
+time_data_dict = n.output.store_well_time_data()
 
+# save well time data
+time_data_df = pd.DataFrame.from_dict(time_data_dict)
+time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
+writer.close()

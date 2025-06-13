@@ -1,20 +1,10 @@
-@echo off
-
-:: Check Python architecture and set the platform name accordingly
-for /f "delims=" %%a in ('python -c "import platform; print(platform.architecture()[0])"') do set ARCH=%%a
-
-if "%ARCH%"=="64bit" (
-    set PLAT_NAME=win_amd64
-) else (
-    set PLAT_NAME=win32
-)
-
-:: Clean and build the package
+copy CHANGELOG.md darts
 python setup.py clean
-python setup.py build bdist_wheel --plat-name %PLAT_NAME%
+python setup.py build bdist_wheel
 
-:: Install the built wheel
-for %%f in (dist\open_darts-*.whl) do (
-    echo Installing %%f...
-    python -m pip install --upgrade --no-deps --force-reinstall "%%f"
+rem get a python version to use in a wheel name 
+FOR /F "delims=" %%i IN ('python -c "import sys;print(str(sys.version_info.major) + str(sys.version_info.minor))"') DO (
+    SET "pyver=%%i"
 )
+
+python -m pip install --upgrade --no-deps --force-reinstall dist/open_darts-1.3.1-cp%pyver%-cp%pyver%-win_amd64.whl

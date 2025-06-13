@@ -5,6 +5,7 @@ import numpy as np
 class Flash:
     nu: []
     X: []
+    temperature: float
 
     def __init__(self, nph, nc, ni=0):
         self.nph = nph
@@ -26,6 +27,7 @@ class SinglePhase(Flash):
 
     def evaluate(self, pressure, temperature, zc):
         self.nu, self.X = np.array([1.]), np.array([zc])
+        self.temperature = temperature
         return 0
 
 
@@ -38,6 +40,7 @@ class ConstantK(Flash):
 
     def evaluate(self, pressure, temperature, zc):
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        self.temperature = temperature
         return 0
 
 
@@ -90,6 +93,7 @@ class IonFlash(Flash):
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.X = np.empty((self.nph, self.nc + 1 if self.combined_ions is not None else self.nc + self.ni))
+        self.temperature = flash_results.temperature
 
         for j in range(self.nph):
             Xj = flash_results.X[j * nc_tot:(j + 1) * nc_tot]

@@ -25,7 +25,6 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("scale_rows", &engine_pm_cpu::SCALE_ROWS) \
 		.def_readwrite("scale_dimless", &engine_pm_cpu::SCALE_DIMLESS) \
 		.def_readwrite("geomechanics_mode", &engine_pm_cpu::geomechanics_mode) \
-		.def_readwrite("newton_update_coefficient", &engine_pm_cpu::newton_update_coefficient) \
 		.def_readwrite("t_dim", &engine_pm_cpu::t_dim) \
 		.def_readwrite("x_dim", &engine_pm_cpu::x_dim) \
 		.def_readwrite("p_dim", &engine_pm_cpu::p_dim) \

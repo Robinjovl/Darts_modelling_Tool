@@ -89,11 +89,11 @@ if __name__ == "__main__":
     cases_list += ['case_1_burden_O2_U2']
 
     ##cases_list = ['case_2']
-    cases_list = ['case_3']
-    cases_list = ['case_4']
-    cases_list = ['case_5']
+    cases_list += ['case_3']
+    cases_list += ['case_4']
+    cases_list += ['case_5']
 
-    cases_list = ['whitby']
+    #cases_list += ['whitby']
 
     for case in cases_list:
         test(case, platform=platform)

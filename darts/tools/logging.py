@@ -36,6 +36,8 @@ if __name__ == "__main__":
     logging.critical("critical")
 
     logging.print_loggers()
+    logging.flush()
+
 
     """
     # Results

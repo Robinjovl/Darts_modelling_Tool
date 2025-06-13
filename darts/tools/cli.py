@@ -1,6 +1,26 @@
-from os.path import isfile
+"""
+A CLI for DARTS, which ensures that the runtime environment is properly set up for 
+running DARTS scripts and models.
+
+You can either manually specify the path to python scripts:
+    `darts models/2ph_comp/main.py`
+
+Or simply specify the path to a folder containg a main.py script:
+    `darts models/2ph_comp`
+
+Or directly run a model.py model script:
+    `darts --model models/2ph_comp`
+"""
+
 from pathlib import Path
 import argparse, os, subprocess, sys
+
+# Make sure all modules are imported successfully
+from .. import engines, discretizer
+import darts
+
+
+import ctypes
 
 
 def valid_path(string):
@@ -9,12 +29,23 @@ def valid_path(string):
     else:
         raise argparse.ArgumentTypeError(f"invalid path: '{string}'")
 
+def get_lib_var():
+    if sys.platform == 'linux':
+        return 'LD_LIBRARY_PATH'
+    elif sys.platform == 'darwin':
+        return 'DYLD_LIBRARY_PATH'
+    elif sys.platform.startswith('win'):
+        return 'PATH'
+    else:
+        return None
+
+
+def get_darts_path():
+    return Path(darts.__file__).parent
+
 
 def main():
-    # Make sure all modules are imported successfully
-    from .. import logging, engines, discretizer
-
-    parser = argparse.ArgumentParser(description="CLI tool for running DARTS models.")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument(
         "path",
@@ -57,12 +88,14 @@ def main():
         exit()
     path = args.path
 
+    python_args = [sys.executable]
+
     if not path:
         print_version()
-        print("Please supply the path to a DARTS script.")
+        parser.print_usage()
         exit()
 
-    if os.path.isdir(path):
+    if path and os.path.isdir(path):
         file = "model.py" if args.model else "main.py"
         filepath = os.path.join(path, file)
 
@@ -73,13 +106,21 @@ def main():
                 f"No '{file}' script found in '{path}'.\nPlease create one, or manually specify the file you want to run."
             )
             exit(1)
-    # Define the new environment variable
-    new_env = {"LD_LIBRARY_PATH": str(Path(__file__).parent.parent) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
 
-    # Update the environment of the current process
-    env = {**os.environ, **new_env}
-    print("LD_LIBRARY_PATH", env["LD_LIBRARY_PATH"])
-    os.environ["LD_LIBRARY_PATH"] = env["LD_LIBRARY_PATH"]
+    if path:
+        python_args.append(path)
 
-    res = subprocess.run([sys.executable, path] + args.args, env=env)
+    python_args += args.args
+
+    # Update env vars for running DARTS
+    lib_var = get_lib_var()
+
+    if lib_var:
+        os.environ[lib_var] = str(get_darts_path()) + ":" + os.environ.get(lib_var, "")
+
+    res = subprocess.run(python_args)
     sys.exit(res.returncode)
+
+
+if __name__ == "__main__":
+    main()

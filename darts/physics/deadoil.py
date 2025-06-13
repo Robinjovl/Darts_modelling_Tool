@@ -21,9 +21,11 @@ class DeadOilBase(Compositional):
 
 class DeadOil(Compositional):
     def __init__(self, idata: InputData, timer, thermal):
-        super().__init__(idata.fluid.components, idata.fluid.phases, timer,
-                         idata.obl.n_points, idata.obl.min_p, idata.obl.max_p, idata.obl.min_z, idata.obl.max_z,
-                         idata.obl.min_t, idata.obl.max_t)
+        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        super().__init__(components=idata.fluid.components, phases=idata.fluid.phases, timer=timer,
+                         n_points=idata.obl.n_points, min_p=idata.obl.min_p, max_p=idata.obl.max_p,
+                         min_z=idata.obl.min_z, max_z=idata.obl.max_z, min_t=idata.obl.min_t, max_t=idata.obl.max_t,
+                         state_spec=state_spec)
         self.zero = 1e-13
 
         temperature = None if thermal else 1.
@@ -76,7 +78,7 @@ class DeadOilProperties(PropertyContainer):
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
                          rock_comp=rock_comp, temperature=temperature)
 
-    def run_flash(self, pressure, temperature, zc):
+    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
         ph = np.array([j for j in range(self.nph)])
 
         for i in range(self.nc):

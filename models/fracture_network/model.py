@@ -1,4 +1,4 @@
-from darts.engines import value_vector, sim_params
+from darts.engines import value_vector, sim_params, well_control_iface
 from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
@@ -45,11 +45,11 @@ class Model(CICDModel):
 
         # initialize reservoir
         self.reservoir = UnstructReservoir(timer=self.timer, mesh_file=mesh_file,
-                                      permx=permx, permy=permy, permz=permz,
-                                      poro=poro,
-                                      rcond=idata.rock.conductivity,
-                                      hcap=idata.rock.heat_capacity,
-                                      frac_aper=frac_aper)
+                                           permx=permx, permy=permy, permz=permz,
+                                           poro=poro,
+                                           rcond=idata.rock.conductivity,
+                                           hcap=idata.rock.heat_capacity,
+                                           frac_aper=frac_aper)
 
         # parameters for fracture aperture computation depending on principal stresses
         if 'Sh_max' in idata.stress:
@@ -108,11 +108,7 @@ class Model(CICDModel):
         self.physics = Geothermal(self.idata, self.timer)
 
         # Some tuning parameters:
-        self.params.first_ts = 1e-6  # Size of the first time-step [days]
-        self.params.mult_ts = 1.5  # Time-step multiplier if newton is converged (i.e. dt_new = dt_old * mult_ts)
-        self.params.max_ts = 60  # Max size of the time-step [days]
-        self.params.tolerance_newton = 1e-4  # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.tolerance_linear = 1e-5  # Tolerance for linear solver ||Ax - b||<tol_linslv
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
         self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         # direct linear solver
@@ -140,15 +136,20 @@ class Model(CICDModel):
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
-            self.physics.set_nonuniform_initial_conditions(self.reservoir.mesh,
-                                                       pressure_grad=self.idata.initial.pressure_gradient,
-                                                       temperature_grad=self.idata.initial.temperature_gradient)
+            # Specify reference depth, values and gradients to construct depth table in super().set_initial_conditions()
+            input_depth = [0., np.amax(self.reservoir.mesh.depth)]
+            input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient / 1000],
+                                  'temperature': [293.15, 293.15 + input_depth[
+                                      1] * self.idata.initial.temperature_gradient / 1000]
+                                  }
+            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+                                                                        input_distribution=input_distribution,
+                                                                        input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
-            state_init = value_vector([self.idata.initial.initial_pressure, 0.])
-            enth_init = self.physics.property_containers[0].compute_total_enthalpy(state_init, self.idata.initial.initial_temperature)
-            self.initial_values = {self.physics.vars[0]: state_init[0],
-                                   self.physics.vars[1]: enth_init}
-            super().set_initial_conditions()
+            input_distribution = {'pressure': self.idata.initial.initial_pressure,
+                                  'temperature': self.idata.initial.initial_temperature}
+            return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
+                                                                  input_distribution=input_distribution)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "I" in wname
@@ -179,22 +180,33 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if self.well_is_inj(w.name):
                 if inj_rate is None:
-                    w.control = self.physics.new_bhp_water_inj(inj_bhp, inj_temp)
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=inj_bhp, inj_composition=[], inj_temp=inj_temp)
                 else:
-                    w.control = self.physics.new_rate_water_inj(inj_rate, inj_temp)
-                    w.constraint = self.physics.new_bhp_water_inj(wctrl.inj_bhp_constraint, inj_temp)
+                    # Control
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=True, target=inj_rate, phase_name='water', inj_composition=[], inj_temp=inj_temp)
+                    # Constraint
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                                   is_inj=True, target=wctrl.inj_bhp_constraint, inj_composition=[],
+                                                   inj_temp=inj_temp)
             else:
                 if prod_rate is None:
-                    w.control = self.physics.new_bhp_prod(prod_bhp)
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=prod_bhp)
                 else:
-                    w.control = self.physics.new_rate_water_prod(prod_rate)
-                    w.constraint = self.physics.new_bhp_prod(wctrl.prod_bhp_constraint)
+                    # Control
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
+                                                   is_inj=False, target=-np.abs(prod_rate), phase_name='water')
+                    # Constraint
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                                   is_inj=False, target=wctrl.prod_bhp_constraint)
 
-            print(w.name,
-                  w.well_head_depth,
-                  w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
-                  w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
-                  w.control.target_rate if hasattr(w.control, 'target_rate') else '')
+            # print(w.name,
+            #       w.well_head_depth,
+            #       w.control.target_pressure if hasattr(w.control, 'target_pressure') else '',
+            #       w.control.target_temperature if hasattr(w.control, 'target_temperature') else '',
+            #       w.control.target_rate if hasattr(w.control, 'target_rate') else '')
         return 0
 
     def get_mat_frac_range(self, part):
