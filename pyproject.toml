@@ -8,8 +8,7 @@ name = "open-darts"
 # This version has to be incremented manually for every new release.
 version = "1.3.1"
 authors = [
-    {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"},
-    {email = "darts@tudelft.nl"}
+    {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"}
 ]
 maintainers = [
     {name = "Ilshat Saifullin", email = "i.s.saifullin@tudelft.nl"}
@@ -20,7 +19,7 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.9"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numpy', 'numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
+dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib', 'vtk',
     'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4', 'h5py', 'open-darts-flash', 'phreeqpy']
 
 license = {text = "LICENSE.md"}

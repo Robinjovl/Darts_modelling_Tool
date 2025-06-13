@@ -58,8 +58,6 @@ def calculate_injection_stream(q_water, q_co2, temperature, pressure_bar):
     # Get and densities
     rho_water = 992.3080019030547 # CP.PropsSI('D', 'T', temperature, 'P', pressure, 'Water')
     rho_co2 = 384.3271516766676 # CP.PropsSI('D', 'T', temperature, 'P', pressure, 'CarbonDioxide')
-    print(rho_water)
-    print(rho_co2)
 
     # Calculated masses, assume 1 fraction to be 1 m3
     mass_water = ratio_water * rho_water   # kg

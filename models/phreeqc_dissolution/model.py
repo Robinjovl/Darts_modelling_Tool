@@ -3,6 +3,7 @@ from phreeqc_dissolution.conversions import convert_composition, correct_composi
 from phreeqc_dissolution.physics import PhreeqcDissolution
 
 import darts
+from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -11,7 +12,7 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 
-from darts.engines import sim_params, well_control_iface, value_vector
+from darts.engines import sim_params, well_control_iface, value_vector, timer_node
 from phreeqc_dissolution.conversions import bar2pa
 from iapws._iapws import _Viscosity
 
@@ -47,6 +48,91 @@ class MyOwnDataStruct:
         self.n_init_ops = n_init_ops
         self.n_prop_ops = n_prop_ops
 
+class MyOutput(Output):
+    def __init__(self, timer: timer_node, reservoir, physics, op_list, params, well_head_conn_id, well_perf_conn_ids,
+                 output_folder: str, sol_filename: str, well_filename: str, save_initial: bool,
+                 all_phase_props: bool, precision: str, compression: str, verbose: bool):
+
+        super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
+                         well_head_conn_id=well_head_conn_id, well_perf_conn_ids=well_perf_conn_ids, output_folder=output_folder,
+                         sol_filename=sol_filename, well_filename=well_filename, save_initial=save_initial,
+                         all_phase_props=all_phase_props, precision=precision, compression=compression, verbose=verbose)
+
+        # prepare arrays for evaluation of properties
+        n_prop_ops = self.physics.input_data_struct.n_prop_ops
+        n_vars = self.physics.n_vars
+        n_res_blocks = self.reservoir.mesh.n_res_blocks
+        self.prop_states = value_vector([0.] * n_res_blocks * (n_vars + 1))
+        self.prop_states_np = np.asarray(self.prop_states)
+        self.prop_values = value_vector([0.] * n_prop_ops * n_res_blocks)
+        self.prop_values_np = np.asarray(self.prop_values)
+        self.prop_dvalues = value_vector([0.] * n_prop_ops * n_res_blocks * n_vars)
+
+        # extend units
+        op = self.physics.property_operators[next(iter(self.physics.property_operators))]
+        self.variable_units.update({name: '' for name in op.props_name})
+        self.variable_units['porosity'] = ''
+        self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
+
+    def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
+        timesteps = [timestep] if timestep is not None else [0]
+        if output_properties is None:
+            prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
+        else:
+            prop_names = output_properties
+
+        X = np.asarray(self.physics.engine.X)
+        nb = self.reservoir.mesh.n_res_blocks
+        nv = self.physics.n_vars
+        nops = len(prop_names)
+        n_interp_size = self.physics.input_data_struct.n_prop_ops
+
+        # unknowns
+        property_array = {var: np.array([X[i:nb * nv:nv]]) for i, var in enumerate(self.physics.vars)}
+        # properties
+        self.physics.property_itor[0].evaluate_with_derivatives(self.physics.engine.X, self.physics.engine.region_cell_idx[0],
+                                                                self.prop_values, self.prop_dvalues)
+
+        for i, prop in enumerate(prop_names):
+            property_array[prop] = np.array([self.prop_values_np[i::n_interp_size]])
+
+        # porosity
+        n_vars = self.physics.nc
+        op_vals = np.asarray(self.physics.engine.op_vals_arr).reshape(self.reservoir.mesh.n_blocks, self.physics.n_ops)
+        poro = op_vals[:self.reservoir.mesh.n_res_blocks, self.physics.reservoir_operators[0].PORO_OP]
+        property_array['porosity'] = poro[np.newaxis]
+
+        # hydrogen
+        property = self.physics.property_operators[next(iter(self.physics.property_operators))].property
+        fc = property.components_name[property.fc_mask]
+        property_array[fc[-1]] = 1 - sum(property_array[c] for c in fc[:-1])
+
+        # write to *.h5
+        path = os.path.join(self.output_folder, self.sol_filename)
+        with h5py.File(path, "a") as f:
+            current_index = f["dynamic/time"].shape[0] - 1
+            written_vars = list(f["dynamic/variable_names"].asstr())
+            new_keys = [prop for prop in property_array.keys() if prop not in written_vars]
+            new_vars_num = len(new_keys)
+
+            if "properties" not in f["dynamic"]:
+                f["dynamic"].create_dataset("properties", shape=(0, nb, new_vars_num),
+                                            maxshape=(None, nb, new_vars_num), dtype=np.float64)
+
+            extra_dataset = f["dynamic/properties"]
+            if extra_dataset.shape[0] <= current_index:
+                extra_dataset.resize((current_index + 1, nb, new_vars_num))
+
+            for i, key in enumerate(new_keys):
+                extra_dataset[current_index, :, i] = property_array[key]
+
+            if "properties_name" not in f["dynamic"]:
+                datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
+                var_names = f["dynamic"].create_dataset('properties_name', (new_vars_num,), dtype=datatype)
+                var_names[:] = new_keys
+
+        return timesteps, property_array
+
 # Actual Model class creation here!
 class Model(CICDModel):
     def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None, 
@@ -74,6 +160,18 @@ class Model(CICDModel):
         self.runtime = 1
 
         self.timer.node["initialization"].stop()
+
+    def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
+                   well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
+                   precision : str = 'd', compression : str = 'gzip', verbose : bool = False):
+        self.output_folder = output_folder
+        self.sol_filename  = sol_filename
+        self.well_filename = well_filename
+        self.sol_filepath  = os.path.join(self.output_folder, self.sol_filename)
+        self.well_filepath = os.path.join(self.output_folder, self.well_filename)
+
+        self.output = MyOutput(self.timer, self.reservoir, self.physics, self.op_list, self.params, self.well_head_conn_id, self.well_perf_conn_ids,
+                             self.output_folder, self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression, verbose)
 
     def set_physics(self):
         # some properties
@@ -222,15 +320,6 @@ class Model(CICDModel):
         self.inj_stream = convert_composition(self.inj_stream_components, self.E)
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
 
-        # prepare arrays for evaluation of properties
-        n_prop_ops = self.physics.input_data_struct.n_prop_ops
-        n_vars = self.physics.n_vars
-        self.prop_states = value_vector([0.] * self.n_res_blocks * (n_vars + 1))
-        self.prop_states_np = np.asarray(self.prop_states)
-        self.prop_values = value_vector([0.] * n_prop_ops * self.n_res_blocks)
-        self.prop_values_np = np.asarray(self.prop_values)
-        self.prop_dvalues = value_vector([0.] * n_prop_ops * self.n_res_blocks * n_vars)
-
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
 
@@ -284,8 +373,18 @@ class Model(CICDModel):
                 assert np.prod(self.domain_cells) == poro.size
             poro[poro < 1.e-4] = 1.e-4
             poro[poro > 1 - 1.e-4] = 1 - 1.e-4
+
             self.solid_sat = np.zeros((self.n_res_blocks, self.n_solid))
-            self.solid_sat[:, 0] = 1 - poro
+            if set(self.minerals) == {'calcite'}:
+                self.solid_sat[:, 0] = 1 - poro
+            elif set(self.minerals) == {'calcite', 'dolomite'}:
+                self.solid_sat[:, 0] = 0.8 * (1 - poro)
+                self.solid_sat[:, 1] = 0.2 * poro
+            elif set(self.minerals) == {'calcite', 'dolomite', 'magnesite'}:
+                self.solid_sat[:, 0] = 0.7 * (1 - poro)
+                self.solid_sat[:, 1] = 0.2 * (1 - poro)
+                self.solid_sat[:, 2] = 0.1 * poro
+
             self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
 
             self.volume = np.prod(self.domain_sizes)
@@ -422,66 +521,6 @@ class Model(CICDModel):
         w = self.reservoir.wells[0]
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
                                        target=self.pressure_init)
-
-    def output_properties(self, output_properties: list = None, timestep: int = None) -> tuple:
-        timesteps = [timestep] if timestep is not None else [0]
-        if output_properties is None:
-            prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
-        else:
-            prop_names = output_properties
-
-        X = np.asarray(self.physics.engine.X)
-        nb = self.n_res_blocks
-        nv = self.physics.n_vars
-        nops = len(prop_names)
-        n_interp_size = self.physics.input_data_struct.n_prop_ops
-
-        # unknowns
-        property_array = {var: np.array([X[i:nb * nv:nv]]) for i, var in enumerate(self.physics.vars)}
-        # properties
-        self.physics.property_itor[0].evaluate_with_derivatives(self.physics.engine.X, self.physics.engine.region_cell_idx[0],
-                                                                self.prop_values, self.prop_dvalues)
-
-        for i, prop in enumerate(prop_names):
-            property_array[prop] = np.array([self.prop_values_np[i::n_interp_size]])
-
-        # porosity
-        n_vars = self.physics.nc
-        op_vals = np.asarray(self.physics.engine.op_vals_arr).reshape(self.reservoir.mesh.n_blocks, self.physics.n_ops)
-        poro = op_vals[:self.reservoir.mesh.n_res_blocks, self.physics.reservoir_operators[0].PORO_OP]
-        property_array['porosity'] = poro[np.newaxis]
-
-        # hydrogen
-        property = self.physics.property_operators[next(iter(self.physics.property_operators))].property
-        fc = property.components_name[property.fc_mask]
-        property_array[fc[-1]] = 1 - sum(property_array[c] for c in fc[:-1])
-
-        # write to *.h5
-        if self.domain == '1D':
-            path = os.path.join(self.output_folder, self.sol_filename)
-            with h5py.File(path, "a") as f:
-                current_index = f["dynamic/time"].shape[0] - 1
-                written_vars = list(f["dynamic/variable_names"].asstr())
-                new_keys = [prop for prop in property_array.keys() if prop not in written_vars]
-                new_vars_num = len(new_keys)
-
-                if "properties" not in f["dynamic"]:
-                    f["dynamic"].create_dataset("properties", shape=(0, nb, new_vars_num),
-                                                maxshape=(None, nb, new_vars_num), dtype=np.float64)
-
-                extra_dataset = f["dynamic/properties"]
-                if extra_dataset.shape[0] <= current_index:
-                    extra_dataset.resize((current_index + 1, nb, new_vars_num))
-
-                for i, key in enumerate(new_keys):
-                    extra_dataset[current_index, :, i] = property_array[key]
-
-                if "properties_name" not in f["dynamic"]:
-                    datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
-                    var_names = f["dynamic"].create_dataset('properties_name', (new_vars_num,), dtype=datatype)
-                    var_names[:] = new_keys
-
-        return timesteps, property_array
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, kinetic_mechanisms, nc_sol=0, np_sol=0, 

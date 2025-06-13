@@ -568,15 +568,13 @@ test-windows-3.9-ODLS:
         - export PYTHONUNBUFFERED=1
         # upgrade pip package first
         - python -m pip install --upgrade pip
-        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
-        - ls ./dist/*
+        # remove flash installed by its pipelines, and get one from pip (not needed actually since Linux pipeline runs in a docker, but let's keep consistency with windows pipelines)
+        - pip uninstall open-darts-flash  --yes
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
         - pip install --force-reinstall --no-deps ./dist/*.whl
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
         - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
-        # remove flash installed by its pipelines, and get one from pip (not needed actually since Linux pipeline runs in a docker, but let's keep consistency with windows pipelines)
-        - pip install --force-reinstall open-darts-flash
     script:
         # run simulation fot test models set
         - cd models
@@ -621,7 +619,7 @@ test-windows-3.9-ODLS:
         - conda activate darts_gitlab_gpu_test
         # upgrade pip package first
         - python -m pip install --upgrade pip
-        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
+        - pip uninstall open-darts-flash  --yes
         - pip install ./dist/*.whl
     script:
         # run simulation fot test models set
@@ -664,13 +662,12 @@ test-windows-3.9-ODLS:
         - $WHEEL_NAME=python -c "import os; print(os.listdir('dist')[0])"
         # upgrade pip package first
         - python -m pip install --upgrade pip
-        - pip install sympy  # for models\1ph_1comp_poroelastic_convergence
+        # remove flash installed by its pipelines, and get one from pip
+        - pip uninstall open-darts-flash  --yes
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         - pip install --force-reinstall --no-deps .\dist\$WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
         - pip install --upgrade --upgrade-strategy eager .\dist\$WHEEL_NAME
-        # remove flash installed by its pipelines, and get one from pip
-        - pip install --force-reinstall open-darts-flash
     script:
         # run simulation fot test models set
         - cd models
@@ -724,7 +721,8 @@ valgrind-profiling:
         - yum install -y -q valgrind
         - export PYTHONUNBUFFERED=1
         - python -m pip install --upgrade pip
-        - pip install sympy
+        # remove flash installed by its pipelines, and get one from pip
+        - pip uninstall open-darts-flash
         - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
     script:
         - echo ">>> Running Valgrind profiling script <<<"

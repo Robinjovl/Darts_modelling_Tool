@@ -237,6 +237,30 @@ class PhysicsBase:
                                                        precision=itor_precision)
         return
 
+    def evaluate_interpolators(self, itor: operator_set_evaluator_iface, etor: operator_set_evaluator_iface, states):
+        # Create values, dvalues and idxs arrays
+        n_states = len(states)
+        physical_points = np.where(np.sum(states[:, 1:-1], axis=1) <= 1., True, False)
+        states = value_vector(np.stack([states[:, j] for j in range(self.n_vars)]).T.flatten())
+        values = value_vector(np.zeros(self.n_ops * n_states))
+        values_numpy = np.array(values, copy=False)
+        dvalues = value_vector(np.zeros(self.n_ops * n_states * self.n_vars))
+
+        idxs = index_vector([i for i in range(n_states)])
+
+        # Interpolate operators
+        itor.evaluate_with_derivatives(states, idxs, values, dvalues)
+
+        # Fill operator array
+        operator_array = {}
+        for i in range(self.n_ops):
+            op_type_idx = np.flatnonzero([i >= np.array([tup[0] for tup in etor.op_names])])[-1]
+            op_name = etor.op_names[op_type_idx][1] + "_" + str(i - etor.op_names[op_type_idx][0])
+            operator_array[op_name] = values_numpy[i::self.n_ops]
+            operator_array[op_name][physical_points == False] = np.nan
+
+        return operator_array
+
     def set_well_controls(self, wctrl: well_control_iface, control_type: well_control_iface.WellControlType, is_inj: bool,
                           target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None):
         """
