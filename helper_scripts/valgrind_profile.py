@@ -16,7 +16,9 @@ valgrind_models = [ '2ph_comp', '2ph_comp_solid', '2ph_do',
                     'GeoRising',
                     'CoaxWell',
                     'phreeqc_dissolution',
-                    '2ph_do_thermal_mpfa'
+                    '2ph_do_thermal_mpfa',
+                    'CCS',
+                    'SPE11b'
                 ]       
 
 # if the user passed extra models, append them (comma-separated):
