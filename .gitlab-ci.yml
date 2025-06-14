@@ -337,7 +337,7 @@ test-linux-3.12-ODLS:
         PY_VER: '3.12'        # for python image selection in .test-linux
         PY_SUF: 'cp312-cp312' # for python path selection in .test-linux
         ODLS: ''              # test with open-darts linear solvers
-    dependencies:
+    needs:
         - build-linux-3.12-ODLS
         
 test-linux-3.11-ODLS:
@@ -349,7 +349,7 @@ test-linux-3.11-ODLS:
         PY_VER: '3.11'        # for python image selection in .test-linux
         PY_SUF: 'cp311-cp311' # for python path selection in .test-linux
         ODLS: ''              # test with open-darts linear solvers
-    dependencies:
+    needs:
         - build-linux-3.11-ODLS
 
 test-linux-3.10-ODLS:
@@ -364,7 +364,7 @@ test-linux-3.10-ODLS:
         PY_VER: '3.10'        # for python image selection in .test-linux
         PY_SUF: 'cp310-cp310' # for python path selection in .test-linux
         ODLS: ''              # test with open-darts linear solvers
-    dependencies:
+    needs:
         - build-linux-3.10-ODLS
 
 test-linux-3.9-ODLS:
@@ -376,7 +376,7 @@ test-linux-3.9-ODLS:
         PY_VER: '3.9'       # for python image selection in .test-linux
         PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
         ODLS: ''            # test with open-darts linear solvers
-    dependencies:
+    needs:
         - build-linux-3.9-ODLS
 
 ###################################################################################
@@ -389,7 +389,7 @@ test-linux-3.12:
         PY_VER: '3.12'        # for python image selection in .test-linux
         PY_SUF: 'cp312-cp312' # for python path selection in .test-linux
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-linux-3.12
         
 test-linux-3.11:
@@ -401,7 +401,7 @@ test-linux-3.11:
         PY_VER: '3.11'        # for python image selection in .test-linux
         PY_SUF: 'cp311-cp311' # for python path selection in .test-linux
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-linux-3.11
 
 test-linux-3.10:
@@ -416,7 +416,7 @@ test-linux-3.10:
         PY_VER: '3.10'        # for python image selection in .test-linux
         PY_SUF: 'cp310-cp310' # for python path selection in .test-linux
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-linux-3.10
 
 test-linux-3.9:
@@ -428,7 +428,7 @@ test-linux-3.9:
         PY_VER: '3.9'       # for python image selection in .test-linux
         PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-linux-3.9
 
 ###################################################################################
@@ -445,7 +445,7 @@ test-linux-3.9:
         PY_VER: '3.10'
         ODLS: '-a'
         TEST_GPU: '1'
-    dependencies:
+    needs:
         - build-linux-3.10-gpu
       
 ###################################################################################
@@ -458,7 +458,7 @@ test-windows-3.12:
         PY_VER: '3.12'
         PYTHONPATH: 'D:\Python312' 
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-windows-3.12
         
 test-windows-3.11:
@@ -470,7 +470,7 @@ test-windows-3.11:
         PY_VER: '3.11'
         PYTHONPATH: 'D:\Python311' 
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-windows-3.11
      
 test-windows-3.10:
@@ -485,7 +485,7 @@ test-windows-3.10:
         PY_VER: '3.10'
         PYTHONPATH: 'D:\Python310'
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-windows-3.10
 
 test-windows-3.9:
@@ -497,7 +497,7 @@ test-windows-3.9:
         PY_VER: '3.9'
         PYTHONPATH: 'D:\Python39' 
         ODLS: '-a'
-    dependencies:
+    needs:
         - build-windows-3.9
 
 ###################################################################################
@@ -510,7 +510,7 @@ test-windows-3.12-ODLS:
         PY_VER: '3.12'
         PYTHONPATH: 'D:\Python312'
         ODLS: ''
-    dependencies:
+    needs:
         - build-windows-3.12-ODLS
         
 test-windows-3.11-ODLS:
@@ -522,7 +522,7 @@ test-windows-3.11-ODLS:
         PY_VER: '3.11'
         PYTHONPATH: 'D:\Python311'
         ODLS: ''
-    dependencies:
+    needs:
         - build-windows-3.11-ODLS
      
 test-windows-3.10-ODLS:
@@ -537,7 +537,7 @@ test-windows-3.10-ODLS:
         PY_VER: '3.10'
         PYTHONPATH: 'D:\Python310'
         ODLS: ''
-    dependencies:
+    needs:
         - build-windows-3.10-ODLS
 
 test-windows-3.9-ODLS:
@@ -549,7 +549,7 @@ test-windows-3.9-ODLS:
         PY_VER: '3.9'
         PYTHONPATH: 'D:\Python39'
         ODLS: ''
-    dependencies:
+    needs:
         - build-windows-3.9-ODLS
 
 ###################################################################################
@@ -699,8 +699,10 @@ test-windows-3.9-ODLS:
 
 valgrind-profiling:
     stage: test
-    extends: .build-linux-dockcross
-    timeout: 1h
+    tags:
+    - linux
+    image: python:3.10
+    timeout: 2h
     variables:
         PY_VER: '3.10'
         PY_SUF: 'cp310-cp310'
@@ -710,15 +712,16 @@ valgrind-profiling:
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_ALL_PYTHONS == "1"
-    dependencies:
+    needs:
         - build-linux-3.10-valgrind
     before_script:
-        - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-        - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        - yum install samba-client -y -q
         - export PATH="/opt/python/$PY_SUF/bin:$PATH"
+        # for gmsh
+        - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev 
+        - apt-get update -qq && apt-get install -y -qq libxcursor1      
+        - apt-get update -qq && apt-get install -y -qq libxinerama1     
         # install valgrind
-        - yum install -y -q valgrind
+        - apt-get update -qq && apt-get install -y -qq valgrind
         - export PYTHONUNBUFFERED=1
         - python -m pip install --upgrade pip
         # remove flash installed by its pipelines, and get one from pip
