@@ -124,8 +124,13 @@ class SingleAmbientTemperature:
                         self.initial_conditions_vector[self.physics.n_vars * segment_idx + var_idx + 1] = self.initial_conditions_dict['phases_compositions'][interval_idx][var_idx]
 
         if self.physics.thermal:
-            self.initial_conditions_vector[self.physics.n_vars-1::self.physics.n_vars] = self.temp_init_segments
+            self.initial_conditions_vector[self.physics.n_vars - 1::self.physics.n_vars] = self.temp_init_segments
 
+            if self.physics.state_spec == self.physics.StateSpecification.PH:   # replace T with H in the vector
+                for seg_idx in range(self.pipe_geom.num_segments):
+                    seg_state = self.initial_conditions_vector[seg_idx * self.physics.n_vars:seg_idx * self.physics.n_vars + self.physics.n_vars]
+                    enth = self.physics.property_containers[0].compute_total_enthalpy(seg_state)
+                    self.initial_conditions_vector[seg_idx * self.physics.n_vars + self.physics.n_vars - 1] = enth
 
 class LinearAmbientTemperature:
     """
@@ -257,4 +262,10 @@ class LinearAmbientTemperature:
                         self.initial_conditions_vector[self.physics.n_vars * segment_idx + var_idx + 1] = self.initial_conditions_dict['phases_compositions'][interval_idx][var_idx]
 
         if self.physics.thermal:
-            self.initial_conditions_vector[self.physics.n_vars-1::self.physics.n_vars] = self.temp_init_segments
+            self.initial_conditions_vector[self.physics.n_vars - 1::self.physics.n_vars] = self.temp_init_segments
+
+            if self.physics.state_spec == self.physics.StateSpecification.PH:  # replace T with H in the vector
+                for seg_idx in range(self.pipe_geom.num_segments):
+                    seg_state = self.initial_conditions_vector[seg_idx * self.physics.n_vars:seg_idx * self.physics.n_vars + self.physics.n_vars]
+                    enth = self.physics.property_containers[0].compute_total_enthalpy(seg_state)
+                    self.initial_conditions_vector[seg_idx * self.physics.n_vars + self.physics.n_vars - 1] = enth
