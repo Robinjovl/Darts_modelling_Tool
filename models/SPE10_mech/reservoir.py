@@ -60,43 +60,46 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             #self.rsv_xy = 1000   # laterally limited
             self.rsv_xy = 100000  # "infinite" laterally
 
-            if nx == 16:
+            if nx == 6: # for debugging, -4..4 km XY
+                self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
+            elif nx == 16: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
                 self.Xc = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, 0, 100, 200, 300, 400, 500, 1000, 2000, 4000])
-            elif nx == 22:
+            elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-15000 m
                 self.Xc = np.array([-15000,-10000,-8000,-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000,8000,10000,15000])
-            elif nx == 41:# 41x41
+            elif nx == 41: # 41x41
                 pass
                 #rsv = np.arange(-900, 1000, 200)
                 #side = np.arange(1000, 6500, 1000)
                 #self.Xc = np.hstack([-side, rsv, side])
-            elif nx == 6: # for debugging
-                self.Xc = np.array([-4000, -2000, -1000, 0, 1000, 2000, 4000])
             else:
                 print('not found an option to mesh with nx = ', nx)
                 exit(1)
 
-            if nz == 15:
-                self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
-            #elif nz == 60:
-            #    self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
-            elif nz == 5: # for debugging
+            if nz == 5: # for debugging
                 self.Zc = np.array([0, 1000, 2000, 2100, 2120, 3000])
+            elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
+                self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
+            elif nz == 60:  # uniform dz = 100 m
+                self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+            elif nz == 63:  # dz = 100 m for over and underburden and 20m for the reservoir
+                self.Zc = np.hstack([np.arange(0, self.rsv_top, 100), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100)])
             else:
                 print('not found an option to mesh with nz = ', nz)
                 exit(1)
 
-            #nz=63
-            #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100)])
-
-            # refine also around rsv
+            # refine by Z also around rsv
             #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
 
             # extend by Z more
             #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100), np.array([6500, 10000, 15000])])
 
+            # check case name ane generated arrays are consistent
+            assert nx == self.Xc.size-1, "nx = {0}, Xc.size = {1}".format(nx, self.Xc.size-1)
+            assert nz == self.Zc.size-1, "nz = {0}, Zc.size = {1}".format(nz, self.Zc.size-1)
+
             # check layers boundaries defined without layers deterioration
-            assert np.unique(self.Xc).size == self.Xc.size
-            assert np.unique(self.Zc).size == self.Zc.size
+            assert np.unique(self.Xc).size == self.Xc.size, "Xc has duplicates {0}".format(self.Xc)
+            assert np.unique(self.Zc).size == self.Zc.size, "Zc has duplicates {0}".format(self.Zc)
 
             print('nx = ', self.Xc.size-1, 'nz = ', self.Zc.size-1)
             print('self.rsv_top', self.rsv_top)
@@ -174,8 +177,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc['flow']['r']
             # energy
             if self.thermoporoelasticity:
+                # keep initial temperature at the boundary
                 self.bc_rhs[self.n_bc_vars * ids + self.t_bc_var] = \
-                    self.get_reservoir_initial_temperature(self.depths[ids + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]]) #TODO check this
+                    self.get_reservoir_initial_temperature(self.depths[ids + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]])
             # mechanics
             for id in ids:
                 assert (self.adj_matrix_cols[self.id_sorted[id]] == id +
@@ -263,7 +267,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                             self.pressure_initial = property_array[props_num * cell_ids + i].copy()
                     if self.cell_property[i] == 'temperature':
                         temperature = property_array[props_num * cell_ids + i]
-                        if not hasattr(self, 'temperature_initial') :
+                        if not hasattr(self, 'temperature_initial'):
                             self.temperature_initial = property_array[props_num * cell_ids + i].copy()
 
                     if self.cell_property[i] not in cell_data: cell_data[self.cell_property[i]] = []
@@ -286,9 +290,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 cell_data['delta_pressure'].append(np.zeros(self.n_matrix, dtype=np.float64))
                 cell_data['delta_pressure'][-1][:] = pressure - self.pressure_initial
 
-                if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
-                cell_data['delta_temperature'].append(np.zeros(self.n_matrix, dtype=np.float64))
-                cell_data['delta_temperature'][-1][:] = temperature - self.temperature_initial
+                if hasattr(self, 'temperature_initial'): # if thermal simulation
+                    if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
+                    cell_data['delta_temperature'].append(np.zeros(self.n_matrix, dtype=np.float64))
+                    cell_data['delta_temperature'][-1][:] = temperature - self.temperature_initial
 
                 if True:#ith_step == 0:
                     if 'perm' not in cell_data: cell_data['perm'] = []

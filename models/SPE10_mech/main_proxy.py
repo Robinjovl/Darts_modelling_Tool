@@ -4,7 +4,7 @@ import meshio
 from main import run
 
 def read_vtk_darts_solution(folder, timestep : int):
-    filename = os.path.join(folder, 'solution'+str(timestep)+'.vtk')
+    filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
     msh = meshio.read(filename)
     print("Cells:", msh.cells_dict.keys())
     print("Cell Data:", msh.cell_data.keys())
@@ -165,21 +165,10 @@ def run_geomech_proxy(case):
 
 if __name__ == '__main__':
 
-    case = '6_6_5'  # for debugging
-    #case = '24_24_12'
-    #case = '24_24_60'  # 4x2 km XY, 6 km Z
-    #case = '28_28_60'  # 6x2 km XY, 6 km Z
-    #case = '28_28_60'  # 6x2 km XY, 6 km Z
-    #case = '28_28_34'  # 6x2 km XY, 6 km Z
-    #case = '28_28_63'  # 6x2 km XY, 6 km Z
-    #case = '34_34_52'  # -15..15 km XY, 15 km Z
-    #case = '34_34_66'  # -15..15 km XY, 15 km Z
-    #case = '34_34_71'  # refine also around rsv
-    #case = '34_34_63'   # -15..15 km XY, 6 km Z
-    #case = '34_34_15'  # -15..15 km XY, 6 km Z coarser
-
-    #case = '21_21_60' # assert r2>0
-    #case = '40_40_60' # 'bad allocation' error
+    #case = '6_6_5'  # for debugging
+    case = '34_34_15'
+    #case = '16_16_63'
+    #case = '34_34_63' # bad allocation
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
