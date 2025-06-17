@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import meshio
+from datetime import datetime
+
 from main import run
 
 def read_vtk_darts_solution(folder, timestep : int):
@@ -107,11 +109,12 @@ def run_geomech_proxy(case):
     g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
     g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
 
-    def get_thm_solution(point):
+    def get_thm_solution(point, verbose=False):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
         uz_thm = uz_last[cell]
-        print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
+        if verbose:
+            print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return uz_thm
 
     def get_proxy_solution(point):
@@ -166,17 +169,26 @@ def run_geomech_proxy(case):
 if __name__ == '__main__':
 
     #case = '6_6_5'  # for debugging
-    case = '34_34_15'
-    #case = '16_16_63'
-    #case = '34_34_63' # bad allocation
+    #case = '34_34_15'
+    #case = '16_16_53'
+    case = '28_28_53'
+    #case = '34_34_53' # bad allocation
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     # run THM with no mechanics->flow impact
+    t1 = datetime.now()
     run(model_folder=case, physics_type='single_phase', uniform_props=uniform_props, decouple_geomech=True, generate_mesh=True)
+    t2 = datetime.now()
+    thm_time = t2 - t1
 
     # run geomech proxy
+    t1 = datetime.now()
     run_geomech_proxy(case=case)
+    t2 = datetime.now()
+    proxy_time = t2 - t1
 
     print('case', case, 'done')
+    print('THM time', thm_time)
+    print('proxy_time', proxy_time)
