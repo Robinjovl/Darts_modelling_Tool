@@ -33,6 +33,12 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     '''
     gmsh.initialize()
 
+    # Suppress all Gmsh output to the terminal
+    gmsh.option.setNumber("General.Terminal", 0)
+
+    # You can also control the verbosity level, where 0 is quiet, 1 is warnings, etc.
+    # gmsh.option.setNumber("General.Verbosity", 0) # This might also be useful
+
     gmsh.model.add("box_3d")
 
     lc = X / NX / refinement_mult
