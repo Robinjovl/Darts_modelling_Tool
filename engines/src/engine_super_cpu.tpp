@@ -247,9 +247,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     std::array<value_t, NP> phase_fluxes;
     
     // fluxes for output
-    value_t *cur_darcy_fluxes, *cur_diffusion_fluxes, *cur_dispersion_fluxes;
-    value_t *cur_heat_darcy_advection_fluxes, *cur_heat_diffusion_advection_fluxes, 
-            *cur_heat_dispersion_advection_fluxes, *cur_fourier_fluxes;
+    value_t *cur_darcy_fluxes = 0, *cur_diffusion_fluxes = 0, *cur_dispersion_fluxes = 0;
+    value_t *cur_heat_darcy_advection_fluxes = 0, *cur_heat_diffusion_advection_fluxes = 0,
+            *cur_heat_dispersion_advection_fluxes = 0, *cur_fourier_fluxes = 0;
 
     int connected_with_well;
 

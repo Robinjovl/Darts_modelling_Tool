@@ -4,12 +4,20 @@ import subprocess
 import re
 import shutil
 import importlib
+import time
 
-valgrind_models = [
-                    '2ph_comp',
+valgrind_models = [ '2ph_comp', '2ph_comp_solid', '2ph_do',
+                    '2ph_geothermal', 
+                    '2ph_geothermal_mass_flux',
+                    '3ph_comp_w', '3ph_do', '3ph_bo',
+                    'Uniform_Brugge',
                     'Chem_benchmark_new',
-                    'GeoRising'
-                   ]
+                    #'CO2_foam_CCS',
+                    'GeoRising',
+                    'CoaxWell',
+                    'phreeqc_dissolution',
+                    '2ph_do_thermal_mpfa'
+                ]       
 
 # if the user passed extra models, append them (comma-separated):
 extra = os.environ.get('APPEND_VALGRIND_MODEL')
@@ -19,12 +27,22 @@ if extra:
         if m and m not in valgrind_models:
             valgrind_models.append(m)
 
+# folder with logs to be reported
 log_folder = os.path.join('models', '_valgrind_logs')
 
-# NOT USED: valgrind suppression file (adjust path as needed)
-# suppression_file = 'helper_scripts/valgrind-python.supp'
+# valgrind suppression file
+suppression_file = 'helper_scripts/valgrind-python.supp'
 
-def run_model(model, days):
+# patterns to extract leak info and errors from Valgrind log
+MSG_PATTERNS = {
+    'definitely_lost':    r'definitely lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'indirectly_lost':    r'indirectly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'possibly_lost':      r'possibly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'still_reachable':    r'still reachable:\s+([\d,]+) bytes in ([\d,]+) blocks',
+    'error_summary':      r'ERROR SUMMARY:\s+(\d+)'  # total errors
+}
+
+def run_model(model):
     # add it also to system path to load modules
     sys.path.insert(0, os.path.abspath(r'.'))
 
@@ -38,7 +56,7 @@ def run_model(model, days):
         m = mod.Model()
         m.init(platform='cpu')
         m.set_output()
-        m.run(days=days, save_well_data=False, save_reservoir_data=False)
+        m.run(days=m.data_ts.dt_first, save_well_data=False, save_reservoir_data=False)
         print(f"[OK] {model}")
         success = True
     except Exception as e:
@@ -47,33 +65,42 @@ def run_model(model, days):
 
     return success
 
-# patterns to extract leak info and errors from Valgrind log
-MSG_PATTERNS = {
-    'definitely_lost':    r'definitely lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'indirectly_lost':    r'indirectly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'possibly_lost':      r'possibly lost:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'still_reachable':    r'still reachable:\s+([\d,]+) bytes in ([\d,]+) blocks',
-    'error_summary':      r'ERROR SUMMARY:\s+(\d+)'  # total errors
-}
-
 def analyze_log(log_path):
-    """Parse Valgrind log and return a dict of summary values."""
-    summary = {}
+    """Parse Valgrind log and return a list of summary dicts plus accumulated error count."""
     try:
         content = open(log_path, 'r').read()
     except FileNotFoundError:
-        return {'error': 'Log file not found'}
+        return [], 1
 
-    ret_code = 0
-    for key, pattern in MSG_PATTERNS.items():
-        m = re.search(pattern, content)
-        if m:
-            if key == 'error_summary':
-                ret_code = int(m.group(1))
-                summary[key] = ret_code
-            else:
-                summary[key] = { 'bytes': m.group(1), 'blocks': m.group(2) }
-    return summary, ret_code
+    # split into per-process report blocks by HEAP SUMMARY
+    blocks = re.split(r"(?m)==\d+==\s+HEAP SUMMARY:", content)
+    summary_list = []
+    total_errors = 0
+
+    # first block may contain header before first HEAP SUMMARY; skip it
+    for block in blocks[1:]:
+        # Prepend the HEAP SUMMARY: marker to each block
+        block = 'HEAP SUMMARY:' + block
+        report = {}
+        # Extract PID if present
+        pid_match = re.search(r'==([0-9]+)==', block)
+        report['pid'] = pid_match.group(1) if pid_match else None
+        # For each pattern
+        for key, pattern in MSG_PATTERNS.items():
+            match = re.search(pattern, block)
+            if match:
+                if key == 'error_summary':
+                    err = int(match.group(1))
+                    report[key] = err
+                    total_errors += err
+                else:
+                    report[key] = {
+                        'bytes': match.group(1),
+                        'blocks': match.group(2)
+                    }
+        summary_list.append(report)
+
+    return summary_list, total_errors
 
 def run_valgrind_for_model(model):
     # model path
@@ -84,35 +111,43 @@ def run_valgrind_for_model(model):
 
     # file paths
     vg_log = os.path.join(log_folder, f'{model}.vg.log')
-    prog_out = os.path.join(log_folder, f'{model}_mainpy.log')
-    prog_err = os.path.join(log_folder, f'{model}_mainpy_err.log')
+    prog_out = os.path.join(log_folder, f'{model}.log')
+    prog_err = os.path.join(log_folder, f'{model}_err.log')
     summary_file = os.path.join(log_folder, f'{model}.summary.txt')
 
     # Build the inline Python snippet to invoke run_model_direct
-    days = 1
     py_snippet = (
         'import sys, os; '
         'from helper_scripts.valgrind_profile import run_model; '
         f'model_path = os.path.join("models", "{model}"); '
         'os.chdir(model_path); '
-        f'sys.exit(0 if run_model(model="{model}", days={days}) else 1)'
+        f'sys.exit(0 if run_model(model="{model}") else 1)'
     )
 
     # valgrind command profiling run_model_direct
     cmd = [
         'valgrind',
-        #'--quiet',
+        '--trace-children=yes',
         '--error-exitcode=0',
+        f'--suppressions={suppression_file}',
+        '--gen-suppressions=all',
         f'--log-file={vg_log}',
         '--',
-        'python', '-c', py_snippet
+        'darts', '-c', py_snippet
     ]
 
     print(f'Running Valgrind for model {model}...')
+    starting_time = time.time()
 
     # set environment: disable pymalloc so Valgrind sees everything
     env = os.environ.copy()
     env['PYTHONMALLOC'] = 'malloc'
+    
+    # set single thread for mpfa models
+    if 'mpfa' in model.split('_'):
+        env['OMP_NUM_THREADS'] = '1'
+
+    # set environment: disable pymalloc so Valgrind sees everything
     try:
         darts_path = subprocess.check_output([
             'python', '-c',
@@ -132,23 +167,32 @@ def run_valgrind_for_model(model):
             return True # failed
 
     # analyze and write summary
-    summary, ret_code = analyze_log(vg_log)
+    summary_list, total_errors = analyze_log(vg_log)
     with open(summary_file, 'w') as sf:
         sf.write(f'Valgrind summary for model: {model}\n')
-        for k, v in summary.items():
-            if isinstance(v, dict):
-                sf.write(f'  {k}: {v["bytes"]} bytes in {v["blocks"]} blocks\n')
-            else:
-                sf.write(f'  {k}: {v}\n')
+        for report in summary_list:
+            pid = report.get('pid', 'unknown')
+            sf.write(f"\nReport for PID: {pid}\n")
+            for k, v in report.items():
+                if k == 'pid':
+                    continue
+                if isinstance(v, dict):
+                    sf.write(f"  {k}: {v['bytes']} bytes in {v['blocks']} blocks\n")
+                else:
+                    sf.write(f"  {k}: {v}\n")
+        sf.write(f"\nAccumulated ERROR SUMMARY: {total_errors}\n")
 
-    if ret_code != 0:
-        print(f'Valgrind detected errors for model {model}, exit code {ret_code}.')
-    
+    ending_time = time.time()
+    elapsed = ending_time - starting_time
+
     if proc.returncode != 0:
-        print(f'[FAIL] {model} returned exit code {proc.returncode}.')
-        return True  # failed
+        print(f'[FAIL] {model} returned exit code {proc.returncode},\t\t{elapsed:.2f} s')
+        return True  # failed, erros while model running 
+    elif total_errors != 0:
+        print(f'[FAIL] Valgrind detected {total_errors} errors for model {model},\t\t{elapsed:.2f} s')
+        return True # failed, found memory errors
     else:
-        print(f'[OK] profiling is finished for {model}.')
+        print(f'[OK] profiling is finished for {model},\t\t{elapsed:.2f} s')
         return False # success
 
 def main():
