@@ -77,7 +77,7 @@ class geomech():
         uz = cpt.displacement_z_component(points, prisms, delta_pressure, self.poisson, self.young, delta_temperature, self.thermal_expansion)
         return ux, uy, uz
 
-    def calc_displacements_cpp(self, points, prisms, delta_pressure, delta_temperature):
+    def calc_displacements_cpp(self, points, prisms, delta_pressure, delta_temperature, verbose=False):
         from _proxygeomech import compute_geomech
         from _proxygeomech import value_vector as value_vector_geomech
         from _proxygeomech import index_vector as index_vector_geomech
@@ -85,9 +85,11 @@ class geomech():
         v_prisms = value_vector_geomech(prisms.flatten())
         v_delta_pressure = value_vector_geomech(delta_pressure)
         v_delta_temperature = value_vector_geomech(delta_temperature)
-        print('   in calc_displacements_cpp', points.size/3, 'eval points', prisms.size/6, 'cells')
+        if verbose:
+            print('   in calc_displacements_cpp', points.size/3, 'eval points', prisms.size/6, 'cells')
         res = compute_geomech(v_points, v_prisms, v_delta_pressure, self.poisson, self.young, v_delta_temperature, self.thermal_expansion)
-        print('   compute_geomech done!')
+        if verbose:
+            print('   compute_geomech done!')
         ux_p = np.array(res['ux_p'], copy=True)
         uy_p = np.array(res['uy_p'], copy=True)
         uz_p = np.array(res['uz_p'], copy=True)
