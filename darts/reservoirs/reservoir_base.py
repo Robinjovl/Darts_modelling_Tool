@@ -183,13 +183,6 @@ class ReservoirBase:
         for w in self.wells:
             assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
         self.mesh.add_wells(ms_well_vector(self.wells))
-
-        # Add the conditions of the wellhead for when the wellhead has a large volume
-        if hasattr(self, "large_wellhead_volume"):
-            for w in self.wells:
-                if w.name in self.large_wellhead_volume and self.large_wellhead_volume[w.name].get("flag", False):
-                    assert "volume" in self.large_wellhead_volume[w.name], f"Volume of the wellhead of the well {w.name} is not specified!"
-                    self.mesh.volume[w.well_head_idx] = self.large_wellhead_volume[w.name]["volume"]
         
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
