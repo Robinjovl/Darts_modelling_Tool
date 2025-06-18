@@ -126,7 +126,7 @@ def visualize_results_line_graphs(primary_vars_and_phase_props_file_address: str
     # Update figure counter for name of the saved figure
     figure_counter += 1
     # Temperature profile is plotted if the system is non-isothermal.
-    if coupled_model.physics.thermal is True:
+    if coupled_model.physics.thermal is 1:
 
         # Initialize the plot
         plt.figure(figsize=(12, 6))

@@ -179,7 +179,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
 
     # Update figure counter for name of the saved figure
     figure_counter += 1
-    if coupled_model.physics.thermal is True:
+    if coupled_model.physics.thermal is 1:
         # Initialize the temperature matrix
         T_matrix = np.zeros((num_segments, num_selected_ts))
 
