@@ -8,8 +8,9 @@ from main import run
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
     msh = meshio.read(filename)
-    print("Cells:", msh.cells_dict.keys())
-    print("Cell Data:", msh.cell_data.keys())
+    print('Reading', filename)
+    print("\tCells:", msh.cells_dict.keys())
+    print("\tCell Data:", msh.cell_data.keys())
     return msh
 
 
@@ -73,14 +74,24 @@ def geomech_init_geometry(mesh_data):
         prisms[k][4] = np.amax(zloc)
         prisms[k][5] = np.amin(zloc)
 
-    print('prisms', prisms.shape)
     return prisms
 
-def run_geomech_proxy(case):
+def run_geomech_proxy(case, physics_type='single_phase'):
     folder = 'sol_cpp_single_phase_' + case
 
-    #TODO do not use the whole mesh - use only the permeable part
+    # init geomech proxy
+    from geomechanics import geomech
+    g = geomech()
+    # just to set input data
+    from model import Model
+    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, decouple_geomech=True, generate_mesh=True)
+    # elastic constants
+    g.poisson = m.idata.rock.nu
+    g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
+    g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
+
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
+    poro = np.array(msh_initial.cell_data['poro']).flatten()
     p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
 
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
@@ -91,23 +102,20 @@ def run_geomech_proxy(case):
     delta_temperature = np.zeros_like(delta_pressure) #TODO
 
     prisms = geomech_init_geometry(msh_initial)
+    print('\tprisms all', prisms.shape[0])
+
+    # do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
+    rsv = poro > m.idata.rock.poro_non_rsv  # reservoir cells
+    delta_pressure = delta_pressure[rsv]
+    delta_temperature = delta_temperature[rsv]
+    prisms = prisms[rsv, :]
+    print('\tprisms rsv', prisms.shape[0])
 
     # where to compare the results - middle XYZ
     centroids = np.zeros((prisms.shape[0], 3))
     centroids[:, 0] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # x
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
-
-    # init geomech proxy
-    from geomechanics import geomech
-    g = geomech()
-    # just to set input data
-    from model import Model
-    m = Model(model_folder=case, physics_type='single_phase', uniform_props=False, decouple_geomech=True, generate_mesh=True)
-    # elastic constants
-    g.poisson = m.idata.rock.nu
-    g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
-    g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
 
     def get_thm_solution(point, verbose=False):
         # find an index of the cell, closest to the desired point
@@ -122,8 +130,7 @@ def run_geomech_proxy(case):
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
         upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
-        uz_proxy = upz1[0]
-        return uz_proxy
+        return upz1[0] + utz1[0] # thermoporoelastic vertical displacement uz, in m
 
     def compare_vert_line(z_min, z_max, suffix, z_step=100, output_folder='.'):
         z_range = np.arange(z_min, z_max+1., z_step)
@@ -177,15 +184,18 @@ if __name__ == '__main__':
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
+    physics_type = 'single_phase'
+    #physics_type = 'single_phase_thermal'
+
     # run THM with no mechanics->flow impact
     t1 = datetime.now()
-    run(model_folder=case, physics_type='single_phase', uniform_props=uniform_props, decouple_geomech=True, generate_mesh=True)
+    run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, decouple_geomech=True, generate_mesh=True)
     t2 = datetime.now()
     thm_time = t2 - t1
 
     # run geomech proxy
     t1 = datetime.now()
-    run_geomech_proxy(case=case)
+    run_geomech_proxy(case=case, physics_type=physics_type)
     t2 = datetime.now()
     proxy_time = t2 - t1
 

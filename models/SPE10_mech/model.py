@@ -206,11 +206,18 @@ class Model(THMCModel):
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
         middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), well_init_depth #centroids_3d[:, 2].mean()
-        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]],
-                                [middle[0] + 250, middle[1], middle[2]]])
+
+        # one well (prod)
+        well_names = ['PRD1']
+        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
+
+        # two wells (doublet)
+        #well_names = ['PRD1', 'INJ1']
+        #well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
+
         print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
-        well_names = ['PRD1', 'INJ1']
+
         self.well_cell_ids = []
 
         nodes = np.array(self.reservoir.discr_mesh.nodes)
