@@ -208,8 +208,12 @@ class Model(THMCModel):
         middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), well_init_depth #centroids_3d[:, 2].mean()
 
         # one well (prod)
-        well_names = ['PRD1']
-        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
+        #well_names = ['PRD1']
+        #well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
+
+        # one well (inj)
+        well_names = ['INJ1']
+        well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
 
         # two wells (doublet)
         #well_names = ['PRD1', 'INJ1']
