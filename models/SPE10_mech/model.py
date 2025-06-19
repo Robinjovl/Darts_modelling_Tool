@@ -212,12 +212,12 @@ class Model(THMCModel):
         #well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
 
         # one well (inj)
-        well_names = ['INJ1']
-        well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
+        #well_names = ['INJ1']
+        #well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
 
         # two wells (doublet)
-        #well_names = ['PRD1', 'INJ1']
-        #well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
+        well_names = ['PRD1', 'INJ1']
+        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
 
         print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())

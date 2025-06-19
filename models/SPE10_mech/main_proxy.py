@@ -222,14 +222,16 @@ if __name__ == '__main__':
     #case = '6_6_5'  # for debugging
     #case = '34_34_15'
     #case = '16_16_53'
-    case = '28_28_53'
-    #case = '34_34_53' # bad allocation
+    #case = '28_28_53' # bad allocation only for thermal
+    #case = '28_28_29'  # crashes after initialization
+    case = '28_28_37'  #
+    #case = '34_34_53' # bad allocation for both isothermal and thermal
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
-    physics_type = 'single_phase'
-    #physics_type = 'single_phase_thermal'
+    #physics_type = 'single_phase'
+    physics_type = 'single_phase_thermal'
 
     # run THM with no mechanics->flow impact
     t1 = datetime.now()
@@ -244,5 +246,5 @@ if __name__ == '__main__':
     proxy_time = t2 - t1
 
     print('case', case, 'done')
-    print('THM time', thm_time)
-    print('proxy_time', proxy_time)
+    print('THM   time', thm_time)
+    print('proxy time', proxy_time)

@@ -81,10 +81,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.Zc = np.array([0, 1000, 2000, 2100, 2120, 3000])
             elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
                 self.Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
-            elif nz == 60:  # uniform dz = 100 m
-                self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+            elif nz == 29:  # dz = 200 m for over and underburden and 20m for the reservoir
+                self.Zc = np.hstack([np.arange(0, self.rsv_top, 200), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 200)])
+            elif nz == 37:  # dz = 200 m for over and underburden and 20m for the reservoir
+                self.Zc = np.hstack([np.arange(0, self.rsv_top, 150), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 150)])
             elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
                 self.Zc = np.hstack([np.arange(0, self.rsv_top, 100), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 100)])
+            elif nz == 60:  # uniform dz = 100 m
+                self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
             else:
                 print('not found an option to mesh with nz = ', nz)
                 exit(1)
@@ -96,8 +100,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100), np.array([6500, 10000, 15000])])
 
             # check case name ane generated arrays are consistent
-            assert nx == self.Xc.size-1, "nx = {0}, Xc.size-1 = {1}".format(nx, self.Xc.size-1)
-            assert nz == self.Zc.size-1, "nz = {0}, Zc.size-1 = {1}".format(nz, self.Zc.size-1)
+            assert nx == self.Xc.size-1, "nx = {0}, Xc.size = {1}".format(nx, self.Xc.size)
+            assert nz == self.Zc.size-1, "nz = {0}, Zc.size = {1}".format(nz, self.Zc.size)
 
             # check layers boundaries defined without layers deterioration
             assert np.unique(self.Xc).size == self.Xc.size, "Xc has duplicates {0}".format(self.Xc)
