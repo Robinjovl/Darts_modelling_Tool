@@ -264,4 +264,5 @@ if __name__ == '__main__':
 
 
     #run(model_folder='6_6_5', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
-    run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+    #run(model_folder='16_16_15', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
+    run(model_folder='28_28_37', physics_type='single_phase_thermal', generate_mesh=True, decouple_geomech=True)
