@@ -106,9 +106,9 @@ def run_geomech_proxy(case, physics_type='single_phase'):
 
     # do not use the whole mesh - use only the permeable part, assuming there is no p,T change in the impermeable part
     rsv = poro > m.idata.rock.poro_non_rsv  # reservoir cells
-    delta_pressure = delta_pressure[rsv]
-    delta_temperature = delta_temperature[rsv]
-    prisms = prisms[rsv, :]
+    #delta_pressure = delta_pressure[rsv]
+    #delta_temperature = delta_temperature[rsv]
+    #prisms = prisms[rsv, :]
     print('\tprisms rsv', prisms.shape[0])
 
     # where to compare the results - middle XYZ
