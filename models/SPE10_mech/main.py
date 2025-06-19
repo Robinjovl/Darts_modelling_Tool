@@ -4,13 +4,6 @@ import os
 import shutil
 from darts.engines import redirect_darts_output, timer_node
 
-try:
-    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
-    from darts.engines import set_num_threads
-    set_num_threads(1)
-except:
-    pass
-
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
         runtime = days
@@ -120,6 +113,13 @@ def run_timestep_python(m, dt, t):
     return converged
 
 def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decouple_geomech=False, generate_mesh=False):
+    try:
+        # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+        from darts.engines import set_num_threads
+        set_num_threads(1)
+    except:
+        pass
+
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
     m.params.finalize_mpi = is_finalize
