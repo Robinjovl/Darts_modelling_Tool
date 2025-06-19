@@ -96,8 +96,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             #self.Zc = np.hstack([np.arange(0, self.rsv_top, 100),np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 6000, 100), np.array([6500, 10000, 15000])])
 
             # check case name ane generated arrays are consistent
-            assert nx == self.Xc.size-1, "nx = {0}, Xc.size = {1}".format(nx, self.Xc.size-1)
-            assert nz == self.Zc.size-1, "nz = {0}, Zc.size = {1}".format(nz, self.Zc.size-1)
+            assert nx == self.Xc.size-1, "nx = {0}, Xc.size-1 = {1}".format(nx, self.Xc.size-1)
+            assert nz == self.Zc.size-1, "nz = {0}, Zc.size-1 = {1}".format(nz, self.Zc.size-1)
 
             # check layers boundaries defined without layers deterioration
             assert np.unique(self.Xc).size == self.Xc.size, "Xc has duplicates {0}".format(self.Xc)

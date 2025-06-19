@@ -81,7 +81,7 @@ def geomech_init_geometry(mesh_data):
     return prisms
 
 def run_geomech_proxy(case, physics_type='single_phase'):
-    folder = 'sol_cpp_single_phase_' + case
+    folder = 'sol_cpp_' + physics_type + '_' + case
 
     # init geomech proxy
     from geomechanics import geomech

@@ -161,7 +161,7 @@ class geomech():
                                volumetric_strain * kronecker) / (1 + self.poisson)
         return stress, strain
 
-    def calc_strain_stress_cpp(self, fault_surface, prisms, delta_pressure, delta_temperature):
+    def calc_strain_stress_cpp(self, fault_surface, prisms, delta_pressure, delta_temperature, verbose=False):
         # compute displacement derivatives
         step_x = step_y = step_z = 1  # step for derivatives, m.
 
@@ -189,21 +189,24 @@ class geomech():
 
         # 0 - poro, 1 - thermo, 2 - total
         t1 = datetime.now()
-        print('calc dU/dy..', t1)
+        if verbose:
+            print('calc dU/dy..', t1)
         ux_y_plus[0],  uy_y_plus[0],  uz_y_plus[0], ux_y_plus[1], uy_y_plus[1],  uz_y_plus[1] = \
             self.calc_displacements_cpp(fault_surface_y_plus,  prisms, delta_pressure, delta_temperature)
         ux_y_minus[0], uy_y_minus[0], uz_y_minus[0], ux_y_minus[1], uy_y_minus[1], uz_y_minus[1] = \
             self.calc_displacements_cpp(fault_surface_y_minus, prisms, delta_pressure, delta_temperature)
 
         t1 = datetime.now()
-        print('calc dU/dx..', t1)
+        if verbose:
+            print('calc dU/dx..', t1)
         ux_x_plus[0],  uy_x_plus[0],  uz_x_plus[0], ux_x_plus[1],  uy_x_plus[1],  uz_x_plus[1]  = \
             self.calc_displacements_cpp(fault_surface_x_plus,  prisms, delta_pressure, delta_temperature)
         ux_x_minus[0], uy_x_minus[0], uz_x_minus[0], ux_x_minus[1], uy_x_minus[1], uz_x_minus[1] = \
             self.calc_displacements_cpp(fault_surface_x_minus, prisms, delta_pressure, delta_temperature)
 
         t1 = datetime.now()
-        print('calc dU/dz..', t1)
+        if verbose:
+            print('calc dU/dz..', t1)
         ux_z_plus[0],  uy_z_plus[0],  uz_z_plus[0], ux_z_plus[1],  uy_z_plus[1],  uz_z_plus[1]  = \
             self.calc_displacements_cpp(fault_surface_z_plus,  prisms, delta_pressure, delta_temperature)
         ux_z_minus[0], uy_z_minus[0], uz_z_minus[0], ux_z_minus[1], uy_z_minus[1], uz_z_minus[1] = \
@@ -232,7 +235,8 @@ class geomech():
         uz_z_minus[2] = uz_z_minus[0] + uz_z_minus[1]
 
         t1 = datetime.now()
-        print('calc deriv...', t1)
+        if verbose:
+            print('calc deriv...', t1)
         for ui in [0,1,2]:
             ux_x_minus_ = ux_x_minus[ui]; ux_y_minus_ = ux_y_minus[ui]; ux_z_minus_ = ux_z_minus[ui];
             ux_x_plus_  = ux_x_plus[ui];  ux_y_plus_  = ux_y_plus[ui];  ux_z_plus_  = ux_z_plus[ui];

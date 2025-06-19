@@ -292,7 +292,7 @@ class Model(THMCModel):
             delta_temp_inj = 40 # [K] - delta for temperature control
             delta_p = 50  # [bar] - delta for BHP control
 
-            if i == 0:
+            if 'INJ' in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=np.min(p_cell) - delta_p)
             else:
