@@ -5,6 +5,10 @@ from datetime import datetime
 
 from main import run
 
+# unit conversion factors
+m2mm = 1e3
+bars2mpa = 0.1
+
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
     msh = meshio.read(filename)
@@ -87,7 +91,7 @@ def run_geomech_proxy(case, physics_type='single_phase'):
     m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, decouple_geomech=True, generate_mesh=True)
     # elastic constants
     g.poisson = m.idata.rock.nu
-    g.young = m.idata.rock.E.mean() * 0.1 # bars to MPa
+    g.young = m.idata.rock.E.mean() * bars2mpa # bars to MPa
     g.thermal_exp_coeff = m.idata.rock.th_expn # 1/°C
 
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
@@ -97,6 +101,8 @@ def run_geomech_proxy(case, physics_type='single_phase'):
     msh_last    = read_vtk_darts_solution(folder=folder, timestep=1)
     p_last = np.array(msh_last.cell_data['pressure']).flatten()
     uz_last = np.array(msh_last.cell_data['uz']).flatten()
+    delta_Sxx_last = np.array(msh_last.cell_data['tot_delta_stress'])[0, :, 0] # third dimension: 0 is XX
+    #delta_Szz_last = np.array(msh_last.cell_data['tot_delta_stress'])[0, :, 2] # third dimension: 2 is ZZ
 
     delta_pressure = (p_last - p_initial) * 0.1 # bars to MPa
     delta_temperature = np.zeros_like(delta_pressure) #TODO
@@ -117,7 +123,7 @@ def run_geomech_proxy(case, physics_type='single_phase'):
     centroids[:, 1] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # y
     centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
 
-    def get_thm_solution(point, verbose=False):
+    def get_thm_displs(point, verbose=False):
         # find an index of the cell, closest to the desired point
         cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
         uz_thm = uz_last[cell]
@@ -125,53 +131,91 @@ def run_geomech_proxy(case, physics_type='single_phase'):
             print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
         return uz_thm
 
-    def get_proxy_solution(point):
+    def get_thm_stress(point, verbose=False):
+        # find an index of the cell, closest to the desired point
+        cell = ((centroids[:, 0] - point[0]) ** 2 + (centroids[:, 1] - point[1]) ** 2 + (centroids[:, 2] - point[2]) ** 2).argmin()
+        if verbose:
+            print('get_thm_solution', 'closest cell is', centroids[cell, :], 'point', point)
+        return -delta_Sxx_last[cell]
+
+    def get_proxy_displs(point):
         eval_points = np.zeros((1,3))  # just one point
         eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
         upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points, prisms, delta_pressure, delta_temperature)
         return upz1[0] + utz1[0] # thermoporoelastic vertical displacement uz, in m
 
-    def compare_vert_line(z_min, z_max, suffix, z_step=100, output_folder='.'):
+    def get_proxy_stress(point):
+        eval_points = np.zeros((1,3))  # just one point
+        eps = 1  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
+        eval_points[0] = np.array([point[1]+eps, point[0]+eps, point[2]+eps]) # Y,X,Z
+        eval_points = eval_points.transpose()
+        res = g.calc_strain_stress_cpp(eval_points, prisms, delta_pressure, delta_temperature)
+        stress_p, strain_p, stress_t, strain_t, stress, strain = res
+        [Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
+        [St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
+        [S_xx, S_yy, S_zz, S_yz, S_xz, S_xy] = stress
+
+        return Sp_xx + St_xx # thermoporoelastic stress XX in MPa
+
+
+    def compare_vert_line(z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
         z_range = np.arange(z_min, z_max+1., z_step)
-        uz_thm = []
-        uz_prx = []
+        thm = []
+        prx = []
         for z in z_range:  # use XY from point and different Z
             point[2] = z
-            uz_thm.append(get_thm_solution(point) * m2mm)
-            uz_prx.append(get_proxy_solution(point) * m2mm)
+            if mode == 'displ_z':
+                thm.append(get_thm_displs(point) * m2mm)
+                prx.append(get_proxy_displs(point) * m2mm)
+            elif mode == 'stress':
+                thm.append(get_thm_stress(point) * bars2mpa)
+                prx.append(get_proxy_stress(point))
 
         from matplotlib import pyplot as plt
-        plt.plot(uz_thm, z_range, label='uz_thm')
-        plt.plot(uz_prx, z_range, label='uz_prx')
+        plt.plot(thm, z_range, label='uz_thm')
+        plt.plot(prx, z_range, label='uz_prx')
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
         plt.gca().invert_yaxis()
-        plt.xlabel('Vertical displacement, mm.')
+        if mode == 'displ_z':
+            s = 'Vertical displacement, mm.'
+        elif mode == 'stress':
+            s = 'Horizontal stress delta, MPa.'
+        plt.xlabel(s)
+        plt.title(s)
         plt.ylabel('Depth, m.')
-        plt.title('Vertical displacement, mm.')
         plt.legend()
         plt.grid()
-        plt.savefig(os.path.join(output_folder, 'U_z_' + suffix + '.png'))
+        plt.savefig(os.path.join(output_folder, mode + '_' + suffix + '.png'))
         plt.close()
 
     point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point of the mesh
-    m2mm = 1e3
 
-    # compare U-Z at a line along z-axis
-    z_min = 0.
-    z_max = centroids[:, 2].max() #+ 1000.
-    compare_vert_line(z_min, z_max, 'all', z_step=20, output_folder=folder)
+    for mode in ['displ_z', 'stress']:
 
-    compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder)
+        # compare U-Z at a line along z-axis
+        z_min = 0.
+        z_max = centroids[:, 2].max() #+ 1000.
+        compare_vert_line(z_min, z_max, 'all', z_step=20, output_folder=folder, mode=mode)
 
-    # compare 1 point and print
+        compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder, mode=mode)
+
+    # compare vert displs at the middle point at the surface and print
     point[2] = 0. # at the surface (depth=0)
-    uz_thm = get_thm_solution(point)*m2mm
-    uz_prx = get_proxy_solution(point)*m2mm
-    print('point ', point)
-    print('THM   ', 'uz=', uz_thm, 'mm.')
-    print('Proxy ', 'uz=', uz_prx, 'mm.')
+    uz_thm = get_thm_displs(point)*m2mm
+    uz_prx = get_proxy_displs(point)*m2mm
+    print('Compare at single point ', point)
+    print('\tTHM   ', 'uz=', uz_thm, 'mm.')
+    print('\tProxy ', 'uz=', uz_prx, 'mm.')
+
+    # compare delta Sxx at the middle point in the reservoir and print
+    point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle of the reservoir
+    dsxx_thm = get_thm_stress(point)*bars2mpa
+    dsxx_prx = get_proxy_stress(point)
+    print('Compare at single point ', point)
+    print('\tTHM   ', 'delta_Sxx=', dsxx_thm, 'MPa')
+    print('\tProxy ', 'delta_Sxx=', dsxx_prx, 'MPa')
 
 if __name__ == '__main__':
 
