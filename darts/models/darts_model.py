@@ -605,7 +605,15 @@ class DartsModel:
     def apply_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
             if well.ms_type == ms_well.MS_Type.DFM and self.wells[well.name].lateral_heat_flux is not None:
-                well_lateral_heat_rate = self.wells[well.name].lateral_heat_flux.evaluate(self.physics.engine.X[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars], t + dt)
+                if self.physics.state_spec == self.physics.StateSpecification.PT:
+                    T_segments = self.physics.engine.X[well.well_head_idx * self.physics.n_vars + (self.physics.n_vars - 1)::self.physics.n_vars]
+                elif self.physics.state_spec == self.physics.StateSpecification.PH:
+                    T_segments = np.zeros(well.num_segments)
+                    for i in range(well.num_segments):
+                        state = self.physics.engine.X[(well.well_head_idx + i) * self.physics.n_vars:(well.well_head_idx + i + 1) * self.physics.n_vars]
+                        self.physics.property_containers[0].evaluate(state)
+                        T_segments[i] = self.physics.property_containers[0].temperature
+                well_lateral_heat_rate = self.wells[well.name].lateral_heat_flux.evaluate(T_segments, t + dt)
                 rhs = np.array(self.physics.engine.RHS, copy=False)
                 rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
 
