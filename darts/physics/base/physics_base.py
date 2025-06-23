@@ -216,25 +216,26 @@ class PhysicsBase:
                                                                   platform=platform, algorithm=itor_type,
                                                                   mode=itor_mode, precision=itor_precision,
                                                                   timer_name='property %d interpolation' % region,
-                                                                  region=str(region))
+                                                                  region=str(region), is_barycentric=is_barycentric)
 
         self.acc_flux_w_itor = self.create_interpolator(self.well_operators, n_ops=self.n_ops,
                                                         axes_min=self.axes_min, axes_max=self.axes_max,
                                                         timer_name='well interpolation',
                                                         platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                        precision=itor_precision, region='-1')
+                                                        precision=itor_precision, region='-1',
+                                                        is_barycentric=is_barycentric)
 
         self.well_ctrl_itor = self.create_interpolator(self.well_ctrl_operators, n_ops=self.well_ctrl_operators.n_ops,
                                                        axes_min=self.axes_min, axes_max=self.axes_max,
                                                        timer_name='well controls interpolation',
                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                       precision=itor_precision)
+                                                       precision=itor_precision, is_barycentric=is_barycentric)
         self.well_init_itor = self.create_interpolator(self.well_init_operators, n_ops=self.well_init_operators.n_ops,
                                                        axes_min=value_vector(self.PT_axes_min),
                                                        axes_max=value_vector(self.PT_axes_max),
                                                        timer_name='well initialization',
                                                        platform=platform, algorithm=itor_type, mode=itor_mode,
-                                                       precision=itor_precision)
+                                                       precision=itor_precision, is_barycentric=is_barycentric)
         return
 
     def evaluate_interpolators(self, itor: operator_set_evaluator_iface, etor: operator_set_evaluator_iface, states):
