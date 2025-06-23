@@ -6,6 +6,7 @@ import subprocess
 import shutil
 import os
 import matplotlib
+from matplotlib.lines import Line2D
 matplotlib.use('pgf')
 matplotlib.rc('pgf', texsystem='pdflatex',
                preamble=(
@@ -19,6 +20,7 @@ plt.rc('xtick',labelsize=16)
 plt.rc('ytick',labelsize=16)
 plt.rc('legend',fontsize=16)
 from PIL import Image
+import glob
 
 def plot_new_profiles(m):
     props_names = m.physics.property_operators[next(iter(m.physics.property_operators))].props_name
@@ -635,6 +637,181 @@ def animate_2x3_profiles_from_sources(
     print("Animation written to", out_mp4)
     return out_mp4
 
+def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_saturation=False):
+    """
+    Read all .h5 files in `folder_name` and plot profiles analogous to `plot_profiles` for selected timesteps.
+
+    Parameters
+    ----------
+    folder_name : str
+        Path to folder containing .h5 files with groups:
+          'dynamic/properties_name' (asstr),
+          'dynamic/properties' (nt x nc x nprops),
+          'dynamic/time' (nt, ).
+    time_indices : list[int]
+        List of time-step indices to plot (0-based, up to nt-1).
+    output_folder : str, optional
+        Where to save output PNGs. Defaults to './plots'.
+    domain_length : float, optional
+        Total length of the 1D domain for x-axis. Defaults to 1.0.
+    plot_saturation : bool, optional
+        If True, plot gas saturation on a twin axis of porosity plot.
+    """
+
+    # Grid: 2 rows × 4 columns
+    fig = plt.figure(figsize=(18, 7))
+    n_cols = 4
+    gs = fig.add_gridspec(2, n_cols, width_ratios=[1, 1, 1, 1], height_ratios=[1, 1],
+                          wspace=0.3, hspace=0.15)
+    # First column: pressure, spanning both rows
+    if plot_saturation:
+        ax_p = fig.add_subplot(gs[0, 0])
+        ax_satv = fig.add_subplot(gs[1, 0], sharex=ax_p)
+    else:
+        ax_p = fig.add_subplot(gs[:, 0])
+    # Columns 2,3,4: two rows each
+    ax_o = fig.add_subplot(gs[0, 1], sharex=ax_p)
+    ax_h = fig.add_subplot(gs[0, 2], sharex=ax_p)
+    ax_caco3 = fig.add_subplot(gs[0, 3], sharex=ax_p)
+    ax_ca = fig.add_subplot(gs[1, 1], sharex=ax_p)
+    ax_c = fig.add_subplot(gs[1, 2], sharex=ax_p)
+    ax_poro = fig.add_subplot(gs[1, 3], sharex=ax_p)
+
+    linestyles = ['-', '--', ':', '-.']
+    for h5_path in h5_paths:
+        with h5py.File(h5_path, 'r') as f:
+            prop_names = f['dynamic/properties_name'].asstr()[...]
+            props = f['dynamic/properties'][:]       # shape (nt, nc, nprops)
+            var_names = f['dynamic/variable_names'].asstr()[...]
+            vars = f['dynamic/X'][:]
+            times = f['dynamic/time'][:] * 24.0  # convert to hours
+
+        nt, nc, nprops = props.shape
+        x = (0.1 * np.arange(nc) / nc + 0.05 / nc) * 1e+3
+
+        for j, ti in enumerate(time_indices):
+            if ti < 0 or ti >= nt:
+                print(f"Skipping time index {ti}: out of range (0 to {nt-1}) for {fname}")
+                continue
+
+            ls = linestyles[j]
+            color = 'r'
+            ax_p.plot(x, vars[ti, :, np.where(var_names == 'p')[0][0]], linestyle=ls, color=color, label='pressure')
+
+            ax_o.plot(x, vars[ti, :, np.where(var_names == 'O')[0][0]], linestyle=ls, color=color, label='O')
+            ax_h.plot(x, props[ti, :, np.where(prop_names == 'H')[0][0]], linestyle=ls, color='b', label='H')
+            ax_ca.plot(x, vars[ti, :, np.where(var_names == 'Ca')[0][0]], linestyle=ls, color=color, label='Ca')
+            ax_c.plot(x, vars[ti, :, np.where(var_names == 'C')[0][0]], linestyle=ls, color=color, label='C')
+
+            ax_poro.plot(x, props[ti, :, np.where(prop_names == 'porosity')[0][0]], linestyle=ls, color='b', label='porosity')
+            ax_caco3.plot(x, vars[ti, :, np.where(var_names == 'Solid_CaCO3')[0][0]], linestyle=ls, color=color, label='CaCO3(s)')
+
+            if plot_saturation:
+                ax_satv.plot(x, props[ti, :, np.where(prop_names == 'satV')[0][0]], linestyle=ls, color='b', label='vapour saturation')
+
+    ax_ca.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+    ax_o.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+    ax_h.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+    ax_c.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+
+    # hide x-axes for top line of subfigures
+    x_axis_to_hide = [ax_o, ax_h, ax_caco3]
+    if plot_saturation:
+        x_axis_to_hide.append(ax_p)
+    for top_ax in x_axis_to_hide:
+        top_ax.tick_params(labelbottom=False)
+
+    fs = 18
+
+    ax_ca.set_xlabel('distance, mm', fontsize=fs)
+    ax_c.set_xlabel('distance, mm', fontsize=fs)
+    ax_poro.set_xlabel('distance, mm', fontsize=fs)
+    if plot_saturation:
+        ax_satv.set_ylim(-0.001, 0.201)
+        ax_satv.set_xlabel('distance, mm', fontsize=fs)
+        ax_satv.set_ylabel('vapour saturation', fontsize=fs)
+    else:
+        ax_p.set_xlabel('distance, mm', fontsize=fs)
+    ax_p.set_ylabel(r'pressure, bar', fontsize=fs)
+    ax_o.set_ylabel(r'zO', fontsize=fs)
+    ax_h.set_ylabel(r'zH', fontsize=fs)
+    ax_caco3.set_ylabel(r'zCaCO3(s)', fontsize=fs)
+    ax_ca.set_ylabel(r'zCa', fontsize=fs)
+    ax_c.set_ylabel(r'zC', fontsize=fs)
+    ax_poro.set_ylabel(r'porosity', fontsize=fs)
+
+    # custom legend for time mapping on ax[1]
+    legend_font_size = 16
+    legend_lines = [Line2D([0], [0], color='k', linestyle=style)
+                    for style in linestyles[:len(time_indices)]]
+    legend_labels = [f't = {times[ti]:.2f} h' for ti in time_indices]
+    ax_p.legend(legend_lines, legend_labels, loc='upper right',
+                prop={'size': legend_font_size}, framealpha=0.9)
+    #
+    # fig.tight_layout()
+    fig.subplots_adjust(wspace=0.5)
+
+    outname = os.path.join(output_folder, fname)
+    fig.savefig(outname, dpi=300)
+    plt.close(fig)
+
+def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_to_plot, nrows=2, ncols=4):
+    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, figsize=(18, 8))
+
+    linestyles = ['-', '--', ':', '-.']
+
+    for h5_path in h5_paths:
+        with h5py.File(h5_path, 'r') as f:
+            prop_names = f['dynamic/properties_name'].asstr()[...]
+            props = f['dynamic/properties'][:]       # shape (nt, nc, nprops)
+            var_names = f['dynamic/variable_names'].asstr()[...]
+            vars = f['dynamic/X'][:]
+            times = f['dynamic/time'][:] * 24.0  # convert to hours
+
+        nt, nc, nprops = props.shape
+        x = (0.1 * np.arange(nc) / nc + 0.05 / nc) * 1e+3
+
+        for j, ti in enumerate(time_indices):
+            if ti < 0 or ti >= nt:
+                print(f"Skipping time index {ti}: out of range (0 to {nt-1}) for {fname}")
+                continue
+
+            ls = linestyles[j]
+            color = 'b'
+
+            i_prop = 0
+            for k in range(nrows):
+                for l in range(ncols):
+                    ax[k, l].plot(x, props[ti, :, np.where(prop_names == props_to_plot[i_prop])[0][0]], color=color, linestyle=ls, label=props_to_plot[i_prop])
+                    i_prop += 1
+
+    fs = 18
+    i_prop = 0
+    for k in range(nrows):
+        for l in range(ncols):
+            ax[k, l].ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+            ax[k, l].set_ylabel(props_to_plot[i_prop], fontsize=fs)
+            i_prop += 1
+
+    # hide x-axes for top line of subfigures
+    for k in range(ncols):
+        ax[0, k].tick_params(labelbottom=False)
+        ax[nrows - 1, k].set_xlabel('distance, mm', fontsize=fs)
+
+    # custom legend for time mapping on ax[1]
+    legend_font_size = 16
+    legend_lines = [Line2D([0], [0], color='k', linestyle=style)
+                    for style in linestyles[:len(time_indices)]]
+    legend_labels = [f't = {times[ti]:.2f} h' for ti in time_indices]
+    ax[0,0].legend(legend_lines, legend_labels, loc='center right',
+                prop={'size': legend_font_size}, framealpha=0.9)
+
+    fig.tight_layout()
+    # fig.subplots_adjust(wspace=0.5)
+
+    outname = os.path.join(output_folder, fname)
+    fig.savefig(outname, dpi=300)
+    plt.close(fig)
 
 if __name__ == '__main__':
     # output_folder = 'c:\work\packages\open-darts\models\phreeqc_dissolution\data_for_seminar\output_1D_1000'
@@ -663,7 +840,29 @@ if __name__ == '__main__':
               r'$\Delta x_{OBL} = \Delta x_{OBL}^0 / 5$',
               r'$\Delta x_{OBL} = \Delta x_{OBL}^0 / 25$']
     output_folder = '.\\data_for_seminar\\obl_conv'
-    animate_2x3_profiles_from_sources(h5_paths=h5_paths, labels=labels,
-                                      output_folder=output_folder, ffmpeg_path=ffmpeg_path,
-                                      nx_fig=12, ny_fig=8, ls=12)
+    # animate_2x3_profiles_from_sources(h5_paths=h5_paths, labels=labels,
+    #                                   output_folder=output_folder, ffmpeg_path=ffmpeg_path,
+    #                                   nx_fig=12, ny_fig=8, ls=12)
 
+    # 1ph
+    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3_1ph'
+    h5_paths = [os.path.join(output_folder, 'nx200.h5')]
+    time_indices = [0, 1, 2, 10]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                            fname='vars_calcite_1ph_1D.png', time_indices=time_indices, plot_saturation=True)
+    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
+             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+']#,
+             #'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
+                            fname='props_calcite_1ph_1D.png', props_to_plot=props, nrows=2, ncols=4)
+    # 2ph
+    output_folder = 'output_1D_200_calcite_acidic_neutral_carbonate_multilinear_3_2ph'
+    h5_paths = [os.path.join(output_folder, 'nx200.h5')]
+    time_indices = [0, 1, 2, 10]
+    plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
+                            fname='vars_calcite_2ph_1D.png', time_indices=time_indices, plot_saturation=True)
+    props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
+             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+']#,
+             #'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+']
+    plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
+                            fname='props_calcite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=4)

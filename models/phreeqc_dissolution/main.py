@@ -49,29 +49,39 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             if domain == '1D': return plot_profiles(m, output_folder=output_folder)
             else: m.output.output_to_vtk(ith_step=ith_step)
 
-    m.data_ts.dt_max = max_ts
+    # intialization without injection
+    rate = m.inj_rate
+    m.inj_rate = 0.0
+    m.data_ts.dt_max = 1
+    m.run(days=0.1, save_well_data=False, save_reservoir_data=False)
+
+    # injection
+    m.inj_rate = rate
+    m.physics.engine.t = 0.0
     ith_step = 0
+    m.data_ts.dt_max = max_ts
     if domain == '1D':
+        m.data_ts.dt_first = 1.e-5
         fig_paths = []
         fig_paths.append(plot(m))
-        m.run(days=0.002, restart_dt=max_ts)
+        m.run(days=0.002, restart_dt=max_ts, save_reservoir_data=False)
         fig_paths.append(plot(m))
-        m.run(days=0.018, restart_dt=max_ts)
+        m.run(days=0.018, restart_dt=max_ts, save_reservoir_data=False)
         fig_paths.append(plot(m))
-        m.run(days=0.02, restart_dt=max_ts)
+        m.run(days=0.02, restart_dt=max_ts, save_reservoir_data=False)
         fig_paths.append(plot(m))
         m.data_ts.dt_max *= 3
         m.data_ts.first_ts = m.data_ts.dt_max
-        m.run(days=0.1, restart_dt=max_ts)
+        m.run(days=0.1, restart_dt=max_ts, save_reservoir_data=False)
         m.data_ts.dt_max *= 4
-        m.run(days=0.86)
+        m.run(days=0.86, save_reservoir_data=False)
         fig_paths.append(plot(m))
         m.data_ts.dt_max *= 5
         m.data_ts.first_ts = m.data_ts.dt_max
 
         for i in range(7):
             dt = 2.0
-            m.run(days=dt)
+            m.run(days=dt, save_reservoir_data=False)
             if i < 1:
                 m.data_ts.dt_max *= 1.5
                 m.data_ts.first_ts = m.data_ts.dt_max
@@ -84,16 +94,16 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         m.data_ts.dt_mult = 1.5
         plot(m=m, ith_step=ith_step)
         ith_step += 1
-        m.run(days=0.001)
+        m.run(days=0.001, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
         if perm_poro == 'power_4':
             m.data_ts.dt_max *= 40
         m.data_ts.first_ts = m.data_ts.dt_max
-        m.run(days=0.001, restart_dt=m.prev_dt)
+        m.run(days=0.001, restart_dt=m.prev_dt, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
-        m.run(days=0.001, restart_dt=m.prev_dt)
+        m.run(days=0.001, restart_dt=m.prev_dt, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
         if perm_poro == 'power_8':
@@ -101,7 +111,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     
         for i in range(15):
             dt = 0.4
-            m.run(days=dt)
+            m.run(days=dt, save_reservoir_data=False)
             if i < 1:
                 m.data_ts.dt_max *= 1.5
                 m.data_ts.first_ts = m.data_ts.dt_max
@@ -111,21 +121,21 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         m.data_ts.dt_mult = 1.5
         plot(m=m, ith_step=ith_step)
         ith_step += 1
-        m.run(days=0.001, restart_dt=max_ts)
+        m.run(days=0.001, restart_dt=max_ts, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
         m.data_ts.dt_max *= 20
         m.data_ts.first_ts = m.data_ts.dt_max
-        m.run(days=0.001)
+        m.run(days=0.001, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
-        m.run(days=0.001)
+        m.run(days=0.001, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
 
         for i in range(15):
             dt = 0.4
-            m.run(days=dt)
+            m.run(days=dt, save_reservoir_data=False)
             if i < 1:
                 m.data_ts.dt_max *= 1.5
                 m.data_ts.first_ts = m.data_ts.dt_max

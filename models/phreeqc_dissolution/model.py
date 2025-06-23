@@ -55,7 +55,7 @@ class MyOutput(Output):
 
         super().__init__(timer=timer, reservoir=reservoir, physics=physics, op_list=op_list, params=params,
                          well_head_conn_id=well_head_conn_id, well_perf_conn_ids=well_perf_conn_ids, output_folder=output_folder,
-                         sol_filename=sol_filename, well_filename=well_filename, save_initial=save_initial,
+                         sol_filename=sol_filename, well_filename=well_filename, save_initial=False,
                          all_phase_props=all_phase_props, precision=precision, compression=compression, verbose=verbose)
 
         # prepare arrays for evaluation of properties
@@ -75,6 +75,8 @@ class MyOutput(Output):
         self.variable_units[op.property.components_name[op.property.fc_mask][-1]] = ''
 
     def output_properties(self, filepath: str = None, output_properties: list = None, timestep: int = None, engine = False) -> tuple[np.ndarray, dict]:
+        self.save_data_to_h5(kind='reservoir')
+
         timesteps = [timestep] if timestep is not None else [0]
         if output_properties is None:
             prop_names = self.physics.property_operators[next(iter(self.physics.property_operators))].props_name
@@ -310,6 +312,7 @@ class Model(CICDModel):
         # Compute injection stream
         mole_water, mole_co2 = calculate_injection_stream(self.h2o_injection, self.co2_injection, self.temperature, self.pressure_init) # input - m3 of water, co2
         mole_fraction_water, mole_fraction_co2 = get_mole_fractions(mole_water, mole_co2)
+        print(f'zH2O = {mole_fraction_water:.5f}\t\t\tzCO2 = {mole_fraction_co2:.5f}')
 
         # Define injection stream composition,
         self.inj_stream_components = np.zeros(len(self.components))
