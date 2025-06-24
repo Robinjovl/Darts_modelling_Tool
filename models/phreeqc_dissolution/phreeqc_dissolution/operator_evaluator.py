@@ -155,7 +155,7 @@ class my_own_comp_etor(my_own_acc_flux_etor):
         ss = s_minerals.sum() # volume fraction in initialization
 
         # initial flash, non-standard argument
-        _, _, _, _, _, fluid_volume, _ = self.property.flash_ev.evaluate(state_np)
+        _, _, _, _, _, fluid_volume, _, _ = self.property.flash_ev.evaluate(state_np)
 
         # evaluate molar fraction
         solid_volume = fluid_volume * ss / (1 - ss)         # m3
@@ -173,14 +173,23 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         super().__init__()
         self.input_data = input_data
         self.property = properties
-        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] + ['satV'] + ['porosity'] +
+        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] + \
+                           ['z' + prop for prop in properties.flash_ev.gas_species] + ['satV'] + ['porosity'] +
                            ['Act(H+)', 'Act(CO2)'] + ['SR_' + mineral for mineral in self.property.flash_ev.mineral_names])
 
     def evaluate(self, state, values):
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-        nu_v, _, _, rho_phases, kin_state, _, molar_fractions = self.property.flash_ev.evaluate(state_np)
-        values_np[:molar_fractions.size] = molar_fractions
+        nu_v, _, _, rho_phases, kin_state, _, molar_aq_fractions, molar_gas_fractions = self.property.flash_ev.evaluate(state_np)
+        shift = 0
+
+        # aquesous fractions
+        values_np[:molar_aq_fractions.size] = molar_aq_fractions
+        shift += molar_aq_fractions.size
+
+        # gaseous fractions
+        values_np[shift:shift + molar_gas_fractions.size] = molar_gas_fractions
+        shift += molar_gas_fractions.size
 
         # gas saturation
         nu_s_minerals = state_np[self.property.s_mask_state]
@@ -198,13 +207,13 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
             sv = 0
             sa = nu_a / rho_a / (nu_a / rho_a + nu_s_rho_s)
             ss = nu_s_rho_s / (nu_a / rho_a + nu_s_rho_s)
-        values_np[molar_fractions.size] = sv / (sv + sa)
-        values_np[molar_fractions.size + 1] = 1 - ss
+        values_np[shift] = sv / (sv + sa)
+        values_np[shift + 1] = 1 - ss
 
         # extra kinetic props
-        values_np[molar_fractions.size + 2] = kin_state['Act(H+)']
-        values_np[molar_fractions.size + 3] = kin_state['Act(CO2)']
+        values_np[shift + 2] = kin_state['Act(H+)']
+        values_np[shift + 3] = kin_state['Act(CO2)']
         for i, mineral in enumerate(self.property.flash_ev.mineral_names):
-            values_np[molar_fractions.size + 4 + i] = kin_state['SR_' + mineral]
+            values_np[shift + 4 + i] = kin_state['SR_' + mineral]
 
         return 0

@@ -862,7 +862,7 @@ if __name__ == '__main__':
     plot_unknowns_from_h5(h5_paths=h5_paths, output_folder=output_folder,
                             fname='vars_calcite_2ph_1D.png', time_indices=time_indices, plot_saturation=True)
     props = ['zH2O', 'zCO2', 'zHCO3-', 'zCaHCO3+',
-             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+']#,
+             'z(CO2)2', 'zCa+2', 'zOH-', 'zH+', 'zCO2(g)', 'zH2O(g)']#,
              #'zCH4', 'zCO3-2', 'zCaCO3', 'zCaOH+']
     plot_properties_from_h5(h5_paths=h5_paths, time_indices=time_indices, output_folder=output_folder,
-                            fname='props_calcite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=4)
+                            fname='props_calcite_2ph_1D.png', props_to_plot=props, nrows=2, ncols=5)
