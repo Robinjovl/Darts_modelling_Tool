@@ -117,75 +117,135 @@ class OperatorsBase(operator_set_evaluator_iface):
     #     return vec_values
 
     ### USING HYPERCUBE LINEAR FOURMULATION
+    # def extrapolate(self, state, values):
+    #     """
+    #     When sum(z_i) > 1 (or some z_i < 0), fit a hyperplane through nearby valid points
+    #     in the d=(n_comps)-dimensional z-space and use it to extrapolate all n_ops operators.
+    #
+    #     Uses null-space method per operator to solve smaller systems.
+    #     State layout: [ p, z₁, z₂, …, z_d, T ]
+    #     """
+    #     if self.thermal:
+    #         vec = state.to_numpy()
+    #         p, T = vec[0], vec[-1]
+    #         z = vec[1:-1]
+    #     else:
+    #         vec = state.to_numpy()
+    #         p = vec[0]
+    #         z = vec[1:]
+    #
+    #     d = z.size
+    #     dz = abs(1.0 - z.sum())
+    #     cand = []
+    #     for i in range(d):
+    #         zp = z.copy()
+    #         zp[i] -= dz
+    #         cand.append(zp)
+    #     # cand.append(z - dz / d)
+    #     cand.append(z - dz)
+    #
+    #     # Gather valid reference points and their operator values
+    #     zps = []
+    #     vals = []
+    #     for zp in cand:
+    #         if (zp >= 0).all() and zp.sum() <= 1.0:
+    #             if self.thermal:
+    #                 ref_state = value_vector(np.concatenate(([p], zp, [T])))
+    #             else:
+    #                 ref_state = value_vector(np.concatenate(([p], zp)))
+    #
+    #             ref_vals = value_vector(np.zeros(self.n_ops))
+    #             self.evaluate(ref_state, ref_vals)
+    #
+    #             zps.append(zp)
+    #             vals.append(ref_vals.to_numpy())
+    #
+    #     zps = np.array(zps)  # shape (M, d)
+    #     vals = np.array(vals)  # shape (M, n_ops)
+    #     n_refs = zps.shape[0]
+    #
+    #     # Extrapolate each operator via null-space hyperplane
+    #     ext = np.zeros(self.n_ops, dtype=float)
+    #     for j in range(self.n_ops):
+    #         # Build P_j matrix: [z1 ... z_d, alpha, 1]
+    #         Pj = np.hstack((zps, vals[:, j:j + 1], np.ones((n_refs, 1))))
+    #         # Compute null vector h (last singular vector)
+    #         _, _, vh = np.linalg.svd(Pj)
+    #         h = vh[-1, :]
+    #         # h: [h_z (d), h_alpha, h_const]
+    #         h_z = h[:d]
+    #         h_alpha = h[d]
+    #         h_const = h[d + 1]
+    #         # Solve for alpha at original z: h_z·z + h_alpha·alpha + h_const = 0
+    #         ext[j] = -(h_z.dot(z) + h_const) / h_alpha
+    #
+    #     # Copy into values vector
+    #     vec_values = np.array(values, copy=False)
+    #     for i, val in enumerate(ext):
+    #         vec_values[i] = np.float64(val)
+    #
+    #     return vec_values
+
     def extrapolate(self, state, values):
         """
-        When sum(z_i) > 1 (or some z_i < 0), fit a hyperplane through nearby valid points
-        in the d=(n_comps)-dimensional z-space and use it to extrapolate all n_ops operators.
-
-        Uses null-space method per operator to solve smaller systems.
-        State layout: [ p, z₁, z₂, …, z_d, T ]
+        When composition lies outside the simplex (∑ z_i ≠ 1 or some z_i < 0), perform exact hyperplane extrapolation:
+        Fit each operator value via val = a·z + c through exactly d+1 valid reference points ,
+        then evaluate at the out‑of‑bounds composition. Pressure (and temperature) remain constant.
+        State layout: [ p, z₁, …, z_d, (T) ]
         """
+        # Unpack state
+        vec = state.to_numpy()
         if self.thermal:
-            vec = state.to_numpy()
             p, T = vec[0], vec[-1]
-            z = vec[1:-1]
+            z = vec[1:-1].copy()
         else:
-            vec = state.to_numpy()
             p = vec[0]
-            z = vec[1:]
+            z = vec[1:].copy()
 
         d = z.size
         dz = abs(1.0 - z.sum())
-        cand = []
+
+        # Build candidate points by subtracting dz along each axis and uniformly
+        candidates = []
         for i in range(d):
             zp = z.copy()
             zp[i] -= dz
-            cand.append(zp)
-        # cand.append(z - dz / d)
-        cand.append(z - dz)
+            candidates.append(zp)
+        candidates.append(z - dz)
 
-        # Gather valid reference points and their operator values
-        zps = []
-        vals = []
-        for zp in cand:
+        # Gather valid reference points
+        zps_list = []
+        vals_list = []
+        for zp in candidates:
             if (zp >= 0).all() and zp.sum() <= 1.0:
                 if self.thermal:
                     ref_state = value_vector(np.concatenate(([p], zp, [T])))
                 else:
                     ref_state = value_vector(np.concatenate(([p], zp)))
-
                 ref_vals = value_vector(np.zeros(self.n_ops))
                 self.evaluate(ref_state, ref_vals)
+                zps_list.append(zp)
+                vals_list.append(ref_vals.to_numpy())
 
-                zps.append(zp)
-                vals.append(ref_vals.to_numpy())
+        # Use the first d+1 valid points to define hyperplane implicitly via val = a·z + c
+        zps = np.stack(zps_list[:d + 1])  # shape (d+1, d)
+        vals = np.stack(vals_list[:d + 1])  # shape (d+1, n_ops)
 
-        zps = np.array(zps)  # shape (M, d)
-        vals = np.array(vals)  # shape (M, n_ops)
-        n_refs = zps.shape[0]
+        # Build and solve B · X = vals, where B = [zps | 1]
+        B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
+        X = np.linalg.solve(B, vals)  # shape (d+1, n_ops)
 
-        # Extrapolate each operator via null-space hyperplane
-        ext = np.zeros(self.n_ops, dtype=float)
-        for j in range(self.n_ops):
-            # Build P_j matrix: [z1 ... z_d, alpha, 1]
-            Pj = np.hstack((zps, vals[:, j:j + 1], np.ones((n_refs, 1))))
-            # Compute null vector h (last singular vector)
-            _, _, vh = np.linalg.svd(Pj)
-            h = vh[-1, :]
-            # h: [h_z (d), h_alpha, h_const]
-            h_z = h[:d]
-            h_alpha = h[d]
-            h_const = h[d + 1]
-            # Solve for alpha at original z: h_z·z + h_alpha·alpha + h_const = 0
-            ext[j] = -(h_z.dot(z) + h_const) / h_alpha
+        # Separate coefficients
+        a = X[:-1, :]  # shape (d, n_ops)
+        c = X[-1, :]  # shape (n_ops,)
 
-        # Copy into values vector
-        vec_values = np.array(values, copy=False)
-        for i, val in enumerate(ext):
-            vec_values[i] = np.float64(val)
+        # Extrapolate values
+        ext = a.T.dot(z) + c
 
-        return vec_values
-
+        # Write back into values array
+        out = np.array(values, copy=False)
+        out[:] = ext
+        return out
 
 class WellControlOperators(OperatorsBase):
     """
