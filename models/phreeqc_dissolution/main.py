@@ -94,22 +94,50 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         m.data_ts.dt_mult = 1.5
         plot(m=m, ith_step=ith_step)
         ith_step += 1
+        # step
         m.run(days=0.001, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
         if perm_poro == 'power_4':
             m.data_ts.dt_max *= 40
         m.data_ts.first_ts = m.data_ts.dt_max
+        # step
         m.run(days=0.001, restart_dt=m.prev_dt, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
+        # step
         m.run(days=0.001, restart_dt=m.prev_dt, save_reservoir_data=False)
         plot(m=m, ith_step=ith_step)
         ith_step += 1
+        
         if perm_poro == 'power_8':
             m.data_ts.dt_max *= 40
-    
-        for i in range(15):
+        # step
+        m.run(days=0.097, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+        # step    
+        m.run(days=0.1, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+        # step    
+        m.run(days=0.2, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+        # step    
+        m.run(days=0.2, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+        # step    
+        m.run(days=0.2, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+        # step    
+        m.run(days=0.2, restart_dt=m.prev_dt)
+        plot(m=m, ith_step=ith_step)
+        ith_step += 1
+
+        for i in range(12):
             dt = 0.4
             m.run(days=dt, save_reservoir_data=False)
             if i < 1:
@@ -156,12 +184,12 @@ if __name__ == '__main__':
     # 1D
     run_simulation(domain='1D', nx=200, perm_poro='power_8', max_ts=1.e-3)
     # 2D
-    # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)
+    # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)    
     # n_obl_mult = 3
-    # run_simulation(domain='2D', nx=50, output=True, max_ts=6.e-5,
+    # run_simulation(domain='2D', nx=200, output=True, max_ts=1.e-5,
     #                 n_obl_mult=n_obl_mult,
     #                 interpolator='multilinear',
-    #                 poro_filename='calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
+    #                 poro_filename='calcite_2D_200_100/spherical_200_20_1/porosity_8.txt',
     #                 minerals=['calcite'],#, 'dolomite'],#, 'magnesite'],  
     #                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
     #                 h2o_injection=1.1,

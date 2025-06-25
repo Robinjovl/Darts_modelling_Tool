@@ -41,7 +41,7 @@ def setup_logger(folder):
     
     return logger
 
-def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult):
+def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult, perm_poro):
     folder = os.path.join(prefix, f'{i}')
     if not os.path.exists(folder):
         os.makedirs(folder)
@@ -62,7 +62,10 @@ def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult):
                             minerals=['calcite'],# 'dolomite'],
                             kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                             co2_injection=0.1,
+                            h2o_injection=1.1,
+                            perm_poro=perm_poro,
                             platform='cpu')
+
         logger.info(f"Successfully completed simulation {i}")
     except Exception as e:
         logger.error(f"Error in simulation {i}: {str(e)}")
@@ -73,7 +76,7 @@ def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult):
             handler.close()
             logger.removeHandler(handler)
 
-def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=None, n_batch=4):
+def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=None, n_batch=4, perm_poro='power_8'):
     if poro_folder is None:
         var = 1
         poro_folder = f'spherical_{nx}_{corr_len}_{var}'
@@ -98,7 +101,8 @@ def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=
                      poro_folder=poro_folder,
                      nx=nx,
                      max_ts=max_ts,
-                     n_obl_mult=n_obl_mult)
+                     n_obl_mult=n_obl_mult,
+                     perm_poro=perm_poro)
     
     # Run simulations in parallel with specified batch size
     with Pool(processes=n_batch) as pool:
@@ -106,8 +110,11 @@ def run_batch_simulation(n_runs, nx, corr_len, max_ts, poro_folder=None, prefix=
 
 if __name__ == '__main__':
     n_runs = 100
-    nx = 50
-    n_batch = 32
-    corr_len = 5
-    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=5.e-5, 
-                            prefix=f'calcite_2D_{nx}_{n_runs}', n_batch=n_batch)
+    nx = 200
+    n_batch = 50
+    corr_len = 20
+    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=1.e-5, perm_poro='power_8',
+                            prefix=f'calcite_2D_{nx}_{n_runs}_8', n_batch=n_batch)
+    
+    # GSE launch command
+    # nohup darts batch_runner.py > calcite_2D_100_100.txt 2>&1 &
