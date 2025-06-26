@@ -664,7 +664,8 @@ class ModelProperties(PropertyContainer):
             self.gas_species = ['CO2(g)', 'H2O(g)']
             if set(self.minerals) == {'Solid_CaCO3'}: # pure calcite
                 self.spec = 0
-                self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2", "CaHCO3+", "CaCO3", "(CO2)2", "Ca+2", "CaOH+", "H2", "O2"]
+                self.phreeqc_species = ["OH-", "H+", "H2O", "CH4", "HCO3-", "CO2", "CO3-2",
+                                        "CaHCO3+", "CaCO3", "(CO2)2", "Ca+2", "CaOH+", "H2", "O2"]
                 self.species_2_element_moles = np.array([2, 1, 3, 5, 5, 3, 4, 6, 5, 6, 1, 3, 2, 2])
                 species_headings = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])
                 species_punch = " ".join([f'MOL("{sp}")' for sp in self.phreeqc_species])

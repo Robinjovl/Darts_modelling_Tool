@@ -173,10 +173,11 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         super().__init__()
         self.input_data = input_data
         self.property = properties
-        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] + \
+        self.props_name = (['z' + prop for prop in properties.flash_ev.phreeqc_species] +
                            ['z' + prop for prop in properties.flash_ev.gas_species] + ['satV'] + ['porosity'] +
-                           ['Act(H+)', 'Act(CO2)'] + ['SR_' + mineral for mineral in self.property.flash_ev.mineral_names])
-
+                           ['Act(H+)', 'Act(CO2)'] +
+                           ['SR_' + mineral for mineral in self.property.flash_ev.mineral_names] +
+                           ['rate_' + mineral for mineral in self.property.flash_ev.mineral_names])
     def evaluate(self, state, values):
         state_np = state.to_numpy()
         values_np = values.to_numpy()
@@ -194,19 +195,22 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         # gas saturation
         nu_s_minerals = state_np[self.property.s_mask_state]
         nu_s = nu_s_minerals.sum()
-        nu_s_rho_s = np.array([nu_s_minerals[i] / v.evaluate(state_np[0]) * self.property.Mw[k]
-                      for i, (k, v) in enumerate(self.property.rock_density_ev.items())]).sum()
+        dens_m_solid = np.array([v.evaluate(state_np[0]) / self.property.Mw[k] for k, v in self.property.rock_density_ev.items()])
+        nu_s_rho_s = (nu_s_minerals / dens_m_solid).sum()
         nu_v = nu_v * (1 - nu_s)  # convert to overall molar fraction
         nu_a = 1 - nu_v - nu_s
         rho_a, rho_v = rho_phases['aq'], rho_phases['gas']
+
         if nu_v > 0:
-            sv = nu_v / rho_v / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
-            sa = nu_a / rho_a / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
-            ss = nu_s_rho_s / (nu_v / rho_v + nu_a / rho_a + nu_s_rho_s)
+            sum = nu_v / rho_v + nu_a / rho_a + nu_s_rho_s
+            sv = nu_v / rho_v / sum
         else:
+            sum = nu_a / rho_a + nu_s_rho_s
             sv = 0
-            sa = nu_a / rho_a / (nu_a / rho_a + nu_s_rho_s)
-            ss = nu_s_rho_s / (nu_a / rho_a + nu_s_rho_s)
+        sa = nu_a / rho_a / sum
+        ss = nu_s_rho_s / sum
+        sat_minerals = nu_s_minerals / dens_m_solid / sum
+
         values_np[shift] = sv / (sv + sa)
         values_np[shift + 1] = 1 - ss
 
@@ -215,5 +219,10 @@ class my_own_property_evaluator(operator_set_evaluator_iface):
         values_np[shift + 3] = kin_state['Act(CO2)']
         for i, mineral in enumerate(self.property.flash_ev.mineral_names):
             values_np[shift + 4 + i] = kin_state['SR_' + mineral]
+
+        # kinetic rate
+        shift += len(self.property.flash_ev.mineral_names)
+        for i, k in enumerate(self.property.rock_compr_ev.keys()):
+            values_np[shift + 4 + i] = self.property.kinetic_rate_ev[k].evaluate(kin_state, sat_minerals[i], dens_m_solid[i])
 
         return 0
