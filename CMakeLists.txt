@@ -2,7 +2,6 @@ cmake_minimum_required (VERSION 3.26)
 project (openDARTS LANGUAGES CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,9 +18,22 @@ set(SET_CXX11_ABI_0 TRUE)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or IDEs
 
-# Set default build type
+# Turn off valgrind support by default
+option(ENABLE_VALGRIND "Enable Valgrind instrumentation (Debug build with symbols)" OFF)
+
+# Set build type
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
+    if(ENABLE_VALGRIND)
+        set(CMAKE_BUILD_TYPE Debug CACHE STRING "Default build type" FORCE)
+    else()
+        set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
+    endif()
+endif()
+
+if(ENABLE_VALGRIND)
+    message(STATUS ">>> Valgrind build: adding -g -O2")
+    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2")
+    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
@@ -308,9 +320,43 @@ if(ENABLE_TESTING)
 endif()
 # ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
+# Bundle the IPhreeqc shared library into our install tree
+# ------------------------------------------------------------------------------
+if(WITH_PHREEQC)
+  set(IPHREEQC_ROOT "${CMAKE_SOURCE_DIR}/thirdparty/install/iphreeqc")
+  if(WIN32)
+    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/bin/IPhreeqc.dll")
+    set(IPHREEQC_RENAME "IPhreeqc.dll")
+  else()
+    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib64/libIPhreeqc.so")
+    set(IPHREEQC_RENAME "libIPhreeqc.so")
+  endif()
 
-# Bundle standard C++ library used by the compiler,
-# to support running even on old systems
+  # make sure the link exists
+  if(NOT EXISTS "${IPHREEQC_LINK}")
+    message(FATAL_ERROR "IPhreeqc shared library link not found: ${IPHREEQC_LINK}")
+  endif()
+
+  # resolve symlinks (on Windows this just canonicalizes the path)
+  file(REAL_PATH "${IPHREEQC_LINK}" IPHREEQC_REAL_PATH)
+  if(IPHREEQC_REAL_PATH STREQUAL "" OR NOT EXISTS "${IPHREEQC_REAL_PATH}")
+    message(FATAL_ERROR
+      "Failed to resolve real path of ${IPHREEQC_LINK}; got '${IPHREEQC_REAL_PATH}'")
+  endif()
+  message(STATUS "Installing IPhreeqc real library: ${IPHREEQC_REAL_PATH}")
+
+  # Copy it at install time into the top of the install prefix
+  install(FILES "${IPHREEQC_REAL_PATH}"
+          DESTINATION "."         
+          RENAME   "${IPHREEQC_RENAME}"
+          COMPONENT Runtime)
+endif()
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# Bundle standard C++ library used by the compiler, to support running even on old systems
+# ------------------------------------------------------------------------------
 if(UNIX AND NOT APPLE)
     execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
@@ -322,4 +368,5 @@ if(UNIX AND NOT APPLE)
         execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${LIBSTDCXX} ${CMAKE_INSTALL_PREFIX})
     ")
 endif()
+# ------------------------------------------------------------------------------
 

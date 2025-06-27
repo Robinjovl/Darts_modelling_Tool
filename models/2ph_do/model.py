@@ -9,7 +9,6 @@ from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
-
 class Model(CICDModel):
     def __init__(self):
         # call base class constructor
@@ -75,12 +74,12 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=True, target=200., phase_name='oil', inj_composition=self.inj)
-                self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
                                                is_inj=True, target=450., inj_composition=self.inj)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=350.)
 
 

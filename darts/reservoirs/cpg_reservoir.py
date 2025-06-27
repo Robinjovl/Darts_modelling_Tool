@@ -409,7 +409,7 @@ class CPG_Reservoir(ReservoirBase):
         return bc
 
     def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        well_index: float = None, well_indexD: float = 0., segment_direction: str = 'z_axis',
                         skin: float = 0., multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
@@ -541,7 +541,7 @@ class CPG_Reservoir(ReservoirBase):
                     self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
         return
 
-    def output_to_vtk(self, ith_step: int, time_steps: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
         from pyevtk.hl import gridToVTK
         from pyevtk.vtk import VtkGroup
         # only for the first export call
@@ -549,51 +549,45 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        for ts, t in enumerate(time_steps):
+        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
 
-            if len(time_steps) == 1:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
-            else:
-                vtk_file_name = output_directory + '/solution_ts{}'.format(ts)
+        cell_data = {}
+        for i, prop in enumerate(prop_names):
+            local_data = data[i]
+            global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
+            dummy_zeros = np.zeros(
+                self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
+            v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
+            global_array[self.discr_mesh.local_to_global] = v[:]
+            cell_data[prop_names[prop]] = global_array
 
-            cell_data = {}
-            for prop in prop_names:
-                local_data = data[prop][ts]
-                global_array = np.ones(self.nodes_tot, dtype=local_data.dtype) * np.nan
-                dummy_zeros = np.zeros(
-                    self.discr_mesh.n_cells - self.mesh.n_res_blocks)  # workaround for the issue in case of cells without active neighbours
-                v = np.append(local_data[:self.mesh.n_res_blocks], dummy_zeros)
-                global_array[self.discr_mesh.local_to_global] = v[:]
-                cell_data[prop] = global_array
+        if self.vtk_grid_type == 0:
+            vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
+        else:
+            for key, value in cell_data.items():
+                g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
+                if cell_data[key].size == g_to_l.size:
+                    a = cell_data[key][g_to_l >= 0]
+                else:
+                    a = cell_data[key]
+                self.vtkobj.AppendScalarData(key, a)
 
-            if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data)
-            else:
-                for key, value in cell_data.items():
+            vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
+            if len(self.vtk_filenames_and_times) == 0:
+                for key, data in self.global_data.items():
+                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
+                self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
 
-                    g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                    if cell_data[key].size == g_to_l.size:
-                        a = cell_data[key][g_to_l >= 0]
-                    else:
-                        a = cell_data[key]
-                    self.vtkobj.AppendScalarData(key, a)
+        # in order to have correct timesteps in Paraview, write down group file
+        # since the library in use (pyevtk) requires the group file to call .save() method in the end,
+        # and does not support reading, track all written files and times and re-write the complete
+        # group file every time
 
-                vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
-                if len(self.vtk_filenames_and_times) == 0:
-                    for key, data in self.global_data.items():
-                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray('cellNormals')
-
-            # in order to have correct timesteps in Paraview, write down group file
-            # since the library in use (pyevtk) requires the group file to call .save() method in the end,
-            # and does not support reading, track all written files and times and re-write the complete
-            # group file every time
-
-            self.vtk_filenames_and_times[vtk_file_name] = t
-            vtk_group = VtkGroup(os.path.join(output_directory,'solution'))
-            for fname, t in self.vtk_filenames_and_times.items():
-                vtk_group.addFile(fname, t)
-            vtk_group.save()
+        self.vtk_filenames_and_times[vtk_file_name] = t
+        vtk_group = VtkGroup(os.path.join(output_directory,'solution'))
+        for fname, t in self.vtk_filenames_and_times.items():
+            vtk_group.addFile(fname, t)
+        vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
 
@@ -758,9 +752,9 @@ class CPG_Reservoir(ReservoirBase):
 
     def get_ijk_from_xyz(self, x, y, z):
         '''
-        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        :return: tuple of I,J,K indices (1-based) of a cell with the closest center to the point with coordinates x,y,z
         '''
-        def find_cell_index(centers_flattened, coord) -> int:
+        def find_cell_index(centers_flattened, coord) -> int: # returns the local index (only active cells) of the closest cell center
             min_dis = None
             idx = None
             for j, centroid in enumerate(centers_flattened):
@@ -777,20 +771,23 @@ class CPG_Reservoir(ReservoirBase):
 
         centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
         idx = find_cell_index(centers, np.array([x, y, z]))
-        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        ijk = get_ijk(self.discr_mesh.local_to_global[idx], self.nx, self.ny, self.nz)
         return ijk
 
-    def centers_to_vtk(self, out_dir):
-        # output center points to VTK
-        fname = os.path.join(out_dir, 'centers')
+    def get_centers(self):
         c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
         c = np.zeros((self.discr_mesh.n_cells, 3))
         for i in range(self.discr_mesh.n_cells):
             cv = c_cpg[i].values
             c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
         x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-        if c is not None:
-            pointsToVTK(fname, x, y, z)
+        return x, y, z
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        x, y, z = self.get_centers()
+        pointsToVTK(fname, x, y, z)
 
     def save_grdecl(self, arrays_save, fname):
         '''
@@ -921,13 +918,16 @@ def read_arrays(gridfile: str, propfile: str):
 
     arrays['PERMX'] = read_float_array(propfile, 'PERMX')
     arrays['PERMY'] = read_float_array(propfile, 'PERMY')
-    for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
-        if arrays['PERMX'].size == 0 or arrays['PERMY'].size == 0:
-            arrays['PERMX'] = read_float_array(propfile, perm_str)
-            arrays['PERMY'] = arrays['PERMX']
     if arrays['PERMY'].size == 0:
         arrays['PERMY'] = arrays['PERMX']
         print('No PERMY found in input files. PERMY=PERMX will be used')
+    for perm_str in ['PERMEABILITYXY', 'PERMEABILITY']:
+        if arrays['PERMX'].size == 0 and arrays['PERMY'].size == 0:
+            a = read_float_array(propfile, perm_str)
+            if a.size > 0:
+                arrays['PERMX'] = a
+                arrays['PERMY'] = a
+                print('No PERMX and PERMY found in input files. PERMY=PERMX=', perm_str, 'will be used')
     arrays['PERMZ'] = read_float_array(propfile, 'PERMZ')
     if arrays['PERMZ'].size == 0:
         arrays['PERMZ'] = arrays['PERMX'] * 0.1

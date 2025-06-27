@@ -25,6 +25,9 @@ class Model(CICDModel, OptModuleSettings):
         self.set_physics()
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
 
+        self.init_pressure = 200.
+        self.init_temperature = 350.
+
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self, perm, poro):
@@ -132,8 +135,7 @@ class Model(CICDModel, OptModuleSettings):
         return
 
     def set_initial_conditions(self):
-        self.init_pressure = 200.
-        self.init_temperature = 350.
+
 
         input_distribution = {'pressure': self.init_pressure}
         input_distribution.update({comp: self.ini[i] for i, comp in enumerate(self.physics.components[:-1])})
@@ -146,11 +148,11 @@ class Model(CICDModel, OptModuleSettings):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=self.init_pressure + 30., inj_composition=[],
                                                inj_temp=308.15)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=self.init_pressure - 10.)
 
     def run(self, export_to_vtk=False, file_name='data'):

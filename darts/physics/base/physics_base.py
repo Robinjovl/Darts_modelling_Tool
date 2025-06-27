@@ -262,14 +262,13 @@ class PhysicsBase:
 
         return operator_array
 
-    def set_well_controls(self, well: ms_well, control_type: well_control_iface.WellControlType, is_inj: bool,
-                          target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None,
-                          is_control: bool = True):
+    def set_well_controls(self, wctrl: well_control_iface, control_type: well_control_iface.WellControlType, is_inj: bool,
+                          target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None):
         """
         Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param well: ms_well object on which the control/constraint is defined
+        :param wctrl: well_control_iface object responsible for control/constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
@@ -277,7 +276,6 @@ class PhysicsBase:
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
         :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
-        :param is_control: Is control (true) or constraint (false), default is true
         """
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
         inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(
@@ -288,18 +286,11 @@ class PhysicsBase:
 
         # Pass controls specification to ms_well object
         if control_type == well_control_iface.BHP:
-            if is_control:
-                well.set_bhp_control(is_inj, target, inj_composition, inj_temp)
-            else:
-                well.set_bhp_constraint(is_inj, target, inj_composition, inj_temp)
+            wctrl.set_bhp_control(is_inj, target, inj_composition, inj_temp)
         else:
             # Injection/production rate
             target = np.abs(target) if is_inj else -np.abs(target)  # + for inj, - for prod
-
-            if is_control:
-                well.set_rate_control(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
-            else:
-                well.set_rate_constraint(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
+            wctrl.set_rate_control(is_inj, control_type, phase_idx, target, inj_composition, inj_temp)
 
         return
 
@@ -347,7 +338,7 @@ class PhysicsBase:
 
     @abc.abstractmethod
     def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray]):
+                                                input_depth: Union[list, np.ndarray], global_to_local=None):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
@@ -355,6 +346,7 @@ class PhysicsBase:
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
         :param input_depth: Array of depths over which depth table has been specified
+        :param global_to_local: array of indices mapping to active elements
         """
         pass
 
@@ -390,6 +382,12 @@ class PhysicsBase:
         :type evaluator: darts.engines.operator_set_evaluator_iface
         :param timer_name: Name of timer object
         :type timer_name: str
+        :param n_ops: Number of operators
+        :type n_ops: int
+        :param axes_min: Minimal bounds of OBL axes
+        :type axes_min: value_vector
+        :param axes_max: Maximal bounds of OBL axes
+        :type axes_max: value_vector
         :param algorithm: interpolator type:
             'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on rectangles;
             'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
@@ -412,6 +410,12 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
+        # check input OBL props
+        if axes_min is None:
+            axes_min = self.axes_min
+        if axes_max is None:
+            axes_max = self.axes_max
+
         # verify then inputs are valid
         assert len(self.n_axes_points) == self.n_vars
         assert len(axes_min) == self.n_vars
@@ -542,7 +546,6 @@ class PhysicsBase:
             os.mkdir(output_folder)
 
         with open(os.path.join(output_folder, 'body_path.txt'), "w") as fp:
-            itor = self.acc_flux_itor[0]
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write('%d %lf %lf %s\n' % (self.n_axes_points[id],

@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 from darts.models.darts_model import DartsModel
-from darts.tools.flux_tools import get_wells_components_molar_rates, get_wells_phases_volumetric_rates
 
 import numpy as np
 import pandas as pd
@@ -136,37 +135,6 @@ class CICDModel(DartsModel):
         os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
-
-    def compare_well_rates(self, time_data_filename: str):
-        """
-        Compares well component and phase molar rates in Python against those calculated in C++, which are saved in
-        time_data
-        :param time_data_filename: data filename
-        :type time_data_filename: str
-        """
-        # Load time_data
-        cpp_data = pd.read_pickle(time_data_filename)
-
-        # Calculate well components molar rates for all time steps in Python
-        python_components_molar_rates = get_wells_components_molar_rates(self)
-        # Calculate well phases volumetric rates for all time steps in Python
-        python_phases_volumetric_rates = get_wells_phases_volumetric_rates(self)
-
-        rtol = 1.e-2
-        atol = 0.1
-        c_pattern = ' : c {} rate (Kmol/day)'
-        p_pattern = ' : {} rate (m3/day)'
-
-        # Compare rates calculated in C++ and Python
-        for well in self.reservoir.wells:
-            # Components molar rates
-            cpp_comp = np.array([cpp_data[well.name + c_pattern.format(c)].to_numpy() for c in range(self.physics.nc)]).T
-            assert (np.isclose(python_components_molar_rates[well.name][:, :self.physics.nc], -cpp_comp, rtol=rtol, atol=atol).all())
-
-            # Phase molar rates
-            cpp_phase = np.array([cpp_data[well.name + p_pattern.format(self.physics.phases[p])].to_numpy() for p in
-                              range(self.physics.nph)]).T
-            assert (np.isclose(python_phases_volumetric_rates[well.name], -cpp_phase, rtol=rtol, atol=atol).all())
 
     @staticmethod
     def load_performance_data(file_name: str = '', pkl_suffix: str = ''):

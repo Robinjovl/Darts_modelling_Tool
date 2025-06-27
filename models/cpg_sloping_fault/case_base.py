@@ -3,6 +3,7 @@ import os
 
 from darts.input.input_data import InputData
 from darts.models.darts_model import DataTS
+from darts.engines import sim_params
 
 class InputDataGeom():  # to group geometry input data
     def __init__(self):
@@ -25,11 +26,11 @@ def input_data_base(idata: InputData, case: str):
 
     # time stepping and convergence parameters
     idata.sim.DataTS = DataTS(n_vars=0)
-    idata.sim.DataTS.first_ts = 0.01
+    idata.sim.DataTS.dt_first = 0.01
     idata.sim.DataTS.dt_mult = 2
     idata.sim.DataTS.dt_max = 92
-    idata.sim.DataTS.tol_res = 1e-2
-    idata.sim.DataTS.tol_linear = 1e-4
+    idata.sim.DataTS.newton_tol = 1e-2
+    idata.sim.DataTS.linear_tol = 1e-4
     # use direct linear solver:
     #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
 
@@ -48,16 +49,24 @@ def input_data_base(idata: InputData, case: str):
     #     perm - to avoid convergence issues
     geom.min_poro = 1e-5
 
+    # allow small flow to avoid pressure jumps
+    # since there might pressure change appear due to the temperature change
+    geom.min_perm = 1e-5
+
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
 
     geom.faultfile = None  # a text file with fault locations and multipliers
+
+    idata.geom.well_index = None  # well index for flow, if None - will be computed by default
+    idata.geom.well_indexD = 0.   # well index for thermal conductivity (for closed-loops/U-shaped wells); turned off
 
     if idata.generate_grid:
         idata.rock.poro = 0.2
         idata.rock.permx = 100  # mD
         idata.rock.permy = 100  # mD
         idata.rock.permz = 10   # mD
+
     else:  # read from files
         # setup filenames
         gridfile, propfile, schfile = get_case_files(case)

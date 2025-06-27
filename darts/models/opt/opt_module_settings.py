@@ -210,6 +210,13 @@ class OptModuleSettings:
         self.set_op_list()
         self.reset()
 
+        from darts.models.output import Output
+        # self.output_folder = 'jaja'
+        # self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
+        #                      self.well_head_conn_id, self.well_perf_conn_ids,
+        #                      self.output_folder, self.sol_filename, self.well_filename,
+        #                      False, False,'d', 'gzip', False)
+
         self.sim_time -= time.time()
         # 3. Run
         if args:
@@ -218,7 +225,11 @@ class OptModuleSettings:
             self.run(start_opt=args[0],stop_opt=args[1])
         else:
             self.physics.engine.clear_previous_adjoint_assembly()
-            self.run(export_to_vtk=False)
+            self.run(
+                    # export_to_vtk=False,
+                    # save_well_data=False,
+                    # save_reservoir_data=False
+            )
             # self.run_python()opt_history_matching
         # self.run()
         self.sim_time += time.time()

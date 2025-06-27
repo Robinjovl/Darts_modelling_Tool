@@ -144,7 +144,7 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 #endif //_OPENMP
 
     index_t j, diag_idx, jac_idx;
-    value_t p_diff, gamma_p_diff, t_diff, gamma_t_i, gamma_t_j, phi_i, phi_j, phi_avg, phi_0_avg;
+    value_t p_diff, gamma_p_diff, t_diff, gamma_t_i, gamma_t_j, mult_i, mult_j;
     value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
     value_t phase_presence_mult;
@@ -152,9 +152,9 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     std::array<value_t, NP> phase_fluxes;
     
     // fluxes for output
-    value_t *cur_darcy_fluxes, *cur_diffusion_fluxes, *cur_dispersion_fluxes;
-    value_t *cur_heat_darcy_advection_fluxes, *cur_heat_diffusion_advection_fluxes, 
-            *cur_heat_dispersion_advection_fluxes, *cur_fourier_fluxes;
+    value_t *cur_darcy_fluxes = 0, *cur_diffusion_fluxes = 0, *cur_dispersion_fluxes = 0;
+    value_t *cur_heat_darcy_advection_fluxes = 0, *cur_heat_diffusion_advection_fluxes = 0,
+            *cur_heat_dispersion_advection_fluxes = 0, *cur_fourier_fluxes = 0;
 
     int connected_with_well;
 
@@ -231,23 +231,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             value_t trans_mult = 1;
             value_t trans_mult_der_i[N_VARS];
             value_t trans_mult_der_j[N_VARS];
-            if (params->trans_mult_exp > 0 && i < n_res_blocks && j < n_res_blocks)
+            if (params->enable_permporo && i < n_res_blocks && j < n_res_blocks)
             {
                 // Calculate transmissibility multiplier:
-                phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-                phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+                mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+                mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
                 // Take average interface porosity:
-                phi_avg = (phi_i + phi_j) * 0.5;
-                phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-                trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
+                trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
                 for (uint8_t v = 0; v < N_VARS; v++)
                 {
-                    trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
-                    trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
+                    trans_mult_der_i[v] = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+                    trans_mult_der_j[v] = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
                 }
-                trans_mult = pow(phi_avg, params->trans_mult_exp);
             }
             else
             {
@@ -475,11 +471,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         {
             for (uint8_t c = 0; c < NC; c++)
             {
-                if ((PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]) > 1e-4)
-                {
-                    CFL_max_local = std::max(CFL_max_local, CFL_in[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-                    CFL_max_local = std::max(CFL_max_local, CFL_out[c] / (PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c]));
-                }
+              double denominator = PV[i] * op_vals_arr[i * N_OPS + ACC_OP + c];
+              if (denominator != 0.0)
+              {
+                CFL_max_local = std::max(CFL_max_local, CFL_in[c] / denominator);
+                CFL_max_local = std::max(CFL_max_local, CFL_out[c] / denominator);
+              }
             }
         }
 
@@ -658,7 +655,8 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
   index_t end = n_blocks;
 
   index_t j, diag_idx, jac_idx;
-  value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg;
+  value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, mult_i, mult_j;
+  value_t phase_presence_mult;
 
   memset(Jac_n, 0, (n_conns + n_blocks) * N_VARS_SQ * sizeof(value_t));
   memset(value_dg_dT, 0, n_conns * N_VARS * sizeof(value_t));
@@ -736,23 +734,19 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
       value_t trans_mult = 1;
       value_t trans_mult_der_i[N_VARS];
       value_t trans_mult_der_j[N_VARS];
-      if (params->trans_mult_exp > 0 && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
+      if (params->enable_permporo && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
       {
         // Calculate transmissibility multiplier:
-        phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-        phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+        mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+        mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
         // Take average interface porosity:
-        phi_avg = (phi_i + phi_j) * 0.5;
-        phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-        trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
+        trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
         for (uint8_t v = 0; v < N_VARS; v++)
         {
-          trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
-          trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
+          trans_mult_der_i[v] = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+          trans_mult_der_j[v] = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
         }
-        trans_mult = pow(phi_avg, params->trans_mult_exp);
       }
       else
       {
@@ -832,8 +826,6 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
       } // end of loop over number of phases for convective operator with gravity and capillarity
 
       // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
-      phi_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5; // diffusion term depends on total porosity!
-
       // Only if block connection is between reservoir and reservoir cells!
       if (i < mesh->n_res_blocks && j < mesh->n_res_blocks)
       {
@@ -845,10 +837,12 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
             value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + c * NP + p] - op_vals_arr[i * N_OPS + GRAD_OP + c * NP + p];
 
             // Diffusion flows, use arithmetic mean for compressibility and saturation (mass or energy):
-            //value_t diff_mob_ups_m = dt * mesh->tranD[conn_idx] * phi_avg * (op_vals_arr[i * N_OPS + UPSAT_OP + p] + op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
-            //RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
+            // value_t diff_mob_ups_m = dt * phase_presence_mult * mesh->tranD[conn_idx] * (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+            // mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+            // RHS[i * N_VARS + c] -= diff_mob_ups_m * grad_con; // diffusion term
 
-            value_g_u = grad_con * dt * phi_avg * (op_vals_arr[i * N_OPS + UPSAT_OP + p] + op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+            value_g_u = grad_con * dt * phase_presence_mult * 
+              (mesh->poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] + mesh->poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
             idx = count + c * N_element + temp_num[k_count];
             value_dg_dT[idx] -= value_g_u;
           }

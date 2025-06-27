@@ -1,7 +1,6 @@
----
-title: Troubleshooting
----
-# Compilation
+# Troubleshooting
+
+### Compilation issues
 
 #### cmake
 
@@ -9,28 +8,13 @@ title: Troubleshooting
 
 Solution: run "helper_scripts\\build_darts_cmake" with -r argument.
 
-#### GPU
-
-- CUDA installation
-
-Errors may fixed by manually installing liburcu6
-
-```bash
-wget http://ftp.de.debian.org/debian/pool/main/libu/liburcu/liburcu6_0.12.2-1_amd64.deb   
-sudo dpkg -i liburcu6_0.12.2-1_amd64.deb  
-```
-
-- AMGX compilation
-
-In case you use gcc 11.2 you probably will get a compilation error in std_function.h, use this [solution](https://github.com/NVIDIA/nccl/issues/102#issuecomment-1021420403)
-
-# Wheels generation
+### Wheels generation 
 
 1. If open-darts wheels you generated in the open-darts/dist folder contains `UNKNOWN.0.0.0` in its name, please upgrade setuptools:
 
    `pip install --upgrade setuptools`
 
-# Runtime issues
+### Runtime issues
 
 1. `cannot import darts.engines`
 
@@ -44,8 +28,23 @@ ImportError: DLL load failed while importing engines: The specified module could
 
 Solution: check engines.pyd (engines.so) has been compiled with the same Python version as you use. Check all DLL files are in the PATH (Windows) or in LD_LIBRARY_PATH (Linux).
 
-# **Installation issues**
+### Installation issues
 
 For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python version 3.9 is required. Using a different Python version may result in errors, displaying the following message:
 
 `ERROR: open_darts-1.2.2-cp39-cp39-win_amd64.whl is not a supported wheel on this platform.`
+
+#### GPU related issues
+
+- CUDA installation
+
+Errors may fixed by manually installing liburcu6
+
+```bash
+wget http://ftp.de.debian.org/debian/pool/main/libu/liburcu/liburcu6_0.12.2-1_amd64.deb   
+sudo dpkg -i liburcu6_0.12.2-1_amd64.deb  
+```
+
+- AMGX compilation
+
+In case you use gcc 11.2 you probably will get a compilation error in std_function.h, use this [solution](https://github.com/NVIDIA/nccl/issues/102#issuecomment-1021420403)

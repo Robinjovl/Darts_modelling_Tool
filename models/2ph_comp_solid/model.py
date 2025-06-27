@@ -26,13 +26,12 @@ class Model(CICDModel):
 
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.data_ts.tol_stationary = 1e-5
+        self.data_ts.newton_tol_stationary = 1e-5
 
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        trans_exp = 3
-        perm = 100  # / (1 - solid_init) ** trans_exp
+        perm = 100
         """Reservoir"""
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,
@@ -111,11 +110,11 @@ class Model(CICDModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
                                                is_inj=True, target=0.2, phase_name='gas',
                                                inj_composition=self.inj_composition)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
 
     def print_and_plot(self, filename):

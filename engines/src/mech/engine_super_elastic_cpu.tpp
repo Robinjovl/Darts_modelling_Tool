@@ -55,6 +55,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   discr = nullptr;
 
   init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  this->expose_jacobian();
 
   return 0;
 }
@@ -284,7 +285,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	PV.resize(mesh->n_blocks);
@@ -292,8 +292,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	darcy_fluxes.resize(mesh->n_conns);
 	structural_movement_fluxes.resize(mesh->n_conns);
@@ -656,31 +656,27 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  /*value_t trans_mult = 1;
 		  value_t trans_mult_der_i[N_STATE];
 		  value_t trans_mult_der_j[N_STATE];
-		  if (params->trans_mult_exp > 0 && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
+		  if (params->enable_permporo && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
 		  {
-			  // Calculate transmissibility multiplier:
-			  phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-			  phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+			// Calculate transmissibility multiplier:
+			mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+			mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
-			  // Take average interface porosity:
-			  phi_avg = (phi_i + phi_j) * 0.5;
-			  phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-			  trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-			  for (v = 0; v < N_STATE; v++)
-			  {
-				  trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_STATE + v];
-				  trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_STATE + v];
-			  }
-			  trans_mult = pow(phi_avg, params->trans_mult_exp);
+			// Take average interface porosity:
+			trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
+			for (uint8_t v = 0; v < N_VARS; v++)
+			{
+			  trans_mult_der_i[v] = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+			  trans_mult_der_j[v] = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
+			}
 		  }
 		  else
 		  {
-			  for (v = 0; v < N_STATE; v++)
-			  {
-				  trans_mult_der_i[v] = 0;
-				  trans_mult_der_j[v] = 0;
-			  }
+			for (v = 0; v < N_STATE; v++)
+			{
+				trans_mult_der_i[v] = 0;
+				trans_mult_der_j[v] = 0;
+			}
 		  }*/
 		  nebr_jac_idx = csr_idx_end;
 		  // [1] fluid flux evaluation q = -Kn * \nabla p & biot flux qb = u * n

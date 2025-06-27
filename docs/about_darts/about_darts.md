@@ -1,4 +1,7 @@
-# What is DARTS?
+# What is open-DARTS?
+
+**Open:**
+	open-DARTS is open-source.
 
 **Delft:**
     we belong to Civil Engineering and Geoscience (CEG) Department at Civil Engineering Faculty of TU Delft. The development team directly linked to the new GeoEnergy program which connects Geology, Geophysics and Petroleum Engineering sections of the department.

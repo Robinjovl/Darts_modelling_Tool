@@ -5,12 +5,14 @@ from scipy import interpolate
 from darts.input.input_data import InputData
 from darts.engines import value_vector
 from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
+from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt
 from set_case import set_input_data
 
+
 class ModelDeadOil(Model_CPG):
-    def __init__(self, case='generate', grid_out_dir=None):
+    def __init__(self):
         self.zero = 1e-13
         super().__init__()
 
@@ -27,7 +29,9 @@ class ModelDeadOil(Model_CPG):
             input_distribution = {'pressure': [P_at_surface, P_at_surface + input_depth[1] * 0.1],  # gradient 0.1 bar/m
                                   self.physics.vars[1]: [self.ini[0], self.ini[0]]
                                   }
-            return self.physics.set_initial_conditions_from_depth_table(self.reservoir.mesh,
+            g2l = np.asarray(self.reservoir.discr_mesh.global_to_local)[:self.reservoir.mesh.n_res_blocks]
+            return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
+                                                                        global_to_local=g2l,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         else:
@@ -72,68 +76,6 @@ class ModelDeadOil(Model_CPG):
 
             return self.physics.set_initial_conditions_from_array(self.reservoir.mesh,
                                                                   input_distribution=input_distribution)
-
-    def set_well_controls(self, time: float = 0., verbose=True):
-        '''
-        :param time: simulation time, [days]
-        :return:
-        '''
-        from darts.engines import well_control_iface
-        inj_composition_base = [self.physics.zero * 100]
-        eps_time = 1e-15
-        for w in self.reservoir.wells:
-            # find next well control in controls list for different timesteps
-            wctrl = None
-            for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if np.fabs(wctrl_t[0] - time) < eps_time:  # check time
-                    wctrl = wctrl_t[1]
-                    break
-            if wctrl is None:
-                continue
-            if wctrl.type == 'inj':  # INJ well
-                inj_composition = inj_composition_base
-                inj_temp = wctrl.inj_bht if self.physics.thermal else None
-                if wctrl.mode == 'rate': # rate control
-                    # Control
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                                   is_inj=True, target=wctrl.rate, phase_name=wctrl.phase_name,
-                                                   inj_composition=inj_composition, inj_temp=inj_temp)
-                    # Constraint
-                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=wctrl.bhp_constraint,
-                                                   inj_composition=inj_composition, inj_temp=inj_temp)
-                elif wctrl.mode == 'bhp': # BHP control
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=wctrl.bhp, inj_composition=inj_composition,
-                                                   inj_temp=inj_temp)
-                else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
-                    exit(1)
-            elif wctrl.type == 'prod':  # PROD well
-                if wctrl.mode == 'rate': # rate control
-                    # Control
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
-                                                   is_inj=False, target=-np.abs(wctrl.rate), phase_name=wctrl.phase_name)
-                    # Constraint
-                    self.physics.set_well_controls(well=w, is_control=False, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=wctrl.bhp_constraint)
-                elif wctrl.mode == 'bhp': # BHP control
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=wctrl.bhp)
-                else:
-                    print('Unknown well ctrl.mode', wctrl.mode)
-                    exit(1)
-            else:
-                print('Unknown well ctrl.type', wctrl.type)
-                exit(1)
-            # if verbose:
-            #     print('set_well_controls: time=', time, 'well=', w.name, w.control, w.constraint)
-
-        # check
-        # for w in self.reservoir.wells:
-        #     assert w.control is not None, 'well control is not initialized for the well ' + w.name
-        #     if verbose and w.constraint is not None and 'rate' in str(type(w.control)):
-        #         print('A constraint for the well ' + w.name + ' is not initialized!')
 
     def get_arrays(self):
         '''
@@ -189,29 +131,29 @@ class ModelDeadOil(Model_CPG):
         wdata = self.idata.well_data
         wells = wdata.wells  # short name
         # set default injection composition
-        wdata.inj = value_vector([self.zero])  # injection composition - water
+        inj_comp = value_vector([self.zero * 100])  # injection composition - water
 
         if 'wbhp' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='water', temperature=300)  # kmol/day | bars | K
+                    wdata.add_inj_bhp_control(name=w, bhp=250, phase_name='water', inj_composition=inj_comp, temperature=300)  # kmol/day | bars | K
                 else:  # prod
                     wdata.add_prd_bhp_control(name=w, bhp=100)  # kmol/day | bars
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(name=w, rate=1e6, phase_name='water', bhp_constraint=250)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=250)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(name=w, rate=1e6, phase_name='oil', bhp_constraint=100)  # kmol/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=100)  # kmol/day | bars
         elif 'wperiodic' in case:
             y2d = 365.25
             for w in wells:
                 if self.well_is_inj(w): # inject water
-                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, phase_name='water', bhp_constraint=300)  # kmol/day | bars | K
-                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, phase_name='water', bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
+                    wdata.add_inj_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='water', inj_composition=inj_comp, bhp_constraint=300)  # kmol/day | bars | K
                 else:  # prod
-                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
-                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
+                    wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
 
         self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13

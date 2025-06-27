@@ -1,3 +1,5 @@
+# F.A.Q.
+
 1. How to disable the gravity?  Call the `init_grav_coef` with an argument equal to 0 after the Model.init() call: `self.reservoir.mesh.init_grav_coef(0)`
 2. What is the variable order in a **state** vector?
 

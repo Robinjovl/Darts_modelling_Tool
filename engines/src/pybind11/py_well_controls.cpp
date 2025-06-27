@@ -93,7 +93,8 @@ void pybind_well_controls(py::module &m)
     .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
     .def("set_bhp_control", &well_control_iface::set_bhp_control)
     .def("set_rate_control", &well_control_iface::set_rate_control)
-    .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str);
+    .def("get_well_control_type_str", &well_control_iface::get_well_control_type_str)
+    .def("get_well_control_type", &well_control_iface::get_well_control_type);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

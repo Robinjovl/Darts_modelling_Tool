@@ -130,10 +130,10 @@ class Model(CICDModel, OptModuleSettings):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=140., inj_composition=self.inj_composition)
             else:
-                self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=50.)
 
     def set_op_list(self):
@@ -194,16 +194,16 @@ class Model(CICDModel, OptModuleSettings):
             from darts.engines import well_control_iface
             for i, w in enumerate(self.reservoir.wells):
                 if "I1" in w.name:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.MOLAR_RATE,
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
                                                    is_inj=True, target=40., phase_name='gas', inj_composition=self.inj_composition)
                 elif "I" in w.name:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=140., inj_composition=self.inj_composition)
                 else:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
+                    self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=50.)
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            CICDModel.run(self, ts, save_well_data=False, save_reservoir_data=False, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 self.export_vtk(file_name)

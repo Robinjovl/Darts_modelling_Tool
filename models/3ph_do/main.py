@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
@@ -51,6 +52,7 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.set_output()
 
     if True:
         n.run(1000)
@@ -58,13 +60,22 @@ if __name__ == '__main__':
         # n.run(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
+
+        # compute well time data
+        time_data_dict = n.output.store_well_time_data()
+
+        # save well time data
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1')
         writer.close()
+
+        # td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])
+        # td.plot(x='time', y=['well_P1_mass_rate_g_at_wh', 'well_P1_mass_rate_o_at_wh', 'well_P1_mass_rate_w_at_wh'])
+        # td.plot(x='time', y=['well_P1_volumetric_rate_gas_at_wh', 'well_P1_volumetric_rate_oil_at_wh', 'well_P1_volumetric_rate_wat_at_wh'])
+        # plt.show()
+
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')

@@ -13,7 +13,7 @@ def set_input_data(idata: InputData, case: str):
         input_data_case_51x51x1(idata, case)
     elif 'generate_100x100x100' in case:
         input_data_case_100x100x100(idata, case)
-    elif 'generate_40x40x100' in case:
+    elif '40x40x10' in case:
         input_data_case_40x40x10(idata, case)
     else:
         input_data_base(idata, case)

@@ -30,8 +30,9 @@ class THMCModel(DartsModel):
         self.set_reservoir()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
-        if self.idata.type_mech == 'thermoporoelasticity':
-            self.reservoir.T_VAR = self.physics.engine.T_VAR
+        if hasattr(self, 'idata'):
+            if self.idata.type_mech == 'thermoporoelasticity':
+                self.reservoir.T_VAR = self.physics.engine.T_VAR
         self.set_solver_params()
         self.timer.node["initialization"].stop()
 
@@ -41,6 +42,10 @@ class THMCModel(DartsModel):
         self.reservoir.eps_vol_ref = np.array(self.reservoir.mesh.ref_eps_vol, copy=False)
         self.reservoir.eps_vol_ref[:] = self.physics.engine.eps_vol[:]
         self.physics.engine.t = 0.0
+
+        if self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.contact_solver = contact_solver.RETURN_MAPPING  # local_iterations # flux_from_previous_iteration # return_mapping
+            self.setup_contact_friction(contact_algorithm=self.physics.engine.contact_solver)
 
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(timer=timer, discretizer=discretizer,
@@ -147,6 +152,17 @@ class THMCModel(DartsModel):
         if self.discretizer_name == 'mech_discretizer':
             self.physics.engine.set_discretizer(self.reservoir.discr)
             self.physics.engine.gravity = self.reservoir.discr.grav_vec.values
+        elif self.discretizer_name == 'pm_discretizer' and hasattr(self.reservoir, 'contacts'):
+            for contact in self.reservoir.contacts:
+                contact.N_VARS = self.physics.engine.N_VARS
+                contact.U_VAR = self.physics.engine.U_VAR
+                contact.P_VAR = self.physics.engine.P_VAR
+                contact.NT = self.physics.engine.N_VARS
+                contact.U_VAR_T = self.physics.engine.U_VAR
+                contact.P_VAR_T = self.physics.engine.P_VAR
+                contact.init_friction(self.reservoir.pm, self.reservoir.mesh)
+                contact.init_fault()
+            self.physics.engine.contacts = self.reservoir.contacts
 
     def set_wells(self):
         pass
@@ -189,6 +205,9 @@ class THMCModel(DartsModel):
 
     def set_op_list(self):
         self.op_list = [self.physics.acc_flux_itor[0], self.physics.acc_flux_w_itor]
+
+    def set_contact_friction(self, contact_algorithm: contact_solver):
+        pass
 
     def get_performance_data(self, is_last_ts: bool = False):
         """

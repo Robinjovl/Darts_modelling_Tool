@@ -70,6 +70,7 @@ def prepare_synthetic_observation_data():
         true_model = Model(T, report_step=report_step, perm=perm, poro=poro,
                            customize_new_operator=customize_new_operator)
         true_model.init()
+        true_model.set_output()
         true_model.run(export_to_vtk=False)
         true_model.print_timers()
         true_model.print_stat()
@@ -154,6 +155,7 @@ def process_adjoint(history_matching=False):
 
 
     proxy_model.init()
+    proxy_model.set_output(output_folder= 'jaja', save_initial = False)
 
 
     scale_function_value = 1e-5
@@ -476,7 +478,7 @@ def process_adjoint(history_matching=False):
                     proxy_model.set_op_list()
                     proxy_model.reset()
 
-                    proxy_model.run()
+                    proxy_model.run(save_reservoir_data=False, save_well_data=False)
                     response_optimized = proxy_model.physics.engine.time_data_report
                     opt_df_report_pred = pd.DataFrame.from_dict(response_optimized)
                     opt_df_report_pred.to_pickle('time_data_report_opt_%s.pkl' % job_id)

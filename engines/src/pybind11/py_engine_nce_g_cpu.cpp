@@ -24,7 +24,13 @@ struct engine_nce_g_exposer
     py::class_<engine_nce_g_gpu<NC, NP>, engine_base>(m, ("engine_nce_g_gpu" + std::to_string(NC) + "_" + std::to_string(NP)).c_str(),
                                                       ("Thermal enthalpy-based GPU simulator engine class for " + std::to_string(NC) + " components " + std::to_string(NP) + " phases with gravity").c_str())
         .def(py::init<>())
-        .def("init", (int (engine_nce_g_gpu<NC, NP>::*)(conn_mesh *, std::vector<ms_well *> &, std::vector<operator_set_gradient_evaluator_iface *> &, sim_params *, timer_node *)) & engine_nce_g_gpu<NC, NP>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>());
+        .def("init", (int (engine_nce_g_gpu<NC, NP>::*)(conn_mesh *, std::vector<ms_well *> &, std::vector<operator_set_gradient_evaluator_iface *> &, sim_params *, timer_node *)) & engine_nce_g_gpu<NC, NP>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 5>())
+        .def("get_X_d", [](const engine_nce_g_gpu<NC, NP>& self) -> py::capsule {
+            return py::capsule(self.X_d, "double_ptr");
+        }) \
+        .def("get_RHS_d", [](const engine_nce_g_gpu<NC, NP>& self) -> py::capsule {
+            return py::capsule(self.RHS_d, "double_ptr");
+        });
 #endif
   }
 };

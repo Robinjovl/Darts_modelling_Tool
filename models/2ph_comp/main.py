@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import sys
+import sys, os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 from darts.engines.logging import duplicate_output_to_file
@@ -53,6 +53,8 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    n.set_output()
+
 
     if True:
         n.run(1000)
@@ -60,18 +62,23 @@ if __name__ == '__main__':
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
         n.print_stat()
-        time_data = pd.DataFrame.from_dict(n.physics.engine.time_data)
-        time_data.to_pickle("darts_time_data.pkl")
-        # n.save_restart_data()
-        n.save_data_to_h5('solution')
-        writer = pd.ExcelWriter('time_data.xlsx')
-        time_data.to_excel(writer, sheet_name='Sheet1')
+
+        # compute well time data
+        time_data_dict = n.output.store_well_time_data(save_output_files=True)
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+
+        n.output.plot_well_time_data(types_of_well_rates=["phases_volumetric_rates"])
+
+        # save well time data
+        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1', index=False)
         writer.close()
+
     else:
         # n.load_restart_data()
         n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
-
 
     if True:
         Xn = np.array(n.physics.engine.X, copy=False)
@@ -86,8 +93,6 @@ if __name__ == '__main__':
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
-
-    print('END')
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
@@ -121,26 +126,3 @@ if __name__ == '__main__':
 # plt.subplot(224)
 # plt.plot(T)
 # plt.title('Gas saturation', y=1)
-
-
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
-# from darts.tools.plot_darts import *
-# writer = pd.ExcelWriter('time_data.xlsx')
-# plot_phase_rate_darts('I1', time_data1, 'wat')
-#
-#
-# plt.show()
-
-# from darts.tools.plot_darts import *
-# time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
-# for i, w in enumerate(n.reservoir.wells):
-#     # plot oil rate
-#     ax1 = plot_oil_rate_darts(w.name, time_data1, color='b')
-#     ax1.tick_params(labelsize=14)
-#     ax1.set_xlabel('Days', fontsize=14)
-#
-#     ax3 = plot_gas_rate_darts(w.name, time_data1, color='b')
-#     ax3.tick_params(labelsize=14)
-#     ax3.set_xlabel('Days', fontsize=14)
-#
-# plt.show()
