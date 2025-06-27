@@ -7,8 +7,8 @@ from darts.physics.super.property_container import PropertyContainer
 class OperatorsSuper(OperatorsBase):
     property: PropertyContainer
 
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(self, property_container: PropertyContainer, thermal: bool, extrapolation_flag: bool = True):
+        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)  # Initialize base-class
 
         self.min_z = property_container.min_z
         self.nc_fl = property_container.nc_fl
@@ -187,8 +187,8 @@ class ReservoirOperators(OperatorsSuper):
 
 
 class GeomechanicsReservoirOperators(ReservoirOperators):
-    def __init__(self, property_container: PropertyContainer, thermal: bool):
-        super().__init__(property_container, thermal)  # Initialize base-class
+    def __init__(self, property_container: PropertyContainer, thermal: bool, extrapolation_flag: bool = True):
+        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)  # Initialize base-class
 
         self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
         self.n_ops = self.ROCK_DENS_OP + 1
