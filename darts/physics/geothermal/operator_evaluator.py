@@ -3,18 +3,14 @@ from darts.physics.base.operators_base import OperatorsBase
 
 
 class OperatorsGeothermal(OperatorsBase):
-    def __init__(self, property_container, thermal: bool = True, extrapolation_flag: bool = True):
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)
+    def __init__(self, property_container, thermal: bool = True):
+        super().__init__(property_container, thermal, extrapolation_flag=False)
 
 
 class acc_flux_custom_iapws_evaluator_python(OperatorsGeothermal):
     n_ops = 6
 
     def evaluate(self, state, values):
-        # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
-            return 0
-
         # State and Values vectors to numpy:
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
@@ -48,10 +44,6 @@ class acc_flux_custom_iapws_evaluator_python_well(OperatorsGeothermal):
     n_ops = 6
 
     def evaluate(self, state, values):
-        # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
-            return 0
-
         # State and Values vectors to numpy:
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
@@ -85,10 +77,6 @@ class acc_flux_gravity_evaluator_python(OperatorsGeothermal):
     n_ops = 10
 
     def evaluate(self, state, values):
-        # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
-            return 0
-
         # State and Values vectors to numpy:
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
@@ -128,10 +116,6 @@ class acc_flux_gravity_evaluator_python_well(OperatorsGeothermal):
     n_ops = 10
 
     def evaluate(self, state, values):
-        # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
-            return 0
-        
         # State and Values vectors to numpy:
         vec_state_as_np = state.to_numpy()
         vec_values_as_np = values.to_numpy()
