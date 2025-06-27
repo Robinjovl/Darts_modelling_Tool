@@ -6,7 +6,7 @@ from darts.physics.base.property_base import PropertyBase
 class OperatorsBase(operator_set_evaluator_iface):
     n_ops: int
 
-    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True):
+    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True, dz: float = None):
         super().__init__()
 
         self.property = property_container
@@ -18,12 +18,14 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nph = property_container.nph
 
         self.extrapolation_flag = extrapolation_flag
+        self.dz = dz
+        assert not extrapolation_flag or dz is not None, "Please provide dz for extrapolation"
 
     def apply_extrapolation(self, state, values):
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1:self.nc], 1 - np.sum(state[1:self.nc]))
 
-        if zc[-1] < -1e-12 / 10 and self.extrapolation_flag:
+        if zc[-1] < -self.dz / 10 and self.extrapolation_flag:
             self.extrapolate(state, values)
             return 1
         else:
@@ -37,6 +39,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         State layout: [ p, z₁, …, z_d, (T) ]
         """
         # Unpack state
+        # print("state", state)
         vec = state.to_numpy()
         if self.thermal:
             p, T = vec[0], vec[-1]
@@ -46,21 +49,21 @@ class OperatorsBase(operator_set_evaluator_iface):
             z = vec[1:].copy()
 
         d = z.size
-        dz = abs(1.0 - z.sum())
+        # dz = abs(1.0 - z.sum())
 
         # Build candidate points by subtracting dz along each axis and uniformly
         candidates = []
         for i in range(d):
             zp = z.copy()
-            zp[i] -= dz
+            zp[i] -= self.dz
             candidates.append(zp)
-        candidates.append(z - dz)
+        candidates.append(z - self.dz)
 
         # Gather valid reference points
         zps_list = []
         vals_list = []
         for zp in candidates:
-            if (zp >= 0).all() and zp.sum() <= 1.0:
+            if 1: #(zp >= -1e-15).all() and zp.sum() <= 1.0+1e-15:
                 if self.thermal:
                     ref_state = value_vector(np.concatenate(([p], zp, [T])))
                 else:
@@ -88,6 +91,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         # Write back into values array
         out = np.array(values, copy=False)
         out[:self.n_ops] = ext
+        # print("success")
         return out
 
 
@@ -97,8 +101,8 @@ class WellControlOperators(OperatorsBase):
     plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
     heat rate controls
     """
-    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True):
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)
+    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True, dz: float = None):
+        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
 
         self.n_ops = 2 + self.nph * 4
 
@@ -144,8 +148,9 @@ class WellControlOperators(OperatorsBase):
 
 
 class WellInitOperators(OperatorsBase):
-    def __init__(self, property_container: PropertyBase, thermal: bool, is_pt: bool = True, extrapolation_flag: bool = True):
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)
+    def __init__(self, property_container: PropertyBase, thermal: bool, is_pt: bool = True,
+                 extrapolation_flag: bool = True, dz: float = None):
+        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
 
         self.n_ops = 1
         self.is_pt = is_pt
@@ -172,7 +177,8 @@ class PropertyOperators(OperatorsBase):
     This class contains a set of operators for evaluation of output properties.
     A set of interpolators is created in the :class:`Physics` object to rapidly obtain properties after simulation.
     """
-    def __init__(self, property_container: PropertyBase, thermal: bool, props: dict = None, extrapolation_flag: bool = True):
+    def __init__(self, property_container: PropertyBase, thermal: bool, props: dict = None,
+                 extrapolation_flag: bool = True, dz: float = None):
         """
         This is the constructor for PropertyOperator.
         The properties to be obtained from the PropertyOperators are passed to PropertyContainer as a dictionary.
@@ -181,7 +187,7 @@ class PropertyOperators(OperatorsBase):
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
         """
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag)
+        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
 
         self.props = property_container.output_props if props is None else props
         self.props_name = [key for key in self.props.keys()]

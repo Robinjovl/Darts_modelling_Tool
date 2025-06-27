@@ -22,7 +22,7 @@ class Compositional(PhysicsBase):
     def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
                  min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
                  state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
-                 cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None):
+                 cache: bool = False, axes_min = None, axes_max = None, n_axes_points = None, extrapolation_flag: bool = True):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -90,6 +90,9 @@ class Compositional(PhysicsBase):
         else:
             n_axes_points = index_vector(n_axes_points)
 
+        self.extrapolation_flag = extrapolation_flag
+        self.dz = (axes_max[1] - axes_min[1]) / (n_axes_points[1]-1) if nc > 1 else None
+
         # Call PhysicsBase constructor
         super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
@@ -121,17 +124,23 @@ class Compositional(PhysicsBase):
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
-            self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
-            self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
+            self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal,
+                                                                  extrapolation_flag=self.extrapolation_flag, dz=self.dz)
+            self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal,
+                                                                extrapolation_flag=self.extrapolation_flag, dz=self.dz)
 
         if self.thermal:
-            self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                     extrapolation_flag=self.extrapolation_flag, dz=self.dz)
         else:
-            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                extrapolation_flag=self.extrapolation_flag, dz=self.dz)
 
-        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
+        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal,
+                                                        extrapolation_flag=self.extrapolation_flag, dz=self.dz)
         self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
-                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
+                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+                                                     extrapolation_flag=self.extrapolation_flag, dz=self.dz)
 
         return
 
