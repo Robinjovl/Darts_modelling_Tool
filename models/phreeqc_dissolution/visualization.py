@@ -637,7 +637,7 @@ def animate_2x3_profiles_from_sources(
     print("Animation written to", out_mp4)
     return out_mp4
 
-def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_saturation=False):
+def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, n_cols=4, plot_saturation=False):
     """
     Read all .h5 files in `folder_name` and plot profiles analogous to `plot_profiles` for selected timesteps.
 
@@ -658,10 +658,10 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
         If True, plot gas saturation on a twin axis of porosity plot.
     """
 
-    # Grid: 2 rows × 4 columns
+    # Grid: 2 rows × n_cols columns
     fig = plt.figure(figsize=(18, 7))
-    n_cols = 4
-    gs = fig.add_gridspec(2, n_cols, width_ratios=[1, 1, 1, 1], height_ratios=[1, 1],
+    w_ratios = n_cols * [1]
+    gs = fig.add_gridspec(2, n_cols, width_ratios=w_ratios, height_ratios=[1, 1],
                           wspace=0.3, hspace=0.15)
     # First column: pressure, spanning both rows
     if plot_saturation:
@@ -676,6 +676,11 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
     ax_ca = fig.add_subplot(gs[1, 1], sharex=ax_p)
     ax_c = fig.add_subplot(gs[1, 2], sharex=ax_p)
     ax_poro = fig.add_subplot(gs[1, 3], sharex=ax_p)
+    if n_cols > 4:
+        ax_dol = fig.add_subplot(gs[0, 4], sharex=ax_p)
+        ax_mg = fig.add_subplot(gs[1, 4], sharex=ax_p)
+    if n_cols > 5:
+        ax_mag = fig.add_subplot(gs[0, 5], sharex=ax_p)
 
     linestyles = ['-', '--', ':', '-.']
     for h5_path in h5_paths:
@@ -709,13 +714,23 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
             if plot_saturation:
                 ax_satv.plot(x, props[ti, :, np.where(prop_names == 'satV')[0][0]], linestyle=ls, color='b', label='vapour saturation')
 
+            if n_cols > 4:
+                ax_dol.plot(x, vars[ti, :, np.where(var_names == 'Solid_CaMg(CO3)2')[0][0]], linestyle=ls, color=color, label='CaMg(CO3)2(s)')
+                ax_mg.plot(x, vars[ti, :, np.where(var_names == 'Mg')[0][0]], linestyle=ls, color=color, label='Mg')
+            if n_cols > 5:
+                ax_mag.plot(x, vars[ti, :, np.where(var_names == 'Solid_MgCO3')[0][0]], linestyle=ls, color=color, label='MgCO3(s)')
+
     ax_ca.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax_o.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax_h.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax_c.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+    if n_cols > 4:
+        ax_mg.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
 
     # hide x-axes for top line of subfigures
     x_axis_to_hide = [ax_o, ax_h, ax_caco3]
+    if n_cols > 4: x_axis_to_hide.append(ax_dol)
+    if n_cols > 5: x_axis_to_hide.append(ax_mag)
     if plot_saturation:
         x_axis_to_hide.append(ax_p)
     for top_ax in x_axis_to_hide:
@@ -732,6 +747,7 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
         ax_satv.set_ylabel('vapour saturation', fontsize=fs)
     else:
         ax_p.set_xlabel('distance, mm', fontsize=fs)
+
     ax_p.set_ylabel(r'pressure, bar', fontsize=fs)
     ax_o.set_ylabel(r'zO', fontsize=fs)
     ax_h.set_ylabel(r'zH', fontsize=fs)
@@ -739,6 +755,12 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
     ax_ca.set_ylabel(r'zCa', fontsize=fs)
     ax_c.set_ylabel(r'zC', fontsize=fs)
     ax_poro.set_ylabel(r'porosity', fontsize=fs)
+    if n_cols > 4:
+        ax_mg.set_xlabel('distance, mm', fontsize=fs)
+        ax_mg.set_ylabel('zMg', fontsize=fs)
+        ax_dol.set_ylabel('zCaMg(CO3)2(s)', fontsize=fs)
+    if n_cols > 5:
+        ax_mag.set_ylabel('zMgCO3(s)', fontsize=fs)
 
     # custom legend for time mapping on ax[1]
     legend_font_size = 16
@@ -755,8 +777,8 @@ def plot_unknowns_from_h5(h5_paths, time_indices, output_folder, fname, plot_sat
     fig.savefig(outname, dpi=300)
     plt.close(fig)
 
-def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_to_plot, nrows=2, ncols=4):
-    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, figsize=(18, 8))
+def plot_properties_from_h5(h5_paths, time_indices, output_folder, fname, props_to_plot, nrows=2, ncols=4, nx_fig=18):
+    fig, ax = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, figsize=(nx_fig, 8))
 
     linestyles = ['-', '--', ':', '-.']
 

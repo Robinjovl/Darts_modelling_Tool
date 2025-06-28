@@ -50,10 +50,15 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             else: m.output.output_to_vtk(ith_step=ith_step)
 
     # intialization without injection
+    if minerals == ['calcite']:
+        init_days = 0.1
+    else:# minerals == ['calcite', 'dolomite']:
+        init_days = 20.0
+
     rate = m.inj_rate
     m.inj_rate = 0.0
-    m.data_ts.dt_max = 1
-    m.run(days=0.1, save_reservoir_data=False, save_well_data=False)
+    m.data_ts.dt_max = 0.05
+    m.run(days=init_days, save_reservoir_data=False, save_well_data=False)
 
     # injection
     m.inj_rate = rate
@@ -61,7 +66,8 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     ith_step = 0
     m.data_ts.dt_max = max_ts
     if domain == '1D':
-        m.data_ts.dt_first = 1.e-5
+        m.data_ts.dt_first = 1.e-6
+        m.data_ts.dt_mult = 1.5
         fig_paths = []
         fig_paths.append(plot(m))
         m.run(days=0.002, restart_dt=max_ts, save_reservoir_data=False, save_well_data=False)
