@@ -212,9 +212,9 @@ public:
   * Multi-point stuff
   */
   /// Number of unknowns per block
-  uint8_t n_vars;
+  uint8_t n_vars = 0;
   /// Number of spatial dimensions
-  uint8_t n_dim;
+  uint8_t n_dim = 0;
   /// array of indices of blocks are neccessary for each connection
   std::vector<index_t> stencil;
   /// [n_conns + 1] array of offsets of the first block of connection in 'stencil'

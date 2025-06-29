@@ -119,6 +119,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
+    accepted_dirs += ['CCS']
+    if iter_solvers:  # run this case only for the build with iterative solvers
+        accepted_dirs += [ 'SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
@@ -210,7 +213,12 @@ def check_performance(mod):
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         platform='gpu'
 
+        if os.getenv('GPU_DEVICE') != None:
+            from darts.engines import set_gpu_device
+            set_gpu_device(int(os.getenv('GPU_DEVICE')))
+
     m.init(platform=platform)
+    
     m.set_output()
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()

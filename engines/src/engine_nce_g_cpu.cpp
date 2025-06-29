@@ -107,8 +107,8 @@ int engine_nce_g_cpu<NC, NP>::assemble_jacobian_array(value_t dt, std::vector<va
         numa_set(Jac, 0, rows[start] * N_VARS_SQ, rows[end] * N_VARS_SQ);
 
 		// fluxes for output
-		value_t *cur_darcy_fluxes;
-		value_t *cur_heat_darcy_advection_fluxes, *cur_fourier_fluxes;
+		value_t *cur_darcy_fluxes = 0;
+		value_t *cur_heat_darcy_advection_fluxes = 0, *cur_fourier_fluxes = 0;
 
         for (index_t i = start; i < end; i++)
         {

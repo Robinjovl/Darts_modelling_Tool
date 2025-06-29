@@ -2,8 +2,10 @@ import numpy as np
 import os
 import meshio
 import xml.dom.minidom
+from scipy.linalg import null_space
 
 from darts.engines import conn_mesh, index_vector, value_vector
+from darts.engines import value_vector as engine_value_vector
 from darts.engines import contact, contact_vector, vector_matrix
 from darts.engines import ms_well, ms_well_vector
 from darts.engines import matrix33 as engine_matrix33
@@ -32,13 +34,28 @@ class bound_cond:
         self.FLOW = lambda flow: {'a': 0.0, 'b': 1.0, 'r': flow} #TODO normed to area ? units?
 
         # mechanics
+        # for mechanical boundary conditions, Dirichlet means setting displacements [m.] and Neumann means setting load [bars]
+        # roller allows sliding along the boundary, but not moving away from it, so normal displacement is zero and shear stress is zero
+        #  1*displ_n + 0*stress_n = 0, 'n' means normal to the boundary face
+        #  0*displ_t + 1*stress_t = 0, 't' means parallel to the boundary face
         self.ROLLER = {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         self.FREE = {'an': 0.0, 'bn': 1.0, 'rn': 0.0, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0, 0, 0])}
         self.STUCK = lambda un, ut: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
-        # Fn, Ft are normal and tangential load [UNIT?]
+        # Fn, Ft are normal and tangential load
         self.LOAD = lambda Fn, Ft: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 0.0, 'bt': 1.0, 'rt': np.array(Ft)}
         # the same as ROLLER except rn is non-zero
         self.STUCK_ROLLER = lambda un: {'an': 1.0, 'bn': 0.0, 'rn': un, 'at': 0.0, 'bt': 1.0, 'rt': np.array([0.0, 0.0, 0.0])}
+        # doesn allow shearing, but allows normal displacement and apply load in the normal direction 
+        self.STUCK_T_LOAD_N = lambda Fn, ut: {'an': 0.0, 'bn': 1.0, 'rn': Fn, 'at': 1.0, 'bt': 0.0, 'rt': np.array(ut)}
+        # | TYPE             |  a_n  |  b_n  |   r_n   |  a_t  |  b_t  |    r_t     |  comments          |
+        #-------------------------------------------------------------------------------------------------
+        # | ROLLER           |  1.0   |  0.0  |   0.0   |  0.0  |  1.0  |   [0,0,0] | un = 0, st = 0
+        # | STUCK_ROLLER     |  1.0   |  0.0  |   un    |  0.0  |  1.0  |   [0,0,0] | un = Un, st = 0
+        # | STUCK            |  1.0   |  0.0  |   un    |  1.0  |  0.0  |   ut      | un = Un, ut = Ut
+        # | FREE             |  0.0   |  1.0  |   0.0   |  0.0  |  1.0  |   [0,0,0] | sn = 0, st = 0
+        # | LOAD             |  0.0   |  1.0  |   Fn    |  0.0  |  1.0  |   Ft      | sn = Fn, st = Ft
+        # | STUCK_T_LOAD_N   |  0.0   |  1.0  |   Fn    |  1.0  |  0.0  |   ut      | sn = Fn, ut = Ut
+
 
 def set_domain_tags(matrix_tags,
                     bnd_xm_tag=None, bnd_xp_tag=None,
@@ -302,6 +319,7 @@ class UnstructReservoirMech():
                           self.unstr_discr.bound_faces_tot,
                           self.unstr_discr.frac_cells_tot)
         self.unstr_discr.store_volume_all_cells()
+        self.unstr_discr.store_depth_all_cells()
         self.n_fracs = self.unstr_discr.frac_cells_tot
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_bounds = self.unstr_discr.bound_faces_tot
@@ -365,6 +383,8 @@ class UnstructReservoirMech():
             hcap[:] = self.hcap
         self.rock_compressibility[:] = self.cs
 
+        frac_apers = self.get_frac_apers(idata)
+
         if self.discretizer_name == 'mech_discretizer':
             volumes = np.array(self.discr_mesh.volumes, copy=False)
             self.volume[:self.n_matrix] = volumes[:self.n_matrix]  #TODO init frac volumes
@@ -376,11 +396,14 @@ class UnstructReservoirMech():
                 self.th_expn_poro_arr[:] = idata.rock.th_expn_poro
         elif self.discretizer_name == 'pm_discretizer':
             self.volume[:self.unstr_discr.mat_cells_tot] = self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot:]
-            for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
-                self.volume[i] = self.unstr_discr.faces[i][4].area * self.frac_apers[i-self.unstr_discr.mat_cells_tot]
-            self.bc_prev[:] = self.bc_rhs_prev
-            self.bc[:] = self.bc_rhs
-            self.bc_ref[:] = self.bc_rhs_ref
+            if frac_apers is not None: # set volume for fractures
+                for i in range(self.unstr_discr.mat_cells_tot, self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
+                    self.volume[i] = self.unstr_discr.faces[i][4].area * frac_apers[i - self.unstr_discr.mat_cells_tot]
+            # exclude fractures
+            self.bc_prev[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_prev
+            self.bc[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs
+            self.bc_ref[:4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_ref
+            
             self.p_ref[:] = self.unstr_discr.p_ref
             self.f[:] = self.unstr_discr.f
 
@@ -500,7 +523,7 @@ class UnstructReservoirMech():
                 self.cpp_heat.b = value_vector(bt)
         elif self.discretizer_name == 'pm_discretizer':
             self.ref_contact_cells = np.zeros(self.n_fracs, dtype=np.intc)
-            self.unstr_discr.p_ref = np.zeros(self.n_matrix)
+            self.unstr_discr.p_ref = np.zeros(self.n_matrix + self.n_fracs)
             self.unstr_discr.p_ref[:] = self.p_init
             for bound_id in range(len(self.unstr_discr.bound_face_info_dict)):
                 n = self.get_normal_to_bound_face(bound_id)
@@ -524,6 +547,15 @@ class UnstructReservoirMech():
             # self.bc_rhs_prev = np.copy(self.bc_rhs)
             self.pm.bc_prev = self.pm.bc
             self.unstr_discr.f = np.zeros(4 * (self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot))
+
+    def init_bc_fractures(self):
+        assert self.discretizer_name == 'pm_discretizer'
+        for bound_id in range(len(self.unstr_discr.bound_face_info_dict), \
+                              self.unstr_discr.bound_faces_tot + self.unstr_discr.frac_bound_faces_tot):
+            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id]['mech']
+            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id]['flow']
+            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            self.pm.bc.append(matrix(bc, len(bc), 1))
 
     def set_boundary_conditions_pm_discretizer(self):
         if self.discretizer_name == 'pm_discretizer':
@@ -1183,3 +1215,233 @@ class UnstructReservoirMech():
             root = self.faultpvd_root
             root.appendChild(self.faultpvd_collection)
             self.faultpvd_doc.writexml(open(str(output_directory) + '/solution_fault.pvd', 'w'), indent="  ", addindent="  ", newl='\n')
+
+    def get_normal_to_bound_face(self, b_id):
+        cell = self.unstr_discr.bound_face_info_dict[b_id]
+        cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
+        cell_id = next(iter(set(cells[0]).intersection(*cells)))
+        for face in self.unstr_discr.faces[cell_id].values():
+            if face.cell_id1 == face.cell_id2 and face.face_id2 == b_id:
+                t_face = cell.centroid - self.unstr_discr.mat_cell_info_dict[cell_id].centroid
+                n = face.n
+                if np.inner(t_face, n) < 0: n = -n
+                return n
+    def get_parametrized_fault_props(self):
+        ref_id = next(iter(self.unstr_discr.frac_cell_info_dict))
+        tags = np.array([cell.prop_id for cell in self.unstr_discr.frac_cell_info_dict.values()])
+        tag_ids = {}
+        t0 = {}
+        coords = {}
+        z_coords = {}
+        for tag in self.unstr_discr.physical_tags['fracture']:
+            ids = np.argwhere(tags == tag)[:,0]
+            tag_ids[tag] = ref_id + ids
+            n0 = self.unstr_discr.faces[ref_id + ids[0]][4].n[:2]
+            t0[tag] = np.identity(2) - np.outer(n0, n0)
+            coords[tag] = np.array([self.unstr_discr.frac_cell_info_dict[i].centroid for i in tag_ids[tag]])
+            z_coords[tag] = np.unique(coords[tag][:,2])
+        def dist_sort_key(id):
+            c_ref = self.unstr_discr.frac_cell_info_dict[list(self.unstr_discr.frac_cell_info_dict.keys())[0]].centroid
+            c = self.unstr_discr.frac_cell_info_dict[id].centroid
+            return (c[0] - c_ref[0]) ** 2 + (c[1] - c_ref[1]) ** 2
+        def eval_frac_proj(tag, coords):
+            c_ref = self.unstr_discr.frac_cell_info_dict[list(self.unstr_discr.frac_cell_info_dict.keys())[0]].centroid
+            coords1 = np.copy(coords)
+            coords1[0] -= c_ref[0]
+            coords1[1] -= c_ref[1]
+            return np.linalg.norm(t0[tag].dot(coords1), axis=0)
+
+        output_layers = 1
+        output_var_num = {tag: int(output_layers * inds.size / z_coords[tag].size) for tag, inds in tag_ids.items()}
+        faults_num = len(self.unstr_discr.physical_tags['fracture'])
+
+        s = {tag: np.zeros(num) for tag, num in output_var_num.items()}
+        #gap = np.zeros( (output_var_num, 3) )
+        #Ftan = np.zeros( (output_var_num, 3) )
+        #Fnorm = np.zeros( output_var_num )
+        inds = {tag: np.zeros((output_layers, num), dtype=np.int64) for tag, num in output_var_num.items()}
+        s_ref_prev = 0
+        for tag, ids in tag_ids.items():
+            counter = 0
+            for l, z in enumerate(z_coords[tag][:output_layers]):
+                z_inds = list(ids[np.argwhere( np.logical_and(coords[tag][:,2] > z-1.E-5, coords[tag][:,2] < z+1.E-5) )[:,0]])
+                z_inds.sort(key=dist_sort_key)
+                pts = self.unstr_discr.frac_cell_info_dict[z_inds[0]].coord_nodes_to_cell
+                s_ref = np.min(eval_frac_proj(tag, pts[:,:2].T))
+                inds[tag][l] = np.array(z_inds) - ref_id
+                for id in z_inds:
+                    c = self.unstr_discr.frac_cell_info_dict[id].centroid[:2]
+                    s[tag][counter] = eval_frac_proj(tag, c) - s_ref + s_ref_prev
+                    #gap[counter] = g[id - ref_id]
+                    #Ftan[counter] = Ft[id - ref_id]
+                    #Fnorm[counter] = Fn[id - ref_id]
+                    counter += 1
+                pts = self.unstr_discr.frac_cell_info_dict[z_inds[-1]].coord_nodes_to_cell
+                s_ref_prev += np.max(eval_frac_proj(tag, pts[:,:2].T)) - s_ref
+        z_output = {tag: z[:output_layers] for tag, z in z_coords.items()}
+        return s, z_output, inds#gap, Ftan, Fnorm
+    def write_fault_props(self, output_directory, property_array, ith_step, engine):
+        n_vars = 4
+        n_dim = 3
+        fluxes = np.array(engine.fluxes, copy=False)
+        fluxes_biot = np.array(engine.fluxes_biot, copy=False)
+        s, z_coords, inds = self.get_parametrized_fault_props()
+        x = property_array.reshape(int(property_array.size / n_vars), n_vars)[self.unstr_discr.mat_cells_tot:self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot]
+        g = {}
+        glocal = {}
+        flocal = {}
+        mu = {}
+        for tag, ids in inds.items():
+            if ids.size * z_coords[tag].size < self.unstr_discr.frac_cells_tot: return 0
+
+            g[tag] = np.array(x[ids[0],:n_dim])
+            glocal[tag] = np.zeros((len(ids[0]), 3))
+            flocal[tag] = np.zeros((len(ids[0]), 3))
+            S_eng = vector_matrix(engine.contacts[0].S)
+            mu[tag] = np.array(engine.contacts[0].mu, copy=False)
+            fstress = np.array(engine.contacts[0].fault_stress, copy=False)
+            for i, id in enumerate(ids[0]):
+                face = self.unstr_discr.faces[id + self.unstr_discr.mat_cells_tot][4]
+                S = np.array(S_eng[id].values).reshape((n_dim, n_dim))
+                flocal[tag][i] = S.dot(fstress[n_dim * id:n_dim * (id + 1)] / face.area)
+                #n = self.unstr_discr.faces[self.unstr_discr.mat_cells_tot][max(self.unstr_discr.faces[self.unstr_discr.mat_cells_tot].keys())].n
+                #S = np.zeros((n_dim, n_dim))
+                #S[:n_dim - 1] = null_space(np.array([-n])).T
+                #S[n_dim - 1] = -n
+                glocal[tag][i] = S.dot(g[tag][i])
+
+            #if ith_step == 0:
+            self.fig, self.ax = plt.subplots(nrows=2, sharex=True, figsize=(12, 10))
+            self.ax0 = self.ax[0].twinx()
+            self.ax1 = self.ax[1].twinx()
+            self.ax11 = self.ax[1].twinx()
+            #self.ax[0].set_ylabel(r'normal gap, $g_N$')
+            self.ax[0].set_ylabel(r'friction coefficient, $\mu$')
+            self.ax0.set_ylabel(r'slip, $g_T$')
+            self.ax[1].set_ylabel(r'normal traction, $F_N$')
+            self.ax1.set_ylabel(r'tangential traction, $F_T$')
+            self.ax[1].set_xlabel('distance')
+                #self.ax1.set_ylabel('distance along fault')
+
+            phi = np.array(engine.contacts[0].phi, copy=False)
+            states = phi > 0
+            for tag, s_cur in s.items():
+                Fn = flocal[tag][:,0]
+                Ft = flocal[tag][:,1]
+                #self.ax[0].plot(s_cur, glocal[tag][:,0], color='b', linestyle='-', marker='o', label=str(tag) + r': $g_N$')
+                if (mu[tag] != 0.0).all() and (Fn != 0.0).all():
+                    self.ax[0].plot(s_cur, mu[tag], color='b', linestyle='-', marker='o', label=str(tag) + r': $\mu$')
+                    self.ax[0].plot(s_cur, Ft / Fn, color='r', linestyle='--', marker='o', label=str(tag) + r': $\mu * SCU$')
+                self.ax0.plot(s_cur, -glocal[tag][:,1], color='r', linestyle='-', marker='o', label=str(tag) + r': $g_T$')
+                self.ax[1].plot(s_cur, Fn, color='b', linestyle='-', marker='o', label=str(tag) + r': $F_N$')
+                self.ax1.plot(s_cur, Ft, color='r', linestyle='-', marker='o', label=str(tag) + r': $F_T$')
+                self.ax11.plot(s_cur, states[ids[0]], color='g', linestyle=':', marker='x')
+                if states[ids[0]][0] == 0:
+                    self.ax11.text(0, 0, 'STUCK', fontsize=15)
+                elif states[ids[0]][0] == 1:
+                    self.ax11.text(0, 1, 'SLIP', fontsize=15)
+
+                np.savetxt(output_directory + '/fault_step_' + str(ith_step) + '_tag_' + str(tag) + ".txt",
+                           np.c_[s_cur, glocal[tag][:, 0], glocal[tag][:, 1], glocal[tag][:, 2], Fn, Ft, mu[tag]])
+
+            self.ax[0].grid(axis='x')
+            self.ax[1].grid(axis='x')
+            self.ax0.grid(axis='y')
+            self.ax1.grid(axis='y')
+            self.ax[0].legend(loc='upper left')
+            self.ax0.legend(loc='upper right')
+            self.ax[1].legend(loc='upper left')
+            self.ax1.legend(loc='upper right')
+            if mu[tag].min() != mu[tag].max():
+                self.ax[0].set_ylim([0.98 * mu[tag].min(), 1.02 * mu[tag].max()])
+            else:
+                self.ax[0].set_ylim([0.0, 1.0])
+            #self.ax0.set_ylim([-0.0002, 0.0006])
+            #self.ax[1].set_ylim([19, 21])
+            #self.ax1.set_ylim([-0.1, 0.1])
+            self.ax11.get_yaxis().set_visible(False)
+
+            self.fig.tight_layout()
+            self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
+            plt.close(self.fig)
+
+    def get_frac_apers(self, idata: InputData):
+        '''
+        :param idata: InputData
+        :return: numpy array of fracture apertures, size = number of fractures; None if no fractures
+        '''
+        frac_apers = None
+        if hasattr(idata.other, 'frac_apers'):
+            if np.isscalar(idata.other.frac_apers): # one value for all fractures
+                frac_apers = idata.other.frac_apers * np.ones(self.unstr_discr.frac_cells_tot)
+            else: # if already an array (each fracture has its aperture)
+                frac_apers = idata.other.frac_apers
+        return frac_apers
+
+    def init_fractures(self, idata: InputData):
+        '''
+        Initializes fractures in the unstructured discretizer:
+        1.Appends data to: self.pm.cell_centers, self.pm.frac_apers, self.pm.faces, self.mesh.fault_normals, self.pm.perms
+        self.pm.biots, self.p_init
+        2. Initialize contacts
+        :param idata: InputData (frac apertures, perm, biot, initial_pressure)
+        :return:
+        '''
+        frac_apers = self.get_frac_apers(idata)
+        if self.discretizer_name == 'pm_discretizer':
+            # fracture
+            for frac_id in range(self.unstr_discr.mat_cells_tot,
+                                 self.unstr_discr.mat_cells_tot + self.unstr_discr.frac_cells_tot):
+                frac = self.unstr_discr.frac_cell_info_dict[frac_id]
+                faces = self.unstr_discr.faces[frac_id]
+                self.pm.cell_centers.append(matrix(list(frac.centroid), frac.centroid.size, 1))
+                self.pm.frac_apers.append(frac_apers[frac_id - self.unstr_discr.mat_cells_tot])
+                fs = face_vector()
+                for face_id, face in faces.items():
+                    face = faces[face_id]
+                    fs.append(Face(face.type.value, face.cell_id1, face.cell_id2,
+                                   face.face_id1, face.face_id2,
+                                   face.area, list(face.n), list(face.centroid)))
+                self.pm.faces.append(fs)
+
+                face1 = faces[4]
+                face2 = faces[5]
+                self.mesh.fault_normals.append(face1.n[0])
+                self.mesh.fault_normals.append(face1.n[1])
+                self.mesh.fault_normals.append(face1.n[2])
+                # Local basis
+                S = np.zeros((self.n_dim, self.n_dim))
+                S[:self.n_dim - 1] = null_space(np.array([face1.n])).T
+                S[self.n_dim - 1] = face1.n
+                Sinv = np.linalg.inv(S)
+                K = np.zeros((self.n_dim, self.n_dim))
+                for i in range(self.n_dim):
+                    K[i, i] = idata.rock.get_permxyz()[i]
+                K = Sinv.dot(K).dot(S)
+                self.pm.perms.append(engine_matrix33(list(K.flatten())))
+                self.pm.biots.append(engine_matrix33(idata.rock.biot))
+
+                if not np.isscalar(self.p_init):
+                    self.p_init[frac_id] = idata.initial.initial_pressure
+
+            # contact
+            self.ref_contact_cells = np.zeros(self.unstr_discr.frac_cells_tot, dtype=np.intc)
+            self.contacts = contact_vector()
+            for tag in self.unstr_discr.physical_tags['fracture']:
+                con = contact()
+                con.f_scale = 1.E+8 # multiplier for penalty parameter
+                cell_ids = [cell_id for cell_id, cell in self.unstr_discr.frac_cell_info_dict.items() if
+                            cell.prop_id == tag]
+
+                self.ref_contact_cells[np.array(cell_ids, dtype=np.intp) - self.unstr_discr.mat_cells_tot] = cell_ids[0]
+                con.fault_tag = tag
+                con.cell_ids = index_vector(cell_ids)
+
+                con.friction_criterion = critical_stress.BIOT
+                fric_coef = idata.other.friction * np.ones(len(cell_ids))
+                con.mu0 = value_vector(fric_coef)
+                con.mu = con.mu0
+
+                self.contacts.append(con)
+        elif self.discretizer_name == 'mech_discretizer':
+            assert self.unstr_discr.frac_cells_tot == 0, "Fractures are not supported in mech discretizer"

@@ -774,17 +774,20 @@ class CPG_Reservoir(ReservoirBase):
         ijk = get_ijk(self.discr_mesh.local_to_global[idx], self.nx, self.ny, self.nz)
         return ijk
 
-    def centers_to_vtk(self, out_dir):
-        # output center points to VTK
-        fname = os.path.join(out_dir, 'centers')
+    def get_centers(self):
         c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
         c = np.zeros((self.discr_mesh.n_cells, 3))
         for i in range(self.discr_mesh.n_cells):
             cv = c_cpg[i].values
             c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
         x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-        if c is not None:
-            pointsToVTK(fname, x, y, z)
+        return x, y, z
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        x, y, z = self.get_centers()
+        pointsToVTK(fname, x, y, z)
 
     def save_grdecl(self, arrays_save, fname):
         '''

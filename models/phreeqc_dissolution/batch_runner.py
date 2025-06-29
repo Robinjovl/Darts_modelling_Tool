@@ -59,7 +59,7 @@ def run_single_simulation(i, prefix, poro_folder, nx, max_ts, n_obl_mult):
                             output_folder=folder,
                             n_obl_mult=n_obl_mult,
                             interpolator='multilinear',
-                            minerals=['calcite', 'dolomite'],
+                            minerals=['calcite'],# 'dolomite'],
                             kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                             co2_injection=0.1,
                             platform='cpu')
@@ -109,5 +109,5 @@ if __name__ == '__main__':
     nx = 50
     n_batch = 32
     corr_len = 5
-    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=4.e-4, 
-                            prefix=f'batch_2D_{nx}_{n_runs}_1', n_batch=n_batch)
+    run_batch_simulation(n_runs=n_runs, nx=nx, corr_len=corr_len, max_ts=5.e-5, 
+                            prefix=f'calcite_2D_{nx}_{n_runs}', n_batch=n_batch)

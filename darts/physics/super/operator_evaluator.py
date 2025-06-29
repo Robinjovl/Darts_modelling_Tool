@@ -25,15 +25,15 @@ class OperatorsSuper(OperatorsBase):
         # extra operators
         self.GRAV_OP = self.KIN_OP + self.ne  # gravity operator - nph
         self.PC_OP = self.GRAV_OP + self.nph  # capillary operator - nph
-        self.PORO_OP = self.PC_OP + self.nph  # porosity operator - 1
-        self.ENTH_OP = self.PORO_OP + 1  # enthalpy operator - nph
+        self.MULT_OP = self.PC_OP + self.nph  # permeability multiplier operator - 1
+        self.ENTH_OP = self.MULT_OP + 1  # enthalpy operator - nph
         self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
         # Operator names
         self.op_names = [(self.ACC_OP, "ACC"), (self.FLUX_OP, "FLUX"), (self.UPSAT_OP, "UPSAT"), (self.GRAD_OP, "GRAD"),
-                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.PORO_OP, "PORO"), (self.ENTH_OP, "ENTH"),
+                         (self.KIN_OP, "KIN"), (self.GRAV_OP, "GRAV"), (self.MULT_OP, "MULT"), (self.ENTH_OP, "ENTH"),
                          (self.TEMP_OP, "TEMP"), (self.PRES_OP, "PRES")]
 
     def print_operators(self, state, values):
@@ -50,9 +50,9 @@ class OperatorsSuper(OperatorsBase):
             print("CHI (diffusion) {}".format(j), values[idx0:idx1])
         print("DELTA (reaction)", values[self.KIN_OP:self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP:self.PC_OP])
-        print("CAPILLARITY", values[self.PC_OP:self.PORO_OP])
+        print("CAPILLARITY", values[self.PC_OP:self.MULT_OP])
         print("ENTHALPY", values[self.ENTH_OP:self.ENTH_OP + self.nph])
-        print("POROSITY", values[self.PORO_OP])
+        print("PERM_MULT", values[self.MULT_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
@@ -120,8 +120,8 @@ class ReservoirOperators(OperatorsSuper):
         # E4-> capillarity
         vec_values_as_np[self.PC_OP + self.property.ph] = self.property.pc[self.property.ph]
 
-        # E5_> porosity
-        vec_values_as_np[self.PORO_OP] = self.phi_f
+        # E5_> permeability multiplier due to permporo relationship
+        vec_values_as_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(self.phi_f)
 
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
@@ -265,9 +265,8 @@ class WellOperators(OperatorsSuper):
         # E3-> gravity
         vec_values_as_np[self.GRAV_OP + self.property.ph] = self.property.dens[self.property.ph]
 
-        # E5_> porosity
-        vec_values_as_np[self.PORO_OP] = 1.
-
+        # E5_> permeability multiplier due to permporo relationship
+        vec_values_as_np[self.MULT_OP] = 1.
 
         # Pressure operator
         vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]

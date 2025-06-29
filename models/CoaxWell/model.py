@@ -21,7 +21,7 @@ class Model(CICDModel):
         self.set_reservoir(resolution)
         self.set_physics(n_points)
 
-        self.set_sim_params(first_ts=1e-5, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 
