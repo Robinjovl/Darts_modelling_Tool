@@ -7,6 +7,7 @@
 #include "ms_well.h"
 #include "py_globals_interpolation.h"
 
+namespace py = pybind11;
 
 PYBIND11_MAKE_OPAQUE(std::vector<ms_well*>);
 

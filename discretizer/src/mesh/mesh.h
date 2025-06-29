@@ -166,8 +166,8 @@ namespace mesh
 		        const int num_of_cells,
 		        const double multiplier,
 		        const bool append) const
-		{ 
-            logger.log("Writing array {} to file {}", keyword, filename);
+		{
+		        std::cout << "Writing array " << keyword << " to file " << filename << "\n";
 		
 		        std::ofstream f;
 		        if (append)
