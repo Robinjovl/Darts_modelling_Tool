@@ -306,7 +306,10 @@ if(NOT ONLY_SOLVERS)
 endif()
 # ------------------------------------------------------------------------------
 
-
+# Logging ----------------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(logging)
+endif()
 # Discretizer ------------------------------------------------------------------
 if(NOT ONLY_SOLVERS)
   add_subdirectory(discretizer)

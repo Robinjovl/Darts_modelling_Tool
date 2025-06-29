@@ -5,7 +5,6 @@
 #include <pybind11/numpy.h>
 #include "globals.h"
 #include "ms_well.h"
-#include "logging.h"
 #include "py_globals_interpolation.h"
 
 namespace py = pybind11;

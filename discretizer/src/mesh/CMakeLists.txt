@@ -38,6 +38,7 @@ target_link_libraries(discretizer_mesh
     discretizer_linalg
   PRIVATE 
 	  mshio
+    opendarts_logging
 )
 
 # Define the include directories required internally (BUILD_INTERFACE)

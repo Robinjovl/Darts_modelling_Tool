@@ -112,6 +112,7 @@ target_sources(opendarts_discretizer
 target_link_libraries(opendarts_discretizer
   PUBLIC
     opendarts_compiler_flags
+    opendarts_logging
     discretizer_build_info
     discretizer_mesh
     discretizer_linalg
@@ -131,7 +132,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PUBLIC_HEADER_FILES})
 
 # Install the library file of opendarts_discretizer
-install(TARGETS opendarts_discretizer 
+install(TARGETS opendarts_discretizer
   CONFIGURATIONS RELEASE    
   DESTINATION lib
 )

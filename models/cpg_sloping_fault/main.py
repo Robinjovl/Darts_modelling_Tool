@@ -19,13 +19,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     :param export_vtk:
     :return:
     '''
-    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
-
     out_dir = out_dir
     os.makedirs(out_dir, exist_ok=True)
     log_filename = os.path.join(out_dir, 'run.log')
     if redirect_log:
         log_stream = redirect_all_output(log_filename)
+
+    print('Test started', 'physics_type:', physics_type, 'case:', case, 'platform=', platform)
 
     if physics_type == 'geothermal':
         m = ModelGeothermal(iapws_physics=True)

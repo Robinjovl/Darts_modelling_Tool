@@ -26,6 +26,12 @@ using std::chrono::duration_cast;
 using std::cout;
 using std::endl;
 
+#include "logging.h"
+namespace mesh {
+	extern logging::Logger& logger;
+	//logging::Logger& logger = logging::get_logger("discretizer");
+}
+
 Mesh::Mesh()
 {
 	elem_type_map[LINE] = vector<index_t>();
