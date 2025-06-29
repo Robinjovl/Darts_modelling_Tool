@@ -3,7 +3,7 @@ import pandas as pd
 import sys, os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
-from darts import logging
+from darts.engines.logging import duplicate_output_to_file
 import matplotlib.pyplot as plt
 from darts.physics.base.operators_base import PropertyOperators as props
 
@@ -46,9 +46,9 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
-    logging.set_file("run.log")
+    duplicate_output_to_file("run.log")
 
-    logging.info('START')
+    print('START')
 
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
@@ -93,9 +93,6 @@ if __name__ == '__main__':
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
-
-    logging.info('END')
-    logging.flush()
 
 #z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 

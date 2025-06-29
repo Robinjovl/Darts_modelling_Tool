@@ -7,7 +7,6 @@
 #include <array>
 
 #include "elem.h"
-#include "logger.h"
 
 namespace mesh
 {

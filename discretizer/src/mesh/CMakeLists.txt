@@ -5,7 +5,6 @@
 set(DISCRETIZER_MESH_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/elem.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mesh.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/logger.cpp
 )
 
 # Then the public headers

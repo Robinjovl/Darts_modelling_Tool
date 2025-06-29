@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include "discretizer.h"
 #include "linalg/matrix.h"
+#include "logger.h"
 
 # define M_PI 3.14159265358979323846
 

@@ -83,7 +83,6 @@ set(DISCRETIZER_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/logger.cpp
 )
 
 # Then the public headers
@@ -92,7 +91,6 @@ set(DISCRETIZER_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.h
   ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.h  
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/logger.h
 )
 
 # Define the opendarts_discretizer library
