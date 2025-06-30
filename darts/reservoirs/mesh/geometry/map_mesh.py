@@ -1,8 +1,8 @@
-import numpy as np
-from math import pi, asin
-from scipy.spatial import KDTree
+from math import asin, pi
 
+import numpy as np
 from numba import jit
+from scipy.spatial import KDTree
 
 
 @jit(nopython=True)
@@ -13,7 +13,11 @@ def _find_cells_index(xyz, centroids):
     dist0 = None
     cell_index = None
     for l, centroid in enumerate(centroids):
-        dist1 = np.sqrt((xyz[0] - centroid[0]) ** 2 + (xyz[1] - centroid[1]) ** 2 + (xyz[2] - centroid[2]) ** 2)
+        dist1 = np.sqrt(
+            (xyz[0] - centroid[0]) ** 2
+            + (xyz[1] - centroid[1]) ** 2
+            + (xyz[2] - centroid[2]) ** 2
+        )
         if dist0 is None or dist1 < dist0:
             cell_index = l
             dist0 = dist1
@@ -47,7 +51,7 @@ def _translate_curvature(centroids):
         theta = pi / 8 + asin(centroid[0] / r)  # angle from left end of domain
 
         X = r * theta  # arc length L == x
-        Y = 0.
+        Y = 0.0
         Z = centroid[2]
         xyz[l, :] = np.array([X, Y, Z])
     return xyz

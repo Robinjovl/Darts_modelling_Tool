@@ -1,0 +1,152 @@
+.test-linux:
+    stage: test
+    image: "python:$PY_VER"
+    # Will be executed on runner with linux tag - that assumed to run on linux host
+    tags:
+        - linux
+    before_script:
+        - apt-get update -qq && apt-get install -y -qq smbclient
+        - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev # for gmsh
+        - apt-get update -qq && apt-get install -y -qq libxcursor1      # for gmsh
+        - apt-get update -qq && apt-get install -y -qq libxinerama1     # for gmsh
+        - export PYTHONUNBUFFERED=1
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        # remove flash installed by its pipelines, and get one from pip (not needed actually since Linux pipeline runs in a docker, but let's keep consistency with windows pipelines)
+        - pip uninstall open-darts-flash  --yes
+        # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
+        # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
+        - pip install --force-reinstall --no-deps ./dist/*.whl
+        # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
+        - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
+    script:
+        # run simulation fot test models set
+        - cd models
+        # passing additional argument to trigger verbose check performance
+        - darts run_test_suite2.py LOG
+        - echo "run_test_suite2 returned" $?
+        - cd ..
+        # test interpolators
+        - cd tests/engines/src/interpolation
+        - darts test_interpolation.py
+        - cd ../../../..
+        # test discretizer
+        - cd discretizer/tests/compare_discretizers
+        - darts main.py
+        - cd ../../..
+        #
+        - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
+    artifacts:
+      paths:
+        - './models/_logs/*.log'
+        - './models/fracture_network/meshes*/*.log'
+        - './models/displaced_fault_reactivation/meshes/*.log'
+        - './models/pkl_lin.tar.gz'
+      when: always
+      expire_in: 1 week
+
+test-linux-3.12-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.12'        # for python image selection in .test-linux
+        PY_SUF: 'cp312-cp312' # for python path selection in .test-linux
+        ODLS: ''              # test with open-darts linear solvers
+    needs:
+        - build-linux-3.12-ODLS
+        
+test-linux-3.11-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.11'        # for python image selection in .test-linux
+        PY_SUF: 'cp311-cp311' # for python path selection in .test-linux
+        ODLS: ''              # test with open-darts linear solvers
+    needs:
+        - build-linux-3.11-ODLS
+
+test-linux-3.10-ODLS:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.10'        # for python image selection in .test-linux
+        PY_SUF: 'cp310-cp310' # for python path selection in .test-linux
+        ODLS: ''              # test with open-darts linear solvers
+    needs:
+        - build-linux-3.10-ODLS
+
+test-linux-3.9-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.9'       # for python image selection in .test-linux
+        PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
+        ODLS: ''            # test with open-darts linear solvers
+    needs:
+        - build-linux-3.9-ODLS
+
+test-linux-3.12:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.12'        # for python image selection in .test-linux
+        PY_SUF: 'cp312-cp312' # for python path selection in .test-linux
+        ODLS: '-a'
+    needs:
+        - build-linux-3.12
+        
+test-linux-3.11:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.11'        # for python image selection in .test-linux
+        PY_SUF: 'cp311-cp311' # for python path selection in .test-linux
+        ODLS: '-a'
+    needs:
+        - build-linux-3.11
+
+test-linux-3.10:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.10'        # for python image selection in .test-linux
+        PY_SUF: 'cp310-cp310' # for python path selection in .test-linux
+        ODLS: '-a'
+    needs:
+        - build-linux-3.10
+
+test-linux-3.9:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .test-linux
+    variables:
+        PY_VER: '3.9'       # for python image selection in .test-linux
+        PY_SUF: 'cp39-cp39' # for python path selection in .test-linux
+        ODLS: '-a'
+    needs:
+        - build-linux-3.9 

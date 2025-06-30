@@ -1,5 +1,6 @@
 import h5py
 
+
 def load_hdf5_to_dict(filename, path='/', decode_strings: list = ['variable_names']):
     """
     Recursively loads HDF5 file contents into a nested dictionary.

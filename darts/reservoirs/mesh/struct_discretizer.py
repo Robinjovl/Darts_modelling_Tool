@@ -5,7 +5,17 @@ class StructDiscretizer:
     # Define Darcy constant for changes to correct units:
     darcy_constant = 0.0085267146719160104986876640419948
 
-    def __init__(self, nx: int, ny: int, nz: int, global_data: dict, global_to_local=0, coord=0, zcorn=0, is_cpg=False):
+    def __init__(
+        self,
+        nx: int,
+        ny: int,
+        nz: int,
+        global_data: dict,
+        global_to_local=0,
+        coord=0,
+        zcorn=0,
+        is_cpg=False,
+    ):
         """
         Class constructor method.
 
@@ -35,7 +45,11 @@ class StructDiscretizer:
         self.nz = nz
         dx, dy, dz = global_data['dx'], global_data['dy'], global_data['dz']
         start_z = global_data['start_z']
-        permx, permy, permz = global_data['permx'], global_data['permy'], global_data['permz']
+        permx, permy, permz = (
+            global_data['permx'],
+            global_data['permy'],
+            global_data['permz'],
+        )
         self.nodes_tot = nx * ny * nz
         self.arr_shape = (nx, ny, nz)
         self.min_tran_tranD = 1e-5
@@ -44,13 +58,17 @@ class StructDiscretizer:
         self.is_cpg = is_cpg
         if self.is_cpg:
             print("Calculating CPG grid...", end='', flush=True)
-            #self.vectorized_cpg(coord, zcorn)
+            # self.vectorized_cpg(coord, zcorn)
             plain_points_num = (nx + 1) * (ny + 1)
             cells_num = nx * ny * nz
-            assert (zcorn.size == 8 * cells_num)
-            assert (coord.size == 6 * plain_points_num)
-            zcorn = zcorn.reshape((2*nz, 2*ny, 2*nx))
-            dtype = [('center', np.float64, (3,)), ('faces', np.float64, (6,2,3)), ('area', np.float64, (6,))]
+            assert zcorn.size == 8 * cells_num
+            assert coord.size == 6 * plain_points_num
+            zcorn = zcorn.reshape((2 * nz, 2 * ny, 2 * nx))
+            dtype = [
+                ('center', np.float64, (3,)),
+                ('faces', np.float64, (6, 2, 3)),
+                ('area', np.float64, (6,)),
+            ]
             self.volume = np.zeros(shape=self.arr_shape)
             self.cell_data = np.empty(shape=self.arr_shape, dtype=dtype)
             for j in range(ny):
@@ -59,67 +77,173 @@ class StructDiscretizer:
                     xp_ym = i + 1 + j * (nx + 1)
                     xm_yp = i + (j + 1) * (nx + 1)
                     xp_yp = i + 1 + (j + 1) * (nx + 1)
-                    v2d = np.array([coord[6 * xm_ym:6 * (xm_ym + 1)].reshape(2, 3),
-                                    coord[6 * xp_ym:6 * (xp_ym + 1)].reshape(2, 3),
-                                    coord[6 * xm_yp:6 * (xm_yp + 1)].reshape(2, 3),
-                                    coord[6 * xp_yp:6 * (xp_yp + 1)].reshape(2, 3)])
-                    z_top = np.concatenate((zcorn[0, 2*j,2*i:2*i+2], zcorn[0, 2*j+1,2*i:2*i+2]))
-                    z_bot = np.concatenate((zcorn[-1, 2*j,2*i:2*i+2], zcorn[-1, 2*j+1,2*i:2*i+2]))
+                    v2d = np.array(
+                        [
+                            coord[6 * xm_ym : 6 * (xm_ym + 1)].reshape(2, 3),
+                            coord[6 * xp_ym : 6 * (xp_ym + 1)].reshape(2, 3),
+                            coord[6 * xm_yp : 6 * (xm_yp + 1)].reshape(2, 3),
+                            coord[6 * xp_yp : 6 * (xp_yp + 1)].reshape(2, 3),
+                        ]
+                    )
+                    z_top = np.concatenate(
+                        (
+                            zcorn[0, 2 * j, 2 * i : 2 * i + 2],
+                            zcorn[0, 2 * j + 1, 2 * i : 2 * i + 2],
+                        )
+                    )
+                    z_bot = np.concatenate(
+                        (
+                            zcorn[-1, 2 * j, 2 * i : 2 * i + 2],
+                            zcorn[-1, 2 * j + 1, 2 * i : 2 * i + 2],
+                        )
+                    )
                     zero_ids = np.argwhere(z_bot - z_top == 0)[:, 0]
                     for k in range(nz):
                         id = i + nx * (j + k * ny)
-                        z_cur = np.concatenate((zcorn[2*k, 2*j,2*i:2*i+2], zcorn[2*k, 2*j+1,2*i:2*i+2],
-                                                zcorn[2*k+1, 2*j,2*i:2*i+2], zcorn[2*k+1, 2*j+1,2*i:2*i+2]))
-                        v_top = v2d[:, 0] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[:4] - z_top)
-                                                                       / (self.eps_div + z_bot - z_top))[:,np.newaxis]
-                        v_bot = v2d[:, 0] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[4:] - z_top)
-                                                                       / (self.eps_div + z_bot - z_top))[:,np.newaxis]
+                        z_cur = np.concatenate(
+                            (
+                                zcorn[2 * k, 2 * j, 2 * i : 2 * i + 2],
+                                zcorn[2 * k, 2 * j + 1, 2 * i : 2 * i + 2],
+                                zcorn[2 * k + 1, 2 * j, 2 * i : 2 * i + 2],
+                                zcorn[2 * k + 1, 2 * j + 1, 2 * i : 2 * i + 2],
+                            )
+                        )
+                        v_top = (
+                            v2d[:, 0]
+                            + (v2d[:, 1] - v2d[:, 0])
+                            * ((z_cur[:4] - z_top) / (self.eps_div + z_bot - z_top))[
+                                :, np.newaxis
+                            ]
+                        )
+                        v_bot = (
+                            v2d[:, 0]
+                            + (v2d[:, 1] - v2d[:, 0])
+                            * ((z_cur[4:] - z_top) / (self.eps_div + z_bot - z_top))[
+                                :, np.newaxis
+                            ]
+                        )
                         v_top[zero_ids] = v2d[zero_ids, 0]
                         v_bot[zero_ids] = v2d[zero_ids, 1]
-                        v = np.concatenate((np.c_[v_top[:, :2], z_cur[:4]], np.c_[v_bot[:, :2], z_cur[4:]]))
+                        v = np.concatenate(
+                            (
+                                np.c_[v_top[:, :2], z_cur[:4]],
+                                np.c_[v_bot[:, :2], z_cur[4:]],
+                            )
+                        )
 
-                        a1, n1, c1 = self.calc_area_and_centroid(np.array([v[0], v[2], v[6], v[4]]))
-                        a2, n2, c2 = self.calc_area_and_centroid(np.array([v[1], v[3], v[7], v[5]]))
-                        a3, n3, c3 = self.calc_area_and_centroid(np.array([v[1], v[0], v[4], v[5]]))
-                        a4, n4, c4 = self.calc_area_and_centroid(np.array([v[3], v[2], v[6], v[7]]))
-                        a5, n5, c5 = self.calc_area_and_centroid(np.array([v[0], v[1], v[3], v[2]]))
-                        a6, n6, c6 = self.calc_area_and_centroid(np.array([v[4], v[5], v[7], v[6]]))
-                        #s = a1 + a2 + a3 + a4 + a5 + a6
-                        #c_faces = (a1*c1 + a2*c2 + a3*c3 + a4*c4 + a5*c5 + a6*c6) / s if s > 0 else c1
-                        vol, c = self.calc_hexahedron_volume_and_centroid(v, np.array([n1, n2, n3, n4, n5, n6]), np.array([c1, c2, c3, c4, c5, c6]), np.array([a1, a2, a3, a4, a5, a6]))
+                        a1, n1, c1 = self.calc_area_and_centroid(
+                            np.array([v[0], v[2], v[6], v[4]])
+                        )
+                        a2, n2, c2 = self.calc_area_and_centroid(
+                            np.array([v[1], v[3], v[7], v[5]])
+                        )
+                        a3, n3, c3 = self.calc_area_and_centroid(
+                            np.array([v[1], v[0], v[4], v[5]])
+                        )
+                        a4, n4, c4 = self.calc_area_and_centroid(
+                            np.array([v[3], v[2], v[6], v[7]])
+                        )
+                        a5, n5, c5 = self.calc_area_and_centroid(
+                            np.array([v[0], v[1], v[3], v[2]])
+                        )
+                        a6, n6, c6 = self.calc_area_and_centroid(
+                            np.array([v[4], v[5], v[7], v[6]])
+                        )
+                        # s = a1 + a2 + a3 + a4 + a5 + a6
+                        # c_faces = (a1*c1 + a2*c2 + a3*c3 + a4*c4 + a5*c5 + a6*c6) / s if s > 0 else c1
+                        vol, c = self.calc_hexahedron_volume_and_centroid(
+                            v,
+                            np.array([n1, n2, n3, n4, n5, n6]),
+                            np.array([c1, c2, c3, c4, c5, c6]),
+                            np.array([a1, a2, a3, a4, a5, a6]),
+                        )
                         self.volume[i, j, k] = vol
-                        self.cell_data[i, j, k] = (c, np.array([[n1, c1], [n2, c2], [n3, c3], [n4, c4], [n5, c5], [n6, c6]]),
-                                                   np.array([a1, a2, a3, a4, a5, a6]))
-            self.len_cell_xminus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 0, 1], axis=3)
-            self.len_cell_xplus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 1, 1], axis=3)
-            self.len_cell_yminus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 2, 1], axis=3)
-            self.len_cell_yplus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 3, 1], axis=3)
-            self.len_cell_zminus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 4, 1], axis=3)
-            self.len_cell_zplus = np.linalg.norm(self.cell_data['center'] - self.cell_data['faces'][:, :, :, 5, 1], axis=3)
-            self.dist_cell_x = np.linalg.norm(self.cell_data[1:,:,:]['center'] - self.cell_data[:-1,:,:]['center'], axis=3)
-            self.dist_cell_y = np.linalg.norm(self.cell_data[:,1:,:]['center'] - self.cell_data[:,:-1,:]['center'], axis=3)
-            self.dist_cell_z = np.linalg.norm(self.cell_data[:,:,1:]['center'] - self.cell_data[:,:,:-1]['center'], axis=3)
+                        self.cell_data[i, j, k] = (
+                            c,
+                            np.array(
+                                [
+                                    [n1, c1],
+                                    [n2, c2],
+                                    [n3, c3],
+                                    [n4, c4],
+                                    [n5, c5],
+                                    [n6, c6],
+                                ]
+                            ),
+                            np.array([a1, a2, a3, a4, a5, a6]),
+                        )
+            self.len_cell_xminus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 0, 1],
+                axis=3,
+            )
+            self.len_cell_xplus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 1, 1],
+                axis=3,
+            )
+            self.len_cell_yminus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 2, 1],
+                axis=3,
+            )
+            self.len_cell_yplus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 3, 1],
+                axis=3,
+            )
+            self.len_cell_zminus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 4, 1],
+                axis=3,
+            )
+            self.len_cell_zplus = np.linalg.norm(
+                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 5, 1],
+                axis=3,
+            )
+            self.dist_cell_x = np.linalg.norm(
+                self.cell_data[1:, :, :]['center']
+                - self.cell_data[:-1, :, :]['center'],
+                axis=3,
+            )
+            self.dist_cell_y = np.linalg.norm(
+                self.cell_data[:, 1:, :]['center']
+                - self.cell_data[:, :-1, :]['center'],
+                axis=3,
+            )
+            self.dist_cell_z = np.linalg.norm(
+                self.cell_data[:, :, 1:]['center']
+                - self.cell_data[:, :, :-1]['center'],
+                axis=3,
+            )
             self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
             self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
             self.perm_z_cell = self.convert_to_3d_array(permz, 'permz')
-            self.perm_xminus =  (self.perm_x_cell * self.cell_data['faces'][:, :, :, 0, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 0, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 0, 0, 2] ** 2)
-            self.perm_xplus =   (self.perm_x_cell * self.cell_data['faces'][:, :, :, 1, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 1, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 1, 0, 2] ** 2)
-            self.perm_yminus =  (self.perm_x_cell * self.cell_data['faces'][:, :, :, 2, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 2, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 2, 0, 2] ** 2)
-            self.perm_yplus =   (self.perm_x_cell * self.cell_data['faces'][:, :, :, 3, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 3, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 3, 0, 2] ** 2)
-            self.perm_zminus =  (self.perm_x_cell * self.cell_data['faces'][:, :, :, 4, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 4, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 4, 0, 2] ** 2)
-            self.perm_zplus =   (self.perm_x_cell * self.cell_data['faces'][:, :, :, 5, 0, 0] ** 2 + \
-                                self.perm_y_cell * self.cell_data['faces'][:, :, :, 5, 0, 1] ** 2 + \
-                                self.perm_z_cell * self.cell_data['faces'][:, :, :, 5, 0, 2] ** 2)
+            self.perm_xminus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 0, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 0, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 0, 0, 2] ** 2
+            )
+            self.perm_xplus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 1, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 1, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 1, 0, 2] ** 2
+            )
+            self.perm_yminus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 2, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 2, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 2, 0, 2] ** 2
+            )
+            self.perm_yplus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 3, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 3, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 3, 0, 2] ** 2
+            )
+            self.perm_zminus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 4, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 4, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 4, 0, 2] ** 2
+            )
+            self.perm_zplus = (
+                self.perm_x_cell * self.cell_data['faces'][:, :, :, 5, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 5, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 5, 0, 2] ** 2
+            )
 
             self.centroids_all_cells = self.cell_data[:, :, :]['center']
 
@@ -132,26 +256,42 @@ class StructDiscretizer:
             self.len_cell_zdir = self.convert_to_3d_array(dz, 'dz')
             self.volume = self.len_cell_xdir * self.len_cell_ydir * self.len_cell_zdir
 
-            self.centroids_all_cells = np.zeros((self.nx, self.ny, self.nz, 3)) # 3 - for x,y,z coordinates
+            self.centroids_all_cells = np.zeros(
+                (self.nx, self.ny, self.nz, 3)
+            )  # 3 - for x,y,z coordinates
             # fill z-coordinates using DZ
-            self.centroids_all_cells[:, :, 0, 2] = start_z + self.len_cell_zdir[:, :, 0] * 0.5  # nx*ny array of current layer's depths
+            self.centroids_all_cells[:, :, 0, 2] = (
+                start_z + self.len_cell_zdir[:, :, 0] * 0.5
+            )  # nx*ny array of current layer's depths
             if nz > 1:
                 d_cumsum = self.len_cell_zdir.cumsum(axis=2)
-                self.centroids_all_cells[:, :, 1:, 2] = start_z + (d_cumsum[:, :, :-1] + d_cumsum[:, :, 1:]) * 0.5
+                self.centroids_all_cells[:, :, 1:, 2] = (
+                    start_z + (d_cumsum[:, :, :-1] + d_cumsum[:, :, 1:]) * 0.5
+                )
 
             # fill y-coordinates using DY
-            self.centroids_all_cells[:, 0, :, 1] = self.len_cell_ydir[:, 0, :] * 0.5  # nx*nz array
+            self.centroids_all_cells[:, 0, :, 1] = (
+                self.len_cell_ydir[:, 0, :] * 0.5
+            )  # nx*nz array
             if ny > 1:
                 d_cumsum = self.len_cell_ydir.cumsum(axis=1)
-                self.centroids_all_cells[:, 1:, :, 1] = (d_cumsum[:, :-1, :] + d_cumsum[:, 1:, :]) * 0.5
+                self.centroids_all_cells[:, 1:, :, 1] = (
+                    d_cumsum[:, :-1, :] + d_cumsum[:, 1:, :]
+                ) * 0.5
 
             # fill x-coordinates using DX
-            self.centroids_all_cells[0, :, :, 0] = self.len_cell_xdir[0, :, :] * 0.5  # ny*nz array
+            self.centroids_all_cells[0, :, :, 0] = (
+                self.len_cell_xdir[0, :, :] * 0.5
+            )  # ny*nz array
             if nx > 1:
                 d_cumsum = self.len_cell_xdir.cumsum(axis=0)
-                self.centroids_all_cells[1:, :, :, 0] = (d_cumsum[:-1, :, :] + d_cumsum[1:, :, :]) * 0.5
+                self.centroids_all_cells[1:, :, :, 0] = (
+                    d_cumsum[:-1, :, :] + d_cumsum[1:, :, :]
+                ) * 0.5
 
-            self.centroids_all_cells = np.reshape(self.centroids_all_cells, (self.nx * self.ny * self.nz, 3), order='F')
+            self.centroids_all_cells = np.reshape(
+                self.centroids_all_cells, (self.nx * self.ny * self.nz, 3), order='F'
+            )
 
         self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
         self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
@@ -166,38 +306,70 @@ class StructDiscretizer:
             # external arbitrary indexing
             self.global_to_local = global_to_local
             self.local_to_global = np.zeros(self.nodes_tot, dtype=np.int32)
-            self.local_to_global[self.global_to_local] = np.arange(self.nodes_tot, dtype=np.int32)
+            self.local_to_global[self.global_to_local] = np.arange(
+                self.nodes_tot, dtype=np.int32
+            )
 
     def vectorized_cpg(self, coord, zcorn):
-        coord = np.reshape(coord,(int(coord.size/6),6))
+        coord = np.reshape(coord, (int(coord.size / 6), 6))
         zcorn = zcorn.reshape((2 * self.nz, 2 * self.ny, 2 * self.nx))
 
         i_ids = np.arange(self.nx, dtype=np.intp)
         j_ids = np.arange(self.ny, dtype=np.intp)
         k_ids = np.arange(self.nz, dtype=np.intp)
-        i = np.lib.stride_tricks.as_strided(i_ids, (self.nz, self.ny, self.nx), (0, 0, i_ids.strides[0])).flatten()
-        j = np.lib.stride_tricks.as_strided(j_ids, (self.nz, self.ny, self.nx), (0, j_ids.strides[0], 0)).flatten()
-        k = np.lib.stride_tricks.as_strided(k_ids, (self.nz, self.ny, self.nx), (k_ids.strides[0], 0, 0)).flatten()
-        i2d = i[:self.nx*self.ny]
-        j2d = j[:self.nx*self.ny]
-        #i = np.tile(np.arange(self.nx, dtype=np.intp), (self.ny,1))
-        #j = np.tile(np.array([np.arange(self.ny, dtype=np.intp)]).transpose(), (1, self.nx))
+        i = np.lib.stride_tricks.as_strided(
+            i_ids, (self.nz, self.ny, self.nx), (0, 0, i_ids.strides[0])
+        ).flatten()
+        j = np.lib.stride_tricks.as_strided(
+            j_ids, (self.nz, self.ny, self.nx), (0, j_ids.strides[0], 0)
+        ).flatten()
+        k = np.lib.stride_tricks.as_strided(
+            k_ids, (self.nz, self.ny, self.nx), (k_ids.strides[0], 0, 0)
+        ).flatten()
+        i2d = i[: self.nx * self.ny]
+        j2d = j[: self.nx * self.ny]
+        # i = np.tile(np.arange(self.nx, dtype=np.intp), (self.ny,1))
+        # j = np.tile(np.array([np.arange(self.ny, dtype=np.intp)]).transpose(), (1, self.nx))
         xm_ym = i2d + j2d * (self.nx + 1)
         xp_ym = i2d + 1 + j2d * (self.nx + 1)
         xm_yp = i2d + (j2d + 1) * (self.nx + 1)
         xp_yp = i2d + 1 + (j2d + 1) * (self.nx + 1)
-        v2d = np.swapaxes(np.array([coord[xm_ym], coord[xp_ym], coord[xm_yp], coord[xp_yp]]), 0, 1)
-        z_top = np.array([zcorn[0, 2*j2d, 2*i2d], zcorn[0, 2*j2d, 2*i2d+1], zcorn[0, 2*j2d+1, 2*i2d], zcorn[0, 2*j2d+1, 2*i2d+1]]).T
-        z_bot = np.array([zcorn[-1, 2*j2d, 2*i2d], zcorn[-1, 2*j2d, 2*i2d+1], zcorn[-1, 2*j2d+1, 2*i2d], zcorn[-1, 2*j2d+1, 2*i2d+1]]).T
+        v2d = np.swapaxes(
+            np.array([coord[xm_ym], coord[xp_ym], coord[xm_yp], coord[xp_yp]]), 0, 1
+        )
+        z_top = np.array(
+            [
+                zcorn[0, 2 * j2d, 2 * i2d],
+                zcorn[0, 2 * j2d, 2 * i2d + 1],
+                zcorn[0, 2 * j2d + 1, 2 * i2d],
+                zcorn[0, 2 * j2d + 1, 2 * i2d + 1],
+            ]
+        ).T
+        z_bot = np.array(
+            [
+                zcorn[-1, 2 * j2d, 2 * i2d],
+                zcorn[-1, 2 * j2d, 2 * i2d + 1],
+                zcorn[-1, 2 * j2d + 1, 2 * i2d],
+                zcorn[-1, 2 * j2d + 1, 2 * i2d + 1],
+            ]
+        ).T
         zero_ids = np.argwhere(z_bot - z_top == 0)
-        z_cur = np.array([zcorn[2 * k, 2 * j, 2 * i],           zcorn[2 * k, 2 * j, 2 * i + 1],
-                          zcorn[2 * k, 2 * j + 1, 2 * i],       zcorn[2 * k, 2 * j + 1, 2 * i + 1],
-                          zcorn[2 * k + 1, 2 * j, 2 * i],       zcorn[2 * k + 1, 2 * j, 2 * i + 1],
-                          zcorn[2 * k + 1, 2 * j + 1, 2 * i],   zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1]]).T
+        z_cur = np.array(
+            [
+                zcorn[2 * k, 2 * j, 2 * i],
+                zcorn[2 * k, 2 * j, 2 * i + 1],
+                zcorn[2 * k, 2 * j + 1, 2 * i],
+                zcorn[2 * k, 2 * j + 1, 2 * i + 1],
+                zcorn[2 * k + 1, 2 * j, 2 * i],
+                zcorn[2 * k + 1, 2 * j, 2 * i + 1],
+                zcorn[2 * k + 1, 2 * j + 1, 2 * i],
+                zcorn[2 * k + 1, 2 * j + 1, 2 * i + 1],
+            ]
+        ).T
 
-        #v_top = v2d[:, 0] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[:4] - z_top)
+        # v_top = v2d[:, 0] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[:4] - z_top)
         #                                               / (self.eps_div + z_bot - z_top))[:, np.newaxis]
-        #v_bot = v2d[:, 1] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[4:] - z_top)
+        # v_bot = v2d[:, 1] + (v2d[:, 1] - v2d[:, 0]) * ((z_cur[4:] - z_top)
         #                                               / (self.eps_div + z_bot - z_top))[:, np.newaxis]
 
         return 0
@@ -205,9 +377,9 @@ class StructDiscretizer:
     def calc_area_and_centroid(self, pts):
         # point must be in circular order
         n_pts = pts.shape[0]
-        #area = 0.0
-        #c = np.zeros(3)
-        #n = np.zeros(3)
+        # area = 0.0
+        # c = np.zeros(3)
+        # n = np.zeros(3)
         n_all = np.cross(pts[1:-1] - pts[0], pts[2:] - pts[0]) / 2.0
         n = np.sum(n_all, axis=0)
         area_all = np.linalg.norm(n_all, axis=1)
@@ -215,7 +387,7 @@ class StructDiscretizer:
         inds = np.zeros((n_pts - 2, 3), dtype=np.int32)
         inds[:, 1] = np.arange(n_pts - 2) + 1
         inds[:, 2] = np.arange(n_pts - 2) + 2
-        c = np.sum(area_all[:,np.newaxis] * np.average(pts[inds], axis=1), axis=0)
+        c = np.sum(area_all[:, np.newaxis] * np.average(pts[inds], axis=1), axis=0)
         # for i in range(n_pts - 2):
         #     n_cur = np.cross(pts[i+1] - pts[0], pts[i+2] - pts[0]) / 2.0
         #     cur_area = np.linalg.norm(n_cur)
@@ -232,17 +404,21 @@ class StructDiscretizer:
         # verts: 4 pts in circular order for z_minus plain, 4 pts for z_plus in the similar order as the first 4 pts
         # normals: face normals, fc: face centers
         arithm_center = np.average(verts, axis=0)
-        f_inds = np.array([[0, 2, 6, 4],
-                           [1, 3, 7, 5],
-                           [0, 1, 5, 4],
-                           [2, 3, 7, 6],
-                           [0, 1, 3, 2],
-                           [4, 5, 7, 6]])
+        f_inds = np.array(
+            [
+                [0, 2, 6, 4],
+                [1, 3, 7, 5],
+                [0, 1, 5, 4],
+                [2, 3, 7, 6],
+                [0, 1, 3, 2],
+                [4, 5, 7, 6],
+            ]
+        )
         vol = 0.0
         mc = np.zeros(3)
         for i in range(6):
             dr = arithm_center - fc[i]
-            dr[np.fabs(dr / (self.eps_div + np.sqrt(areas[i]))) < 1.E-12] = 0.0
+            dr[np.fabs(dr / (self.eps_div + np.sqrt(areas[i]))) < 1.0e-12] = 0.0
             cur_vol = np.fabs(dr.dot(normals[i])) * areas[i] / 3
             cur_mc = arithm_center / 4 + 3 / 16 * np.sum(verts[f_inds[i]], axis=0)
             mc += cur_vol * cur_mc
@@ -275,12 +451,19 @@ class StructDiscretizer:
         else:
             if data.ndim == 1:
                 assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name, data.size, self.nodes_tot)
-                data = np.reshape(data, (self.nx, self.ny, self.nz),
-                                  order='F')
+                    data_name,
+                    data.size,
+                    self.nodes_tot,
+                )
+                data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
             else:
-                assert data.shape == self.arr_shape, "shape of %s is %s instead of %s" % (
-                    data_name, data.shape, self.arr_shape)
+                assert (
+                    data.shape == self.arr_shape
+                ), "shape of %s is %s instead of %s" % (
+                    data_name,
+                    data.shape,
+                    self.arr_shape,
+                )
         return data
 
     def convert_to_flat_array(self, data, data_name: str):
@@ -295,14 +478,21 @@ class StructDiscretizer:
             data = data * np.ones(self.nodes_tot, dtype=type(data))
         else:
             if data.ndim == 3:
-                assert data.shape == self.arr_shape, "shape of %s is %s instead of %s" % (
-                    data_name, data.shape, self.arr_shape)
+                assert (
+                    data.shape == self.arr_shape
+                ), "shape of %s is %s instead of %s" % (
+                    data_name,
+                    data.shape,
+                    self.arr_shape,
+                )
 
-                data = np.reshape(data, self.nodes_tot,
-                                  order='F')
+                data = np.reshape(data, self.nodes_tot, order='F')
             elif data.ndim == 1:
                 assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name, data.size, self.nodes_tot)
+                    data_name,
+                    data.size,
+                    self.nodes_tot,
+                )
         return data
 
     def calc_structured_discr(self):
@@ -324,18 +514,27 @@ class StructDiscretizer:
         perm_z_int = np.zeros(self.arr_shape)
 
         # Calculate interface permeability array with harmonic average of permeability in x, y and z directions:
-        old_settings = np.seterr(divide='ignore',invalid='ignore')
-        perm_x_int[:-1, :, :] = (self.len_cell_xdir[:-1, :, :] + self.len_cell_xdir[1:, :, :]) \
-                                / (self.len_cell_xdir[:-1, :, :] / self.perm_x_cell[:-1, :, :]
-                                   + self.len_cell_xdir[1:, :, :] / self.perm_x_cell[1:, :, :])
+        old_settings = np.seterr(divide='ignore', invalid='ignore')
+        perm_x_int[:-1, :, :] = (
+            self.len_cell_xdir[:-1, :, :] + self.len_cell_xdir[1:, :, :]
+        ) / (
+            self.len_cell_xdir[:-1, :, :] / self.perm_x_cell[:-1, :, :]
+            + self.len_cell_xdir[1:, :, :] / self.perm_x_cell[1:, :, :]
+        )
 
-        perm_y_int[:, :-1, :] = (self.len_cell_ydir[:, :-1, :] + self.len_cell_ydir[:, 1:, :]) \
-                                / (self.len_cell_ydir[:, :-1, :] / self.perm_y_cell[:, :-1, :]
-                                   + self.len_cell_ydir[:, 1:, :] / self.perm_y_cell[:, 1:, :])
+        perm_y_int[:, :-1, :] = (
+            self.len_cell_ydir[:, :-1, :] + self.len_cell_ydir[:, 1:, :]
+        ) / (
+            self.len_cell_ydir[:, :-1, :] / self.perm_y_cell[:, :-1, :]
+            + self.len_cell_ydir[:, 1:, :] / self.perm_y_cell[:, 1:, :]
+        )
 
-        perm_z_int[:, :, :-1] = (self.len_cell_zdir[:, :, :-1] + self.len_cell_zdir[:, :, 1:]) \
-                                / (self.len_cell_zdir[:, :, :-1] / self.perm_z_cell[:, :, :-1]
-                                   + self.len_cell_zdir[:, :, 1:] / self.perm_z_cell[:, :, 1:])
+        perm_z_int[:, :, :-1] = (
+            self.len_cell_zdir[:, :, :-1] + self.len_cell_zdir[:, :, 1:]
+        ) / (
+            self.len_cell_zdir[:, :, :-1] / self.perm_z_cell[:, :, :-1]
+            + self.len_cell_zdir[:, :, 1:] / self.perm_z_cell[:, :, 1:]
+        )
 
         # Calculate geometric coefficient (useful for thermal transmissibility):
         geom_coef_xdir = np.zeros(self.arr_shape)
@@ -344,20 +543,39 @@ class StructDiscretizer:
 
         # Note, that for the last index for corresponding direction, geom_coef remains to be zero,
         # indicating that connection leads outside the reservoir and needs to be excluded
-        geom_coef_xdir[:-1, :, :] = self.len_cell_ydir[:-1, :, :] * self.len_cell_zdir[:-1, :, :] \
-                                    / (0.5 * (self.len_cell_xdir[:-1, :, :] + self.len_cell_xdir[1:, :, :]))
-        geom_coef_ydir[:, :-1, :] = self.len_cell_xdir[:, :-1, :] * self.len_cell_zdir[:, :-1, :] \
-                                    / (0.5 * (self.len_cell_ydir[:, :-1, :] + self.len_cell_ydir[:, 1:, :]))
-        geom_coef_zdir[:, :, :-1] = self.len_cell_xdir[:, :, :-1] * self.len_cell_ydir[:, :, :-1] \
-                                    / (0.5 * (self.len_cell_zdir[:, :, :-1] + self.len_cell_zdir[:, :, 1:]))
+        geom_coef_xdir[:-1, :, :] = (
+            self.len_cell_ydir[:-1, :, :]
+            * self.len_cell_zdir[:-1, :, :]
+            / (0.5 * (self.len_cell_xdir[:-1, :, :] + self.len_cell_xdir[1:, :, :]))
+        )
+        geom_coef_ydir[:, :-1, :] = (
+            self.len_cell_xdir[:, :-1, :]
+            * self.len_cell_zdir[:, :-1, :]
+            / (0.5 * (self.len_cell_ydir[:, :-1, :] + self.len_cell_ydir[:, 1:, :]))
+        )
+        geom_coef_zdir[:, :, :-1] = (
+            self.len_cell_xdir[:, :, :-1]
+            * self.len_cell_ydir[:, :, :-1]
+            / (0.5 * (self.len_cell_zdir[:, :, :-1] + self.len_cell_zdir[:, :, 1:]))
+        )
 
-        geom_coef = np.concatenate((np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
-                                    np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
-                                    np.reshape(geom_coef_zdir, (self.nodes_tot), order='F')))
+        geom_coef = np.concatenate(
+            (
+                np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_zdir, (self.nodes_tot), order='F'),
+            )
+        )
 
-        trans_xdir = np.reshape(perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F')
-        trans_ydir = np.reshape(perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F')
-        trans_zdir = np.reshape(perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F')
+        trans_xdir = np.reshape(
+            perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F'
+        )
+        trans_ydir = np.reshape(
+            perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F'
+        )
+        trans_zdir = np.reshape(
+            perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F'
+        )
 
         # Construct connection list:
         # Store connection in x-direction:
@@ -417,18 +635,24 @@ class StructDiscretizer:
         - offsets (np.ndarray): Array indicating starting positions of each cell in all_elements.
         """
         # define the six possible outward unit normals for a parallelepiped cell
-        possible_normals = np.array([
-            [1, 0, 0],  # +x
-            [-1, 0, 0],  # -x
-            [0, 1, 0],  # +y
-            [0, -1, 0],  # -y
-            [0, 0, 1],  # +z
-            [0, 0, -1]  # -z
-        ])
+        possible_normals = np.array(
+            [
+                [1, 0, 0],  # +x
+                [-1, 0, 0],  # -x
+                [0, 1, 0],  # +y
+                [0, -1, 0],  # -y
+                [0, 0, 1],  # +z
+                [0, 0, -1],  # -z
+            ]
+        )
 
         # filter well connections
         internal_mask = (cell_m < n_res_blocks) & (cell_p < n_res_blocks)
-        cell_m, cell_p, geom_coef = cell_m[internal_mask], cell_p[internal_mask], geom_coef[internal_mask]
+        cell_m, cell_p, geom_coef = (
+            cell_m[internal_mask],
+            cell_p[internal_mask],
+            geom_coef[internal_mask],
+        )
 
         # approximate normals
         dr = self.centroids_all_cells[cell_p] - self.centroids_all_cells[cell_m]
@@ -439,7 +663,8 @@ class StructDiscretizer:
         if not np.all(num_non_zero == 1):
             invalid_connections = dr[num_non_zero != 1]
             raise ValueError(
-                f"All connections must be axis-aligned with exactly one non-zero component. Invalid connections:\n{invalid_connections}")
+                f"All connections must be axis-aligned with exactly one non-zero component. Invalid connections:\n{invalid_connections}"
+            )
 
         # determine direction indices and signs
         axes = np.argmax(non_zero_mask, axis=1)
@@ -453,29 +678,40 @@ class StructDiscretizer:
 
         # create a boolean mask indicating existing directions per cell
         existing_dir_mask = np.zeros((n_res_blocks, 6), dtype=bool)
-        existing_dir_mask[cell_m, direction_mapping] = True  # Set existing directions to True
+        existing_dir_mask[cell_m, direction_mapping] = (
+            True  # Set existing directions to True
+        )
 
         # fill normals with interior and boundary normals (unit normals)
         total_connections = 6 * n_res_blocks
         num_existing = len(cell_m)
         A = np.zeros((total_connections, 3), dtype=float)
         A[:num_existing] = dr * geom_coef[:, np.newaxis]
-        missing_cells, missing_dirs = np.nonzero(~existing_dir_mask)  # Each row is (cell, direction)
-        A[num_existing:num_existing + len(missing_cells)] = possible_normals[missing_dirs]
+        missing_cells, missing_dirs = np.nonzero(
+            ~existing_dir_mask
+        )  # Each row is (cell, direction)
+        A[num_existing : num_existing + len(missing_cells)] = possible_normals[
+            missing_dirs
+        ]
 
         # add no-flow connections to the connection list, sort resulting list
         cell_of_connection = np.concatenate([cell_m, missing_cells])
         secondary_key = np.concatenate([direction_mapping, missing_dirs])
         sorted_conn_indices = np.lexsort((secondary_key, cell_of_connection))
-        A_sorted, cell_sorted = A[sorted_conn_indices], cell_of_connection[sorted_conn_indices]
-        conn_offset = np.concatenate(([0], np.nonzero(np.diff(cell_sorted))[0] + 1, [total_connections]))
+        A_sorted, cell_sorted = (
+            A[sorted_conn_indices],
+            cell_of_connection[sorted_conn_indices],
+        )
+        conn_offset = np.concatenate(
+            ([0], np.nonzero(np.diff(cell_sorted))[0] + 1, [total_connections])
+        )
 
         # form matrices for each cell
         all_elements = []
         offsets = [0]
         current_offset = 0
         for i in range(n_res_blocks):
-            A_cell = A_sorted[conn_offset[i]:conn_offset[i + 1]]
+            A_cell = A_sorted[conn_offset[i] : conn_offset[i + 1]]
             ATA = A_cell.T @ A_cell
 
             # use pseudoinverse if the matrix rank is less than the number of columns
@@ -513,17 +749,26 @@ class StructDiscretizer:
         perm_z_int = np.zeros(self.arr_shape)
 
         # Calculate interface permeability array with harmonic average of permeability in x, y and z directions:
-        old_settings = np.seterr(divide='ignore',invalid='ignore')
+        old_settings = np.seterr(divide='ignore', invalid='ignore')
 
-        perm_x_int[:-1, :, :] = (self.len_cell_xplus[:-1, :, :] + self.len_cell_xminus[1:, :, :]) \
-                                / (self.len_cell_xplus[:-1, :, :] / self.perm_xplus[:-1, :, :]
-                                   + self.len_cell_xminus[1:, :, :] / self.perm_xminus[1:, :, :])
-        perm_y_int[:, :-1, :] = (self.len_cell_yplus[:, :-1, :] + self.len_cell_yminus[:, 1:, :]) \
-                                / (self.len_cell_yplus[:, :-1, :] / self.perm_yplus[:, :-1, :]
-                                   + self.len_cell_yminus[:, 1:, :] / self.perm_yminus[:, 1:, :])
-        perm_z_int[:, :, :-1] = (self.len_cell_zplus[:, :, :-1] + self.len_cell_zminus[:, :, 1:]) \
-                                / (self.len_cell_zplus[:, :, :-1] / self.perm_zplus[:, :, :-1]
-                                   + self.len_cell_zminus[:, :, 1:] / self.perm_zminus[:, :, 1:])
+        perm_x_int[:-1, :, :] = (
+            self.len_cell_xplus[:-1, :, :] + self.len_cell_xminus[1:, :, :]
+        ) / (
+            self.len_cell_xplus[:-1, :, :] / self.perm_xplus[:-1, :, :]
+            + self.len_cell_xminus[1:, :, :] / self.perm_xminus[1:, :, :]
+        )
+        perm_y_int[:, :-1, :] = (
+            self.len_cell_yplus[:, :-1, :] + self.len_cell_yminus[:, 1:, :]
+        ) / (
+            self.len_cell_yplus[:, :-1, :] / self.perm_yplus[:, :-1, :]
+            + self.len_cell_yminus[:, 1:, :] / self.perm_yminus[:, 1:, :]
+        )
+        perm_z_int[:, :, :-1] = (
+            self.len_cell_zplus[:, :, :-1] + self.len_cell_zminus[:, :, 1:]
+        ) / (
+            self.len_cell_zplus[:, :, :-1] / self.perm_zplus[:, :, :-1]
+            + self.len_cell_zminus[:, :, 1:] / self.perm_zminus[:, :, 1:]
+        )
 
         # Calculate geometric coefficient (useful for thermal transmissibility):
         geom_coef_xdir = np.zeros(self.arr_shape)
@@ -532,20 +777,36 @@ class StructDiscretizer:
 
         # Note, that for the last index for corresponding direction, geom_coef remains to be zero,
         # indicating that connection leads outside the reservoir and needs to be excluded
-        geom_coef_xdir[:-1, :, :] = self.cell_data['area'][:-1, :, :, 1] / self.dist_cell_x
+        geom_coef_xdir[:-1, :, :] = (
+            self.cell_data['area'][:-1, :, :, 1] / self.dist_cell_x
+        )
         geom_coef_xdir[:-1, :, :][self.dist_cell_x == 0] = 0.0
-        geom_coef_ydir[:, :-1, :] = self.cell_data['area'][:, :-1, :, 3] / self.dist_cell_y
+        geom_coef_ydir[:, :-1, :] = (
+            self.cell_data['area'][:, :-1, :, 3] / self.dist_cell_y
+        )
         geom_coef_ydir[:, :-1, :][self.dist_cell_y == 0] = 0.0
-        geom_coef_zdir[:, :, :-1] = self.cell_data['area'][:, :, :-1, 5] / self.dist_cell_z
+        geom_coef_zdir[:, :, :-1] = (
+            self.cell_data['area'][:, :, :-1, 5] / self.dist_cell_z
+        )
         geom_coef_zdir[:, :, :-1][self.dist_cell_z == 0] = 0.0
 
-        geom_coef = np.concatenate((np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
-                                    np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
-                                    np.reshape(geom_coef_zdir, (self.nodes_tot), order='F')))
+        geom_coef = np.concatenate(
+            (
+                np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_zdir, (self.nodes_tot), order='F'),
+            )
+        )
 
-        trans_xdir = np.reshape(perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F')
-        trans_ydir = np.reshape(perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F')
-        trans_zdir = np.reshape(perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F')
+        trans_xdir = np.reshape(
+            perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F'
+        )
+        trans_ydir = np.reshape(
+            perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F'
+        )
+        trans_zdir = np.reshape(
+            perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F'
+        )
 
         # Construct connection list:
         # Store connection in x-direction:
@@ -594,43 +855,67 @@ class StructDiscretizer:
         dy0 = np.zeros(2)
         dz0 = np.zeros(2)
         if i != 0:
-            dx0[0] = np.fabs(self.cell_data['center'][i, j, k, 0] - self.cell_data['center'][i-1, j, k, 0])
+            dx0[0] = np.fabs(
+                self.cell_data['center'][i, j, k, 0]
+                - self.cell_data['center'][i - 1, j, k, 0]
+            )
         if i != self.arr_shape[0] - 1:
-            dx0[1] = np.fabs(self.cell_data['center'][i, j, k, 0] - self.cell_data['center'][i+1, j, k, 0])
+            dx0[1] = np.fabs(
+                self.cell_data['center'][i, j, k, 0]
+                - self.cell_data['center'][i + 1, j, k, 0]
+            )
         if j != 0:
-            dy0[0] = np.fabs(self.cell_data['center'][i, j, k, 1] - self.cell_data['center'][i, j-1, k, 1])
+            dy0[0] = np.fabs(
+                self.cell_data['center'][i, j, k, 1]
+                - self.cell_data['center'][i, j - 1, k, 1]
+            )
         if j != self.arr_shape[1] - 1:
-            dy0[1] = np.fabs(self.cell_data['center'][i, j, k, 1] - self.cell_data['center'][i, j+1, k, 1])
+            dy0[1] = np.fabs(
+                self.cell_data['center'][i, j, k, 1]
+                - self.cell_data['center'][i, j + 1, k, 1]
+            )
         if k != 0:
-            dz0[0] = np.fabs(self.cell_data['center'][i, j, k, 2] - self.cell_data['center'][i, j, k-1, 2])
+            dz0[0] = np.fabs(
+                self.cell_data['center'][i, j, k, 2]
+                - self.cell_data['center'][i, j, k - 1, 2]
+            )
         if k != self.arr_shape[2] - 1:
-            dz0[1] = np.fabs(self.cell_data['center'][i, j, k, 2] - self.cell_data['center'][i, j, k+1, 2])
+            dz0[1] = np.fabs(
+                self.cell_data['center'][i, j, k, 2]
+                - self.cell_data['center'][i, j, k + 1, 2]
+            )
 
         dx = np.sum(dx0) / np.count_nonzero(dx0) if np.count_nonzero(dx0) > 0 else 0.0
         dy = np.sum(dy0) / np.count_nonzero(dy0) if np.count_nonzero(dy0) > 0 else 0.0
         dz = np.sum(dz0) / np.count_nonzero(dz0) if np.count_nonzero(dz0) > 0 else 0.0
         return dx, dy, dz
 
-    def apply_actnum_filter(self, actnum, cell_m, cell_p, tran, tran_thermal, arrays: list):
+    def apply_actnum_filter(
+        self, actnum, cell_m, cell_p, tran, tran_thermal, arrays: list
+    ):
         old_settings = np.seterr(divide='ignore', invalid='ignore')
         actnum = self.convert_to_flat_array(actnum, 'actnum')
         num_inactive_due_actnum = actnum[actnum == 0].size
-        num_inactive_due_volume = actnum[(self.calc_volumes() == 0) * (actnum > 0)].size #zero volume and nonzero actnum
+        num_inactive_due_volume = actnum[
+            (self.calc_volumes() == 0) * (actnum > 0)
+        ].size  # zero volume and nonzero actnum
         actnum[self.calc_volumes() == 0] = 0
         # Check if actnum actually has inactive cells
         n_act = actnum[actnum > 0].size
-        if n_act != self.nodes_tot or \
-                tran[tran < self.min_tran_tranD].size != 0 or \
-                tran_thermal[tran_thermal < self.min_tran_tranD].size != 0:
+        if (
+            n_act != self.nodes_tot
+            or tran[tran < self.min_tran_tranD].size != 0
+            or tran_thermal[tran_thermal < self.min_tran_tranD].size != 0
+        ):
             print("Applying ACTNUM...")
             print("Inactive blocks due to ACTNUM: ", num_inactive_due_actnum)
             print("Inactive blocks due to volume: ", num_inactive_due_volume)
             # Update global_to_local index
-            #new_local_to_global = self.local_to_global[actnum[self.local_to_global] > 0]
-            #self.global_to_local[actnum == 0] = -1
-            #self.global_to_local[actnum == 1] = range(n_act)
+            # new_local_to_global = self.local_to_global[actnum[self.local_to_global] > 0]
+            # self.global_to_local[actnum == 0] = -1
+            # self.global_to_local[actnum == 1] = range(n_act)
 
-            #compute connection list with global cell indexes
+            # compute connection list with global cell indexes
             cell_m_global = self.local_to_global[cell_m]
             cell_p_global = self.local_to_global[cell_p]
 
@@ -641,7 +926,10 @@ class StructDiscretizer:
             # Also filter out connections that don`t have substantial transmissibility
             act_t = tran > self.min_tran_tranD
             act_t += tran_thermal > self.min_tran_tranD
-            print("Inactive connections due to transmissibility: ", act_t[act_t == False].size)
+            print(
+                "Inactive connections due to transmissibility: ",
+                act_t[act_t == False].size,
+            )
             act_conn = act_m * act_p * act_t
             print("Inactive connections total: ", act_conn[act_conn == False].size)
 
@@ -652,7 +940,10 @@ class StructDiscretizer:
             not_connected = all.difference(m)
             not_connected = list(not_connected.difference(p))
 
-            print("Inactive blocks due to inactive connections: ", len(not_connected) - actnum[actnum == 0].size)
+            print(
+                "Inactive blocks due to inactive connections: ",
+                len(not_connected) - actnum[actnum == 0].size,
+            )
 
             # and make corresponding global cells inactive too
             actnum[self.local_to_global[not_connected]] = 0
@@ -661,13 +952,14 @@ class StructDiscretizer:
             # Now filter local cells, removing those which correspond to inactive global cells
             # This way self.local_to_global array will be squeezed to contain only active local cells,
             # preserving correct global indexes for them
-            new_local_to_global = self.local_to_global[actnum[self.local_to_global] != 0]
+            new_local_to_global = self.local_to_global[
+                actnum[self.local_to_global] != 0
+            ]
             self.local_to_global = new_local_to_global
             # update global_to_local index for inactive cells
             self.global_to_local[actnum == 0] = -1
             # update global_to_local index for active cells
             self.global_to_local[new_local_to_global] = np.arange(n_act, dtype=np.int32)
-
 
             # re-index active connections using updated local indexes
             cell_m_local = self.global_to_local[cell_m_global[act_conn]]
@@ -689,7 +981,9 @@ class StructDiscretizer:
         np.seterr(**old_settings)
         return cell_m_local, cell_p_local, tran_local, tran_thermal_local, arrays_local
 
-    def calc_well_index(self, i, j, k, well_radius=0.1524, segment_direction='z_axis', skin=0):
+    def calc_well_index(
+        self, i, j, k, well_radius=0.1524, segment_direction='z_axis', skin=0
+    ):
         """
         Class method which construct the well index for each well segment/perforation
 
@@ -701,12 +995,18 @@ class StructDiscretizer:
         :param skin: skin factor for pressure loss around well-bore due to formation damage
         :return well_index: well-index of particular perforation
         """
-        assert (i > 0), "Perforation block coordinate should be positive"
-        assert (j > 0), "Perforation block coordinate should be positive"
-        assert (k > 0), "Perforation block coordinate should be positive"
-        assert (i <= self.nx), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (j <= self.ny), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (k <= self.nz), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i > 0, "Perforation block coordinate should be positive"
+        assert j > 0, "Perforation block coordinate should be positive"
+        assert k > 0, "Perforation block coordinate should be positive"
+        assert (
+            i <= self.nx
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (
+            j <= self.ny
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (
+            k <= self.nz
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
         i -= 1
         j -= 1
         k -= 1
@@ -732,28 +1032,61 @@ class StructDiscretizer:
 
             if segment_direction == 'z_axis':
                 if kx * ky != 0:
-                    peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
-                                   ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
-                    well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
+                    peaceman_rad = (
+                        0.28
+                        * np.sqrt(np.sqrt(ky / kx) * dx**2 + np.sqrt(kx / ky) * dy**2)
+                        / ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
+                    )
+                    well_index = (
+                        2
+                        * np.pi
+                        * dz
+                        * np.sqrt(kx * ky)
+                        / (np.log(peaceman_rad / well_radius) + skin)
+                    )
 
-                    conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2)/2.
-                    well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dx**2 + dy**2) / 2.0
+                    well_indexD = (
+                        2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
+                    )
             elif segment_direction == 'x_axis':
                 if kz * ky != 0:
-                    peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kz) * dz ** 2 + np.sqrt(kz / ky) * dy ** 2) / \
-                                   ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
-                    well_index = 2 * np.pi * dx * np.sqrt(kz * ky) / (np.log(peaceman_rad / well_radius) + skin)
+                    peaceman_rad = (
+                        0.28
+                        * np.sqrt(np.sqrt(ky / kz) * dz**2 + np.sqrt(kz / ky) * dy**2)
+                        / ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
+                    )
+                    well_index = (
+                        2
+                        * np.pi
+                        * dx
+                        * np.sqrt(kz * ky)
+                        / (np.log(peaceman_rad / well_radius) + skin)
+                    )
 
-                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dy ** 2)/2.
-                    well_indexD = 2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dz**2 + dy**2) / 2.0
+                    well_indexD = (
+                        2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
+                    )
             elif segment_direction == 'y_axis':
                 if kx * kz != 0:
-                    peaceman_rad = 0.28 * np.sqrt(np.sqrt(kz / kx) * dx ** 2 + np.sqrt(kx / kz) * dz ** 2) / \
-                                   ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
-                    well_index = 2 * np.pi * dy * np.sqrt(kx * kz) / (np.log(peaceman_rad / well_radius) + skin)
+                    peaceman_rad = (
+                        0.28
+                        * np.sqrt(np.sqrt(kz / kx) * dx**2 + np.sqrt(kx / kz) * dz**2)
+                        / ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
+                    )
+                    well_index = (
+                        2
+                        * np.pi
+                        * dy
+                        * np.sqrt(kx * kz)
+                        / (np.log(peaceman_rad / well_radius) + skin)
+                    )
 
-                    conduction_rad = 0.28 * np.sqrt(dz ** 2 + dx ** 2)/2.
-                    well_indexD = 2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
+                    conduction_rad = 0.28 * np.sqrt(dz**2 + dx**2) / 2.0
+                    well_indexD = (
+                        2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
+                    )
 
             well_index = well_index * StructDiscretizer.darcy_constant
 

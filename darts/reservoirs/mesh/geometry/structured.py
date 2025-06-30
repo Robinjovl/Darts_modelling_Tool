@@ -1,11 +1,12 @@
-import numpy as np
 import math
 import warnings
-import matplotlib.pyplot as plt
-from darts.reservoirs.mesh.geometry.geometry import Geometry
 
+import matplotlib.pyplot as plt
 import numba
+import numpy as np
 from numba import jit, njit
+
+from darts.reservoirs.mesh.geometry.geometry import Geometry
 
 
 @jit(nopython=True)
@@ -32,7 +33,9 @@ def _find_surface(xyz, ax1, ax2, points, curves, surfaces):
                 # find if point is left (above) or right (below) segment
                 if xyz[ax1] > x1 and xyz[ax1] > x2:  # both x1 and x2 left of segment
                     intersections += 1
-                elif xyz[ax1] > x1 or xyz[ax1] > x2:  # one of two points left of segment
+                elif (
+                    xyz[ax1] > x1 or xyz[ax1] > x2
+                ):  # one of two points left of segment
                     b = y1 - (y2 - y1) / (x2 - x1) * x1  # construct line segment
                     y0 = (y2 - y1) / (x2 - x1) * xyz[ax1] + b
 
@@ -103,8 +106,12 @@ class Structured(Geometry):
         minz, maxz = min(points[:, 2]), max(points[:, 2])
 
         # Calculate x, y and z
-        dx, dy, dz = (maxx-minx)/nx, (maxy-miny)/ny, (maxz-minz)/nz
-        x, y, z = np.linspace(minx+dx/2, maxx-dx/2, nx), np.linspace(miny+dy/2, maxy-dy/2, ny), np.linspace(minz+dz/2, maxz-dz/2, nz)
+        dx, dy, dz = (maxx - minx) / nx, (maxy - miny) / ny, (maxz - minz) / nz
+        x, y, z = (
+            np.linspace(minx + dx / 2, maxx - dx / 2, nx),
+            np.linspace(miny + dy / 2, maxy - dy / 2, ny),
+            np.linspace(minz + dz / 2, maxz - dz / 2, nz),
+        )
 
         # Define layers and actnum
         cell_to_layer = np.zeros((nx, ny, nz), dtype=int)
@@ -113,8 +120,10 @@ class Structured(Geometry):
         for k in range(nz):
             for j in range(ny):
                 for i in range(nx):
-                    xyz = np.array([x[i]+dx/2, y[j]+dy/2, z[k]+dz/2])
-                    (surface, act) = _find_surface(xyz, self.axs[0], self.axs[1], points, curves, surfaces)
+                    xyz = np.array([x[i] + dx / 2, y[j] + dy / 2, z[k] + dz / 2])
+                    (surface, act) = _find_surface(
+                        xyz, self.axs[0], self.axs[1], points, curves, surfaces
+                    )
                     cell_to_layer[i, j, k] = surface
                     actnum[i, j, k] = act
 

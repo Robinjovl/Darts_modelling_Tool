@@ -127,7 +127,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         n_total_mainpy += 1
         os.chdir(mdir)
         import subprocess
-        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
+        mrun = subprocess.run(["darts", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
         rcode = mrun.returncode
         n_failed_mainpy += rcode
         if not rcode:

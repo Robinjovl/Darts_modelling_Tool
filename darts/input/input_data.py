@@ -1,10 +1,13 @@
-import numpy as np
-from typing import Union, List, Dict
+from typing import Dict, List, Union
 
-class RockProps():
+import numpy as np
+
+
+class RockProps:
     """
     Rock hydrodynamic properties
     """
+
     def __init__(self, type_hydr='', type_mech=''):
         """
         :param type_hydr: if 'isothermal' - isothermal flow; if 'thermal' - thermal flow
@@ -15,20 +18,20 @@ class RockProps():
         self.permx = self.permy = self.permz = None  # Permeability [mD]
         self.compressibility = None
         self.density = None
-        
+
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
-            self.conductivity = None   # thermal conductivity [kJ/m/day/K]
-        
-        if type_mech != 'none': # geomechanical properties
-            self.E = None   # Young modulus [bars]
+            self.conductivity = None  # thermal conductivity [kJ/m/day/K]
+
+        if type_mech != 'none':  # geomechanical properties
+            self.E = None  # Young modulus [bars]
             self.nu = None  # Poisson ratio
             self.stiffness = None  # Stiffness tensor
             self.biot = None  # Biot
-        else: # only hydrodynamic
-            self.compressibility = None   # [1/bar]
+        else:  # only hydrodynamic
+            self.compressibility = None  # [1/bar]
 
-        if type_mech == 'thermoporoelasticity': # THM
+        if type_mech == 'thermoporoelasticity':  # THM
             self.th_expn = None  # thermal expansion coefficient # [1/K] #TODO Linear?
 
     def get_permxyz(self):
@@ -37,24 +40,27 @@ class RockProps():
         else:
             if np.isscalar(self.perm):
                 return self.perm, self.perm, self.perm
-            else: # tensor
+            else:  # tensor
                 return self.perm
-                
 
-class FluidProps():
+
+class FluidProps:
     """
     Fluid properties
     """
+
     def __init__(self):
-        self.compressibility = None  #TODO units
+        self.compressibility = None  # TODO units
         self.density = None  # Density at reference conditions, #TODO units
-        self.viscosity = None  #TODO units
+        self.viscosity = None  # TODO units
         self.Mw = None  # molar weight, [g/mol]
-        
-class InitialSolution():
+
+
+class InitialSolution:
     """
     Class for initial values
     """
+
     def __init__(self, type='uniform'):
         self.type = type
         if type == 'uniform':
@@ -66,23 +72,27 @@ class InitialSolution():
             self.temperature_at_ref_depth = None  # [K]
             self.reference_depth_for_pressure = None  # [m]
             self.pressure_gradient = None  # [bar/km]
-            self.pressure_at_ref_depth = None # [bars]
+            self.pressure_at_ref_depth = None  # [bars]
         self.initial_displacements = None  #  [U_x, U_y, U_z] [m]
         self.initial_composition = None
 
-class MeshData():
+
+class MeshData:
     """
     tags
     """
+
     def __init__(self):
         self.bnd_tags = None
         self.matrix_tags = None
         self.mesh_filename = None
-        
-class WellControl():
+
+
+class WellControl:
     """
     constant well controls during the simulation
     """
+
     def __init__(self):
         self.reset()
 
@@ -90,14 +100,16 @@ class WellControl():
         self.type = None  # 'prod' or 'inj'
         self.mode = None  # 'rate' or 'bhp'
         # bhp control
-        self.bhp = None # bars
+        self.bhp = None  # bars
         # rate control
-        self.rate = None # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        self.bhp_constraint = None # lower limit for bhp, bars
+        self.rate = (
+            None  # m3/day for Geothermal physics ans kmol/day for Compositional physics
+        )
+        self.bhp_constraint = None  # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K
         # if Compositional
-        self.phase_name = None # phase name for well control, [str]
+        self.phase_name = None  # phase name for well control, [str]
 
     def prod_rate_control(self, rate, rate_type, bhp_constraint=None, phase_name=None):
         self.reset()
@@ -107,7 +119,7 @@ class WellControl():
         self.rate_type = rate_type
         self.bhp_constraint = bhp_constraint
         # if Compositional
-        self.phase_name = phase_name # produced phase name, [str]
+        self.phase_name = phase_name  # produced phase name, [str]
 
     def prod_bhp_control(self, bhp):
         self.reset()
@@ -115,7 +127,15 @@ class WellControl():
         self.mode = 'bhp'
         self.bhp = bhp
 
-    def inj_rate_control(self, rate, rate_type, bhp_constraint=None, temperature=None, phase_name=None, inj_composition=None):
+    def inj_rate_control(
+        self,
+        rate,
+        rate_type,
+        bhp_constraint=None,
+        temperature=None,
+        phase_name=None,
+        inj_composition=None,
+    ):
         self.reset()
         self.type = 'inj'
         self.mode = 'rate'
@@ -125,10 +145,12 @@ class WellControl():
         # if thermal
         self.inj_bht = temperature  # K
         # if Compositional
-        self.phase_name = phase_name # injected phase name, [str]
+        self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  #  0 < injected composition < 1
 
-    def inj_bhp_control(self, bhp, temperature=None, phase_name=None, inj_composition=None):
+    def inj_bhp_control(
+        self, bhp, temperature=None, phase_name=None, inj_composition=None
+    ):
         self.reset()
         self.type = 'inj'
         self.mode = 'bhp'
@@ -136,33 +158,39 @@ class WellControl():
         # if thermal
         self.inj_bht = temperature  # K
         # if Compositional
-        self.phase_name = phase_name   # injected phase name, [str]
+        self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  #  0 < injected composition < 1
 
-class WellLocIJK():
+
+class WellLocIJK:
     """
     well location for structured grid, 1-based integer grid cell indices I,J,K
     """
+
     def __init__(self):
         self.I = None
         self.J = None
         self.K = None
 
-class WellLocXYZ():
+
+class WellLocXYZ:
     """
     well location for any kind of grid, real coordinates X, Y, Z
     """
+
     def __init__(self):
         self.X = None
         self.Y = None
         self.Z = None
 
-class Well():
+
+class Well:
     """
     well definition
     """
-    def __init__(self, loc_type : str):
-        self.controls = [] # List[WellControl]
+
+    def __init__(self, loc_type: str):
+        self.controls = []  # List[WellControl]
         self.perforations = []
         if loc_type == 'ijk':
             self.location = WellLocIJK()
@@ -172,9 +200,17 @@ class Well():
             print('Unknown loc_type', loc_type)
             exit(1)
 
-class WellPerforation():
-    def __init__(self, loc_ijk: Union[int, tuple], status : str, well_radius : float, well_index : float,
-                 well_indexD : float, multi_segment: bool):
+
+class WellPerforation:
+    def __init__(
+        self,
+        loc_ijk: Union[int, tuple],
+        status: str,
+        well_radius: float,
+        well_index: float,
+        well_indexD: float,
+        multi_segment: bool,
+    ):
         self.loc_ijk = loc_ijk
         self.status = status
         self.well_radius = well_radius
@@ -182,14 +218,22 @@ class WellPerforation():
         self.well_indexD = well_indexD
         self.multi_segment = multi_segment
 
-class WellData():
+
+class WellData:
     """
     well definition
     """
+
     def __init__(self):
         self.wells = dict()
 
-    def add_well(self, name : str, loc_type : str, loc_ijk: Union[int, tuple] = None, loc_xyz: Union[float, tuple] = None):
+    def add_well(
+        self,
+        name: str,
+        loc_type: str,
+        loc_ijk: Union[int, tuple] = None,
+        loc_xyz: Union[float, tuple] = None,
+    ):
         assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
         if loc_ijk is not None and loc_type == 'ijk':
@@ -201,8 +245,17 @@ class WellData():
             exit(1)
         self.wells[name] = w
 
-    def add_perforation(self, name : str, time : float, loc_ijk: Union[int, tuple], status: str, well_radius : float,
-                        well_index : float, well_indexD : float, multi_segment : bool):
+    def add_perforation(
+        self,
+        name: str,
+        time: float,
+        loc_ijk: Union[int, tuple],
+        status: str,
+        well_radius: float,
+        well_index: float,
+        well_indexD: float,
+        multi_segment: bool,
+    ):
         """
         :param name: well name
         :param time: simulation timestep, [days]
@@ -216,10 +269,16 @@ class WellData():
             # multi_segment option can't be changed and should be the same for all perforations
             well_index_ = well_indexD_ = eps
         else:
-            well_index_  = well_index
+            well_index_ = well_index
             well_indexD_ = well_indexD
-        perf = WellPerforation(loc_ijk=loc_ijk, status=status, well_radius=well_radius, well_index=well_index_,
-                               well_indexD=well_indexD_, multi_segment=multi_segment)
+        perf = WellPerforation(
+            loc_ijk=loc_ijk,
+            status=status,
+            well_radius=well_radius,
+            well_index=well_index_,
+            well_indexD=well_indexD_,
+            multi_segment=multi_segment,
+        )
         self.wells[name].perforations.append((time, perf))
 
     def read_and_add_perforations(self, sch_fname, verbose: bool = False):
@@ -232,7 +291,7 @@ class WellData():
             return
         print('reading wells (COMPDAT) from', sch_fname)
         well_diam = 0.152  # m.  #TODO read from the keyword parameters
-        well_radius = well_diam / 2.
+        well_radius = well_diam / 2.0
 
         keep_reading = True
         prev_well_name = ''
@@ -244,8 +303,12 @@ class WellData():
                         buff = f.readline()
                         if len(buff) != 0:
                             CompDat = buff.split()
-                            wname = CompDat[0].strip('"').strip("'")  # remove quotas (" and ')
-                            if len(CompDat) != 0 and '/' != wname:  # skip the empty line and '/' line
+                            wname = (
+                                CompDat[0].strip('"').strip("'")
+                            )  # remove quotas (" and ')
+                            if (
+                                len(CompDat) != 0 and '/' != wname
+                            ):  # skip the empty line and '/' line
                                 # define perforation
                                 i1 = int(CompDat[1])
                                 j1 = int(CompDat[2])
@@ -254,24 +317,45 @@ class WellData():
 
                                 well_index = None
                                 if len(CompDat) > 7:
-                                    assert '*' not in CompDat[5] and '*' not in CompDat[6], 'Reading SCH with default params is not supported:' + buff
+                                    assert (
+                                        '*' not in CompDat[5] and '*' not in CompDat[6]
+                                    ), (
+                                        'Reading SCH with default params is not supported:'
+                                        + buff
+                                    )
                                     c7 = CompDat[7]
                                     if c7 not in ['*', '/']:
                                         well_index = float(c7)
 
                                 for k in range(k1, k2 + 1):
-                                    #TODO support time>0
-                                    self.add_perforation(name=wname, time=0.0, loc_ijk=(i1, j1, k), 
-                                                         status='open', well_radius=well_radius,
-                                                         well_index=well_index, well_indexD=0.,
-                                                         multi_segment=False)
+                                    # TODO support time>0
+                                    self.add_perforation(
+                                        name=wname,
+                                        time=0.0,
+                                        loc_ijk=(i1, j1, k),
+                                        status='open',
+                                        well_radius=well_radius,
+                                        well_index=well_index,
+                                        well_indexD=0.0,
+                                        multi_segment=False,
+                                    )
                             if len(CompDat) != 0 and '/' == CompDat[0]:
                                 keep_reading = False
                                 break
         print('WELLS read from SCH file:', len(self.wells))
 
-    def add_control(self, name : str, time : float, type : str, mode : str, rate : float, bhp : float,
-                    bhp_constraint : float, inj_temp : float, phase_name : str):
+    def add_control(
+        self,
+        name: str,
+        time: float,
+        type: str,
+        mode: str,
+        rate: float,
+        bhp: float,
+        bhp_constraint: float,
+        inj_temp: float,
+        phase_name: str,
+    ):
         """
         :param name: well name
         :param time: simulation timestep, [days]
@@ -284,13 +368,31 @@ class WellData():
         :param phase_name # injected phase name, [str], for Compositional physics
         :return:
         """
-        self.wells[name].controls.append((time, WellControl(type=type, mode=mode, rate=rate, bhp=bhp,
-                                                            bhp_constraint=bhp_constraint, inj_temp=inj_temp,
-                                                            phase_name=phase_name)))
+        self.wells[name].controls.append(
+            (
+                time,
+                WellControl(
+                    type=type,
+                    mode=mode,
+                    rate=rate,
+                    bhp=bhp,
+                    bhp_constraint=bhp_constraint,
+                    inj_temp=inj_temp,
+                    phase_name=phase_name,
+                ),
+            )
+        )
 
-    def add_prd_rate_control(self, name, rate, rate_type, bhp_constraint=None, phase_name=None, time=0):
+    def add_prd_rate_control(
+        self, name, rate, rate_type, bhp_constraint=None, phase_name=None, time=0
+    ):
         wctrl = WellControl()
-        wctrl.prod_rate_control(rate=rate, rate_type=rate_type, bhp_constraint=bhp_constraint, phase_name=phase_name)
+        wctrl.prod_rate_control(
+            rate=rate,
+            rate_type=rate_type,
+            bhp_constraint=bhp_constraint,
+            phase_name=phase_name,
+        )
         self.wells[name].controls.append((time, wctrl))
 
     def add_prd_bhp_control(self, name, bhp, time=0):
@@ -298,20 +400,40 @@ class WellData():
         wctrl.prod_bhp_control(bhp=bhp)
         self.wells[name].controls.append((time, wctrl))
 
-    def add_inj_rate_control(self, name, rate, rate_type, bhp_constraint=None, temperature=None, phase_name=None, inj_composition=[], time=0):
+    def add_inj_rate_control(
+        self,
+        name,
+        rate,
+        rate_type,
+        bhp_constraint=None,
+        temperature=None,
+        phase_name=None,
+        inj_composition=[],
+        time=0,
+    ):
         wctrl = WellControl()
-        wctrl.inj_rate_control(rate=rate, rate_type=rate_type, bhp_constraint=bhp_constraint, temperature=temperature, phase_name=phase_name)
+        wctrl.inj_rate_control(
+            rate=rate,
+            rate_type=rate_type,
+            bhp_constraint=bhp_constraint,
+            temperature=temperature,
+            phase_name=phase_name,
+        )
         self.wells[name].controls.append((time, wctrl))
 
-    def add_inj_bhp_control(self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0):
+    def add_inj_bhp_control(
+        self, name, bhp, temperature=None, phase_name=None, inj_composition=[], time=0
+    ):
         wctrl = WellControl()
         wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
         self.wells[name].controls.append((time, wctrl))
 
-class OBLParams():
+
+class OBLParams:
     """
     OBL range, number of points
     """
+
     def __init__(self):
         self.zero = None
         self.n_points = None
@@ -322,24 +444,28 @@ class OBLParams():
         self.min_z = None
         self.max_z = None
 
-class Simulation():
-    """
 
-    """
+class Simulation:
+    """ """
+
     def __init__(self):
         self.time_steps = None
 
-class OtherProps():
+
+class OtherProps:
     """
     Other user defined properties
     """
+
     def __init__(self):
         pass
 
-class InputData():
+
+class InputData:
     """
     Class for initial values
     """
+
     def __init__(self, type_hydr, type_mech, init_type):
         self.type_hydr = type_hydr
         self.type_mech = type_mech
@@ -352,17 +478,35 @@ class InputData():
         self.boundary = None
         self.sim = Simulation()
         self.other = OtherProps()
-        
+
     def check(self):
-        assert self.type_hydr in ['isothermal', 'thermal'], 'input_data: Unknown type_hydr'
-        assert self.type_mech in ['poroelasticity', 'thermoporoelasticity', 'none'], 'input_data: Unknown type_mech'
-        for k in self.__dict__.keys():  #  loop over the attributes (self.rock, self.fluid, ..)
+        assert self.type_hydr in [
+            'isothermal',
+            'thermal',
+        ], 'input_data: Unknown type_hydr'
+        assert self.type_mech in [
+            'poroelasticity',
+            'thermoporoelasticity',
+            'none',
+        ], 'input_data: Unknown type_mech'
+        for (
+            k
+        ) in (
+            self.__dict__.keys()
+        ):  #  loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            if k in ['initial', 'mesh', 'sim', 'other']:  # do not check initial currently #TODO
+            if k in [
+                'initial',
+                'mesh',
+                'sim',
+                'other',
+            ]:  # do not check initial currently #TODO
                 continue
-            for k2 in sub_obj.__dict__.keys(): #  loop over the attributes in sub object
+            for (
+                k2
+            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     # either perm or permx+permy+permx should be specified
@@ -370,17 +514,24 @@ class InputData():
                         if sub_obj.__dict__['perm'] is not None:
                             continue
                     if k2 == 'perm':
-                        if sub_obj.__dict__['permx'] is not None and \
-                                sub_obj.__dict__['permy'] is not None and \
-                                sub_obj.__dict__['permz'] is not None:
+                        if (
+                            sub_obj.__dict__['permx'] is not None
+                            and sub_obj.__dict__['permy'] is not None
+                            and sub_obj.__dict__['permz'] is not None
+                        ):
                             continue
                     # if stiffness specified, then allow E and nu non-specified
                     if k2 == 'E' or k2 == 'nu':
                         if sub_obj.__dict__['stiffness'] is not None:
                             continue
-                    print('Error in InputData check: property', k, k2, 'is not initialized!')
+                    print(
+                        'Error in InputData check: property',
+                        k,
+                        k2,
+                        'is not initialized!',
+                    )
                     assert False
-                    
+
     def make_prop_arrays(self):
         """
         one can specify different property values with a numpy array, and another property as a scalar value
@@ -397,14 +548,20 @@ class InputData():
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            for k2 in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
+            for (
+                k2
+            ) in sub_obj.__dict__.keys():  #  loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
                 if value is None:
                     continue
                 if not np.isscalar(value):  # if np.array
                     max_n_regions = value.size
         # make arrays from scalar fields
-        for k in self.__dict__.keys():  # loop over the attributes (self.rock, self.fluid, ..)
+        for (
+            k
+        ) in (
+            self.__dict__.keys()
+        ):  # loop over the attributes (self.rock, self.fluid, ..)
             if k not in array_obj:
                 continue
             sub_obj = self.__getattribute__(k)
@@ -417,4 +574,6 @@ class InputData():
                 if value is None:
                     continue
                 if np.isscalar(value):
-                    self.__dict__[k].__dict__[k2] = np.zeros(max_n_regions, dtype=type(value)) + value
+                    self.__dict__[k].__dict__[k2] = (
+                        np.zeros(max_n_regions, dtype=type(value)) + value
+                    )
