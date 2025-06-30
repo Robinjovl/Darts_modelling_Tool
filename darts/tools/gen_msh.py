@@ -1,14 +1,26 @@
-import numpy as np
-import meshio
-import os
 import copy
-import gmsh
+import os
 import sys
 
+import gmsh
+import meshio
+import numpy as np
 
-def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
-                    is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
-                    popup=False):
+
+def generate_box_3d(
+    X: float,
+    Y: float,
+    Z: float,
+    NX: int,
+    NY: int,
+    NZ: int,
+    tags: dict,
+    filename: str = None,
+    is_transfinite: bool = True,
+    is_recombine: bool = True,
+    refinement_mult: bool = 1.0,
+    popup=False,
+):
     '''
     generates a rectangular-box structured-like mesh with hexahedron (right prism) cells in the unstructured mesh format (gmsh 2).
     :param X: a box size ialong X-axis
@@ -50,16 +62,16 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     ny_mult = refinement_mult
     ny = np.array(ny_mult * np.array([NY], dtype=np.int32), dtype=np.int32)
 
-    nz_mult = 1#refinement_mult
+    nz_mult = 1  # refinement_mult
     nz = np.array(nz_mult * np.array([NZ], dtype=np.int32), dtype=np.int32)
 
     # add x-lines
     for k in range(0, len(z)):
         for j in range(0, len(y)):
             for i in range(0, len(x) - 1):
-                p_id1 = i + n_max * j + n_max ** 2 * k
-                p_id2 = i + 1 + n_max * j + n_max ** 2 * k
-                id = i + 1 + n_max * j + n_max ** 2 * k
+                p_id1 = i + n_max * j + n_max**2 * k
+                p_id2 = i + 1 + n_max * j + n_max**2 * k
+                id = i + 1 + n_max * j + n_max**2 * k
                 gmsh.model.geo.addLine(p_id1, p_id2, id)
                 if is_transfinite:
                     gmsh.model.geo.mesh.setTransfiniteCurve(id, nx[i] + 1)
@@ -67,9 +79,9 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z)):
         for j in range(0, len(y) - 1):
             for i in range(0, len(x)):
-                p_id1 = i + n_max * j + n_max ** 2 * k
-                p_id2 = i + n_max * (j + 1) + n_max ** 2 * k
-                id = i + 1 + n_max * j + n_max ** 2 * k + n_max ** 3
+                p_id1 = i + n_max * j + n_max**2 * k
+                p_id2 = i + n_max * (j + 1) + n_max**2 * k
+                id = i + 1 + n_max * j + n_max**2 * k + n_max**3
                 gmsh.model.geo.addLine(p_id1, p_id2, id)
                 if is_transfinite:
                     gmsh.model.geo.mesh.setTransfiniteCurve(id, ny[j] + 1)
@@ -77,9 +89,9 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z) - 1):
         for j in range(0, len(y)):
             for i in range(0, len(x)):
-                p_id1 = i + n_max * j + n_max ** 2 * k
-                p_id2 = i + n_max * j + n_max ** 2 * (k + 1)
-                id = i + 1 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
+                p_id1 = i + n_max * j + n_max**2 * k
+                p_id2 = i + n_max * j + n_max**2 * (k + 1)
+                id = i + 1 + n_max * j + n_max**2 * k + 2 * n_max**3
                 gmsh.model.geo.addLine(p_id1, p_id2, id)
                 if is_transfinite:
                     gmsh.model.geo.mesh.setTransfiniteCurve(id, nz[k] + 1)
@@ -92,20 +104,25 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z)):
         for j in range(0, len(y) - 1):
             for i in range(0, len(x) - 1):
-                id = i + 1 + n_max * j + n_max ** 2 * k
+                id = i + 1 + n_max * j + n_max**2 * k
                 # [bottom, right, top, left]
-                l_id1 = i + 1 + n_max * j + n_max ** 2 * k
-                l_id2 = i + 2 + n_max * j + n_max ** 2 * k + n_max ** 3
-                l_id3 = i + 1 + n_max * (j + 1) + n_max ** 2 * k
-                l_id4 = i + 1 + n_max * j + n_max ** 2 * k + n_max ** 3
+                l_id1 = i + 1 + n_max * j + n_max**2 * k
+                l_id2 = i + 2 + n_max * j + n_max**2 * k + n_max**3
+                l_id3 = i + 1 + n_max * (j + 1) + n_max**2 * k
+                l_id4 = i + 1 + n_max * j + n_max**2 * k + n_max**3
                 gmsh.model.geo.addCurveLoop([l_id1, l_id2, -l_id3, -l_id4], id)
                 gmsh.model.geo.addPlaneSurface([id], id)
                 if is_transfinite:
-                    gmsh.model.geo.mesh.setTransfiniteSurface(id, "Left",
-                                                [i + n_max * j + n_max ** 2 * k,
-                                                 i + 1 + n_max * j + n_max ** 2 * k,
-                                                 i + 1 + n_max * (j + 1) + n_max ** 2 * k,
-                                                 i + n_max * (j + 1) + n_max ** 2 * k])
+                    gmsh.model.geo.mesh.setTransfiniteSurface(
+                        id,
+                        "Left",
+                        [
+                            i + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * (j + 1) + n_max**2 * k,
+                            i + n_max * (j + 1) + n_max**2 * k,
+                        ],
+                    )
                 if is_recombine:
                     gmsh.model.geo.mesh.setRecombine(2, id)
                 surfaces.append((2, id))
@@ -120,20 +137,25 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z) - 1):
         for j in range(0, len(y) - 1):
             for i in range(0, len(x)):
-                id = i + 1 + n_max * j + n_max ** 2 * k + n_max ** 3
+                id = i + 1 + n_max * j + n_max**2 * k + n_max**3
                 # [bottom, right, top, left]
-                l_id1 = i + 1 + n_max * j + n_max ** 2 * k + n_max ** 3
-                l_id2 = i + 1 + n_max * (j + 1) + n_max ** 2 * k + 2 * n_max ** 3
-                l_id3 = i + 1 + n_max * j + n_max ** 2 * (k + 1) + n_max ** 3
-                l_id4 = i + 1 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
+                l_id1 = i + 1 + n_max * j + n_max**2 * k + n_max**3
+                l_id2 = i + 1 + n_max * (j + 1) + n_max**2 * k + 2 * n_max**3
+                l_id3 = i + 1 + n_max * j + n_max**2 * (k + 1) + n_max**3
+                l_id4 = i + 1 + n_max * j + n_max**2 * k + 2 * n_max**3
                 gmsh.model.geo.addCurveLoop([l_id1, l_id2, -l_id3, -l_id4], id)
                 gmsh.model.geo.addPlaneSurface([id], id)
                 if is_transfinite:
-                    gmsh.model.geo.mesh.setTransfiniteSurface(id, "Left",
-                                                [i + n_max * j + n_max ** 2 * k,
-                                                 i + n_max * (j + 1) + n_max ** 2 * k,
-                                                 i + n_max * (j + 1) + n_max ** 2 * (k + 1),
-                                                 i + n_max * j + n_max ** 2 * (k + 1)])
+                    gmsh.model.geo.mesh.setTransfiniteSurface(
+                        id,
+                        "Left",
+                        [
+                            i + n_max * j + n_max**2 * k,
+                            i + n_max * (j + 1) + n_max**2 * k,
+                            i + n_max * (j + 1) + n_max**2 * (k + 1),
+                            i + n_max * j + n_max**2 * (k + 1),
+                        ],
+                    )
                 if is_recombine:
                     gmsh.model.geo.mesh.setRecombine(2, id)
                 surfaces.append((2, id))
@@ -149,20 +171,25 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z) - 1):
         for j in range(0, len(y)):
             for i in range(0, len(x) - 1):
-                id = i + 1 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
+                id = i + 1 + n_max * j + n_max**2 * k + 2 * n_max**3
                 # [bottom, right, top, left]
-                l_id1 = i + 1 + n_max * j + n_max ** 2 * k
-                l_id2 = i + 2 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
-                l_id3 = i + 1 + n_max * j + n_max ** 2 * (k + 1)
-                l_id4 = i + 1 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
+                l_id1 = i + 1 + n_max * j + n_max**2 * k
+                l_id2 = i + 2 + n_max * j + n_max**2 * k + 2 * n_max**3
+                l_id3 = i + 1 + n_max * j + n_max**2 * (k + 1)
+                l_id4 = i + 1 + n_max * j + n_max**2 * k + 2 * n_max**3
                 gmsh.model.geo.addCurveLoop([l_id1, l_id2, -l_id3, -l_id4], id)
                 gmsh.model.geo.addPlaneSurface([id], id)
                 if is_transfinite:
-                    gmsh.model.geo.mesh.setTransfiniteSurface(id, "Left",
-                                                [i + n_max * j + n_max ** 2 * k,
-                                                 i + 1 + n_max * j + n_max ** 2 * k,
-                                                 i + 1 + n_max * j + n_max ** 2 * (k + 1),
-                                                 i + n_max * j + n_max ** 2 * (k + 1)])
+                    gmsh.model.geo.mesh.setTransfiniteSurface(
+                        id,
+                        "Left",
+                        [
+                            i + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * j + n_max**2 * (k + 1),
+                            i + n_max * j + n_max**2 * (k + 1),
+                        ],
+                    )
                 if is_recombine:
                     gmsh.model.geo.mesh.setRecombine(2, id)
                 surfaces.append((2, id))
@@ -175,28 +202,35 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
     for k in range(0, len(z) - 1):
         for j in range(0, len(y) - 1):
             for i in range(0, len(x) - 1):
-                id = i + n_max * j + n_max ** 2 * k
+                id = i + n_max * j + n_max**2 * k
                 # z-axis
-                s_id1 = i + 1 + n_max * j + n_max ** 2 * k
-                s_id2 = i + 1 + n_max * j + n_max ** 2 * (k + 1)
+                s_id1 = i + 1 + n_max * j + n_max**2 * k
+                s_id2 = i + 1 + n_max * j + n_max**2 * (k + 1)
                 # x-axis
-                s_id3 = i + 1 + n_max * j + n_max ** 2 * k + n_max ** 3
-                s_id4 = i + 2 + n_max * j + n_max ** 2 * k + n_max ** 3
+                s_id3 = i + 1 + n_max * j + n_max**2 * k + n_max**3
+                s_id4 = i + 2 + n_max * j + n_max**2 * k + n_max**3
                 # y-axis
-                s_id5 = i + 1 + n_max * j + n_max ** 2 * k + 2 * n_max ** 3
-                s_id6 = i + 1 + n_max * (j + 1) + n_max ** 2 * k + 2 * n_max ** 3
-                gmsh.model.geo.addSurfaceLoop([s_id1, s_id2, s_id3, s_id4, s_id5, s_id6], id)
+                s_id5 = i + 1 + n_max * j + n_max**2 * k + 2 * n_max**3
+                s_id6 = i + 1 + n_max * (j + 1) + n_max**2 * k + 2 * n_max**3
+                gmsh.model.geo.addSurfaceLoop(
+                    [s_id1, s_id2, s_id3, s_id4, s_id5, s_id6], id
+                )
                 gmsh.model.geo.addVolume([id], id)
 
                 if is_transfinite:
-                    gmsh.model.geo.mesh.setTransfiniteVolume(id, [i + n_max * j + n_max ** 2 * k,
-                                                                 i + 1 + n_max * j + n_max ** 2 * k,
-                                                                 i + 1 + n_max * (j + 1) + n_max ** 2 * k,
-                                                                 i + n_max * (j + 1) + n_max ** 2 * k,
-                                                                 i + n_max * j + n_max ** 2 * (k + 1),
-                                                                 i + 1 + n_max * j + n_max ** 2 * (k + 1),
-                                                                 i + 1 + n_max * (j + 1) + n_max ** 2 * (k + 1),
-                                                                 i + n_max * (j + 1) + n_max ** 2 * (k + 1) ])
+                    gmsh.model.geo.mesh.setTransfiniteVolume(
+                        id,
+                        [
+                            i + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * j + n_max**2 * k,
+                            i + 1 + n_max * (j + 1) + n_max**2 * k,
+                            i + n_max * (j + 1) + n_max**2 * k,
+                            i + n_max * j + n_max**2 * (k + 1),
+                            i + 1 + n_max * j + n_max**2 * (k + 1),
+                            i + 1 + n_max * (j + 1) + n_max**2 * (k + 1),
+                            i + n_max * (j + 1) + n_max**2 * (k + 1),
+                        ],
+                    )
                 reservoir.append(id)
 
     gmsh.model.geo.synchronize()
@@ -261,16 +295,22 @@ def write_to_vtk_with_faces(mshfile):
             Mesh.cells[ith_geometry] = mesh.cells_dict[ith_geometry]
             # Add matrix data to dictionary:
             for i in range(props_num):
-                if cell_property[i] not in cell_data: cell_data[cell_property[i]] = []
-                cell_data[cell_property[i]].append(np.abs(np.array(mesh.cell_data_dict['gmsh:physical'][ith_geometry], dtype=np.int64), dtype=np.int64))
+                if cell_property[i] not in cell_data:
+                    cell_data[cell_property[i]] = []
+                cell_data[cell_property[i]].append(
+                    np.abs(
+                        np.array(
+                            mesh.cell_data_dict['gmsh:physical'][ith_geometry],
+                            dtype=np.int64,
+                        ),
+                        dtype=np.int64,
+                    )
+                )
         geom_id += 1
 
     vtk_filename = mshfile.split('.')[0] + '.vtu'
     print('Writing ', vtk_filename)
-    mesh = meshio.Mesh(
-        Mesh.points,
-        Mesh.cells,
-        cell_data=cell_data)
+    mesh = meshio.Mesh(Mesh.points, Mesh.cells, cell_data=cell_data)
     meshio.write(vtk_filename, mesh)
 
     return 0
@@ -286,6 +326,17 @@ if __name__ == '__main__':
     tags['BND_Z+'] = 996
     tags['MATRIX'] = 99991
 
-    filename = generate_box_3d(X=300., Y=200., Z=100., NX=30, NY=20, NZ=10, filename=None, tags=tags,
-                    is_transfinite=True, is_recombine=True, refinement_mult=1)
+    filename = generate_box_3d(
+        X=300.0,
+        Y=200.0,
+        Z=100.0,
+        NX=30,
+        NY=20,
+        NZ=10,
+        filename=None,
+        tags=tags,
+        is_transfinite=True,
+        is_recombine=True,
+        refinement_mult=1,
+    )
     write_to_vtk_with_faces(mshfile=filename)

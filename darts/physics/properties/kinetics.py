@@ -1,5 +1,6 @@
 import abc
 import warnings
+
 import numpy as np
 
 
@@ -12,7 +13,7 @@ class Kinetics:
         pass
 
     def evaluate_enthalpy(self, pressure, temperature, x, sat):
-        return 0.
+        return 0.0
 
 
 class KineticBasic:
@@ -25,15 +26,15 @@ class KineticBasic:
     def evaluate(self, pressure, temperature, x, nu_sol):
         if self.combined_ions:
             ion_prod = (x[1][1] / 2) ** 2
-            dQ = (1 - ion_prod / self.equi_prod)
-            self.kinetic_rate[1] = - self.kin_rate_cte * dQ * nu_sol
-            self.kinetic_rate[-1] = - 0.5 * self.kinetic_rate[1]
+            dQ = 1 - ion_prod / self.equi_prod
+            self.kinetic_rate[1] = -self.kin_rate_cte * dQ * nu_sol
+            self.kinetic_rate[-1] = -0.5 * self.kinetic_rate[1]
         else:
             ion_prod = x[1][1] * x[1][2]
-            dQ = (1 - ion_prod / self.equi_prod)
-            self.kinetic_rate[1] = - self.kin_rate_cte * dQ * nu_sol
-            self.kinetic_rate[2] = - self.kin_rate_cte * dQ * nu_sol
-            self.kinetic_rate[-1] = - self.kinetic_rate[1]
+            dQ = 1 - ion_prod / self.equi_prod
+            self.kinetic_rate[1] = -self.kin_rate_cte * dQ * nu_sol
+            self.kinetic_rate[2] = -self.kin_rate_cte * dQ * nu_sol
+            self.kinetic_rate[-1] = -self.kinetic_rate[1]
 
         return self.kinetic_rate, dQ
 
@@ -43,7 +44,15 @@ class LawOfMassAction(Kinetics):
     Law of Mass Action for kinetic reaction
     For reaction aA + bB <-> cC: rate = c * (1 - Q/K) with Q = [C]^c / [A]^a [B]^b
     """
-    def __init__(self, stoich: list, nc_fl: int, fl_idx: int, equi_prod: float, kin_rate_cte: float):
+
+    def __init__(
+        self,
+        stoich: list,
+        nc_fl: int,
+        fl_idx: int,
+        equi_prod: float,
+        kin_rate_cte: float,
+    ):
         super().__init__(stoich)
 
         self.nc_fl = nc_fl
@@ -54,20 +63,37 @@ class LawOfMassAction(Kinetics):
     def evaluate(self, pressure, temperature, x, sat_sol):
         # For reaction aA + bB <-> cC
         # Calculate activity product Q = [C]^c / [A]^a [B]^b
-        prod = 1.
+        prod = 1.0
         for i in range(self.nc_fl):
-            prod = prod * x[self.fl_idx, i] ** self.stoich[i] if self.stoich[i] != 0 else prod
+            prod = (
+                prod * x[self.fl_idx, i] ** self.stoich[i]
+                if self.stoich[i] != 0
+                else prod
+            )
 
         # Calculate rate = c * As * (1-Q/K)
-        dQ = (1. - prod / self.equi_prod)
+        dQ = 1.0 - prod / self.equi_prod
         rate = self.kin_rate_cte * sat_sol * dQ
 
         return [stoich * rate for stoich in self.stoich], dQ
 
 
 class HydrateKinetics(Kinetics):
-    def __init__(self, components: list, phases: list, Mw, hydrate_eos, fluid_eos: list, stoich: list = None,
-                 perm: float = 300., poro: float = 0.2, k: float = None, F_a=1., moridis: bool = True, enthalpy: bool = False):
+    def __init__(
+        self,
+        components: list,
+        phases: list,
+        Mw,
+        hydrate_eos,
+        fluid_eos: list,
+        stoich: list = None,
+        perm: float = 300.0,
+        poro: float = 0.2,
+        k: float = None,
+        F_a=1.0,
+        moridis: bool = True,
+        enthalpy: bool = False,
+    ):
         super().__init__(stoich)
 
         self.hydrate_eos = hydrate_eos
@@ -83,31 +109,45 @@ class HydrateKinetics(Kinetics):
 
         self.stoich = stoich
         if stoich is not None:
-            self.nH = stoich[self.water_idx]/stoich[self.guest_idx]
+            self.nH = stoich[self.water_idx] / stoich[self.guest_idx]
         else:
             self.nH = None
         self.Mw = Mw
 
-        self.K = k if k is not None else 3.6e6*86400  # reaction constant [kmol/(m^2 bar day)]
+        self.K = (
+            k if k is not None else 3.6e6 * 86400
+        )  # reaction constant [kmol/(m^2 bar day)]
         self.F_a = F_a
-        self.perm = perm * 1E-15  # mD to m2
+        self.perm = perm * 1e-15  # mD to m2
         self.poro = poro
 
         if moridis:
-            r_p = np.sqrt(45. * self.perm * (1 - self.poro) ** 2 / self.poro ** 3)
-            self.A_s = lambda sat: 0.879 * self.F_a * (1 - self.poro) / r_p * sat[self.h_idx] ** (2. / 3.)
+            r_p = np.sqrt(45.0 * self.perm * (1 - self.poro) ** 2 / self.poro**3)
+            self.A_s = (
+                lambda sat: 0.879
+                * self.F_a
+                * (1 - self.poro)
+                / r_p
+                * sat[self.h_idx] ** (2.0 / 3.0)
+            )
         else:
             self.K = 8.06 / Mw[-1] * 1e5 * 86400  # kg/m2.Pa.s
             r_p = 3.75e-4
-            beta = 2. / 3.
-            self.A_s = lambda sat: (0.879 * (1 - self.poro) / r_p *
-                                    sat[self.v_idx] ** (2. / 3.) * sat[self.a_idx] ** beta * (1 - sat[self.h_idx]) ** beta)
+            beta = 2.0 / 3.0
+            self.A_s = lambda sat: (
+                0.879
+                * (1 - self.poro)
+                / r_p
+                * sat[self.v_idx] ** (2.0 / 3.0)
+                * sat[self.a_idx] ** beta
+                * (1 - sat[self.h_idx]) ** beta
+            )
 
         self.enthalpy = enthalpy
 
     def calc_df(self, pressure, temperature, x):
         # Calculate fugacity difference between water in fluid phases and water in hydrate phase
-        if x[0, 0] != 0.:
+        if x[0, 0] != 0.0:
             f0 = self.fluid_eos[0].fugacity(pressure, temperature, x[0, :])
         else:
             f0 = self.fluid_eos[1].fugacity(pressure, temperature, x[1, :])
@@ -127,7 +167,7 @@ class HydrateKinetics(Kinetics):
         A_s = self.A_s(sat)
 
         # Thermodynamic parameters
-        dE = -81E3  # activation energy [J/mol]
+        dE = -81e3  # activation energy [J/mol]
         R = 8.3145  # gas constant [J/(K.mol)]
 
         # K is reaction cons, A_s hydrate surface area, dE activation energy, driving force is fugacity difference
@@ -155,4 +195,4 @@ class HydrateKinetics(Kinetics):
 
             return self.rate * H_diss  # rate [kmol/day] * [kJ/kmol] = [kJ/day]
         else:
-            return 0.
+            return 0.0

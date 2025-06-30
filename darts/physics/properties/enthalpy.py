@@ -1,5 +1,6 @@
 import abc
 import warnings
+
 import numpy as np
 
 
@@ -18,7 +19,9 @@ class EnthalpyBasic(Enthalpy):
         self.tref = tref
         self.hcap = hcap
 
-    def evaluate(self, pressure: float = None, temperature: float = None, x: list = None):
+    def evaluate(
+        self, pressure: float = None, temperature: float = None, x: list = None
+    ):
         # Enthalpy based on constant heat capacity
         enthalpy = self.hcap * (temperature - self.tref)
         return enthalpy

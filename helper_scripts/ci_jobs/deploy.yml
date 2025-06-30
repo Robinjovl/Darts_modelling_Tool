@@ -1,0 +1,96 @@
+deploy-pypi:
+    # Publish the release
+    # Runs only for the main branch and if tag has a pattern: v#.#.#, for example "v1.2.3"
+    rules:
+        - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+    extends: .deploy-pypi
+    variables:
+        REPO: 'pypi'
+        REPOUSER: $PYPIUSER
+        REPOPWD: $PYPIPWD
+
+deploy-testpypi:
+    # Test publishing the release
+    # Runs only manually, if variable UPLOAD_TEST_PYPI set to 1
+    only:
+        variables:
+            - $UPLOAD_TEST_PYPI == "1"
+    extends: .deploy-pypi
+    variables:
+        REPO: 'testpypi'
+        REPOUSER: $TESTPYPIUSER
+        REPOPWD: $TESTPYPIPWD
+
+# pick all whl ODLS-artifacts (windows/linux, different python versions) and upload to test pipy
+# TODO auto-increment package version (in setup.py and .gitlab-ci.yml) and add git tag; now it is done manually
+.deploy-pypi:
+    stage: deploy
+    # just for twine
+    image: python:3.10
+    # Will be executed on runner with windows tag - that assumed to run on windows host
+    tags:
+        - linux
+    before_script:
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip install twine
+    script:
+        # upload to test-pypi or pypi depending on $PYPI var
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - ls ./dist/*
+        - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.9-ODLS
+        - build-linux-3.10-ODLS
+        - build-linux-3.11-ODLS
+        - build-linux-3.12-ODLS
+        - build-windows-3.9-ODLS
+        - build-windows-3.10-ODLS
+        - build-windows-3.11-ODLS
+        - build-windows-3.12-ODLS
+        
+deploy-zenodo:
+    stage: deploy
+    rules:
+        - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+    tags:
+        - linux
+    image: python:3.10
+    script:
+        # cloning gitlab2zenodo in a temporary folder
+        - mkdir tmp_gitlab2zenodo
+        - cd tmp_gitlab2zenodo
+        - git clone https://gitlab.com/sbeniamine/gitlab2zenodo.git
+        - cd gitlab2zenodo
+        # and installing gitlab2zenodo
+        - pip install .
+        - cd ../..
+        # making a .zip containing the source files
+        - git archive --format zip --output ${CI_COMMIT_TAG#v}.zip ${CI_COMMIT_TAG}
+        # command that publishes to zenodo
+        - g2z-send -p -m .zenodo.json ${CI_COMMIT_TAG#v}.zip
+
+pages:
+    stage: deploy
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $DOCS_PAGES == "1"
+    tags:
+        - linux
+    image: python:3.10
+    script:
+        # re-install open-darts with the dependencies for building the documentation
+        - pip install .[docs]
+        # use the wheel generated in build to install open-darts
+        - pip install --force-reinstall --no-deps ./dist/*cp310-linux_x86_64.whl
+        - cd docs
+        # command to build the documentation to a folder called public
+        - sphinx-build -b html . public
+        # move the folder public to the root of the project to be able to save it as artifact
+        - mv public ../
+    artifacts:
+        paths:
+        - public
+    dependencies:
+        - build-linux-3.10-ODLS

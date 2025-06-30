@@ -1,0 +1,54 @@
+upload_wheels:
+    stage: deploy
+    image: python:3.10
+    rules:
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux
+    before_script:
+        - apt-get update -qq && apt-get install -y -qq smbclient
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
+        - export wheel=`ls ./dist/*win*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.10
+        - build-windows-3.10
+
+upload_wheels_gse:
+    stage: deploy
+    image: python:3.10
+    rules:
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux_gpu
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - cp $wheel $GSEWHEELSPATH
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.10-gpu
+
+upload_wheels_odls:
+    stage: deploy
+    image: python:3.10
+    rules:
+        - if: $UPLOAD_WHEELS == "1"
+    tags:
+        - linux
+    before_script:
+        - apt-get update -qq && apt-get install -y -qq smbclient
+    script:
+        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
+        - export wheel=`ls ./dist/*linux*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls
+        - export wheel=`ls ./dist/*win*`
+        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls
+    dependencies:
+        # get the wheels from the build stage
+        - build-linux-3.10-ODLS
+        - build-windows-3.10-ODLS

@@ -1,9 +1,15 @@
-from darts.engines import *
-from darts.physics.super.physics import Compositional, PhysicsBase
-from darts.physics.super.operator_evaluator import *
-from darts.physics.base.operators_base import WellControlOperators, WellInitOperators, PropertyOperators
-import numpy as np
 from typing import Union
+
+import numpy as np
+
+from darts.engines import *
+from darts.physics.base.operators_base import (
+    PropertyOperators,
+    WellControlOperators,
+    WellInitOperators,
+)
+from darts.physics.super.operator_evaluator import *
+from darts.physics.super.physics import Compositional, PhysicsBase
 
 
 class Poroelasticity(Compositional):
@@ -16,10 +22,26 @@ class Poroelasticity(Compositional):
     - Setting well controls (rate, bhp)
     - Defining initial and boundary conditions
     """
-    def __init__(self, components: list, phases: list, timer: timer_node, n_points: int,
-                 min_p: float, max_p: float, min_z: float, max_z: float, min_t: float = None, max_t: float = None,
-                 state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
-                 cache: bool = False, discretizer: str = 'mech_discretizer', axes_min = None, axes_max = None, n_axes_points = None):
+
+    def __init__(
+        self,
+        components: list,
+        phases: list,
+        timer: timer_node,
+        n_points: int,
+        min_p: float,
+        max_p: float,
+        min_z: float,
+        max_z: float,
+        min_t: float = None,
+        max_t: float = None,
+        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        cache: bool = False,
+        discretizer: str = 'mech_discretizer',
+        axes_min=None,
+        axes_max=None,
+        n_axes_points=None,
+    ):
         """
         This is the constructor of the Compositional Physics class.
 
@@ -53,9 +75,23 @@ class Poroelasticity(Compositional):
         :type n_axes_points: list or np.ndarray
         """
         # Define nc, nph and (iso)thermal
-        super().__init__(components=components, phases=phases, timer=timer, n_points=n_points, min_p=min_p, max_p=max_p,
-                         min_z=min_z, max_z=max_z, min_t=min_t, max_t=max_t, state_spec=state_spec, cache=cache,
-                         axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points)
+        super().__init__(
+            components=components,
+            phases=phases,
+            timer=timer,
+            n_points=n_points,
+            min_p=min_p,
+            max_p=max_p,
+            min_z=min_z,
+            max_z=max_z,
+            min_t=min_t,
+            max_t=max_t,
+            state_spec=state_spec,
+            cache=cache,
+            axes_min=axes_min,
+            axes_max=axes_max,
+            n_axes_points=n_axes_points,
+        )
 
         self.n_dim = 3
         self.discretizer_name = discretizer
@@ -81,9 +117,13 @@ class Poroelasticity(Compositional):
         """
         if discretizer == 'mech_discretizer':
             if self.thermal:
-                return eval("engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph))()
+                return eval(
+                    "engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph)
+                )()
             else:
-                return eval("engine_super_elastic_%s%d_%d" % (platform, self.nc, self.nph))()
+                return eval(
+                    "engine_super_elastic_%s%d_%d" % (platform, self.nc, self.nph)
+                )()
         else:  # discretizer == 'pm_discretizer':
             return eval("engine_pm_%s" % (platform))()
 
@@ -95,34 +135,64 @@ class Poroelasticity(Compositional):
         """
         if self.discretizer_name == "pm_discretizer":
             for region, prop_container in self.property_containers.items():
-                self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(prop_container, self.thermal)
-                self.property_operators[region] = PropertyOperators(prop_container, self.thermal)
-            self.well_operators = SinglePhaseGeomechanicsOperators(self.property_containers[self.regions[0]], self.thermal)
+                self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(
+                    prop_container, self.thermal
+                )
+                self.property_operators[region] = PropertyOperators(
+                    prop_container, self.thermal
+                )
+            self.well_operators = SinglePhaseGeomechanicsOperators(
+                self.property_containers[self.regions[0]], self.thermal
+            )
         else:
             for region, prop_container in self.property_containers.items():
-                self.reservoir_operators[region] = GeomechanicsReservoirOperators(prop_container, self.thermal)
-                self.property_operators[region] = PropertyOperators(prop_container, self.thermal)
-            self.well_operators = GeomechanicsReservoirOperators(self.property_containers[self.regions[0]], False)
+                self.reservoir_operators[region] = GeomechanicsReservoirOperators(
+                    prop_container, self.thermal
+                )
+                self.property_operators[region] = PropertyOperators(
+                    prop_container, self.thermal
+                )
+            self.well_operators = GeomechanicsReservoirOperators(
+                self.property_containers[self.regions[0]], False
+            )
 
-        self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
-        self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
-                                                     is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT))
+        self.well_ctrl_operators = WellControlOperators(
+            self.property_containers[self.regions[0]], self.thermal
+        )
+        self.well_init_operators = WellInitOperators(
+            self.property_containers[self.regions[0]],
+            self.thermal,
+            is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
+        )
 
         return
 
     def init_wells(self, wells):
-        """""
+        """ ""
         Function to initialize the well rates for each well
         Arguments:
             -wells: well_object array
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_mech_rate_parameters(self.engine.N_VARS, self.engine.P_VAR, self.n_vars, self.n_ops, self.phases,
-                                        self.well_ctrl_itor, self.well_init_itor, self.thermal)
+            w.init_mech_rate_parameters(
+                self.engine.N_VARS,
+                self.engine.P_VAR,
+                self.n_vars,
+                self.n_ops,
+                self.phases,
+                self.well_ctrl_itor,
+                self.well_init_itor,
+                self.thermal,
+            )
 
-    def set_initial_conditions_from_depth_table(self, mesh: conn_mesh, input_distribution: dict,
-                                                input_depth: Union[list, np.ndarray], input_displacement: list):
+    def set_initial_conditions_from_depth_table(
+        self,
+        mesh: conn_mesh,
+        input_distribution: dict,
+        input_depth: Union[list, np.ndarray],
+        input_displacement: list,
+    ):
         """
         Function to set initial conditions from given distribution of properties over depth.
 
@@ -132,13 +202,17 @@ class Poroelasticity(Compositional):
         :param input_depth: Array of depths over which depth table has been specified
         :param input_displacement: Displacement [], array
         """
-        super().set_initial_conditions_from_depth_table(mesh, input_depth=input_depth, input_distribution=input_distribution)
+        super().set_initial_conditions_from_depth_table(
+            mesh, input_depth=input_depth, input_distribution=input_distribution
+        )
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
+            np.asarray(mesh.displacement)[i :: self.n_dim] = input_displacement[i]
 
-    def set_initial_conditions_from_array(self, mesh: conn_mesh, input_distribution: dict, input_displacement: list):
+    def set_initial_conditions_from_array(
+        self, mesh: conn_mesh, input_distribution: dict, input_displacement: list
+    ):
         """
         Method to set initial conditions by arrays or uniformly for all cells
 
@@ -147,8 +221,10 @@ class Poroelasticity(Compositional):
                                    and each entry is scalar or array of length equal to number of cells
         :param input_displacement: Displacement [], array
         """
-        super().set_initial_conditions_from_array(mesh, input_distribution=input_distribution)
+        super().set_initial_conditions_from_array(
+            mesh, input_distribution=input_distribution
+        )
 
         # set initial displacements
         for i in range(self.n_dim):
-            np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
+            np.asarray(mesh.displacement)[i :: self.n_dim] = input_displacement[i]

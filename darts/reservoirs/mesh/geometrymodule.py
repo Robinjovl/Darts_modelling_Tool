@@ -1,7 +1,9 @@
 # For the class defintions here, only numpy is used:
-import numpy as np
-from enum import Enum
 import math
+from enum import Enum
+
+import numpy as np
+
 # ------------------------------------------------------------
 # Start matrix geometrical elements here: 3D objects
 # Currently supported matrix
@@ -58,7 +60,9 @@ class ControlVolume:
         Class method which calculates the depth of the particular control volume (at the  center of the volume)
         :return:
         """
-        self.depth = np.abs(self.centroid[2])  # The class method assumes here that the third coordinate is the depth!
+        self.depth = np.abs(
+            self.centroid[2]
+        )  # The class method assumes here that the third coordinate is the depth!
         return 0
 
     def calculate_nodes_to_face(self):
@@ -88,7 +92,9 @@ class ControlVolume:
         vec_edge_3 = node_coord[2] - node_coord[3]
 
         # Using determinants to calculate volume of tetrahedron: https://en.wikipedia.org/wiki/Tetrahedron#Volume
-        volume_tetra = np.linalg.norm(np.dot(vec_edge_1, np.cross(vec_edge_2, vec_edge_3))) / 6
+        volume_tetra = (
+            np.linalg.norm(np.dot(vec_edge_1, np.cross(vec_edge_2, vec_edge_3))) / 6
+        )
         return volume_tetra
 
     def find_intersections(self, cells_to_node, nodes_to_face):
@@ -103,7 +109,14 @@ class ControlVolume:
 
 
 class Hexahedron(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, permeability, prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        permeability,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Hexahedron
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -124,20 +137,44 @@ class Hexahedron(ControlVolume):
         """
         # Store nodes belonging to each face of object:
         # Top and bottom faces (rectangles)
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[4], self.nodes_to_cell[5]]  # Bottom hexahedron
-        self.nodes_to_faces[1] = [self.nodes_to_cell[2], self.nodes_to_cell[3],
-                                  self.nodes_to_cell[6], self.nodes_to_cell[7]]  # Top hexahedron
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[4],
+            self.nodes_to_cell[5],
+        ]  # Bottom hexahedron
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[6],
+            self.nodes_to_cell[7],
+        ]  # Top hexahedron
 
         # Side faces (rectangles)
-        self.nodes_to_faces[2] = [self.nodes_to_cell[4], self.nodes_to_cell[5],
-                                  self.nodes_to_cell[6], self.nodes_to_cell[7]]  # Front hexahedron
-        self.nodes_to_faces[3] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[2], self.nodes_to_cell[3]]  # Back hexahedron
-        self.nodes_to_faces[4] = [self.nodes_to_cell[0], self.nodes_to_cell[3],
-                                  self.nodes_to_cell[4], self.nodes_to_cell[7]]  # Side hexahedron
-        self.nodes_to_faces[5] = [self.nodes_to_cell[1], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[5], self.nodes_to_cell[6]]  # Side hexahedron
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[4],
+            self.nodes_to_cell[5],
+            self.nodes_to_cell[6],
+            self.nodes_to_cell[7],
+        ]  # Front hexahedron
+        self.nodes_to_faces[3] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+        ]  # Back hexahedron
+        self.nodes_to_faces[4] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[4],
+            self.nodes_to_cell[7],
+        ]  # Side hexahedron
+        self.nodes_to_faces[5] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[5],
+            self.nodes_to_cell[6],
+        ]  # Side hexahedron
         return 0
 
     def calculate_volume(self):
@@ -147,11 +184,9 @@ class Hexahedron(ControlVolume):
         """
         # Split the hexahedron into five-tetrahedrons (see paper mentioned above for definitions and method):
         # Determine array with five-possible tetrahedrons (entries of array are nodes that belong to the CV):
-        nodes_array_tetras = np.array([[4, 5, 1, 6],
-                                       [4, 1, 0, 3],
-                                       [4, 6, 3, 7],
-                                       [1, 6, 3, 2],
-                                       [4, 1, 6, 3]])
+        nodes_array_tetras = np.array(
+            [[4, 5, 1, 6], [4, 1, 0, 3], [4, 6, 3, 7], [1, 6, 3, 2], [4, 1, 6, 3]]
+        )
 
         # Loop over all tetrahedrons:
         for jj, ith_tetra in enumerate(nodes_array_tetras):
@@ -164,7 +199,9 @@ class Hexahedron(ControlVolume):
                 local_coord[ii] = self.coord_nodes_to_cell[ith_coord]
 
             # Calculate volume for current tetra and add to total volume:
-            self.volume = self.volume + Hexahedron.compute_volume_tetrahedron(local_coord)
+            self.volume = self.volume + Hexahedron.compute_volume_tetrahedron(
+                local_coord
+            )
         return 0
 
     def find_intersections(self, cells_to_node, nodes_to_face):
@@ -175,15 +212,24 @@ class Hexahedron(ControlVolume):
         :return:
         """
         # For hexahedron (8-node), four nodes make up interface:
-        intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                 set(cells_to_node[nodes_to_face[1]]),
-                                                 set(cells_to_node[nodes_to_face[2]]),
-                                                 set(cells_to_node[nodes_to_face[3]]))
+        intsect_cells_to_face = set.intersection(
+            set(cells_to_node[nodes_to_face[0]]),
+            set(cells_to_node[nodes_to_face[1]]),
+            set(cells_to_node[nodes_to_face[2]]),
+            set(cells_to_node[nodes_to_face[3]]),
+        )
         return intsect_cells_to_face
 
 
 class Wedge(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, permeability, prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        permeability,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Wedge
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -204,18 +250,36 @@ class Wedge(ControlVolume):
         """
         # Store nodes belonging to each face of object:
         # Top and bottom faces (triangles)
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[2]]  # Bottom wedge
-        self.nodes_to_faces[1] = [self.nodes_to_cell[3], self.nodes_to_cell[4],
-                                  self.nodes_to_cell[5]]  # Top wedge
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+        ]  # Bottom wedge
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[4],
+            self.nodes_to_cell[5],
+        ]  # Top wedge
 
         # Side faces (rectangles)
-        self.nodes_to_faces[2] = [self.nodes_to_cell[1], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[4], self.nodes_to_cell[5]]  # Front wedge
-        self.nodes_to_faces[3] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[3], self.nodes_to_cell[4]]  # Side wedge
-        self.nodes_to_faces[4] = [self.nodes_to_cell[0], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[3], self.nodes_to_cell[5]]  # Side wedge
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[4],
+            self.nodes_to_cell[5],
+        ]  # Front wedge
+        self.nodes_to_faces[3] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[4],
+        ]  # Side wedge
+        self.nodes_to_faces[4] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[5],
+        ]  # Side wedge
         return 0
 
     def calculate_volume(self):
@@ -225,9 +289,7 @@ class Wedge(ControlVolume):
         """
         # Split into three-tetrahedrons  (see paper mentioned above for definitions and method):
         # Determine array with five-possible tetrahedrons:
-        nodes_array_tetras = np.array([[0, 1, 2, 4],
-                                       [0, 3, 4, 5],
-                                       [0, 2, 4, 5]])
+        nodes_array_tetras = np.array([[0, 1, 2, 4], [0, 3, 4, 5], [0, 2, 4, 5]])
         self.volume = 0
 
         # Loop over all tetrahedrons:
@@ -257,20 +319,31 @@ class Wedge(ControlVolume):
         intsect_cells_to_face = set()
         if len(nodes_to_face) == 4:
             # Face has four nodes, therefore quad:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]),
-                                                     set(cells_to_node[nodes_to_face[3]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+                set(cells_to_node[nodes_to_face[3]]),
+            )
         elif len(nodes_to_face) == 3:
             # Face has three nodes, therefore triangle:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+            )
         return intsect_cells_to_face
 
 
 class Pyramid(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, permeability, prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        permeability,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Pyramid
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -282,7 +355,7 @@ class Pyramid(ControlVolume):
         super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
-        self.permeability = permeability     # Can be scalar or vector with [Kx, Ky, Kz]
+        self.permeability = permeability  # Can be scalar or vector with [Kx, Ky, Kz]
 
     def calculate_nodes_to_face(self):
         """
@@ -291,18 +364,34 @@ class Pyramid(ControlVolume):
         """
         # Store nodes belonging to each face of object:
         # Bottom faces (Quadrangle)
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[2], self.nodes_to_cell[3]]  # Bottom Quadrangle
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+        ]  # Bottom Quadrangle
 
         # Side faces (Triangle)
-        self.nodes_to_faces[1] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[4]]  # Top wedge
-        self.nodes_to_faces[2] = [self.nodes_to_cell[1], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[4]]  # Top wedge
-        self.nodes_to_faces[3] = [self.nodes_to_cell[2], self.nodes_to_cell[3],
-                                  self.nodes_to_cell[4]]  # Top wedge
-        self.nodes_to_faces[4] = [self.nodes_to_cell[3], self.nodes_to_cell[0],
-                                  self.nodes_to_cell[4]]  # Top wedge
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[4],
+        ]  # Top wedge
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[4],
+        ]  # Top wedge
+        self.nodes_to_faces[3] = [
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[4],
+        ]  # Top wedge
+        self.nodes_to_faces[4] = [
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[4],
+        ]  # Top wedge
         return 0
 
     def calculate_volume(self):
@@ -315,8 +404,7 @@ class Pyramid(ControlVolume):
         # I think he determines the length of the edges in order to find the best shaped tetrahedrons (he uses the
         # resulting meshing in simulations, where orthogonality is important). For volume calculations the ordering
         # should not matter if I recall correct. (can always revert back changes to previous version!)
-        nodes_array_tetras = np.array([[1, 2, 3, 4],
-                                       [1, 3, 0, 4]])
+        nodes_array_tetras = np.array([[1, 2, 3, 4], [1, 3, 0, 4]])
 
         # Loop over all tetrahedrons:
         for jj, ith_tetra in enumerate(nodes_array_tetras):
@@ -345,20 +433,31 @@ class Pyramid(ControlVolume):
         intsect_cells_to_face = set()
         if len(nodes_to_face) == 4:
             # Face has four nodes, therefore quad:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]),
-                                                     set(cells_to_node[nodes_to_face[3]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+                set(cells_to_node[nodes_to_face[3]]),
+            )
         elif len(nodes_to_face) == 3:
             # Face has three nodes, therefore triangle:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+            )
         return intsect_cells_to_face
 
 
 class Tetrahedron(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, permeability, prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        permeability,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Tetrahedron
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -370,7 +469,7 @@ class Tetrahedron(ControlVolume):
         super().__init__(nodes_to_cell, coord_nodes_to_cell, geometry_type, prop_id)
 
         # Add permeability to object variables:
-        self.permeability = permeability     # Can be scalar or vector with [Kx, Ky, Kz]
+        self.permeability = permeability  # Can be scalar or vector with [Kx, Ky, Kz]
 
     def calculate_nodes_to_face(self):
         """
@@ -378,14 +477,26 @@ class Tetrahedron(ControlVolume):
         :return:
         """
         # Store nodes belonging to each face of object:
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[2]]  # Top triangle
-        self.nodes_to_faces[1] = [self.nodes_to_cell[0], self.nodes_to_cell[1],
-                                  self.nodes_to_cell[3]]  # Side triangle
-        self.nodes_to_faces[2] = [self.nodes_to_cell[0], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[3]]  # Side triangle
-        self.nodes_to_faces[3] = [self.nodes_to_cell[1], self.nodes_to_cell[2],
-                                  self.nodes_to_cell[3]]  # Side triangle
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+        ]  # Top triangle
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[3],
+        ]  # Side triangle
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+        ]  # Side triangle
+        self.nodes_to_faces[3] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+        ]  # Side triangle
         return 0
 
     def calculate_volume(self):
@@ -406,14 +517,25 @@ class Tetrahedron(ControlVolume):
                  between two control volumes)
         """
         # Face has three nodes, therefore triangle:
-        intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                 set(cells_to_node[nodes_to_face[1]]),
-                                                 set(cells_to_node[nodes_to_face[2]]))
+        intsect_cells_to_face = set.intersection(
+            set(cells_to_node[nodes_to_face[0]]),
+            set(cells_to_node[nodes_to_face[1]]),
+            set(cells_to_node[nodes_to_face[2]]),
+        )
         return intsect_cells_to_face
 
 
 class Cylinder(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, center, radius, geometry_type, permeability, prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        center,
+        radius,
+        geometry_type,
+        permeability,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Wedge
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -422,7 +544,7 @@ class Cylinder(ControlVolume):
         :param permeability: permeability of control volume [mD]
         """
         # Call parent class constructor:
-        self.num_points = int(len(nodes_to_cell)/2)
+        self.num_points = int(len(nodes_to_cell) / 2)
         self.center_coords = center
         self.radius = radius
 
@@ -444,26 +566,35 @@ class Cylinder(ControlVolume):
         self.faces = []
         self.wedge_coords = []
 
-        nodes[0] = self.nodes_to_cell[:self.num_points]
-        nodes[1] = self.nodes_to_cell[self.num_points:]
-        coords[0] = self.coord_nodes_to_cell[:self.num_points]
-        coords[1] = self.coord_nodes_to_cell[self.num_points:]
+        nodes[0] = self.nodes_to_cell[: self.num_points]
+        nodes[1] = self.nodes_to_cell[self.num_points :]
+        coords[0] = self.coord_nodes_to_cell[: self.num_points]
+        coords[1] = self.coord_nodes_to_cell[self.num_points :]
 
         for i in range(2):
             for j in range(self.num_points):
-                x = np.sqrt(
-                    (coords[i][j][0] - self.center_coords[i][0]) ** 2 + (coords[i][j][1] - self.center_coords[i][1]) ** 2 + (
-                                coords[i][j][2] - self.center_coords[i][2]) ** 2) / self.radius
+                x = (
+                    np.sqrt(
+                        (coords[i][j][0] - self.center_coords[i][0]) ** 2
+                        + (coords[i][j][1] - self.center_coords[i][1]) ** 2
+                        + (coords[i][j][2] - self.center_coords[i][2]) ** 2
+                    )
+                    / self.radius
+                )
                 if x > 1:
                     if x > 1 + 1e-2:
                         print(
-                            "RADIUS EXCEEDED IN CYLINDER: Make sure Cylinder control volume is choosing the right points", x)
-                    x = 1.
+                            "RADIUS EXCEEDED IN CYLINDER: Make sure Cylinder control volume is choosing the right points",
+                            x,
+                        )
+                    x = 1.0
                 elif x < -1:
                     if x < -1 - 1e-2:
                         print(
-                            "RADIUS EXCEEDED IN CYLINDER: Make sure Cylinder control volume is choosing the right points", x)
-                    x = -1.
+                            "RADIUS EXCEEDED IN CYLINDER: Make sure Cylinder control volume is choosing the right points",
+                            x,
+                        )
+                    x = -1.0
                 angle = math.acos(x)
                 if coords[i][j][2] < self.center_coords[i][2]:
                     angle = 2 * math.pi - angle
@@ -492,12 +623,31 @@ class Cylinder(ControlVolume):
 
         # Side faces (rectangles)
         for i, node in enumerate(nodes[0]):
-            if i < len(nodes[0])-1:
-                nodes_to_face = [nodes[0][i], nodes[0][i+1], nodes[1][i+1], nodes[1][i]]
-                coord_nodes_to_wedge = [coords[0][i], coords[0][i+1], self.center_coords[0], coords[1][i], coords[1][i+1], self.center_coords[1]]
+            if i < len(nodes[0]) - 1:
+                nodes_to_face = [
+                    nodes[0][i],
+                    nodes[0][i + 1],
+                    nodes[1][i + 1],
+                    nodes[1][i],
+                ]
+                coord_nodes_to_wedge = [
+                    coords[0][i],
+                    coords[0][i + 1],
+                    self.center_coords[0],
+                    coords[1][i],
+                    coords[1][i + 1],
+                    self.center_coords[1],
+                ]
             else:
                 nodes_to_face = [nodes[0][i], nodes[0][0], nodes[1][0], nodes[1][i]]
-                coord_nodes_to_wedge = [coords[0][i], coords[0][0], self.center_coords[0], coords[1][i], coords[1][0], self.center_coords[1]]
+                coord_nodes_to_wedge = [
+                    coords[0][i],
+                    coords[0][0],
+                    self.center_coords[0],
+                    coords[1][i],
+                    coords[1][0],
+                    self.center_coords[1],
+                ]
             self.faces.append(nodes_to_face)
             self.wedge_coords.append(coord_nodes_to_wedge)
 
@@ -511,7 +661,9 @@ class Cylinder(ControlVolume):
         Class method which overloads parent method for calculating the volume of the particular CV
         :return:
         """
-        for i, wedge_coords in enumerate(self.wedge_coords):  # divide into wedges of side faces and center nodes
+        for i, wedge_coords in enumerate(
+            self.wedge_coords
+        ):  # divide into wedges of side faces and center nodes
             nodes_to_cell = [0, 1, 2, 3, 4, 5]
             wedge = Wedge(nodes_to_cell, wedge_coords, 'wedge', permeability=1)
             wedge.calculate_volume()
@@ -533,17 +685,22 @@ class Cylinder(ControlVolume):
         intsect_cells_to_face = set()
         if len(nodes_to_face) == 4:
             # Face has four nodes, therefore quad:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]),
-                                                     set(cells_to_node[nodes_to_face[3]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+                set(cells_to_node[nodes_to_face[3]]),
+            )
         elif len(nodes_to_face) == 3:
             # Face has three nodes, therefore triangle:
-            intsect_cells_to_face = set.intersection(set(cells_to_node[nodes_to_face[0]]),
-                                                     set(cells_to_node[nodes_to_face[1]]),
-                                                     set(cells_to_node[nodes_to_face[2]]))
+            intsect_cells_to_face = set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+                set(cells_to_node[nodes_to_face[2]]),
+            )
 
         return intsect_cells_to_face
+
 
 # ------------------------------------------------------------
 # Start fracture geometrical elements here: 2D objects
@@ -551,7 +708,14 @@ class Cylinder(ControlVolume):
 
 
 class Quadrangle(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        frac_aperture=0.0,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Quadrangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -565,7 +729,7 @@ class Quadrangle(ControlVolume):
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
-        self.permeability = 1 / 12 * (self.frac_aperture ** 2) * 1E15
+        self.permeability = 1 / 12 * (self.frac_aperture**2) * 1e15
 
     def calculate_nodes_to_face(self):
         """
@@ -573,10 +737,22 @@ class Quadrangle(ControlVolume):
         :return:
         """
         # Store nodes belonging to each face of object:
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1]]  # Top side triangle
-        self.nodes_to_faces[1] = [self.nodes_to_cell[1], self.nodes_to_cell[2]]  # Left side triangle
-        self.nodes_to_faces[2] = [self.nodes_to_cell[2], self.nodes_to_cell[3]]  # Right side triangle
-        self.nodes_to_faces[3] = [self.nodes_to_cell[3], self.nodes_to_cell[0]]  # Right side triangle
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+        ]  # Top side triangle
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+        ]  # Left side triangle
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[2],
+            self.nodes_to_cell[3],
+        ]  # Right side triangle
+        self.nodes_to_faces[3] = [
+            self.nodes_to_cell[3],
+            self.nodes_to_cell[0],
+        ]  # Right side triangle
         return 0
 
     def calculate_volume(self):
@@ -593,9 +769,13 @@ class Quadrangle(ControlVolume):
 
         # Calculate the area of the quadrangle by splitting it up into two triangles, then use cross-product,
         # see: http://www.maths.usyd.edu.au/u/MOW/vectors/vectors-11/v-11-7.html
-        cell_area = 0.5 * (np.linalg.norm(np.cross(vec_corner_1, vec_corner_2))
-                           + np.linalg.norm(np.cross(vec_corner_3, vec_corner_4)))
-        self.volume = cell_area * 10**(-4)  # Pseudo thickness of based on fracture aperture [m]
+        cell_area = 0.5 * (
+            np.linalg.norm(np.cross(vec_corner_1, vec_corner_2))
+            + np.linalg.norm(np.cross(vec_corner_3, vec_corner_4))
+        )
+        self.volume = cell_area * 10 ** (
+            -4
+        )  # Pseudo thickness of based on fracture aperture [m]
         return 0
 
     def find_intersections(self, cells_to_node, nodes_to_face):
@@ -608,12 +788,23 @@ class Quadrangle(ControlVolume):
         """
         # Determine the amount of fractures that intersect on face nodes:
         intsect_cells_of_face = list(
-            set.intersection(set(cells_to_node[nodes_to_face[0]]), set(cells_to_node[nodes_to_face[1]])))
+            set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+            )
+        )
         return intsect_cells_of_face
 
 
 class Triangle(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        frac_aperture=0.0,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Triangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -627,7 +818,7 @@ class Triangle(ControlVolume):
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
-        self.permeability = 1/12 * (self.frac_aperture ** 2) * 1E15
+        self.permeability = 1 / 12 * (self.frac_aperture**2) * 1e15
 
     def calculate_nodes_to_face(self):
         """
@@ -635,9 +826,18 @@ class Triangle(ControlVolume):
         :return:
         """
         # Store nodes belonging to each face of object:
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1]]  # Top side triangle
-        self.nodes_to_faces[1] = [self.nodes_to_cell[0], self.nodes_to_cell[2]]  # Left side triangle
-        self.nodes_to_faces[2] = [self.nodes_to_cell[1], self.nodes_to_cell[2]]  # Right side triangle
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+        ]  # Top side triangle
+        self.nodes_to_faces[1] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[2],
+        ]  # Left side triangle
+        self.nodes_to_faces[2] = [
+            self.nodes_to_cell[1],
+            self.nodes_to_cell[2],
+        ]  # Right side triangle
         return 0
 
     def calculate_volume(self):
@@ -651,7 +851,9 @@ class Triangle(ControlVolume):
         # Calculate the area of the triangle using cross-product,
         # see: http://www.maths.usyd.edu.au/u/MOW/vectors/vectors-11/v-11-7.html
         cell_area = 0.5 * np.linalg.norm(np.cross(vec_corner_1, vec_corner_2))
-        self.volume = cell_area * 10**(-4)  # Pseudo thickness of based on fracture aperture [m]
+        self.volume = cell_area * 10 ** (
+            -4
+        )  # Pseudo thickness of based on fracture aperture [m]
         return 0
 
     def find_intersections(self, cells_to_node, nodes_to_face):
@@ -664,12 +866,23 @@ class Triangle(ControlVolume):
         """
         # Determine the amount of fractures that intersect on face nodes:
         intsect_cells_of_face = list(
-            set.intersection(set(cells_to_node[nodes_to_face[0]]), set(cells_to_node[nodes_to_face[1]])))
+            set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+            )
+        )
         return intsect_cells_of_face
 
 
 class Line(ControlVolume):
-    def __init__(self, nodes_to_cell, coord_nodes_to_cell, geometry_type, frac_aperture=0., prop_id = -1):
+    def __init__(
+        self,
+        nodes_to_cell,
+        coord_nodes_to_cell,
+        geometry_type,
+        frac_aperture=0.0,
+        prop_id=-1,
+    ):
         """
         Class constructor for the child class Quadrangle
         :param nodes_to_cell: array with all the nodes belonging the the control volume (CV)
@@ -683,7 +896,7 @@ class Line(ControlVolume):
 
         # Store aperture in object and calculate permeability according to parallel plate law:
         self.frac_aperture = frac_aperture
-        self.permeability = 1 / 12 * (self.frac_aperture ** 2) * 1E15
+        self.permeability = 1 / 12 * (self.frac_aperture**2) * 1e15
 
     def calculate_nodes_to_face(self):
         """
@@ -691,7 +904,10 @@ class Line(ControlVolume):
         :return:
         """
         # Store nodes belonging to each face of object:
-        self.nodes_to_faces[0] = [self.nodes_to_cell[0], self.nodes_to_cell[1]]  # Top side triangle
+        self.nodes_to_faces[0] = [
+            self.nodes_to_cell[0],
+            self.nodes_to_cell[1],
+        ]  # Top side triangle
         return 0
 
     def calculate_volume(self):
@@ -706,7 +922,9 @@ class Line(ControlVolume):
         # Calculate the area of the quadrangle by splitting it up into two triangles, then use cross-product,
         # see: http://www.maths.usyd.edu.au/u/MOW/vectors/vectors-11/v-11-7.html
         cell_area = np.linalg.norm(vec_corner_1)
-        self.volume = cell_area * 10**(-4)  # Pseudo thickness of based on fracture aperture [m]
+        self.volume = cell_area * 10 ** (
+            -4
+        )  # Pseudo thickness of based on fracture aperture [m]
         return 0
 
     def find_intersections(self, cells_to_node, nodes_to_face):
@@ -719,7 +937,11 @@ class Line(ControlVolume):
         """
         # Determine the amount of fractures that intersect on face nodes:
         intsect_cells_of_face = list(
-            set.intersection(set(cells_to_node[nodes_to_face[0]]), set(cells_to_node[nodes_to_face[1]])))
+            set.intersection(
+                set(cells_to_node[nodes_to_face[0]]),
+                set(cells_to_node[nodes_to_face[1]]),
+            )
+        )
         return intsect_cells_of_face
 
 
@@ -733,7 +955,19 @@ class FType(Enum):
 
 
 class Face:
-    def __init__(self, cell_id1, face_id1, cell_id2, face_id2, pts_id, pts, id, type, f_aper = 0, n = 0):
+    def __init__(
+        self,
+        cell_id1,
+        face_id1,
+        cell_id2,
+        face_id2,
+        pts_id,
+        pts,
+        id,
+        type,
+        f_aper=0,
+        n=0,
+    ):
         """
         Class constructor for the parents class ControlVolume
         :param cell_id1: id of the first neighbouring cell
@@ -762,6 +996,7 @@ class Face:
             self.area = f_aper * np.linalg.norm(self.pts[1] - self.pts[0])
         else:
             exit(-1)
+
     def sort_pts_in_circ_order(self):
         n = np.cross(self.pts[1] - self.pts[0], self.pts[2] - self.pts[0])
         self.n = n / np.linalg.norm(n)
@@ -770,7 +1005,7 @@ class Face:
         tx = self.pts[0] - c
         tx /= np.linalg.norm(tx)
         ty = np.cross(self.n, tx)
-        assert(np.cross(tx, ty).dot(self.n) > 0.0)
+        assert np.cross(tx, ty).dot(self.n) > 0.0
 
         phi = np.zeros(self.n_pts)
         for i in range(self.n_pts):
@@ -782,17 +1017,21 @@ class Face:
         inds = np.argsort(phi)
         self.pts_id = self.pts_id[inds]
         self.pts = self.pts[inds]
+
     def calc_area_and_centroid(self):
         area = 0.0
         c = np.zeros(3)
         for i in range(self.n_pts - 2):
-            cur_area = np.linalg.norm(np.cross(self.pts[i+1] - self.pts[0],
-                                            self.pts[i+2] - self.pts[0])) / 2.0
+            cur_area = (
+                np.linalg.norm(
+                    np.cross(
+                        self.pts[i + 1] - self.pts[0], self.pts[i + 2] - self.pts[0]
+                    )
+                )
+                / 2.0
+            )
             area += cur_area
-            inds = [0, i+1, i+2]
+            inds = [0, i + 1, i + 2]
             c += cur_area * np.average(self.pts[inds], axis=0)
         self.area = area
         self.centroid = c / area
-
-
-

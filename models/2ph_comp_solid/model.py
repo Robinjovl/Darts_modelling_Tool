@@ -31,8 +31,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        trans_exp = 3
-        perm = 100  # / (1 - solid_init) ** trans_exp
+        perm = 100
         """Reservoir"""
         nx = 1000
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=1, dy=1, dz=1,

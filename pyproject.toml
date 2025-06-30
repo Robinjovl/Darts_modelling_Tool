@@ -41,3 +41,32 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 
 # Dependencies to be able to build the documentation
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
+
+# Development dependencies for linting and formatting
+dev = ["flake8", "black", "isort"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["darts"]
+known_third_party = ["numba", "scipy", "pandas", "meshio", "gmsh", "iapws", "openpyxl", "pyevtk", "matplotlib", "vtk", "shapely", "igraph", "sympy", "opmcpg", "xarray", "netCDF4", "h5py", "phreeqpy"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]

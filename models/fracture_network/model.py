@@ -91,9 +91,8 @@ class Model(CICDModel):
         self.reservoir.init_reservoir(verbose=True)
 
         # set boundary volume XY
-        boundary_cells = []
-        for bnd_tag in [1, 2, 3, 4, 5, 6]:
-            boundary_cells += self.reservoir.discretizer.find_cells(bnd_tag, 'face')
+        bnd_xy_tags = [3, 4, 5, 6]
+        boundary_cells = self.reservoir.discretizer.find_cells(bnd_xy_tags, 'face')
         boundary_cells = np.array(boundary_cells) + self.reservoir.discretizer.frac_cells_tot
         #bnd_vol = 1e+8
         bnd_vol_mult = 5
