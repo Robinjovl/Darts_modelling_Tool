@@ -136,12 +136,19 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         }
     }
 
+    // Declare variables for phase velocities in DFM wells (defined at connections)
     std::vector<value_t> phase_A_vels;
     std::vector<value_t> phase_B_vels;
 
+    // Declare variables for derivatives of phase velocities in DFM wells
     using MixedType = std::variant<int, std::vector<value_t>>;
     std::vector<MixedType> phase_A_vels_ders;
     std::vector<MixedType> phase_B_vels_ders;
+
+    // Declare variables for upwinded specific potential energy of phases in DFM wells (defined at connections)
+    std::vector<value_t> phase_A_specific_potential_energy_up;
+    std::vector<value_t> phase_B_specific_potential_energy_up;
+
     if (has_DFM)
     {
         // --- Start evaluating phase velocities and derivatives in DFM wells
@@ -219,6 +226,49 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
         phase_A_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_A_vels_ders);
         phase_B_vels_ders = mesh->reverse_and_sort_wells_velocities_derivatives(one_way_phase_B_vels_ders);
         // --- End evaluating phase velocities and derivatives in DFM wells
+
+        if (THERMAL)
+        {
+            // --- Start reversing, sorting, and storing upwinded specfic potential energy (spe) of the two phases in DFM wells (defined at DFM connections)
+            std::vector<value_t> one_way_phase_A_spe_up;
+            std::vector<value_t> one_way_phase_B_spe_up;
+
+            // Zero spe at reservoir connections, which will remain unused. These values won't be used in the calculations, they're added to keep the consistency of the size of the vectors.
+            one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), mesh->n_res_conns / 2, 0);
+            one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), mesh->n_res_conns / 2, 0);
+
+            for (ms_well* w : wells)
+            {
+                index_t n_perfs = w->perforations.size();
+                // Zero spe for perforation of each well, which will remain unused
+                one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), n_perfs, 0);
+                one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), n_perfs, 0);
+
+                if (w->ms_type == ms_well::MS_Type::DFM)
+                {
+                    // Upwinded phase spe of DFM wells are evaluated in Python
+                    std::vector<value_t> well_phase_spe_up = w->phase_specific_potential_energy_up;
+
+                    // Separate the specific potential energy of the two phases
+                    size_t half_size_pot_ener = well_phase_spe_up.size() / 2;
+                    std::vector<value_t> well_phase_A_spe_up(well_phase_spe_up.begin(), well_phase_spe_up.begin() + half_size_pot_ener);
+                    std::vector<value_t> well_phase_B_spe_up(well_phase_spe_up.begin() + half_size_pot_ener, well_phase_spe_up.end());
+
+                    one_way_phase_A_spe_up.insert(one_way_phase_A_spe_up.end(), well_phase_A_spe_up.begin(), well_phase_A_spe_up.end());
+                    one_way_phase_B_spe_up.insert(one_way_phase_B_spe_up.end(), well_phase_B_spe_up.begin(), well_phase_B_spe_up.end());
+                }
+                else if (w->ms_type == ms_well::MS_Type::EPM)
+                {
+                    // EPM wells have only one connection. This zero spe won't be used in calculations of EPM wells. It's just to keep the consistency of the size of the vectors.
+                    one_way_phase_A_spe_up.push_back(0);
+                    one_way_phase_B_spe_up.push_back(0);
+                }
+            }   
+            // We can use the same function used for well velocity for well upwinded spe as well
+            phase_A_specific_potential_energy_up = mesh->reverse_and_sort_wells_velocities(one_way_phase_A_spe_up);
+            phase_B_specific_potential_energy_up = mesh->reverse_and_sort_wells_velocities(one_way_phase_B_spe_up);
+            // --- End reversing, sorting, and storing upwinded specfic potential energy (spe) of the two phases in DFM wells
+        }
     }
 
     CFL_max = 0;
@@ -275,6 +325,34 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             // Add reaction term to diagonal of reservoir cells (here the volume is pore volume or block volume):
             if (i < n_res_blocks)
                 RHS[i * N_VARS + c] += (PV[i] + RV[i]) * dt * op_vals_arr[i * N_OPS + KIN_OP + c] * kin_fac[i]; // kinetics
+            
+            // Add potential energy accumulation if it's a DFM segment
+            bool DFM_segment = false;
+            if (THERMAL)
+            {
+                if (c == NE - 1)
+                {
+                    for (ms_well* w : wells)
+                    {
+                        if (w->ms_type == ms_well::MS_Type::DFM)
+                        {
+                            if (i >= w->well_head_idx && i < (w->well_head_idx + w->num_segments))
+                            {
+                                DFM_segment = true;   // if it is a segment in the DFM-MS well, DFM_segment is true
+                                
+                                value_t sat_dens_sum = 0.;
+                                for (uint8_t p = 0; p < NP; p++)
+                                {
+                                    sat_dens_sum += op_vals_arr[i * N_OPS + SAT_OP + p] * op_vals_arr[i * N_OPS + GRAV_OP + p] - op_vals_arr_n[i * N_OPS + SAT_OP + p] * op_vals_arr_n[i * N_OPS + GRAV_OP + p];
+                                }
+                                RHS[i * N_VARS + c] += PV[i] * mesh->specific_potential_energy[i] * sat_dens_sum;
+
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
 
             for (uint8_t v = 0; v < N_VARS; v++)
             {
@@ -284,6 +362,23 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 if (i < n_res_blocks)
                 {
                     Jac[diag_idx + c * N_VARS + v] += (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+                }
+
+                // Include derivatives for potential energy term if part of DFM well
+                if (THERMAL)
+                {
+                    if (c == NE - 1)
+                    {
+                        if (DFM_segment)
+                        {
+                            value_t sat_dens_der_sum = 0.;
+                            for (uint8_t p = 0; p < NP; p++)
+                            {
+                                sat_dens_der_sum += op_ders_arr[(i * N_OPS + SAT_OP + p) * N_VARS + v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[i * N_OPS + SAT_OP + p] * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v];
+                            }
+                            Jac[diag_idx + c * N_VARS + v] += PV[i] * mesh->specific_potential_energy[i] * sat_dens_der_sum; // der of potential energy accumulation term
+                        }
+                    }
                 }
             }
         }
@@ -624,6 +719,21 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                           if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
                         RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
+
+                        if (DFM_conn)   // if it's a DFM connection, add potential energy flux
+                        {
+                            if (THERMAL)
+                            {
+                                if (c == NE - 1)
+                                {
+                                    if (p == 0)
+                                        RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+                                    else if (p == 1 || p == 2)
+                                        RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+                                }
+                            }
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[diag_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
@@ -637,6 +747,25 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                                 {
                                     Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
                                     Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[i * N_OPS + LAMBDA_OP + p];
+                                }
+                            }
+                            else if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
+                            {
+                                if (THERMAL)
+                                {
+                                    if (c == NE - 1)
+                                    {
+                                        if (p == 0)
+                                        {
+                                            Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
+                                            Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+                                        }
+                                        else if (p == 1 || p == 2)
+                                        {
+                                            Jac[diag_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_i[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
+                                            Jac[jac_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_j[v] * op_vals_arr[i * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -726,18 +855,53 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                           if (enabled_flux_output) cur_heat_darcy_advection_fluxes[p] = -phase_volumetric_rate * c_flux_coef / dt;
 
                         RHS[i * N_VARS + c] -= phase_volumetric_rate * c_flux_coef; // flux operators only
+
+                        if (DFM_conn)   // if it's a DFM connection, add potential energy flux
+                        {
+                            if (THERMAL)
+                            {
+                                if (c == NE - 1)
+                                {
+                                    if (p == 0)
+                                        RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+                                    else if (p == 1 || p == 2)
+                                        RHS[i * N_VARS + c] -= dt * phase_volumetric_rate * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+                                }
+                            }
+                        }
+
                         for (uint8_t v = 0; v < N_VARS; v++)
                         {
                             Jac[jac_idx + c * N_VARS + v] -= (phase_volumetric_rate * trans_mult * op_ders_arr[(j * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v] * dt +
                                 phase_volumetric_rate * trans_mult_der_j[v] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt);
                             Jac[diag_idx + c * N_VARS + v] -= phase_vol_rate_der_i[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
                             Jac[jac_idx + c * N_VARS + v] -= phase_vol_rate_der_j[v] * trans_mult * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c] * dt;
+
                             if (!DFM_conn)
                             {
                                 if (v == 0)
                                 {
                                     Jac[diag_idx + c * N_VARS + v] += c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
                                     Jac[jac_idx + c * N_VARS + v] -= c_flux_coef * tran[conn_idx] * op_vals_arr[j * N_OPS + LAMBDA_OP + p];
+                                }
+                            }
+                            else if (DFM_conn)   // if it's a DFM connection, add derivatives of potential energy flux
+                            {
+                                if (THERMAL)
+                                {
+                                    if (c == NE - 1)
+                                    {
+                                        if (p == 0)
+                                        {
+                                            Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_A_specific_potential_energy_up[conn_idx];
+                                            Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_A_specific_potential_energy_up[conn_idx];
+                                        }
+                                        else if (p == 1 || p == 2)
+                                        {
+                                            Jac[diag_idx + c * N_VARS + v] -= dt * phase_vol_rate_der_i[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] * phase_B_specific_potential_energy_up[conn_idx];
+                                            Jac[jac_idx + c * N_VARS + v] -= dt * (phase_vol_rate_der_j[v] * op_vals_arr[j * N_OPS + GRAV_OP + p] + phase_volumetric_rate * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v]) * phase_B_specific_potential_energy_up[conn_idx];
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -824,27 +988,27 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
-        // [4] add rock conduction
-        if (THERMAL)
-        {
-            t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
-            gamma_t_i = tranD[conn_idx] * dt * (1 - mesh->poro[i]) * mesh->rock_cond[i];
-            gamma_t_j = tranD[conn_idx] * dt * (1 - mesh->poro[j]) * mesh->rock_cond[j];
-
-            // rock heat transfers flows from cell i to j
-            RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i + gamma_t_j) / 2;
-            if (enabled_flux_output) cur_fourier_fluxes[NP] = -t_diff * (gamma_t_i + gamma_t_j) / 2 / dt;
-            for (uint8_t v = 0; v < N_VARS; v++)
+            // [4] add rock conduction
+            if (THERMAL)
             {
-              Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
-              Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
-            }
-        }
-        conn_idx++;
-        if (j < n_res_blocks)
-            cell_conn_idx++;
+                t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
+                gamma_t_i = tranD[conn_idx] * dt * (1 - mesh->poro[i]) * mesh->rock_cond[i];
+                gamma_t_j = tranD[conn_idx] * dt * (1 - mesh->poro[j]) * mesh->rock_cond[j];
 
-      }
+                // rock heat transfers flows from cell i to j
+                RHS[i * N_VARS + NC] -= t_diff * (gamma_t_i + gamma_t_j) / 2;
+                if (enabled_flux_output) cur_fourier_fluxes[NP] = -t_diff * (gamma_t_i + gamma_t_j) / 2 / dt;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                {
+                  Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+                  Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+                }
+            }
+            conn_idx++;
+            if (j < n_res_blocks)
+                cell_conn_idx++;
+
+        }
 
       // [5] finally add rock energy
       // + rock energy (no rock compressibility included in these computations)

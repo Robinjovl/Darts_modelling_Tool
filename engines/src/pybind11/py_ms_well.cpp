@@ -53,7 +53,9 @@ void pybind_ms_well(py::module& m)
         .def_readwrite("num_segments", &ms_well::num_segments)
         .def_readwrite("init_state", &ms_well::init_state)
         .def_readwrite("phase_vels", &ms_well::phase_vels)
-        .def_readwrite("phase_vels_ders", &ms_well::phase_vels_ders);
+        .def_readwrite("phase_vels_ders", &ms_well::phase_vels_ders)
+        .def_readwrite("specific_potential_energy", &ms_well::specific_potential_energy) 
+        .def_readwrite("phase_specific_potential_energy_up", &ms_well::phase_specific_potential_energy_up);
 
     py::enum_<ms_well::MS_Type>(ms_well_class, "MS_Type")
         .value("EPM", ms_well::MS_Type::EPM)

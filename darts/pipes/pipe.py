@@ -100,6 +100,7 @@ class Pipe:
         self.a1 = a1
         self.a2 = a2
 
+        # For phase velocity evaluation
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
 
         # Epsilon values for numerical differentiation with respect to pressure, temperature, and overall composition
@@ -706,3 +707,30 @@ class Pipe:
         phase_velocities_derivatives = np.concatenate((jac_phase_A_clean_flat.flatten(), jac_phase_B_clean_flat.flatten()))
 
         return phase_velocities, phase_velocities_derivatives
+
+    def evaluate_upwinded_phase_specific_potential_energy(self, cpp_well, well_phase_v):
+        specific_potential_energy = cpp_well.specific_potential_energy
+
+        vG = well_phase_v[:self.geometry.num_interfaces]
+        vL = well_phase_v[self.geometry.num_interfaces:]
+
+        specific_potential_energy_up_gas = np.zeros(self.geometry.num_interfaces)
+        specific_potential_energy_up_liquid = np.zeros(self.geometry.num_interfaces)
+
+        for j in range(self.geometry.num_interfaces):
+            if vG[j] > 0:
+                specific_potential_energy_up_gas[j] = specific_potential_energy[j]
+
+            elif vG[j] < 0:
+                specific_potential_energy_up_gas[j] = specific_potential_energy[j + 1]
+
+            if vL[j] > 0:
+                specific_potential_energy_up_liquid[j] = specific_potential_energy[j]
+
+            elif vL[j] < 0:
+                specific_potential_energy_up_liquid[j] = specific_potential_energy[j + 1]
+
+        phase_specific_potential_energy_up = np.concatenate((specific_potential_energy_up_gas,
+                                                             specific_potential_energy_up_liquid))
+
+        return phase_specific_potential_energy_up

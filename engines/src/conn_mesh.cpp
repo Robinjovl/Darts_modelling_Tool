@@ -36,6 +36,7 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   depth.assign(n_res_blocks, 0);
   heat_capacity.assign(n_res_blocks, 0);
   rock_cond.assign(n_res_blocks, 0);
+  specific_potential_energy.assign(n_res_blocks, 0);
 
   // kinetic property
   kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)
@@ -1999,7 +2000,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
       n_perfs++;
       n_segments = max(n_segments, i_w + 1);
     }
-	// this if-block can affect the number of segments if the well is of the ms_well type and there is or are unperforated segments below the lowermost perforated segment of the well.
+	// this if-block can affect the number of segments if the well is of the DFM type and there is or are unperforated segments below the lowermost perforated segment of the well.
 	if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	{
 		n_segments = max(n_segments, wells[iw]->num_segments - 1);
@@ -2043,6 +2044,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
   heat_capacity.resize(total_num_cells_segments);
   rock_cond.resize(total_num_cells_segments + n_bounds);
   mob_multiplier.resize(2 * total_num_cells_segments);
+  specific_potential_energy.resize(total_num_cells_segments);
 
   for (index_t iw = 0; iw < wells.size(); iw++)
   {
@@ -2079,6 +2081,7 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		  std::fill(poro.begin() + wells[iw]->well_head_idx, poro.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 1);
 		  std::fill(op_num.begin() + wells[iw]->well_head_idx, op_num.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
 		  std::fill(heat_capacity.begin() + wells[iw]->well_head_idx, heat_capacity.begin() + wells[iw]->well_head_idx + wells[iw]->num_segments, 0);
+		  std::copy(wells[iw]->specific_potential_energy.begin(), wells[iw]->specific_potential_energy.end(), specific_potential_energy.begin() + wells[iw]->well_head_idx);
 		  // The following lines are not applied to DFM-MS yet.
 		  //for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		  //{

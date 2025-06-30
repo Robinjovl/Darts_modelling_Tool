@@ -542,6 +542,10 @@ class DartsModel:
                     w.phase_vels = value_vector(well_phase_v)
                     w.phase_vels_ders = value_vector(well_phase_v_d)
 
+                    if self.physics.property_containers[0].thermal:
+                        phase_specific_potential_energy_up = self.wells[w.name].evaluate_upwinded_phase_specific_potential_energy(w, well_phase_v)
+                        w.phase_specific_potential_energy_up = value_vector(phase_specific_potential_energy_up)
+
             self.physics.engine.assemble_linear_system(dt)  # assemble Jacobian and residual of reservoir and well blocks
             self.apply_rhs_flux(dt, t)  # apply RHS flux
             self.apply_well_lateral_heat_flux(dt, t)
