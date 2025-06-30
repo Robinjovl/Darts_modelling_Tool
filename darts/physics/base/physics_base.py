@@ -237,13 +237,37 @@ class PhysicsBase:
                                                        precision=itor_precision)
         return
 
+    def evaluate_interpolators(self, itor: operator_set_evaluator_iface, etor: operator_set_evaluator_iface, states):
+        # Create values, dvalues and idxs arrays
+        n_states = len(states)
+        physical_points = np.where(np.sum(states[:, 1:-1], axis=1) <= 1., True, False)
+        states = value_vector(np.stack([states[:, j] for j in range(self.n_vars)]).T.flatten())
+        values = value_vector(np.zeros(self.n_ops * n_states))
+        values_numpy = np.array(values, copy=False)
+        dvalues = value_vector(np.zeros(self.n_ops * n_states * self.n_vars))
+
+        idxs = index_vector([i for i in range(n_states)])
+
+        # Interpolate operators
+        itor.evaluate_with_derivatives(states, idxs, values, dvalues)
+
+        # Fill operator array
+        operator_array = {}
+        for i in range(self.n_ops):
+            op_type_idx = np.flatnonzero([i >= np.array([tup[0] for tup in etor.op_names])])[-1]
+            op_name = etor.op_names[op_type_idx][1] + "_" + str(i - etor.op_names[op_type_idx][0])
+            operator_array[op_name] = values_numpy[i::self.n_ops]
+            operator_array[op_name][physical_points == False] = np.nan
+
+        return operator_array
+
     def set_well_controls(self, wctrl: well_control_iface, control_type: well_control_iface.WellControlType, is_inj: bool,
                           target: float, phase_name: str = None, inj_composition: list = None, inj_temp: float = None):
         """
         Method to set well controls. It will call set_bhp_control() or set_rate_control() on the control or constraint
         well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
 
-        :param well: ms_well object on which the control/constraint is defined
+        :param wctrl: well_control_iface object responsible for control/constraint
         :param control_type: Well control type -2) NONE (if constraint needs to be deactivated), -1) BHP,
                              0) MOLAR_RATE, 1) MASS_RATE, 2) VOLUMETRIC_RATE, 3) ADVECTIVE_HEAT_RATE; default is BHP
         :param is_inj: Is injection well (true) or production well (false)
@@ -251,7 +275,6 @@ class PhysicsBase:
         :param phase_name: Name of the phase rate of which is controlled. This input is required if well control is of the rate type.
         :param inj_composition: Composition of the injected phase. This input is required if it is an injection well.
         :param inj_temp: Temperature of the injected phase. This input is required if it is an injection well.
-        :param is_control: Is control (true) or constraint (false), default is true
         """
         # Define well controls specification: BHP/rate, injected fluid composition, and injected fluid temperature
         inj_composition = value_vector(inj_composition) if inj_composition is not None else value_vector(
@@ -358,6 +381,12 @@ class PhysicsBase:
         :type evaluator: darts.engines.operator_set_evaluator_iface
         :param timer_name: Name of timer object
         :type timer_name: str
+        :param n_ops: Number of operators
+        :type n_ops: int
+        :param axes_min: Minimal bounds of OBL axes
+        :type axes_min: value_vector
+        :param axes_max: Maximal bounds of OBL axes
+        :type axes_max: value_vector
         :param algorithm: interpolator type:
             'multilinear' (default) - piecewise multilinear generalization of piecewise bilinear interpolation on rectangles;
             'linear' - a piecewise linear generalization of piecewise linear interpolation on triangles
@@ -380,6 +409,12 @@ class PhysicsBase:
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
         :type is_barycentric: bool
         """
+        # check input OBL props
+        if axes_min is None:
+            axes_min = self.axes_min
+        if axes_max is None:
+            axes_max = self.axes_max
+
         # verify then inputs are valid
         assert len(self.n_axes_points) == self.n_vars
         assert len(axes_min) == self.n_vars
@@ -510,7 +545,6 @@ class PhysicsBase:
             os.mkdir(output_folder)
 
         with open(os.path.join(output_folder, 'body_path.txt'), "w") as fp:
-            itor = self.acc_flux_itor[0]
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write('%d %lf %lf %s\n' % (self.n_axes_points[id],

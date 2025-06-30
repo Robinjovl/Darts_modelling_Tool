@@ -62,6 +62,7 @@ class Output:
         self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output_well_time_data"] = timer_node()
+        self.timer.node["exporting_property_array"] = timer_node()
 
         self.output_folder = output_folder
         self.sol_filename = sol_filename
@@ -138,12 +139,12 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].phase_props[ii][jj]
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
                     for j in range(pc.x.shape[0]):
-                        temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda i=i, j=j: pc.x[j, i]
+                        temp_dict[f"x_{self.physics.phases[j]}_{pc.components_name[i]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].x[jj, ii]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, self.physics.thermal, temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
@@ -172,7 +173,7 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda i=i, j=j: pc.phase_props[i][j]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[rr].phase_props[ii][jj]
 
                 self.physics.property_operators[region] = PropertyOperators(pc, thermal = False, props = temp_dict)
                 self.physics.property_itor[region] = self.physics.create_interpolator(self.physics.property_operators[region],
@@ -219,18 +220,101 @@ class Output:
 
             self.physics.property_containers[region].output_props = output_dictionary
 
-            # Initialize physics and engine settings
-            self.physics.init_physics()
-            self.physics.engine.init(self.reservoir.mesh,
-                                     ms_well_vector(self.reservoir.wells),
-                                     op_vector(self.op_list),
-                                     self.params,
-                                     self.master_timer.node["simulation"])
+            self.physics.property_operators[region] = PropertyOperators(self.physics.property_containers[region],
+                                                                        self.physics.thermal,
+                                                                        output_dictionary)
+            self.physics.property_itor[region] = self.physics.create_interpolator(
+                self.physics.property_operators[region],
+                n_ops=self.physics.n_ops,
+                axes_min=self.physics.axes_min, axes_max=self.physics.axes_max,
+                platform='cpu', algorithm='multilinear',
+                mode='adaptive', precision='d',
+                timer_name='property %d interpolation' % region,
+                region=str(region))
             self.properties = list(output_dictionary.keys())
 
         return
 
-    def save_property_array(self, time_vector, property_array, filename="property_array.h5"):
+    def save_array(self, array, filename, compression_level=1):
+        """
+        This function saved any dictionary as an h5 file with compression
+
+        : param array: data
+        : type array: dict
+        : param filename: filename in the format filename.h5
+        : type filename: str
+        : param compression_level : int value between 0 and 9
+        : type : int
+        """
+        output_directory = os.path.join(self.output_folder, filename)
+        with h5py.File(output_directory, "w") as h5f:
+            for key, array in array.items():
+                h5f.create_dataset(key, data=array, compression='gzip', compression_opts=compression_level)
+        return 0
+
+    def load_array(self, file_directory):
+        """
+        This function loads any saved data in h5 file format
+
+        : param file_directory: filename in the format filename.h5
+        : type file_directory: str
+        """
+
+        array = {}
+        with h5py.File(file_directory, "r") as h5f:
+            for key in h5f.keys():
+                array[key] = np.array(h5f[key])
+        return array
+
+    def append_properties_to_reservoir(self, time: float, property_array: dict):
+        """
+        Appends secondary properties to the existing 'reservoir.h5' file under the group 'properties'.
+
+        :param time: timestep index to write properties for.
+        :param property_array: Dictionary with property names as keys and arrays (1D over cells) as values.
+        """
+
+        with h5py.File(self.sol_filepath, 'a') as f:
+            time_vector = f['dynamic/time'][:]
+            if time in time_vector:
+                timestep = int(np.where(time_vector == time)[0][0])
+
+                if 'properties' not in f:
+                    f.create_group('properties')
+                else:
+                    pass
+
+                prop_group = f['properties']
+                max_ts = f['dynamic/time'].shape[0]
+
+                for key, data in property_array.items():
+                    data = np.asarray(data).reshape(-1)  # Ensure 1D array
+
+                    if key not in prop_group:
+                        shape = (max_ts, len(data))
+                        dset = prop_group.create_dataset(
+                            key,
+                            shape=shape,
+                            maxshape=(None, len(data)), # max shape none ensures that we can append as much data as possible
+                            dtype=data.dtype,
+                            compression='gzip',
+                            compression_opts=2
+                        )
+
+                    else:
+                        dset = prop_group[key]
+                        if len(data) != dset.shape[1]:
+                            raise ValueError(f"Shape mismatch for property '{key}': expected {dset.shape[1]}, got {len(data)}")
+                        if timestep >= dset.shape[0]:
+                            dset.resize((timestep + 1, dset.shape[1]))
+
+                    dset[timestep, :] = data
+
+            else:
+                raise ValueError(f"Timestamp {time} does not exist in the solution.h5 file.")
+
+
+    def save_property_array(self, time_vector, property_array, filename=None):
         """
         Saves property_array to an HDF5 file.
 
@@ -238,17 +322,26 @@ class Output:
         :param property_array : Dictionary where keys are property names and values are NumPy arrays.
         :param filename : Name of the HDF5 file to save to.
         """
-        
-        compression_level = 2
-        output_directory = os.path.join(self.output_folder, filename)
-        
-        with h5py.File(output_directory, "w") as h5f:
-            # Save the time vector with compression
-            h5f.create_dataset("time_vector", data=time_vector, compression="gzip", compression_opts=compression_level)
 
-            # Save each property array with compression
-            for key, array in property_array.items():
-                h5f.create_dataset(key, data=array, compression="gzip", compression_opts=compression_level)
+        self.timer.start()
+        self.timer.node['exporting_property_array'].start()
+
+        if filename is None:
+            self.append_properties_to_reservoir(time_vector, property_array)
+        else:
+            compression_level = 2
+            output_directory = os.path.join(self.output_folder, filename)
+
+            with h5py.File(output_directory, "w") as h5f:
+                # Save the time vector with compression
+                h5f.create_dataset("time_vector", data=time_vector, compression="gzip", compression_opts=compression_level)
+
+                # Save each property array with compression
+                for key, array in property_array.items():
+                    h5f.create_dataset(key, data=array, compression="gzip", compression_opts=compression_level)
+
+        self.timer.node['exporting_property_array'].stop()
+        self.timer.stop()
         
         return
 
@@ -260,16 +353,25 @@ class Output:
         :return time_vector:  available timesteps
         :return property_array: dictionary of properties
         """
-        property_array = {}
+        try:
+            property_array = {}
+            with h5py.File(file_directory, "r") as h5f:
+                # Load time vector
+                time_vector = np.array(h5f["time_vector"])
 
-        with h5py.File(file_directory, "r") as h5f:
-            # Load time vector
-            time_vector = np.array(h5f["time_vector"])
+               # Load each property array
+                for key in h5f.keys():
+                    if key != "time_vector":  # Skip time vector in property dictionary
+                        property_array[key] = np.array(h5f[key])
+        except:
+            with h5py.File(self.sol_filepath, 'r') as f:
+                if 'properties' not in f:
+                    raise KeyError("No 'properties' group found in the reservoir.h5 file.")
 
-           # Load each property array
-            for key in h5f.keys():
-                if key != "time_vector":  # Skip time vector in property dictionary
-                    property_array[key] = np.array(h5f[key])
+                time_vector = np.array(f['dynamic/time'][:])
+                prop_group = f['properties']
+
+                property_array = {key: np.array(dset) for key, dset in prop_group.items()}
 
         return time_vector, property_array
         
@@ -619,7 +721,8 @@ class Output:
 
         return timesteps, property_array
 
-    def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None, output_properties: list = None, engine : bool = False):
+    def output_to_vtk(self, sol_filepath : str = None, ith_step: int = None, output_directory: str = None,
+                      output_properties: list = None, engine : bool = False, output_data : list = None):
         """
         Function to export results at timestamp t into `.vtk` format for viewing in Paraview.
 
@@ -631,6 +734,8 @@ class Output:
         :type output_directory: str
         :param output_properties: List of properties to include in .vtk file. Defaults to None in which case only primary (state) variables are evaluated.
         :type output_properties: list
+        :param output_data: List [array of timesteps, dictionary of propertiy arrays]. Defaults to None, in which case properties are evaluated from the HDF5 file or engine
+        :type output_data: list, optional
         """
         self.timer.start(); self.timer.node["vtk_output"].start()
 
@@ -638,16 +743,29 @@ class Output:
         if output_directory is None:
             output_directory = os.path.join(self.output_folder, 'vtk_files')
         os.makedirs(output_directory, exist_ok=True)
-
-        timesteps, property_array = self.output_properties(self.sol_filepath if sol_filepath is None else sol_filepath,
+        
+        if output_data is None:
+            timesteps, property_array = self.output_properties(self.sol_filepath if sol_filepath is None else sol_filepath,
                                                            output_properties,
                                                            ith_step,
                                                            engine)
+        else: 
+            timesteps, property_array = output_data[0], output_data[1]
+
+            expected_shape = (len(timesteps), self.reservoir.mesh.n_res_blocks)
+            for key, array in property_array.items():
+                if array.shape[1] != self.reservoir.mesh.n_res_blocks:
+                    raise ValueError(f"Property '{key}' has shape {array.shape}, expected {expected_shape}.")
+
 
         # units to prop names
+        self.set_units()
         prop_names = {}
         for i, name in enumerate(property_array.keys()):
-            prop_names[name] = name + self.variable_units[name]
+            if name in self.properties + self.physics.vars:
+                prop_names[name] = name + self.variable_units[name]
+            else:
+                prop_names[name] = name
 
         for t, time in enumerate(timesteps):
             data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
@@ -769,7 +887,7 @@ class Output:
                 plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
         plt.close('all')
 
-    def store_well_time_data(self, types_of_well_rates: list = None, save_as_pkl: bool = False):
+    def store_well_time_data(self, types_of_well_rates: list = None, save_output_files: bool = False):
         """
         Compute and store well time data including rates and bottom-hole conditions (BHT and BHP).
         Rates are calculated for each perforation and also total rate of each well. Total rates are calculated using
@@ -785,8 +903,8 @@ class Output:
                                     "components_mass_rates"
                                     "advective_heat_rate" for thermal scenarios
         :type types_of_well_rates: list
-        :param save_as_pkl: flag to save time_data as a .pkl and .xlsx file in the output folder, default false
-        :type save_as_pkl: bool
+        :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
+        :type save_output_files: bool
 
         Well data is saved as a *.pkl file and .xlsx file in the dartsmodel.output_folder.
         """
@@ -828,7 +946,7 @@ class Output:
             self.store_wellhead_rates(time_data_dict, rates_wellhead, rate_type)
 
         # Export time_data_dict
-        if save_as_pkl:
+        if save_output_files:
             df = pd.DataFrame(time_data_dict)
             df.to_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
             with pd.ExcelWriter(os.path.join(self.output_folder, 'well_time_data.xlsx')) as w:

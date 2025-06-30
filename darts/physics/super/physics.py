@@ -225,13 +225,19 @@ class Compositional(PhysicsBase):
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
                     for j in range(mesh.n_res_blocks):
+                        components = [
+                            input_distribution[name][j] if not np.isscalar(input_distribution[name]) else
+                            input_distribution[name]
+                            for name in self.property_containers[0].components_name[:-1]
+                        ]
                         temp = input_distribution['temperature'][j] if not np.isscalar(input_distribution['temperature']) else input_distribution['temperature']
 
-                        state_pt = np.array([input_distribution['pressure'][j], temp])
-                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state_pt)
+                        state = np.array([input_distribution['pressure'][j], *components, temp])
+                        enthalpy[j] = self.property_containers[0].compute_total_enthalpy(state)
                 else:
-                    state_pt = value_vector([input_distribution['pressure'], input_distribution['temperature']])  # enthalpy is dummy variable
-                    enth = self.property_containers[0].compute_total_enthalpy(state_pt)
+                    components = [input_distribution[name] for name in self.property_containers[0].components_name[:-1]]
+                    state = value_vector([input_distribution['pressure'], *components, input_distribution['temperature']])  # enthalpy is dummy variable
+                    enth = self.property_containers[0].compute_total_enthalpy(state)
                     enthalpy[:] = enth
 
                 np.asarray(mesh.initial_state)[(self.n_vars - 1)::self.n_vars] = enthalpy

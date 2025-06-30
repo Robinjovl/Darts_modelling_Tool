@@ -21,7 +21,7 @@ class Model(CICDModel):
         self.set_input_data(n_points)
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-3, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
 

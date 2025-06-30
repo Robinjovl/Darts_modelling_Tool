@@ -638,27 +638,28 @@ class UnstructDiscretizer:
         file.close()
         return 0
 
-    def find_cells(self, tag: int, type: str = 'face'):
+    def find_cells(self, tags: List[int], type: str = 'face'):
         """
         Function to find cells that share geometrical element with physically tagged geometry
-        :param tag: Tag of physical geometry
+        :param tags: List of tags of physical geometry
         :param type: Type of geometry [node, edge, face]
         """
-        cell_idxs = []
+        cell_idxs = set()
 
         if type not in ['node', 'edge', 'face']:
             warnings.warn("Invalid type of physical geometry provided: " + str(type))
 
-        for element in self.boundary_conditions[tag]['cells']:
-            nodes_to_geometry = self.bound_face_info_dict[element].nodes_to_cell
-
-            for ith_cell, cell in self.mat_cell_info_dict.items():
-                if ith_cell not in cell_idxs:
+        for ith_cell, cell in self.mat_cell_info_dict.items():
+            if ith_cell in cell_idxs:
+                continue
+            for tag in tags:
+                for element in self.boundary_conditions[tag]['cells']:
+                    nodes_to_geometry = self.bound_face_info_dict[element].nodes_to_cell
                     if nodes_to_geometry[0] in cell.nodes_to_cell:
                         if all(ele in cell.nodes_to_cell for ele in nodes_to_geometry):
-                            cell_idxs.append(ith_cell)
+                            cell_idxs.add(ith_cell)
 
-        return cell_idxs
+        return list(cell_idxs)
 
     # Two-Point Flux Approximation (TPFA)
     def calc_connections_all_cells(self, cache: bool = False):

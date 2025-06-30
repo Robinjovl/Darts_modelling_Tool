@@ -18,7 +18,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'Chem_benchmark_new',
                      #'CO2_foam_CCS',
                      'GeoRising',
-                     'CoaxWell'
+                     'CoaxWell',
+                     'phreeqc_dissolution'
                      ]       
 
 
@@ -117,6 +118,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
+    accepted_dirs += ['CCS']
+    if iter_solvers:  # run this case only for the build with iterative solvers
+        accepted_dirs += [ 'SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
@@ -181,7 +185,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     else:
         print('exit:', n_failed)
         # exit with code equal to number of failed models
-        exit(n_failed)
+    exit(n_failed)
 
 
 def check_performance(mod):
@@ -208,7 +212,12 @@ def check_performance(mod):
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         platform='gpu'
 
+        if os.getenv('GPU_DEVICE') != None:
+            from darts.engines import set_gpu_device
+            set_gpu_device(int(os.getenv('GPU_DEVICE')))
+
     m.init(platform=platform)
+    
     m.set_output()
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
@@ -217,7 +226,7 @@ def check_performance(mod):
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
     failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
-    log_stream = redirect_all_output(log_file)
+
     return failed
 
 
@@ -233,7 +242,7 @@ def check_performance_adjoint(mod):
     mod.read_observation_data()
     failed = mod.process_adjoint()
     abort_redirection(log_stream)
-    log_stream = redirect_all_output(log_file)
+
 
     return failed
 
@@ -267,4 +276,5 @@ if __name__ == '__main__':
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
         iter_solvers = True
         
-    run_testing(platform, overwrite, iter_solvers, test_all_models)
+    rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
+    exit(rcode)

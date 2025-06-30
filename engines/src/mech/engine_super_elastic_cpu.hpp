@@ -82,8 +82,8 @@ public:
   // extra operators
   const static uint8_t GRAV_OP = KIN_OP + NE;
   const static uint8_t PC_OP = GRAV_OP + NP;
-  const static uint8_t PORO_OP = PC_OP + NP;
-  const static uint8_t ENTH_OP = PORO_OP + 1;
+  const static uint8_t MULT_OP = PC_OP + NP;
+  const static uint8_t ENTH_OP = MULT_OP + 1;
   const static uint8_t TEMP_OP = ENTH_OP + NP;
   const static uint8_t PRES_OP = TEMP_OP + 1;
   const static uint8_t ROCK_DENS = PRES_OP + 1;

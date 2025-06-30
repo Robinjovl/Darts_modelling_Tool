@@ -194,9 +194,10 @@ __forceinline__ __host__ __device__ void interpolate_point_with_derivatives(cons
                                                                             // OUTPUT:
                                                                             double *interp_values, double *interp_derivs)
 {
-  static const uint16_t N_VERTS = 1 << N_DIMS;
-  uint16_t pwr = N_VERTS / 2; // distance between high and low values
-  value_t workspace[(2 * N_VERTS - 1) * N_OPS];
+  static const uint32_t N_VERTS = 1 << N_DIMS;
+  uint32_t pwr = N_VERTS / 2; // distance between high and low values
+  static_assert(N_DIMS <= 24, "N_DIMS is too large and exceeds memory limits.");
+  std::vector<value_t> workspace((2 * N_VERTS - 1) * N_OPS);
 
   // copy operator values for all vertices
   for (int i = 0; i < N_VERTS * N_OPS; ++i)

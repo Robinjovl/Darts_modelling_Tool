@@ -61,6 +61,7 @@ class PropertyContainer(PropertyBase):
         self.kinetic_rate_ev = {}
         self.energy_source_ev = []
         self.flash_ev: Flash = 0
+        self.permporo_mult_ev = ConstFunc(1.0)
 
         # passing arguments
         self.x = np.zeros((self.np_fl, self.nc_fl))

@@ -26,17 +26,9 @@ using namespace opendarts::linear_solvers;
 
 int engine_base::print_header()
 {
-	std::cout << engine_name << "\nSim params: \n"
-			  << "\tFirst ts: \t" << params->first_ts << std::endl;
-	std::cout << "\tMax ts: \t" << params->max_ts << std::endl;
-	std::cout << "\tMult ts: \t" << params->mult_ts << std::endl;
-
-	std::cout << "\tMax i newton: \t" << params->max_i_newton << std::endl;
-	std::cout << "\tMax i linear: \t" << params->max_i_linear << std::endl;
-	std::cout << "\tTol newton: \t" << params->tolerance_newton << std::endl;
-	std::cout << "\tTol linear: \t" << params->tolerance_linear << std::endl;
+	std::cout << "Engine: \t" << engine_name << "\n";
 #ifdef _OPENMP
-	std::cout << "\tOpenMP threads: \t" << omp_get_max_threads() << std::endl;
+	std::cout << "OpenMP threads: \t" << omp_get_max_threads() << std::endl;
 #endif
 	//  std::cout << "\tResolution: \t" << acc_flux_op_set->axis_points[0] << std::endl;
 
@@ -1818,39 +1810,53 @@ int engine_base::apply_newton_update(value_t dt)
 	timer->node["newton update"].node["composition correction"].start();
 	if (nc > 1)
 	{
-		if (params->log_transform == 1)
-		{
-			apply_composition_correction_new(X, dX);
-		}
-		else
-		{
-			apply_composition_correction(X, dX);
-		}
+	  if (params->log_transform == 1)
+	  {
+		apply_composition_correction_new(X, dX);
+	  }
+	  else
+	  {
+		apply_composition_correction(X, dX);
+	  }
 	}
 	timer->node["newton update"].node["composition correction"].stop();
 
 	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
 	{
+	  if (n_solid > 0)
+	  {
+		apply_local_chop_correction_with_solid(X, dX);
+	  }
+	  else
+	  {
 		if (params->log_transform == 1)
 		{
-			apply_global_chop_correction_new(X, dX);
+		  apply_global_chop_correction_new(X, dX);
 		}
 		else
 		{
-			apply_global_chop_correction(X, dX);
+		  apply_global_chop_correction(X, dX);
 		}
+	  }
 	}
 	// apply local chop only if number of components is 2 and more
 	else if (params->newton_type == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
 	{
+	  if (n_solid > 0)
+	  {
+		apply_local_chop_correction_with_solid(X, dX);
+	  }
+	  else
+	  {
 		if (params->log_transform == 1)
 		{
-			apply_local_chop_correction_new(X, dX);
+		  apply_local_chop_correction_new(X, dX);
 		}
 		else
 		{
-			apply_local_chop_correction(X, dX);
+		  apply_local_chop_correction(X, dX);
 		}
+	  }
 	}
 
 	// apply only if interpolation is used for derivatives
@@ -1874,15 +1880,59 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	double sum_z, new_z;
 	index_t nb = mesh->n_blocks;
 	bool z_corrected;
-	index_t n_corrected = 0;
+	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
 
 	for (index_t i = 0; i < nb; i++)
 	{
+		/* ---- check solid compositions ---- */
 		sum_z = 0;
 		z_corrected = false;
+		for (char c = 0; c < n_solid; c++)
+		{
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
-		// check all but one composition in grid block
-		for (char c = 0; c < nc - 1; c++)
+			if (new_z < min_zc)
+			{
+			  new_z = min_zc;
+			  z_corrected = true;
+			}
+			else if (new_z > 1 - min_zc)
+			{
+			  new_z = 1 - min_zc;
+			  z_corrected = true;
+			}
+			sum_z += new_z;
+		}
+		// check the last composition
+		new_z = 1 - sum_z;
+		if (new_z < min_zc)
+		{
+		  new_z = min_zc;
+		  z_corrected = true;
+		}
+		sum_z += new_z;
+		// correction
+		if (z_corrected)
+		{
+		  // normalize compositions and set appropriate update
+		  for (char c = 0; c < n_solid; c++)
+		  {
+			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
+
+			new_z = std::max(min_zc, new_z);
+			new_z = std::min(1 - min_zc, new_z);
+
+			new_z = new_z / sum_z;
+			dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
+		  }
+		  n_solid_corrected++;
+		}
+		/* ---- end check solid compositions ---- */
+
+		/* ---- check fluid compositions ---- */ 		
+		sum_z = 0;
+		z_corrected = false;
+		for (char c = n_solid; c < nc - 1; c++)
 		{
 			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 			if (new_z < min_zc)
@@ -1905,11 +1955,11 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			z_corrected = true;
 		}
 		sum_z += new_z;
-
+		// correction
 		if (z_corrected)
 		{
 			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc - 1; c++)
+			for (char c = n_solid; c < nc - 1; c++)
 			{
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
@@ -1919,13 +1969,14 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 				new_z = new_z / sum_z;
 				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
 			}
-			n_corrected++;
+			n_fluid_corrected++;
 		}
+		/* ---- end check fluid compositions ---- */
 	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
+	if (n_solid_corrected || n_fluid_corrected)
+		std::cout << "Composition correction applied to solid in " << n_solid_corrected << 
+		  " block(s), to fluid in " << n_fluid_corrected << " block(s)" << std::endl;
 }
-
 
 void engine_base::apply_composition_correction_(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
@@ -2152,63 +2203,6 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
 }
 
-void engine_base::apply_composition_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
-{
-	double sum_z, new_z;
-	index_t nb = mesh->n_blocks;
-	bool z_corrected;
-	index_t n_corrected = 0;
-
-	for (index_t i = 0; i < nb; i++)
-	{
-		sum_z = 0;
-		z_corrected = false;
-
-		// check all but one composition in grid block
-		for (char c = 0; c < nc_fl - 1; c++)
-		{
-			new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-			if (new_z < min_zc)
-			{
-				new_z = min_zc;
-				z_corrected = true;
-			}
-			else if (new_z > 1 - min_zc)
-			{
-				new_z = 1 - min_zc;
-				z_corrected = true;
-			}
-			sum_z += new_z;
-		}
-		// check the last composition
-		new_z = 1 - sum_z;
-		if (new_z < min_zc)
-		{
-			new_z = min_zc;
-			z_corrected = true;
-		}
-		sum_z += new_z;
-
-		if (z_corrected)
-		{
-			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc_fl - 1; c++)
-			{
-				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
-
-				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
-
-				new_z = new_z / sum_z;
-				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-			}
-			n_corrected++;
-		}
-	}
-	if (n_corrected)
-		std::cout << "Composition correction applied in " << n_corrected << " block(s)" << std::endl;
-}
-
 void engine_base::apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double max_ratio = 0;
@@ -2337,6 +2331,7 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 	value_t max_dx = params->newton_params[0];
 	value_t ratio, dx;
 	index_t n_corrected = 0;
+	uint8_t nc_fl = nc - n_solid;
 
 	for (int i = 0; i < mesh->n_blocks; i++)
 	{
@@ -2345,9 +2340,9 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 		new_z_fl[nc_fl - 1] = 1.0;
 		for (int j = 0; j < nc_fl - 1; j++)
 		{
-			old_z_fl[j] = X[i * n_vars + j + z_var];
+			old_z_fl[j] = X[i * n_vars + j + z_var + n_solid];
 			old_z_fl[nc_fl - 1] -= old_z_fl[j];
-			new_z_fl[j] = old_z[j] - dX[i * n_vars + j + z_var];
+			new_z_fl[j] = old_z_fl[j] - dX[i * n_vars + j + z_var + n_solid];
 			new_z_fl[nc_fl - 1] -= new_z_fl[j];
 		}
 
@@ -2363,7 +2358,7 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 		if (ratio < 1.0) // perform chopping if ratio is below 1.0
 		{
 			n_corrected++;
-			for (int j = z_var; j < z_var + nc_fl - 1; j++)
+			for (int j = z_var + n_solid; j < z_var + nc - 1; j++)
 			{
 				dX[i * n_vars + j] *= ratio;
 			}

@@ -38,12 +38,13 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.set_input_data(case=case)
 
+    m.set_physics()
+
     arrays = m.init_input_arrays()
     # custom arrays can be read here
     # arrays['new_array_name'] = read_float_array(filename, 'new_array_name')
     # arrays['new_array_name'] = read_int_array(filename, 'new_array_name')
     m.init_reservoir(arrays=arrays)
-    m.set_physics()
 
     # time stepping and convergence parameters
     m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
@@ -52,7 +53,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
     m.init(platform=platform)
     #m.reservoir.mesh.init_grav_coef(0)
-    m.set_output(output_folder=out_dir)
+    m.set_output(output_folder=out_dir, all_phase_props=True)
     # m.output.save_data_to_h5(kind='reservoir')
     m.set_well_controls_idata()
 
@@ -65,23 +66,25 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     m.print_timers()
 
+    # post-processing: read h5 file and write vtk with properties
+    print('Post processing properties and vtk output...')
     if export_vtk:
-        output_properties = None
-        if physics_type == 'geothermal' and False:
-            # output additional properties to vtk
-            output_properties = m.physics.vars + ['temperature']
-            for ph_str in ['_water', '_steam']:
-                output_properties += ['saturation' + ph_str]
-                output_properties += ['density' + ph_str]
-                output_properties += ['viscosity' + ph_str]
-                output_properties += ['enthalpy' + ph_str]
-                if ph_str in ['_water']:
-                    output_properties += ['conduction' + ph_str]
-
-        # read h5 file and write vtk
+        output_properties_main = m.physics.vars  # only main variables
+        output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)+1):
-            m.output.output_to_vtk(ith_step=ith_step, output_properties=output_properties)
+        n_timesteps = len(m.idata.sim.time_steps)
+        for ith_step in range(n_timesteps + 1):
+            # compute additional properties only for the first and for the last timestep:
+            output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
+            #print('timestep', ith_step, 'output_properties:', output_properties)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            if ith_step == 0:
+                centers_x, centers_y, centers_z = m.reservoir.get_centers()
+                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+
+            m.output.save_property_array(timesteps, property_array, f'property_array_ts.h5')
+
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
@@ -119,7 +122,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     time_data_report.to_excel(writer, sheet_name='time_data_report')
     writer.close()
 
-    m.output.store_well_time_data(save_as_pkl=True)
+    m.output.store_well_time_data(save_output_files=True)
     m.output.plot_well_time_data()
 
     if compare_with_ref:
@@ -269,11 +272,11 @@ if __name__ == '__main__':
     #cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
-    cases_list += ['case_40x40x10']
+    #cases_list += ['case_40x40x10']
 
     well_controls = []
-    well_controls += ['wrate']
-    #well_controls += ['wbhp']
+    #well_controls += ['wrate']
+    well_controls += ['wbhp']
     #well_controls += ['wperiodic']
 
     for physics_type in physics_list:

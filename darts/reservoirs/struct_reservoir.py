@@ -137,7 +137,7 @@ class StructReservoir(ReservoirBase):
         self.volume[:] = volume[self.discretizer.local_to_global]
 
     def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.0762,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        well_index: float = None, well_indexD: float = 0., segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
@@ -470,7 +470,7 @@ class StructReservoir(ReservoirBase):
         # group file every time
 
         self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup('solution')
+        vtk_group = VtkGroup(os.path.join(output_directory,'solution'))
         for fname, t in self.vtk_filenames_and_times.items():
             vtk_group.addFile(fname, t)
         vtk_group.save()

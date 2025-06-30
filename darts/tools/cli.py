@@ -45,6 +45,19 @@ def get_darts_path():
 
 
 def main():
+    # --- Handle multiprocessing spawn / resource_tracker callbacks ---
+    # The spawn start method uses: python -c "...spawn_main(...)"
+    # We detect '-c' or '-m' as the first passthrough argument and forward directly.
+    if sys.argv[1] in ('-c', '-m'):
+        lib_var = get_lib_var()
+        if lib_var:
+            # Prepend our DARTS library path to existing
+            os.environ[lib_var] = str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
+        # Forward directly to the real Python executable
+        python_args = [sys.executable] + sys.argv[1:]
+        res = subprocess.run(python_args)
+        sys.exit(res.returncode)
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument(

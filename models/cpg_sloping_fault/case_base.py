@@ -49,16 +49,24 @@ def input_data_base(idata: InputData, case: str):
     #     perm - to avoid convergence issues
     geom.min_poro = 1e-5
 
+    # allow small flow to avoid pressure jumps
+    # since there might pressure change appear due to the temperature change
+    geom.min_perm = 1e-5
+
     # boundary conditions
     geom.bound_volume = 1e10 # lateral boundary volume, m^3
 
     geom.faultfile = None  # a text file with fault locations and multipliers
+
+    idata.geom.well_index = None  # well index for flow, if None - will be computed by default
+    idata.geom.well_indexD = 0.   # well index for thermal conductivity (for closed-loops/U-shaped wells); turned off
 
     if idata.generate_grid:
         idata.rock.poro = 0.2
         idata.rock.permx = 100  # mD
         idata.rock.permy = 100  # mD
         idata.rock.permz = 10   # mD
+
     else:  # read from files
         # setup filenames
         gridfile, propfile, schfile = get_case_files(case)

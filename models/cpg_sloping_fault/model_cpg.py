@@ -40,11 +40,13 @@ class Model_CPG(CICDModel):
 
     def init_reservoir(self, arrays):
         check_arrays(arrays)
-        if self.physics_type == 'deadoil':  # set inactive cells with small porosity (isothermal case)
+        if not self.physics.thermal:  # set inactive cells with small porosity (isothermal case)
             arrays['ACTNUM'][arrays['PORO'] < self.idata.geom.min_poro] = 0
-        elif self.physics_type == 'geothermal':  # process cells with small poro (thermal case)
-            for arr in ['PORO', 'PERMX', 'PERMY', 'PERMZ']:
-                arrays[arr][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+        else:  # process cells with small poro (thermal case)
+            arrays['PORO'][arrays['PORO'] < self.idata.geom.min_poro] = self.idata.geom.min_poro
+            # allow small flow since there might pressure change appear due to the temperature change
+            for arr in ['PERMX', 'PERMY', 'PERMZ']:
+                arrays[arr][arrays[arr] < self.idata.geom.min_perm] = self.idata.geom.min_perm
 
         if self.idata.geom.burden_layers > 0:
             # add over- and underburden layers
@@ -83,18 +85,20 @@ class Model_CPG(CICDModel):
                                            'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g, g2l) })
 
     def set_wells(self):
-        # read perforation data from a file
+        # add wells and perforations, 1-based IJK indices
         if hasattr(self.idata, 'schfile'):
-            # apply to the reservoir; add wells and perforations, 1-based indices
+            # apply to the reservoir from idata filled before by idata.read_and_add_perforations()
             for wname, wdata in self.idata.well_data.wells.items():
                 self.reservoir.add_well(wname)
                 for perf_tuple in wdata.perforations:
                     perf = perf_tuple[1]
                     # adjust to account for added overburden layers
                     perf_ijk_new = (perf.loc_ijk[0], perf.loc_ijk[1], perf.loc_ijk[2] + self.idata.geom.burden_layers)
+                    # take well index if it was defined in sch file, otherwise take the default one from idata
+                    wi = perf.well_index if perf.well_index is not None else self.idata.geom.well_index
                     self.reservoir.add_perforation(wname,
                                                    cell_index=perf_ijk_new,
-                                                   well_index=perf.well_index, well_indexD=perf.well_indexD,
+                                                   well_index=wi, well_indexD=self.idata.geom.well_indexD,
                                                    multi_segment=perf.multi_segment, verbose=True)
         else:
             # add wells and perforations, 1-based indices
@@ -103,7 +107,8 @@ class Model_CPG(CICDModel):
                 for k in range(1 + self.idata.geom.burden_layers,  self.reservoir.nz+1-self.idata.geom.burden_layers):
                     self.reservoir.add_perforation(wname,
                                                    cell_index=(wdata.location.I, wdata.location.J, k),
-                                                   well_index=None, multi_segment=False, verbose=True)
+                                                   well_index=self.idata.geom.well_index, well_indexD=self.idata.geom.well_indexD,
+                                                   multi_segment=False, verbose=True)
 
     def well_is_inj(self, wname : str):  # determine well control by its name
         return "INJ" in wname

@@ -409,7 +409,7 @@ class CPG_Reservoir(ReservoirBase):
         return bc
 
     def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
+                        well_index: float = None, well_indexD: float = 0., segment_direction: str = 'z_axis',
                         skin: float = 0., multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
@@ -752,9 +752,9 @@ class CPG_Reservoir(ReservoirBase):
 
     def get_ijk_from_xyz(self, x, y, z):
         '''
-        :return: tuple of I,J,K indices (1-based) of the closest cell to the point with coordinates x,y,z
+        :return: tuple of I,J,K indices (1-based) of a cell with the closest center to the point with coordinates x,y,z
         '''
-        def find_cell_index(centers_flattened, coord) -> int:
+        def find_cell_index(centers_flattened, coord) -> int: # returns the local index (only active cells) of the closest cell center
             min_dis = None
             idx = None
             for j, centroid in enumerate(centers_flattened):
@@ -771,20 +771,23 @@ class CPG_Reservoir(ReservoirBase):
 
         centers = self.centroids_all_cells[:self.discr_mesh.n_cells]
         idx = find_cell_index(centers, np.array([x, y, z]))
-        ijk = get_ijk(idx, self.nx, self.ny, self.nz)
+        ijk = get_ijk(self.discr_mesh.local_to_global[idx], self.nx, self.ny, self.nz)
         return ijk
 
-    def centers_to_vtk(self, out_dir):
-        # output center points to VTK
-        fname = os.path.join(out_dir, 'centers')
+    def get_centers(self):
         c_cpg = self.centroids_all_cells[:self.discr_mesh.n_cells]
         c = np.zeros((self.discr_mesh.n_cells, 3))
         for i in range(self.discr_mesh.n_cells):
             cv = c_cpg[i].values
             c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
         x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
-        if c is not None:
-            pointsToVTK(fname, x, y, z)
+        return x, y, z
+
+    def centers_to_vtk(self, out_dir):
+        # output center points to VTK
+        fname = os.path.join(out_dir, 'centers')
+        x, y, z = self.get_centers()
+        pointsToVTK(fname, x, y, z)
 
     def save_grdecl(self, arrays_save, fname):
         '''

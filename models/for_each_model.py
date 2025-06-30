@@ -8,7 +8,6 @@ import time
 import importlib
 
 import signal
-import time
 
 original_stdout = os.dup(1)
 
