@@ -1,11 +1,12 @@
-import numpy as np
 import math
 import warnings
+
+import gmsh
+import numpy as np
+
 # from dataclasses import dataclass, is_dataclass, field
 from darts.reservoirs.mesh.geometry.shapes import *
 from darts.reservoirs.mesh.geometry.wells import *
-
-import gmsh
 
 
 class Geometry:
@@ -71,7 +72,12 @@ class Geometry:
                     point_idx = self.points_list.index(point.xyz) + 1
                     points_map[point.idx] = point_idx
                 else:
-                    p = Point(len(self.points) + 1, point.xyz, lc0 + point.lc, embed=point.embed)
+                    p = Point(
+                        len(self.points) + 1,
+                        point.xyz,
+                        lc0 + point.lc,
+                        embed=point.embed,
+                    )
                     self.points.append(p)
                     self.points_list.append(point.xyz)
                     points_map[point.idx] = len(self.points_list)
@@ -93,7 +99,12 @@ class Geometry:
                     curve_idx = self.curves_list.index(reverse) + 1
                     curves_map[curve.idx] = -curve_idx
                 else:
-                    c = Curve(len(self.curves) + 1, curve_type=curve.curve_type, points=new_curve, embed=curve.embed)
+                    c = Curve(
+                        len(self.curves) + 1,
+                        curve_type=curve.curve_type,
+                        points=new_curve,
+                        embed=curve.embed,
+                    )
                     self.curves.append(c)
                     self.curves_list.append(new_curve)
                     curves_map[curve.idx] = len(self.curves_list)
@@ -135,7 +146,13 @@ class Geometry:
                     for point in surface.points:
                         point_idx_from_map = points_map[point]
                         points.append(point_idx_from_map)
-                    s = Surface(surface_idx, points, curves, plane=surface.plane, embed=surface.embed)
+                    s = Surface(
+                        surface_idx,
+                        points,
+                        curves,
+                        plane=surface.plane,
+                        embed=surface.embed,
+                    )
                     self.surfaces.append(s)
                     self.surfaces_list.append(curves)
                     surfaces_map[surface.idx] = len(self.surfaces_list)
@@ -143,7 +160,9 @@ class Geometry:
                     if surface.in_surfaces:
                         for other_surface_idx in surface.in_surfaces:
                             surface_idx_from_map = surfaces_map[surface.idx]
-                            self.surfaces[other_surface_idx-1].holes.append(surface_idx_from_map)
+                            self.surfaces[other_surface_idx - 1].holes.append(
+                                surface_idx_from_map
+                            )
                         self.holes.append(surface_idx_from_map)
 
             # Check if Volumes are already in self.volumes; if not, add volume. Map index
@@ -183,7 +202,9 @@ class Geometry:
 
     def add_well(self, well: Well):
         # Check if Well type and location are suitable, and add points in curves for refinements close to well
-        self.points, self.curves, self.surfaces, self.volumes = well.check_location(self.points, self.curves, self.surfaces, self.volumes)
+        self.points, self.curves, self.surfaces, self.volumes = well.check_location(
+            self.points, self.curves, self.surfaces, self.volumes
+        )
         well.define_well()
 
         # Update lists
@@ -219,7 +240,9 @@ class Geometry:
 
                 point0 = curve.points[0] - 1
                 point1 = curve.points[1] - 1
-                x1 = self.points[point0].xyz[self.axs[0]]  # x coordinate of first point in segment
+                x1 = self.points[point0].xyz[
+                    self.axs[0]
+                ]  # x coordinate of first point in segment
                 x2 = self.points[point1].xyz[self.axs[0]]
                 y1 = self.points[point0].xyz[self.axs[1]]
                 y2 = self.points[point1].xyz[self.axs[1]]
@@ -228,9 +251,13 @@ class Geometry:
 
                 if np.sign(dy1) != np.sign(dy2):
                     # find if point is left (above) or right (below) segment
-                    if point[self.axs[0]] > x1 and point[self.axs[0]] > x2:  # both x1 and x2 left of segment
+                    if (
+                        point[self.axs[0]] > x1 and point[self.axs[0]] > x2
+                    ):  # both x1 and x2 left of segment
                         intersections += 1
-                    elif point[self.axs[0]] > x1 or point[self.axs[0]] > x2:  # one of two points left of segment
+                    elif (
+                        point[self.axs[0]] > x1 or point[self.axs[0]] > x2
+                    ):  # one of two points left of segment
                         b = y1 - (y2 - y1) / (x2 - x1) * x1  # construct line segment
                         y0 = (y2 - y1) / (x2 - x1) * point[self.axs[0]] + b
 
@@ -242,6 +269,6 @@ class Geometry:
                                 intersections += 1
 
             if (intersections % 2) != 0:
-                return [s+1]
+                return [s + 1]
         warnings.warn("Didn't find surface for point", point)
         return []

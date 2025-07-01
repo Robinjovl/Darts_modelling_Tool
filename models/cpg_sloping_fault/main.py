@@ -66,11 +66,25 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_last'))
     m.print_timers()
 
+    # post-processing: read h5 file and write vtk with properties
+    print('Post processing properties and vtk output...')
     if export_vtk:
-        # read h5 file and write vtk
+        output_properties_main = m.physics.vars  # only main variables
+        output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
         m.reservoir.create_vtk_wells(output_directory=out_dir)
-        for ith_step in range(len(m.idata.sim.time_steps)+1):
-            m.output.output_to_vtk(ith_step=ith_step, output_properties=m.physics.vars + m.output.properties)
+        n_timesteps = len(m.idata.sim.time_steps)
+        for ith_step in range(n_timesteps + 1):
+            # compute additional properties only for the first and for the last timestep:
+            output_properties = output_properties_full if ith_step in [0, n_timesteps] else output_properties_main
+            #print('timestep', ith_step, 'output_properties:', output_properties)
+            timesteps, property_array = m.output.output_properties(output_properties=output_properties, timestep=ith_step, engine=False)
+            if ith_step == 0:
+                centers_x, centers_y, centers_z = m.reservoir.get_centers()
+                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+
+            m.output.save_property_array(timesteps, property_array, f'property_array_ts.h5')
+
+            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
@@ -251,7 +265,7 @@ if __name__ == '__main__':
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    #physics_list += ['deadoil']
 
     cases_list = []
     cases_list += ['generate_5x3x4']
@@ -261,9 +275,9 @@ if __name__ == '__main__':
     #cases_list += ['case_40x40x10']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    #well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

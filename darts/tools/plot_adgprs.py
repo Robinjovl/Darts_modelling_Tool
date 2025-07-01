@@ -1,10 +1,12 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
 from .plot_darts import *
 
-def plot_bhp_adgprs(well_name, adgprs_df, style = '-.', color = "#C41E3A", ax = None):
-    
+
+def plot_bhp_adgprs(well_name, adgprs_df, style='-.', color="#C41E3A", ax=None):
+
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -12,12 +14,13 @@ def plot_bhp_adgprs(well_name, adgprs_df, style = '-.', color = "#C41E3A", ax = 
     if col in adgprs_df.columns:
         my_df[well_name] += adgprs_df[col]
 
-    my_df.plot(x='Day', y=well_name, style = style, color = color, linewidth = 1.5, ax=ax)
-    
-    return ax  
-    
-def plot_water_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A', ax = None):
-    
+    my_df.plot(x='Day', y=well_name, style=style, color=color, linewidth=1.5, ax=ax)
+
+    return ax
+
+
+def plot_water_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
+
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -30,12 +33,13 @@ def plot_water_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A'
         my_df[well_name] += adgprs_df[col_i]
 
     my_df[well_name] = -my_df[well_name]
-    my_df.plot(x='Day', y=well_name, style = style, color = color, linewidth = 1.5, ax=ax)
-    
+    my_df.plot(x='Day', y=well_name, style=style, color=color, linewidth=1.5, ax=ax)
+
     return ax
 
-def plot_oil_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A', ax = None):
-    
+
+def plot_oil_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
+
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -48,12 +52,13 @@ def plot_oil_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A', 
         my_df[well_name] += adgprs_df[col_i]
 
     my_df[well_name] = -my_df[well_name]
-    my_df.plot(x='Day', y=well_name, style = style, color = color, linewidth = 1.5, ax=ax)
-    
+    my_df.plot(x='Day', y=well_name, style=style, color=color, linewidth=1.5, ax=ax)
+
     return ax
 
-def plot_gas_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A', ax = None):
-    
+
+def plot_gas_rate_adgprs(well_name, adgprs_df, style='-.', color='#C41E3A', ax=None):
+
     my_df = pd.DataFrame()
     my_df['Day'] = adgprs_df['Day']
     my_df[well_name] = 0
@@ -66,8 +71,8 @@ def plot_gas_rate_adgprs(well_name, adgprs_df, style = '-.', color = '#C41E3A', 
         my_df[well_name] += adgprs_df[col_i]
 
     my_df[well_name] = -my_df[well_name]
-    my_df.plot(x='Day', y=well_name, style = style, color = color, linewidth = 1.5, ax=ax)
-    
+    my_df.plot(x='Day', y=well_name, style=style, color=color, linewidth=1.5, ax=ax)
+
     return ax
 
 
@@ -84,32 +89,39 @@ def plot_temp_adgprs(well_name, adgprs_df, style='-.', color="#C41E3A", ax=None)
     return ax
 
 
-def plot_bhp_vs_adgprs(well_name, darts_df, adgprs_df, ax = None):
-    plot_bhp_adgprs (well_name, adgprs_df, ax)
-    plot_bhp_darts (well_name, darts_df, ax)
+def plot_bhp_vs_adgprs(well_name, darts_df, adgprs_df, ax=None):
+    plot_bhp_adgprs(well_name, adgprs_df, ax)
+    plot_bhp_darts(well_name, darts_df, ax)
     return ax
 
-def plot_temp_vs_adgprs(well_name, darts_df, adgprs_df, ax = None):
-    plot_temp_adgprs (well_name, adgprs_df, ax)
-    plot_temp_darts (well_name, darts_df, ax)
+
+def plot_temp_vs_adgprs(well_name, darts_df, adgprs_df, ax=None):
+    plot_temp_adgprs(well_name, adgprs_df, ax)
+    plot_temp_darts(well_name, darts_df, ax)
     return ax
 
-def plot_oil_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax = None):
-    plot_oil_rate_adgprs (well_name, adgprs_df, ax)
-    plot_oil_rate_darts (well_name, darts_df, ax)
+
+def plot_oil_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax=None):
+    plot_oil_rate_adgprs(well_name, adgprs_df, ax)
+    plot_oil_rate_darts(well_name, darts_df, ax)
     return ax
 
-def plot_gas_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax = None):
-    plot_gas_rate_adgprs (well_name, adgprs_df, ax)
-    plot_gas_rate_darts (well_name, darts_df, ax)
+
+def plot_gas_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax=None):
+    plot_gas_rate_adgprs(well_name, adgprs_df, ax)
+    plot_gas_rate_darts(well_name, darts_df, ax)
     return ax
 
-def plot_water_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax = None):
-    plot_water_rate_adgprs (well_name, adgprs_df, ax)
-    plot_water_rate_darts (well_name, darts_df, ax)
+
+def plot_water_rate_vs_adgprs(well_name, darts_df, adgprs_df, ax=None):
+    plot_water_rate_adgprs(well_name, adgprs_df, ax)
+    plot_water_rate_darts(well_name, darts_df, ax)
     return ax
 
-def plot_total_prod_water_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1):
+
+def plot_total_prod_water_rate_adgprs(
+    adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1
+):
     acc_df = pd.DataFrame()
     acc_df['time'] = adgprs_df['Day']
     acc_df['total'] = 0
@@ -121,8 +133,7 @@ def plot_total_prod_water_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=
                 acc_df['total'] += adgprs_df[col]
 
     acc_df['total'] = acc_df['total'].abs()
-    ax = acc_df.plot(x='time', y='total', style=style, color=color,
-                       ax=ax, alpha=alpha)
+    ax = acc_df.plot(x='time', y='total', style=style, color=color, ax=ax, alpha=alpha)
 
     ymin, ymax = ax.get_ylim()
     if ymax < 0:
@@ -134,7 +145,10 @@ def plot_total_prod_water_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=
     plt.show(block=False)
     return ax
 
-def plot_total_prod_oil_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1):
+
+def plot_total_prod_oil_rate_adgprs(
+    adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1
+):
     acc_df = pd.DataFrame()
     acc_df['time'] = adgprs_df['Day']
     acc_df['total'] = 0
@@ -146,8 +160,7 @@ def plot_total_prod_oil_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=No
                 acc_df['total'] += adgprs_df[col]
 
     acc_df['total'] = acc_df['total'].abs()
-    ax = acc_df.plot(x='time', y='total', style=style, color=color,
-                       ax=ax, alpha=alpha)
+    ax = acc_df.plot(x='time', y='total', style=style, color=color, ax=ax, alpha=alpha)
 
     ymin, ymax = ax.get_ylim()
     if ymax < 0:
@@ -159,7 +172,10 @@ def plot_total_prod_oil_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=No
     plt.show(block=False)
     return ax
 
-def plot_total_inj_water_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1):
+
+def plot_total_inj_water_rate_adgprs(
+    adgprs_df, style='-', color='#C41E3A', ax=None, alpha=1
+):
     acc_df = pd.DataFrame()
     acc_df['time'] = adgprs_df['Day']
     acc_df['total'] = 0
@@ -171,8 +187,7 @@ def plot_total_inj_water_rate_adgprs(adgprs_df, style='-', color='#C41E3A', ax=N
                     if adgprs_df[col][i] <= 0:
                         acc_df.loc[i, 'total'] += adgprs_df[col][i]
     acc_df['total'] = -acc_df['total']
-    ax = acc_df.plot(x='time', y='total', style=style, color=color,
-                       ax=ax, alpha=alpha)
+    ax = acc_df.plot(x='time', y='total', style=style, color=color, ax=ax, alpha=alpha)
 
     ymin, ymax = ax.get_ylim()
     if ymax < 0:

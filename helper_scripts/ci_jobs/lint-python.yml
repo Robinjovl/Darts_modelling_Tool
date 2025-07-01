@@ -1,0 +1,20 @@
+lint-python:
+    stage: pre_commit
+    image: "python:3.10"
+    tags:
+        - linux
+    before_script:
+        - echo 'Installing linting tools...'
+        - pip install flake8 black isort
+    script:
+        - echo 'Running Python linting checks...'
+        - python helper_scripts/lint_python.py --verbose 2>&1 | tee linting_output.log
+    artifacts:
+        paths:
+            - linting_output.log
+        expire_in: 1 week
+        when: always
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        #- if: $RUN_LINTING == "1"
+    allow_failure: false 

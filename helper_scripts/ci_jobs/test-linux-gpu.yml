@@ -1,0 +1,54 @@
+.test-linux-gpu:
+    stage: test
+
+    tags:
+        - linux_gpu
+    before_script:
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes 
+        - conda activate darts_gitlab_gpu_test
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip uninstall open-darts-flash  --yes
+        - pip install ./dist/*.whl
+    script:
+        # run simulation fot test models set
+        - cd models
+        # passing additional argument LOG to trigger verbose check performance
+        - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user  darts run_test_suite2.py LOG
+        - echo "run_test_suite2 returned" $?
+        - cd ..
+        # test discretizer
+        - cd discretizer/tests/compare_discretizers
+        - python main.py
+        - cd ../../..
+        #
+        - echo "test finished"
+    after_script:
+        - cd models
+        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - cd ..
+    artifacts:
+      paths:
+        - './models/_logs/*.log'
+        - './models/fracture_network/meshes*/*.log'
+        - './models/displaced_fault_reactivation/meshes/*.log'
+        - './models/pkl_lin.tar.gz'
+      expire_in: 1 day
+      when: always
+
+test-linux-3.10-gpu:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_GPU_LINUX == "1"
+    extends: .test-linux-gpu
+    variables:
+        PY_VER: '3.10'
+        ODLS: '-a'
+        TEST_GPU: '1'
+    needs:
+        - build-linux-3.10-gpu 

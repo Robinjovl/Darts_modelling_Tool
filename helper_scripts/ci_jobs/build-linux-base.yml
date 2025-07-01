@@ -1,0 +1,31 @@
+.build-linux:
+    stage: build
+    image: "python:$PY_VER"
+    # Will be executed on runner with linux tag - that assumed to run on linux host
+    tags:
+        - linux
+    before_script:
+        - echo 'before build-linux'
+        - apt-get update -qq && apt-get install -y -qq smbclient
+        - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
+        - pip install wheel
+    script:
+        - echo "build *.so on linux started with ODLS=$ODLS"
+        - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 week
+      when: always
+
+.build-linux-dockcross:
+    extends: .build-linux
+    # Dockcross is an image specifically made for building Python wheels, based on CentOS 7 with old glibc - it will run on even old systems
+    image: "${CI_REGISTRY_IMAGE}/linux-builder"
+    # Install samba client to upload build results to shared folder TODO remove
+    before_script:
+        - sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+        - sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+        - yum install samba-client -y -q
+        - export PATH="/opt/python/$PY_SUF/bin:$PATH"

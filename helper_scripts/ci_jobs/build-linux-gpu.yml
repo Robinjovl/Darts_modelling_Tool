@@ -1,0 +1,32 @@
+.build-linux-gpu:
+    stage: build
+    tags:
+        - linux_gpu
+    before_script:
+        - module load cuda/23.5
+        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
+        - conda activate darts_gitlab_gpu_build
+    script:
+        - echo "build *.so on linux GPU started with ODLS=$ODLS"
+        - ./helper_scripts/build_install_darts_gpu.sh -c -p
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 day
+      when: always
+
+build-linux-3.10-gpu:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_GPU_LINUX == "1"
+    extends: .build-linux-gpu
+    variables:
+        GIT_SUBMODULE_STRATEGY: recursive
+        PY_VER: '3.10'       # for python image selection in .build-linux
+        ODLS: '-a'
+        TEST_GPU: '1' 

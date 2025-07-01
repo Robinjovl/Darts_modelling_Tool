@@ -1,17 +1,19 @@
 import abc
-from math import pi
-import numpy as np
-import pickle
 import atexit
+import pickle
+from math import pi
 from typing import Union
 
-from darts.engines import conn_mesh, timer_node, ms_well_vector, ms_well
+import numpy as np
+
+from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node
 
 
 class ReservoirBase:
     """
     Base class for generating a mesh
     """
+
     mesh: conn_mesh
     wells: ms_well_vector = []
 
@@ -37,7 +39,9 @@ class ReservoirBase:
 
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
-        if not hasattr(self, 'mesh'):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
+        if not hasattr(
+            self, 'mesh'
+        ):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
             self.mesh = self.discretize(verbose)
         return
 
@@ -91,7 +95,7 @@ class ReservoirBase:
         well.name = well_name
 
         # first put only area here, to be multiplied by segment length later
-        well.segment_volume = pi * wellbore_diameter ** 2 / 4
+        well.segment_volume = pi * wellbore_diameter**2 / 4
 
         # will be updated  in add_perforation
         well.well_head_depth = 0
@@ -102,9 +106,18 @@ class ReservoirBase:
         return
 
     @abc.abstractmethod
-    def add_perforation(self, well_name: str, cell_index: Union[int, tuple], well_radius: float = 0.1524,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
-                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+    def add_perforation(
+        self,
+        well_name: str,
+        cell_index: Union[int, tuple],
+        well_radius: float = 0.1524,
+        well_index: float = None,
+        well_indexD: float = None,
+        segment_direction: str = 'z_axis',
+        skin: float = 0,
+        multi_segment: bool = False,
+        verbose: bool = False,
+    ):
         """
         Function to add perforations to well objects.
 
@@ -154,27 +167,42 @@ class ReservoirBase:
         :param verbose: Switch to set verbose level
         """
         for w in self.wells:
-            assert (len(w.perforations) > 0), "Well %s does not perforate any active reservoir blocks" % w.name
+            assert len(w.perforations) > 0, (
+                "Well %s does not perforate any active reservoir blocks" % w.name
+            )
         self.mesh.add_wells(ms_well_vector(self.wells))
-        
+
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
         # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
-        if hasattr (self, 'connected_well_segments'):
+        if hasattr(self, 'connected_well_segments'):
             for well_pair in self.connected_well_segments.keys():
                 well_1 = self.get_well(well_pair[0])
                 well_2 = self.get_well(well_pair[1])
                 for perf_pair in self.connected_well_segments[well_pair]:
-                    self.mesh.connect_segments(well_1, well_2, perf_pair[0], perf_pair[1], 1)
-        
+                    self.mesh.connect_segments(
+                        well_1, well_2, perf_pair[0], perf_pair[1], 1
+                    )
+
         # allocate mesh arrays
         self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
 
     @abc.abstractmethod
-    def output_to_plt(self, data: dict, output_props: list = None, lims: dict = None, fig=None, figsize: tuple = None,
-                      axs_shape: tuple = None, aspect_ratio: str = 'equal', logx: bool = False, plot_zeros: bool = True,
-                      cmap: str = 'jet', colorbar_loc: str = 'right'):
+    def output_to_plt(
+        self,
+        data: dict,
+        output_props: list = None,
+        lims: dict = None,
+        fig=None,
+        figsize: tuple = None,
+        axs_shape: tuple = None,
+        aspect_ratio: str = 'equal',
+        logx: bool = False,
+        plot_zeros: bool = True,
+        cmap: str = 'jet',
+        colorbar_loc: str = 'right',
+    ):
         """
         Method for plotting output using matplotlib library.
         Implementation is specific to inherited Reservoir classes
@@ -210,7 +238,14 @@ class ReservoirBase:
         pass
 
     @abc.abstractmethod
-    def output_to_vtk(self, ith_step: int, t: float, output_directory: str, prop_names: list, data: dict):
+    def output_to_vtk(
+        self,
+        ith_step: int,
+        t: float,
+        output_directory: str,
+        prop_names: list,
+        data: dict,
+    ):
         """
         Function to export results at timestamp t into `.vtk` format.
 
