@@ -135,7 +135,7 @@ class Model(CICDModel):
                  poro_filename: str = None, minerals: list = ['calcite'], 
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'], 
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
-                 perm_poro: str = 'power_8'):
+                 inj_rate: float = None, perm_poro: str = 'power_8'):
         # Call base class constructor
         super().__init__()
 
@@ -148,6 +148,7 @@ class Model(CICDModel):
         self.co2_injection = co2_injection
         self.h2o_injection = h2o_injection
         self.co2_injection_cutoff = 0.4
+        self.inj_rate = inj_rate
         self.perm_poro = perm_poro
 
         self.set_reservoir(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename)
@@ -177,12 +178,13 @@ class Model(CICDModel):
         self.temperature = 323.15           # K
         self.pressure_init = 100            # bar
 
-        if self.domain == '1D':
-            self.inj_rate = self.volume * 24     # output: m3/day
-        elif self.domain == '2D':
-            self.inj_rate = 10 * self.volume * 24 / self.inj_cells.size     # output: m3/day
-        elif self.domain == '3D':
-            self.inj_rate = 1.12 * 60 * 24 / 1000 / 1000
+        if self.inj_rate is None:
+            if self.domain == '1D':
+                self.inj_rate = self.volume * 24     # output: m3/day
+            elif self.domain == '2D':
+                self.inj_rate = 10 * self.volume * 24 / self.inj_cells.size     # output: m3/day
+            elif self.domain == '3D':
+                self.inj_rate = 1.12 * 60 * 24 / 1000 / 1000
 
         self.min_z = 1e-11
         self.obl_min = self.min_z / 10
@@ -256,7 +258,7 @@ class Model(CICDModel):
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
             self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
-            self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
+                self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
                 self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
@@ -317,7 +319,7 @@ class Model(CICDModel):
         # Compute injection stream
         mole_water, mole_co2 = calculate_injection_stream(self.h2o_injection, self.co2_injection, self.temperature, self.pressure_init) # input - m3 of water, co2
         mole_fraction_water, mole_fraction_co2 = get_mole_fractions(mole_water, mole_co2)
-        print(f'zH2O = {mole_fraction_water:.5f}\t\t\tzCO2 = {mole_fraction_co2:.5f}')
+        print(f'rate={self.inj_rate} m3/day\t\t\tzH2O = {mole_fraction_water:.5f}\t\t\tzCO2 = {mole_fraction_co2:.5f}')
 
         # Define injection stream composition,
         self.inj_stream_components = np.zeros(len(self.components))

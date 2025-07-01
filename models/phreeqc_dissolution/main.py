@@ -10,7 +10,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    output: bool = False, interpolator: str = 'multilinear', minerals: list = ['calcite'], 
                    kinetic_mechanisms: list = ['acidic', 'neutral', 'carbonate'], output_folder: str = None,
                    n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1, 
-                   perm_poro: str = 'power_8', platform: str = 'cpu'):
+                   inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu'):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \
@@ -23,7 +23,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     # Create model
     m = Model(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename,
               minerals=minerals, kinetic_mechanisms=kinetic_mechanisms, n_obl_mult=n_obl_mult,
-              co2_injection=co2_injection, h2o_injection=h2o_injection, perm_poro=perm_poro)
+              co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate, perm_poro=perm_poro)
 
     # Initialize model
     m.init(itor_type=interpolator, platform=platform)
@@ -192,14 +192,15 @@ if __name__ == '__main__':
     # 2D
     # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)    
     # n_obl_mult = 3
-    # run_simulation(domain='2D', nx=200, output=True, max_ts=1.e-5,
+    # run_simulation(domain='2D', nx=50, output=True, max_ts=6.e-5,
     #                 n_obl_mult=n_obl_mult,
     #                 interpolator='multilinear',
-    #                 poro_filename='calcite_2D_200_100/spherical_200_20_1/porosity_8.txt',
+    #                 poro_filename='calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
     #                 minerals=['calcite'],#, 'dolomite'],#, 'magnesite'],  
     #                 kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
     #                 h2o_injection=1.1,
     #                 co2_injection=0.1,
+    #                 inj_rate=1e-4,
     #                 perm_poro='power_8',
     #                 platform='cpu')
 
