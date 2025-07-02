@@ -1,0 +1,58 @@
+Bootstrap: library
+From: centos:7
+
+%labels
+    PROJECT    open-darts
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+
+%post
+    # 0. Preliminary Repository Configuration to Ensure Reliable Package Retrieval
+    sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+    
+    # 1. Basic system update & developer tools
+    yum -y clean all
+    yum -y update
+    yum -y install epel-release
+    yum -y install \
+        gcc \
+        gcc-c++ \
+        make \
+        cmake \
+        git \
+        which \
+        openssl-devel \
+        libffi-devel \
+        python3 \
+        python3-devel \
+        python3-pip \
+        samba-client \
+        libjpeg-turbo-devel
+
+    # 2. Install VS Code
+    # Microsoft GPG key
+    rpm --import https://packages.microsoft.com/keys/microsoft.asc
+
+    # Visual Studio Code repo – but ignore *el8*/*el9* packages
+    cat >/etc/yum.repos.d/vscode.repo <<'EOF'
+[code]
+name=Visual Studio Code
+baseurl=https://packages.microsoft.com/yumrepos/vscode
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+exclude=*.el8* *.el9*
+EOF
+
+    # Refresh metadata
+    yum clean all
+    yum -y makecache
+    yum -y install code
+
+    # 2. Python tooling
+    pip3 install --no-cache-dir wheel
+
+%runscript
+    exec /bin/bash "$@"
