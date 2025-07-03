@@ -1,4 +1,10 @@
-# 1.3.1 [07-06-2025]
+# 1.3.2 [03-07-2025]
+- Porosity-permeability relationship: permporo_mult_ev
+- EoSDensity and EoSEnthalpy API changes:
+	- Update darts-flash enthalpy call in EoSEnthalpy class: H_PT() to H()
+	- Add optional arguments to pass ions and lumped ions to EoSDensity and EoSEnthalpy constructors
+
+# 1.3.2 [07-06-2025]
 - Add IPhreeqc to thirdparty dependencies, added phreeqc_dissolution model with CO2 injection and dissolution-precipitation kinetics [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Apply_rhs_flux supported for GPU platform [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/173)
 - Added .pvd file generation for unstructured meshes for Time in ParaView [link](https://gitlab.com/open-darts/open-darts/-/merge_requests/216)
