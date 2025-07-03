@@ -27,7 +27,12 @@ From:      rockylinux:8
         samba-client \
         libjpeg-turbo-devel
 
-    # 2. Install VS Code
+    # 2. Install Miniconda
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    bash /tmp/miniconda.sh -b -p /opt/conda
+    rm -f /tmp/miniconda.sh
+
+    # 3. Install VS Code
     # Microsoft GPG key
     rpm --import https://packages.microsoft.com/keys/microsoft.asc
 
@@ -47,10 +52,10 @@ EOF
     yum -y makecache
     yum -y install code
 
-    # 3. Python tooling
+    # 4. Python tooling
     pip3 install --no-cache-dir wheel
 
-    # 4. Install OpenAI Codex CLI
+    # 5. Install OpenAI Codex CLI
     curl -fsSL https://rpm.nodesource.com/setup_current.x | bash
     yum -y install nodejs
     npm install -g @openai/codex@native
