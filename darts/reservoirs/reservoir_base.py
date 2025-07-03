@@ -118,7 +118,7 @@ class ReservoirBase:
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector(well_geometry.TVD_segments)
-            specific_potential_energy = 9.80665 * 1e-3 * (well_geometry.pipe_length - well_geometry.z) * np.cos(well_geometry.inclination_angle_radian)
+            specific_potential_energy = 9.80665 * 1e-3 * (well_geometry.pipe_length - well_geometry.z - well_geometry.z[0]) * np.cos(well_geometry.inclination_angle_radian)
             well.specific_potential_energy = value_vector(specific_potential_energy)
             well.num_segments = well_geometry.num_segments
 
