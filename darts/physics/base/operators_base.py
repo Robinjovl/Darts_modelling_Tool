@@ -1,4 +1,5 @@
 import numpy as np
+
 from darts.engines import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_base import PropertyBase
 
@@ -6,7 +7,13 @@ from darts.physics.base.property_base import PropertyBase
 class OperatorsBase(operator_set_evaluator_iface):
     n_ops: int
 
-    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True, dz: float = None):
+    def __init__(
+        self,
+        property_container: PropertyBase,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
         super().__init__()
 
         self.property = property_container
@@ -16,17 +23,21 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nc = property_container.nc
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
-        self.min_z = property_container.min_z if hasattr(property_container, 'min_z') else 0.
+        self.min_z = (
+            property_container.min_z if hasattr(property_container, 'min_z') else 0.0
+        )
 
         self.extrapolation_flag = extrapolation_flag
         self.dz = dz
-        assert self.nc <= 2 or not extrapolation_flag or dz is not None, "Please provide dz for extrapolation"
+        assert (
+            self.nc <= 2 or not extrapolation_flag or dz is not None
+        ), "Please provide dz for extrapolation"
 
     def apply_extrapolation(self, state, values):
         # Find composition, if last composition is negative, apply extrapolation
-        zc = np.append(state[1:self.nc], 1 - np.sum(state[1:self.nc]))
+        zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
-        if zc[-1] < -10*self.min_z and self.extrapolation_flag:
+        if zc[-1] < -10 * self.min_z and self.extrapolation_flag:
             self.extrapolate(state, values)
             return 1
         else:
@@ -49,24 +60,30 @@ class OperatorsBase(operator_set_evaluator_iface):
             p = vec[0]
             z = vec[1:].copy()
 
-        zero_comps = [i for i in range(self.nc-1) if z[i] <= self.property.min_z + 1e-15]
-        nonzero_comps = [1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc-1)]
+        zero_comps = [
+            i for i in range(self.nc - 1) if z[i] <= self.property.min_z + 1e-15
+        ]
+        nonzero_comps = [
+            1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc - 1)
+        ]
         d = np.sum(nonzero_comps)
 
         # Build candidate points by subtracting dz along each axis and uniformly
         supporting_points = []
-        for i in range(self.nc-1):
+        for i in range(self.nc - 1):
             if nonzero_comps[i]:
                 zp = z.copy()
                 zp[i] -= self.dz
                 supporting_points.append(zp)
-        supporting_points.append([z[i] - self.dz if nonzero_comps[i] else z[i] for i in range(self.nc-1)])
+        supporting_points.append(
+            [z[i] - self.dz if nonzero_comps[i] else z[i] for i in range(self.nc - 1)]
+        )
 
         # Gather valid reference points
         zps_list = []
         vals_list = []
         for zp in supporting_points:
-            if 1: #(zp >= -1e-15).all() and zp.sum() <= 1.0+1e-15:
+            if 1:  # (zp >= -1e-15).all() and zp.sum() <= 1.0+1e-15:
                 if self.thermal:
                     ref_state = value_vector(np.concatenate(([p], zp, [T])))
                 else:
@@ -77,8 +94,8 @@ class OperatorsBase(operator_set_evaluator_iface):
                 vals_list.append(ref_vals.to_numpy())
 
         # Use the first d+1 valid points to define hyperplane implicitly via val = a·z + c
-        zps = np.stack(zps_list[:d + 1])  # shape (d+1, d)
-        vals = np.stack(vals_list[:d + 1])  # shape (d+1, n_ops)
+        zps = np.stack(zps_list[: d + 1])  # shape (d+1, d)
+        vals = np.stack(vals_list[: d + 1])  # shape (d+1, n_ops)
 
         # Build and solve B · X = vals, where B = [zps | 1]
         B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
@@ -95,7 +112,7 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         # Write back into values array
         out = np.array(values, copy=False)
-        out[:self.n_ops] = ext
+        out[: self.n_ops] = ext
         # print("success")
         return out
 
@@ -106,8 +123,17 @@ class WellControlOperators(OperatorsBase):
     plus a set of rate-control operators for different types of rates: molar-, mass-, volumetric- or advective
     heat rate controls
     """
-    def __init__(self, property_container: PropertyBase, thermal: bool, extrapolation_flag: bool = True, dz: float = None):
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
+
+    def __init__(
+        self,
+        property_container: PropertyBase,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )
 
         self.n_ops = 2 + self.nph * 4
 
@@ -123,15 +149,21 @@ class WellControlOperators(OperatorsBase):
         self.property.evaluate(vec_state_as_np)
 
         # Store rate controls
-        mobility = self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        mobility = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
 
         # Molar rate
         idx = 0
-        vec_values_as_np[idx + self.property.ph] = self.property.dens_m[self.property.ph] * mobility
+        vec_values_as_np[idx + self.property.ph] = (
+            self.property.dens_m[self.property.ph] * mobility
+        )
 
         # Mass rate
         idx += self.nph
-        vec_values_as_np[idx + self.property.ph] = self.property.dens[self.property.ph] * mobility
+        vec_values_as_np[idx + self.property.ph] = (
+            self.property.dens[self.property.ph] * mobility
+        )
 
         # Volumetric rate
         idx += self.nph
@@ -141,8 +173,11 @@ class WellControlOperators(OperatorsBase):
         idx += self.nph
         if self.thermal:
             self.property.evaluate_thermal(vec_state_as_np)
-            vec_values_as_np[idx + self.property.ph] = \
-                    self.property.enthalpy[self.property.ph] * self.property.dens_m[self.property.ph] * mobility
+            vec_values_as_np[idx + self.property.ph] = (
+                self.property.enthalpy[self.property.ph]
+                * self.property.dens_m[self.property.ph]
+                * mobility
+            )
 
         # Store P, T and composition of current state
         idx += self.nph
@@ -153,9 +188,17 @@ class WellControlOperators(OperatorsBase):
 
 
 class WellInitOperators(OperatorsBase):
-    def __init__(self, property_container: PropertyBase, thermal: bool, is_pt: bool = True,
-                 extrapolation_flag: bool = True, dz: float = None):
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
+    def __init__(
+        self,
+        property_container: PropertyBase,
+        thermal: bool,
+        is_pt: bool = True,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )
 
         self.n_ops = 1
         self.is_pt = is_pt
@@ -171,8 +214,13 @@ class WellInitOperators(OperatorsBase):
         if self.is_pt:
             vec_values_as_np[0] = state_pt[-1]
         else:
-            state_pt = np.array(list(state_pt[:self.nc]) + [state_pt[-1] if self.thermal else self.temperature])
-            vec_values_as_np[0] = self.property.compute_total_enthalpy(state_pt=state_pt)
+            state_pt = np.array(
+                list(state_pt[: self.nc])
+                + [state_pt[-1] if self.thermal else self.temperature]
+            )
+            vec_values_as_np[0] = self.property.compute_total_enthalpy(
+                state_pt=state_pt
+            )
 
         return 0
 
@@ -182,8 +230,15 @@ class PropertyOperators(OperatorsBase):
     This class contains a set of operators for evaluation of output properties.
     A set of interpolators is created in the :class:`Physics` object to rapidly obtain properties after simulation.
     """
-    def __init__(self, property_container: PropertyBase, thermal: bool, props: dict = None,
-                 extrapolation_flag: bool = True, dz: float = None):
+
+    def __init__(
+        self,
+        property_container: PropertyBase,
+        thermal: bool,
+        props: dict = None,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+    ):
         """
         This is the constructor for PropertyOperator.
         The properties to be obtained from the PropertyOperators are passed to PropertyContainer as a dictionary.
@@ -192,7 +247,9 @@ class PropertyOperators(OperatorsBase):
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
         """
-        super().__init__(property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz)
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )
 
         self.props = property_container.output_props if props is None else props
         self.props_name = [key for key in self.props.keys()]
