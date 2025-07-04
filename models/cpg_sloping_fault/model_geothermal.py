@@ -11,8 +11,9 @@ from model_cpg import Model_CPG, fmt
 
 
 class ModelGeothermal(Model_CPG):
-    def __init__(self, iapws_physics: bool = True):
+    def __init__(self, rsv, iapws_physics: bool = True):
         self.iapws_physics = iapws_physics
+        self.rsv = rsv
         super().__init__()
 
     def set_physics(self):
@@ -31,8 +32,12 @@ class ModelGeothermal(Model_CPG):
             input_distribution = {'pressure': [1., 1. + input_depth[1] * self.idata.initial.pressure_gradient/1000],
                                   'temperature': [293.15, 293.15 + input_depth[1] * self.idata.initial.temperature_gradient/1000]
                                   }
+            if self.rsv == 'struct':
+                global_to_local = self.reservoir.discretizer.global_to_local
+            else:
+                global_to_local = self.reservoir.discr_mesh.global_to_local
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        global_to_local=self.reservoir.global_to_local,
+                                                                        global_to_local=global_to_local ,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':

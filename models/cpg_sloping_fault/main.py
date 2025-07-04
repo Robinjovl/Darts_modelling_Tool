@@ -28,7 +28,7 @@ def run(rsv : str, physics_type : str, case: str, out_dir: str, export_vtk=True,
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(iapws_physics=True)
+        m = ModelGeothermal(rsv, iapws_physics=True)
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     else:

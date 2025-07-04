@@ -190,6 +190,15 @@ class StructReservoir(ReservoirBase):
 
         return mesh
 
+    def get_centers(self):
+        c_struct = self.discretizer.centroids_all_cells[: self.n]
+        c = np.zeros((self.n, 3))
+        for i in range(self.n):
+            cv = c_struct[i]
+            c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
+        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        return x, y, z
+
     def set_boundary_volume(self, boundary_volumes: dict):
         # apply changes
         volume = self.discretizer.volume
