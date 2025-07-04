@@ -82,6 +82,8 @@ public:
    */
    virtual int evaluate(const std::vector<double> &state, std::vector<double> &values) = 0;
 
+  //  virtual int extrapolate(const std::vector<double> &state, std::vector<double> &values);
+
    timer_node *timer;
 };
 

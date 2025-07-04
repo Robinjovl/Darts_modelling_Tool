@@ -1,5 +1,6 @@
 import abc
 import warnings
+
 import numpy as np
 
 
@@ -19,8 +20,15 @@ class ConductivityV(Conductivity):
         super().__init__()
 
     def evaluate(self, pressure, temperature, x, rho):
-        kappa = (self.A[0] + self.A[1] * rho + self.A[2] * rho ** 2 + self.A[3] * rho ** 3 * temperature ** 3 +
-                 self.A[4] * rho ** 4 + self.A[5] * temperature + self.A[6] * temperature ** 2) / np.sqrt(temperature)
+        kappa = (
+            self.A[0]
+            + self.A[1] * rho
+            + self.A[2] * rho**2
+            + self.A[3] * rho**3 * temperature**3
+            + self.A[4] * rho**4
+            + self.A[5] * temperature
+            + self.A[6] * temperature**2
+        ) / np.sqrt(temperature)
         kappa *= 1e-3 * 3600 * 24  # convert from W / m.K to kJ / m.day.K
         return kappa  # kJ / m.day.K
 
@@ -37,11 +45,16 @@ class ConductivityAq(Conductivity):
 
     def evaluate(self, pressure, temperature, x, rho):
         # Mass of dissolved salt
-        S = 55.509 * x[self.nc] / x[self.H2O_idx] * self.Mw if self.ni else 0.
+        S = 55.509 * x[self.nc] / x[self.H2O_idx] * self.Mw if self.ni else 0.0
 
         T_d = temperature / 300
-        cond_aq = 0.797015 * T_d ** (-0.194) - 0.251242 * T_d ** (-4.717) + 0.096437 * T_d ** (-6.385) - 0.032696 * T_d ** (-2.134)
-        kappa = (cond_aq / (0.00022 * S + 1.)) + 0.00005 * (pressure - 50)
+        cond_aq = (
+            0.797015 * T_d ** (-0.194)
+            - 0.251242 * T_d ** (-4.717)
+            + 0.096437 * T_d ** (-6.385)
+            - 0.032696 * T_d ** (-2.134)
+        )
+        kappa = (cond_aq / (0.00022 * S + 1.0)) + 0.00005 * (pressure - 50)
         kappa *= 86400
         return kappa
 

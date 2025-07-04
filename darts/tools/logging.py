@@ -1,7 +1,10 @@
-import os, sys
+import os
+import sys
+
 original_stdout = os.dup(1)
 
-def redirect_all_output(log_file, append = True):
+
+def redirect_all_output(log_file, append=True):
     if append:
         log_stream = open(log_file, "a+")
     else:
@@ -10,15 +13,17 @@ def redirect_all_output(log_file, append = True):
     os.dup2(log_stream.fileno(), sys.stdout.fileno())
     return log_stream
 
+
 def abort_redirection(log_stream):
     os.dup2(original_stdout, sys.stdout.fileno())
     log_stream.close()
-  
+
+
 ####################################################################
 
 
 # Logging usage example
-if __name__ == "__main__": 
+if __name__ == "__main__":
     from darts.engines import logging
 
     logging.log("screen only")
@@ -34,7 +39,6 @@ if __name__ == "__main__":
     logging.info("info that should not be shown")
     logging.error("error")
     logging.critical("critical")
-
 
     """
     # Results
@@ -56,4 +60,3 @@ if __name__ == "__main__":
         critical
 
     """
-

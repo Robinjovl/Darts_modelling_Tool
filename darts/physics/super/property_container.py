@@ -1,13 +1,24 @@
 import numpy as np
+
 from darts.engines import value_vector
 from darts.physics.base.property_base import PropertyBase
-from darts.physics.properties.flash import Flash
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
+from darts.physics.properties.flash import Flash
 
 
 class PropertyContainer(PropertyBase):
-    def __init__(self, phases_name: list, components_name: list, Mw: list, nc_sol: int = 0, np_sol: int = 0,
-                 min_z: float = 1e-11, rock_comp: float = 1e-6, rate_ann_mat=None, temperature: float = None):
+    def __init__(
+        self,
+        phases_name: list,
+        components_name: list,
+        Mw: list,
+        nc_sol: int = 0,
+        np_sol: int = 0,
+        min_z: float = 1e-11,
+        rock_comp: float = 1e-6,
+        rate_ann_mat=None,
+        temperature: float = None,
+    ):
         """
         This is the PropertyContainer class for the Compositional engine.
 
@@ -30,7 +41,9 @@ class PropertyContainer(PropertyBase):
         self.nc_fl = self.nc - nc_sol
         self.np_fl = self.nph - np_sol
 
-        self.rate_ann_mat = rate_ann_mat if rate_ann_mat is not None else np.eye(len(components_name))
+        self.rate_ann_mat = (
+            rate_ann_mat if rate_ann_mat is not None else np.eye(len(components_name))
+        )
         self.nelem = self.rate_ann_mat.shape[0]
 
         self.Mw = Mw
@@ -57,7 +70,9 @@ class PropertyContainer(PropertyBase):
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
         self.rock_density_ev = ConstFunc(2650.0)
         self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
-        self.diffusion_ev = {ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[:self.np_fl]}
+        self.diffusion_ev = {
+            ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[: self.np_fl]
+        }
         self.kinetic_rate_ev = {}
         self.energy_source_ev = []
         self.flash_ev: Flash = 0
@@ -76,10 +91,19 @@ class PropertyContainer(PropertyBase):
         self.cond = np.zeros(self.nph)
         self.dX = []
         self.mass_source = np.zeros(self.nc)
-        self.energy_source = 0.
+        self.energy_source = 0.0
 
-        self.phase_props = [self.dens, self.dens_m, self.sat, self.mu, self.kr, self.pc, self.enthalpy,
-                            self.cond, self.mass_source]
+        self.phase_props = [
+            self.dens,
+            self.dens_m,
+            self.sat,
+            self.mu,
+            self.kr,
+            self.pc,
+            self.enthalpy,
+            self.cond,
+            self.mass_source,
+        ]
 
         self.output_props = {"sat0": lambda: self.sat[0]}
 
@@ -94,7 +118,9 @@ class PropertyContainer(PropertyBase):
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
+        zc = np.append(
+            vec_state_as_np[1 : self.nc], 1 - np.sum(vec_state_as_np[1 : self.nc])
+        )
         if zc[-1] < self.min_z:
             zc = self.comp_out_of_bounds(zc)
 
@@ -113,12 +139,12 @@ class PropertyContainer(PropertyBase):
 
         for ith_comp, zi in enumerate(vec_composition):
             if zi < self.min_z:
-                #print(vec_composition)
+                # print(vec_composition)
                 vec_composition[ith_comp] = self.min_z
                 count_corr += 1
                 check_vec[ith_comp] = 1
             elif zi > 1 - self.min_z:
-                #print(vec_composition)
+                # print(vec_composition)
                 vec_composition[ith_comp] = 1 - self.min_z
                 temp_sum += vec_composition[ith_comp]
             else:
@@ -126,7 +152,9 @@ class PropertyContainer(PropertyBase):
 
         for ith_comp, zi in enumerate(vec_composition):
             if check_vec[ith_comp] != 1:
-                vec_composition[ith_comp] = zi / temp_sum * (1 - count_corr * self.min_z)
+                vec_composition[ith_comp] = (
+                    zi / temp_sum * (1 - count_corr * self.min_z)
+                )
         return vec_composition
 
     def clean_arrays(self):
@@ -141,7 +169,7 @@ class PropertyContainer(PropertyBase):
         self.sat[ph] = vol / np.sum(vol)
 
         return
-        
+
     def compute_saturation_full(self, state):
         pressure, temperature, zc = self.get_state(state)
         self.clean_arrays()
@@ -149,7 +177,12 @@ class PropertyContainer(PropertyBase):
 
         for j in self.ph:
             M = np.sum(self.Mw * self.x[j][:])
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :]) / M
+            self.dens_m[j] = (
+                self.density_ev[self.phases_name[j]].evaluate(
+                    pressure, temperature, self.x[j, :]
+                )
+                / M
+            )
 
         self.compute_saturation(self.ph)
 
@@ -161,15 +194,19 @@ class PropertyContainer(PropertyBase):
         ph = self.run_flash(pressure, temperature, zc, evaluate_PT=True)
 
         # Compute molar enthalpy of multiphase mixture
-        enthalpy = 0.
+        enthalpy = 0.0
         for j in ph:
-            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # kJ/kmol
+            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
+                pressure, temperature, self.x[j, :]
+            )  # kJ/kmol
 
         return enthalpy
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = False):
         # Normalize fluid compositions
-        zc_norm = zc if not self.ns else zc[:self.nc_fl] / (1. - np.sum(zc[self.nc_fl:]))
+        zc_norm = (
+            zc if not self.ns else zc[: self.nc_fl] / (1.0 - np.sum(zc[self.nc_fl :]))
+        )
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         if evaluate_PT:
@@ -198,7 +235,9 @@ class PropertyContainer(PropertyBase):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
 
         for j, reaction in self.kinetic_rate_ev.items():
-            dm, self.dX[j] = reaction.evaluate(pressure, temperature, self.x, zc[self.nc_fl + j])
+            dm, self.dX[j] = reaction.evaluate(
+                pressure, temperature, self.x, zc[self.nc_fl + j]
+            )
             self.mass_source += dm
 
         return self.mass_source
@@ -218,18 +257,32 @@ class PropertyContainer(PropertyBase):
         self.clean_arrays()
 
         # Run flash
-        self.ph = self.run_flash(pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool)
-        self.temperature = self.flash_ev.get_flash_results().temperature if not isinstance(self.flash_ev, int) else self.temperature
-        assert self.temperature is not None, ("PropertyContainer does not specify self.temperature, should be set to "
-                                              "constant temperature in case of isothermal physics, "
-                                              "self.flash.temperature in case of thermal")
+        self.ph = self.run_flash(
+            pressure, temperature, zc, evaluate_PT=self.evaluate_PT_bool
+        )
+        self.temperature = (
+            self.flash_ev.get_flash_results().temperature
+            if not isinstance(self.flash_ev, int)
+            else self.temperature
+        )
+        assert self.temperature is not None, (
+            "PropertyContainer does not specify self.temperature, should be set to "
+            "constant temperature in case of isothermal physics, "
+            "self.flash.temperature in case of thermal"
+        )
 
         for j in self.ph:
-            M = np.sum(self.Mw[:self.nc_fl] * self.x[j][:self.nc_fl])
+            M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
 
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :])  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :], self.dens[j])  # output in [cp]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
+                pressure, self.temperature, self.x[j, :]
+            )  # output in [kg/m3]
+            self.dens_m[j] = (
+                self.dens[j] / M
+            )  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
+                pressure, self.temperature, self.x[j, :], self.dens[j]
+            )  # output in [cp]
         self.compute_saturation(self.ph)
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat)
@@ -240,7 +293,9 @@ class PropertyContainer(PropertyBase):
         for j in range(self.ns):
             idx = self.np_fl + j
             self.sat[idx] = zc[self.nc_fl + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(pressure, self.temperature)
+            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
+                pressure, self.temperature
+            )
             self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
 
         self.mass_source = self.evaluate_mass_source(pressure, self.temperature, zc)
@@ -258,21 +313,29 @@ class PropertyContainer(PropertyBase):
         pressure, temperature, zc = self.get_state(state)
 
         for j in self.ph:
-            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :])  # kJ/kmol
-            self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j, :], self.dens[j])
+            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(
+                pressure, self.temperature, self.x[j, :]
+            )  # kJ/kmol
+            self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(
+                pressure, self.temperature, self.x[j, :], self.dens[j]
+            )
 
         for j in range(self.ns):
             idx = self.np_fl + j
-            self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(pressure, self.temperature, self.x[0, :])
+            self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(
+                pressure, self.temperature, self.x[0, :]
+            )
             self.cond[idx] = self.conductivity_ev[self.phases_name[idx]].evaluate()
 
         # Heat source and Reaction enthalpy
-        self.energy_source = 0.
+        self.energy_source = 0.0
         if self.energy_source_ev:
             self.energy_source += self.energy_source_ev.evaluate(state)
 
         for j, reaction in self.kinetic_rate_ev.items():
-            self.energy_source += reaction.evaluate_enthalpy(pressure, self.temperature, self.x, zc[self.nc_fl + j])
+            self.energy_source += reaction.evaluate_enthalpy(
+                pressure, self.temperature, self.x, zc[self.nc_fl + j]
+            )
 
         return
 
@@ -285,7 +348,12 @@ class PropertyContainer(PropertyBase):
 
         for j in ph:
             M = np.sum(self.Mw * self.x[j][:])  # molar weight of mixture
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, self.temperature, self.x[j][:]) / M
+            self.dens_m[j] = (
+                self.density_ev[self.phases_name[j]].evaluate(
+                    pressure, self.temperature, self.x[j][:]
+                )
+                / M
+            )
 
         self.compute_saturation(ph)
 

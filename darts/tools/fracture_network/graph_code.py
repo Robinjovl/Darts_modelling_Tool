@@ -19,21 +19,31 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-import numpy as np
-import matplotlib.pyplot as plt
-import igraph
+
 import copy
-import matplotlib.colors as colors
-import matplotlib.cm as cm
 import os
+
+import igraph
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Graph:
     """
-        (weighted) Graph class containing a list of Vertices (x- and y-coordinates) and Edges (list of
-        (v_i, v_j) pairs), where v_i and v_j are vertex i and j respectively)
+    (weighted) Graph class containing a list of Vertices (x- and y-coordinates) and Edges (list of
+    (v_i, v_j) pairs), where v_i and v_j are vertex i and j respectively)
     """
-    def __init__(self, max_vertices=int(1e5), max_edges=int(1e5), edge_data=None, matrix_perm=1000, fracture_aperture=1e-4):
+
+    def __init__(
+        self,
+        max_vertices=int(1e5),
+        max_edges=int(1e5),
+        edge_data=None,
+        matrix_perm=1000,
+        fracture_aperture=1e-4,
+    ):
         self.vertices = np.ones((max_vertices, 2), dtype=float) * np.inf
         self.edge_to_vertex = np.ones((max_edges, 2), dtype=int) * -1
         self.apertures = np.ones((max_edges,), dtype=float) * fracture_aperture
@@ -72,8 +82,9 @@ class Graph:
         self.edge_to_vertex[edge_id, 1] = vertex_id_2
         self.num_edges += 1
         self.active_edges[edge_id] = True
-        self.volumes[edge_id] = self.apertures[edge_id] * np.linalg.norm(self.vertices[vertex_id_1].flatten() -
-                                                                         self.vertices[vertex_id_2].flatten())
+        self.volumes[edge_id] = self.apertures[edge_id] * np.linalg.norm(
+            self.vertices[vertex_id_1].flatten() - self.vertices[vertex_id_2].flatten()
+        )
 
         self.vertex_to_edge[vertex_id_1].append(edge_id)
         self.vertex_to_edge[vertex_id_2].append(edge_id)
@@ -121,7 +132,9 @@ class Graph:
         """
         # linear search is a potential problem
         # need to introduce additional, sorted by coordinate array, coord_to_vertex_id
-        result = np.where((self.vertices[0:self.get_num_vertices()] == (x, y)).all(axis=1))[0]
+        result = np.where(
+            (self.vertices[0 : self.get_num_vertices()] == (x, y)).all(axis=1)
+        )[0]
         # assert (result.size == 1)
         if result.size == 1:
             return result[0]
@@ -129,7 +142,11 @@ class Graph:
             return None
         else:
             # Duplicate vertex...
-            print('Duplicate vertex found in self.get_vertex_id with coordinates [x,y] = [{:}, {:}]'.format(x,y))
+            print(
+                'Duplicate vertex found in self.get_vertex_id with coordinates [x,y] = [{:}, {:}]'.format(
+                    x, y
+                )
+            )
             return np.NaN
 
     def find_or_insert_vertex(self, x, y):
@@ -173,18 +190,32 @@ class Graph:
         ghost_edge_to_vertices = []
         status_after_merge = [None] * len(self.vertex_to_edge[vertex_id_from])
         edge_id_after_merge = [None] * len(self.vertex_to_edge[vertex_id_from])
-        edge_to_vertex_after_merge = np.ones((len(self.vertex_to_edge[vertex_id_from]), 2), dtype=int) * -1
+        edge_to_vertex_after_merge = (
+            np.ones((len(self.vertex_to_edge[vertex_id_from]), 2), dtype=int) * -1
+        )
         edges = self.vertex_to_edge[vertex_id_from]
         for ii, edge in enumerate(edges):
-            status_after_merge[ii], edge_to_vertex_after_merge[ii], edge_id_after_merge[ii] = \
-                self.status_edge_after_merge(vertex_id_from, vertex_id_to, edge)
-            if status_after_merge[ii] == 'collapsed' or status_after_merge[ii] == 'overlap':
+            (
+                status_after_merge[ii],
+                edge_to_vertex_after_merge[ii],
+                edge_id_after_merge[ii],
+            ) = self.status_edge_after_merge(vertex_id_from, vertex_id_to, edge)
+            if (
+                status_after_merge[ii] == 'collapsed'
+                or status_after_merge[ii] == 'overlap'
+            ):
                 # Edge will be ghosted:
                 ghosted_edges.append(edge)
                 ghost_edge_to_vertices.append(list(self.edge_to_vertex[edge]))
 
         # self.visualize_sub_graph(self.edge_to_vertex[list(set(self.vertex_to_edge[vertex_id_from] + self.vertex_to_edge[vertex_id_to]))])
-        return ghost_edge_to_vertices, ghosted_edges, status_after_merge, edge_to_vertex_after_merge, edge_id_after_merge
+        return (
+            ghost_edge_to_vertices,
+            ghosted_edges,
+            status_after_merge,
+            edge_to_vertex_after_merge,
+            edge_id_after_merge,
+        )
 
     def merge_vertices(self, vertex_id_from, vertex_id_to, char_len, correct_aperture):
         """
@@ -195,15 +226,30 @@ class Graph:
         """
         # ghost any edge that "collapses" (i.e., the edge is shared by both vertices and has zero length after
         # vertex-merging) or if the edge will overlap after merging.
-        ghost_edge_to_vertices, ghosted_edges, status_after_merging, edge_to_vertex_after_merging, edge_id_after_merge = \
-            self.find_conflicting_edges(vertex_id_from, vertex_id_to)
+        (
+            ghost_edge_to_vertices,
+            ghosted_edges,
+            status_after_merging,
+            edge_to_vertex_after_merging,
+            edge_id_after_merge,
+        ) = self.find_conflicting_edges(vertex_id_from, vertex_id_to)
         if correct_aperture:
-            self.update_volumes_and_apertures(vertex_id_from, vertex_id_to, status_after_merging, edge_to_vertex_after_merging, edge_id_after_merge, char_len)
+            self.update_volumes_and_apertures(
+                vertex_id_from,
+                vertex_id_to,
+                status_after_merging,
+                edge_to_vertex_after_merging,
+                edge_id_after_merge,
+                char_len,
+            )
         self.remove_edges(ghost_edge_to_vertices, ghosted_edges)
 
         # 1. preserve connections to ghost-vertex
-        [self.vertex_to_edge[vertex_id_to].append(x) for x in self.vertex_to_edge[vertex_id_from] if
-            x not in self.vertex_to_edge[vertex_id_to]]
+        [
+            self.vertex_to_edge[vertex_id_to].append(x)
+            for x in self.vertex_to_edge[vertex_id_from]
+            if x not in self.vertex_to_edge[vertex_id_to]
+        ]
         # self.vertex_to_edge[vertex_id_to] = set(self.vertex_to_edge[vertex_id_to] + self.vertex_to_edge[vertex_id_from])
 
         # 2. apply ghosting to vertex:
@@ -211,11 +257,13 @@ class Graph:
         self.active_vertices[vertex_id_from] = False
 
         # 3. update all instances of ghost-vertex in edge_to_vertex to new vertex_id
-        slice_edge_to_vertex = self.edge_to_vertex[0:self.get_num_edges()]
+        slice_edge_to_vertex = self.edge_to_vertex[0 : self.get_num_edges()]
         slice_edge_to_vertex[slice_edge_to_vertex == vertex_id_from] = vertex_id_to
         return 0
 
-    def check_distance_constraint(self, new_vertex, existing_vertices, char_len, merge_threshold):
+    def check_distance_constraint(
+        self, new_vertex, existing_vertices, char_len, merge_threshold
+    ):
         """
         Computes the distance between all vertices already in domain and to be added vertex
         :param new_vertex: to be added vertex
@@ -224,8 +272,12 @@ class Graph:
         :param merge_threshold: h-factor which is recommended between [0.5, 0.86]
         :return:
         """
-        assert 0.5 <= merge_threshold <= 0.86, "Choose threshold on closed interval [0.5, 0.86]"
-        dist_vec = np.linalg.norm(self.vertices[new_vertex] - self.vertices[existing_vertices], axis=1)
+        assert (
+            0.5 <= merge_threshold <= 0.86
+        ), "Choose threshold on closed interval [0.5, 0.86]"
+        dist_vec = np.linalg.norm(
+            self.vertices[new_vertex] - self.vertices[existing_vertices], axis=1
+        )
         argmin_id = np.argmin(dist_vec)
         fixed_vertex = existing_vertices[argmin_id]
 
@@ -234,7 +286,9 @@ class Graph:
         else:
             return -1
 
-    def closest_point_method(self, order_discr, char_len, merge_threshold, correct_aperture):
+    def closest_point_method(
+        self, order_discr, char_len, merge_threshold, correct_aperture
+    ):
         """
         Main sequential algorithm which performs cleaning of the fracture network based on algebraic constraint
         :param order_discr: order in which vertices are sequentially added to the domain and checked for constraint
@@ -243,15 +297,21 @@ class Graph:
         :param correct_aperture: boolean for applying aperture correction or not
         :return:
         """
-        assert 0.5 <= merge_threshold <= 0.86, "Choose threshold on closed interval [0.5, 0.86]"
+        assert (
+            0.5 <= merge_threshold <= 0.86
+        ), "Choose threshold on closed interval [0.5, 0.86]"
         count = 0
         for new_vertex in order_discr[1:]:
             count += 1
             if not self.active_vertices[new_vertex]:
                 continue
-            fixed_vertex = self.check_distance_constraint(new_vertex, order_discr[:count], char_len, merge_threshold)
+            fixed_vertex = self.check_distance_constraint(
+                new_vertex, order_discr[:count], char_len, merge_threshold
+            )
             if fixed_vertex >= 0:
-                self.merge_vertices(new_vertex, fixed_vertex, char_len, correct_aperture)
+                self.merge_vertices(
+                    new_vertex, fixed_vertex, char_len, correct_aperture
+                )
         return 0
 
     def calc_angles_vectors_2D(self, vec_m, vec_p, angle_360=False):
@@ -284,11 +344,23 @@ class Graph:
         :param angle_360: boolean for returning angle in 360 or 180 180 degrees spectrum
         :return:
         """
-        common_vertex = np.intersect1d(self.edge_to_vertex[edge_1], self.edge_to_vertex[edge_2])
-        other_vertex_1 = self.edge_to_vertex[edge_1, self.edge_to_vertex[edge_1] != common_vertex]
-        other_vertex_2 = self.edge_to_vertex[edge_2, self.edge_to_vertex[edge_2] != common_vertex]
-        vec_m = self.vertices[common_vertex].flatten() - self.vertices[other_vertex_1].flatten()
-        vec_p = self.vertices[common_vertex].flatten()  - self.vertices[other_vertex_2].flatten()
+        common_vertex = np.intersect1d(
+            self.edge_to_vertex[edge_1], self.edge_to_vertex[edge_2]
+        )
+        other_vertex_1 = self.edge_to_vertex[
+            edge_1, self.edge_to_vertex[edge_1] != common_vertex
+        ]
+        other_vertex_2 = self.edge_to_vertex[
+            edge_2, self.edge_to_vertex[edge_2] != common_vertex
+        ]
+        vec_m = (
+            self.vertices[common_vertex].flatten()
+            - self.vertices[other_vertex_1].flatten()
+        )
+        vec_p = (
+            self.vertices[common_vertex].flatten()
+            - self.vertices[other_vertex_2].flatten()
+        )
         return self.calc_angles_vectors_2D(vec_m, vec_p, angle_360=angle_360)
 
     def check_angles_leaving_vertices(self, vertex_id):
@@ -300,7 +372,9 @@ class Graph:
         edges = np.array(self.vertex_to_edge[vertex_id])
         num_edges = len(edges)
         if num_edges == 2:
-            return self.calc_angle_edges(edges[0], edges[1]), np.array([[edges[0], edges[1]]])
+            return self.calc_angle_edges(edges[0], edges[1]), np.array(
+                [[edges[0], edges[1]]]
+            )
         elif num_edges == 1:
             return 360, None
 
@@ -310,17 +384,28 @@ class Graph:
         angles_y_axis = np.zeros((num_edges,))
         vec_p = np.array([1, 0])
         for ii, edge in enumerate(edges):
-            other_vertex = self.edge_to_vertex[edge][self.edge_to_vertex[edge] != vertex_id]
-            vec_m = self.vertices[other_vertex].flatten() - self.vertices[vertex_id].flatten()
-            angles_y_axis[ii] = self.calc_angles_vectors_2D(vec_m, vec_p, angle_360=True)
+            other_vertex = self.edge_to_vertex[edge][
+                self.edge_to_vertex[edge] != vertex_id
+            ]
+            vec_m = (
+                self.vertices[other_vertex].flatten()
+                - self.vertices[vertex_id].flatten()
+            )
+            angles_y_axis[ii] = self.calc_angles_vectors_2D(
+                vec_m, vec_p, angle_360=True
+            )
 
         sort_edges_ids = edges[np.argsort(angles_y_axis)]
         edge_pair = np.zeros((num_edges, 2), dtype=int)
         for ii in range(num_edges - 1):
             edge_pair[ii] = [sort_edges_ids[ii + 1], sort_edges_ids[ii]]
-            angles[ii] = self.calc_angle_edges(sort_edges_ids[ii + 1], sort_edges_ids[ii], angle_360=True)
+            angles[ii] = self.calc_angle_edges(
+                sort_edges_ids[ii + 1], sort_edges_ids[ii], angle_360=True
+            )
         edge_pair[-1] = [sort_edges_ids[0], sort_edges_ids[-1]]
-        angles[-1] = self.calc_angle_edges(sort_edges_ids[0], sort_edges_ids[-1], angle_360=True)
+        angles[-1] = self.calc_angle_edges(
+            sort_edges_ids[0], sort_edges_ids[-1], angle_360=True
+        )
 
         if abs(np.sum(angles) - 360) > 1e-4:
             print('Mmmhhh...')
@@ -343,10 +428,19 @@ class Graph:
 
                 if np.abs(angle - 180) <= tolerance_angle:
                     # Edge straight enough to be merged into closest vertex:
-                    other_vertices = self.edge_to_vertex[edges].flatten()[np.where(self.edge_to_vertex[edges].flatten() != ii)[0]]
-                    dist_vertices = np.linalg.norm(self.vertices[ii] - self.vertices[other_vertices], axis=1)
+                    other_vertices = self.edge_to_vertex[edges].flatten()[
+                        np.where(self.edge_to_vertex[edges].flatten() != ii)[0]
+                    ]
+                    dist_vertices = np.linalg.norm(
+                        self.vertices[ii] - self.vertices[other_vertices], axis=1
+                    )
                     closests_id = np.argmin(dist_vertices)
-                    self.merge_vertices(vertex_id_from=ii, vertex_id_to=other_vertices[closests_id], char_len=char_len, correct_aperture=correct_aperture)
+                    self.merge_vertices(
+                        vertex_id_from=ii,
+                        vertex_id_to=other_vertices[closests_id],
+                        char_len=char_len,
+                        correct_aperture=correct_aperture,
+                    )
         return 0
 
     def remove_small_angles(self, tolerange_small_angle, char_len, correct_aperture):
@@ -368,19 +462,36 @@ class Graph:
                 # Determine which angle is the smallest and merge two edges into one, logic: keep largest edge and merge
                 # non-shared vertex into closest vertex, then update angles and continue
                 edge_pair = edge_ids[np.argmin(angles)]
-                other_vertices = self.edge_to_vertex[edge_pair].flatten()[self.edge_to_vertex[edge_pair].flatten() != vertex_id]
-                length_vec = np.linalg.norm(self.vertices[vertex_id] - self.vertices[other_vertices], axis=1)
+                other_vertices = self.edge_to_vertex[edge_pair].flatten()[
+                    self.edge_to_vertex[edge_pair].flatten() != vertex_id
+                ]
+                length_vec = np.linalg.norm(
+                    self.vertices[vertex_id] - self.vertices[other_vertices], axis=1
+                )
                 vertex_from = other_vertices[np.argmin(length_vec)]
                 large_edge = edge_pair[np.argmax(length_vec)]
 
-                dist_vec = np.linalg.norm(self.vertices[vertex_from] - self.vertices[self.edge_to_vertex[large_edge]], axis=1)
+                dist_vec = np.linalg.norm(
+                    self.vertices[vertex_from]
+                    - self.vertices[self.edge_to_vertex[large_edge]],
+                    axis=1,
+                )
                 vertex_to = self.edge_to_vertex[large_edge][np.argmin(dist_vec)]
                 self.merge_vertices(vertex_from, vertex_to, char_len, correct_aperture)
                 angles, edge_ids = self.check_angles_leaving_vertices(vertex_id)
         return 0
 
-    def simplify_graph(self, order_discr, char_len, merge_treshold=0.66,
-                       tolerange_small_angle=20, small_angle_iter=2, tolerange_straight_angle=7.5, correct_aperture=True, straighten_edges=False):
+    def simplify_graph(
+        self,
+        order_discr,
+        char_len,
+        merge_treshold=0.66,
+        tolerange_small_angle=20,
+        small_angle_iter=2,
+        tolerange_straight_angle=7.5,
+        correct_aperture=True,
+        straighten_edges=False,
+    ):
         """
         Method which performs actual simplification of the graph
         :param order_discr: order in which vertices are sequentially checked on algebraic constraint
@@ -395,8 +506,12 @@ class Graph:
                 speed up succesive gridding
         :return:
         """
-        assert 0.5 <= merge_treshold <= 0.86, "Choose threshold on closed interval [0.5, 0.86]"
-        self.closest_point_method(order_discr, char_len, merge_treshold, correct_aperture)
+        assert (
+            0.5 <= merge_treshold <= 0.86
+        ), "Choose threshold on closed interval [0.5, 0.86]"
+        self.closest_point_method(
+            order_discr, char_len, merge_treshold, correct_aperture
+        )
         for ii in range(small_angle_iter):
             self.remove_small_angles(tolerange_small_angle, char_len, correct_aperture)
         if straighten_edges:
@@ -410,18 +525,35 @@ class Graph:
         :return:
         """
         edges = self.vertex_to_edge[vertex_id]
-        leaving_vertices = self.edge_to_vertex[edges].flatten()[np.where(self.edge_to_vertex[edges].flatten() != vertex_id)[0]]
+        leaving_vertices = self.edge_to_vertex[edges].flatten()[
+            np.where(self.edge_to_vertex[edges].flatten() != vertex_id)[0]
+        ]
         plt.figure()
         plt.plot(
-            np.vstack((self.vertices[self.edge_to_vertex[edges, 0], 0].T,
-                       self.vertices[self.edge_to_vertex[edges, 1], 0].T)),
-            np.vstack((self.vertices[self.edge_to_vertex[edges, 0], 1].T,
-                       self.vertices[self.edge_to_vertex[edges, 1], 1].T)),
-            color='black'
+            np.vstack(
+                (
+                    self.vertices[self.edge_to_vertex[edges, 0], 0].T,
+                    self.vertices[self.edge_to_vertex[edges, 1], 0].T,
+                )
+            ),
+            np.vstack(
+                (
+                    self.vertices[self.edge_to_vertex[edges, 0], 1].T,
+                    self.vertices[self.edge_to_vertex[edges, 1], 1].T,
+                )
+            ),
+            color='black',
         )
         plt.axis('equal')
-        plt.plot(self.vertices[leaving_vertices, 0], self.vertices[leaving_vertices, 1], '.', color='red')
-        plt.plot(self.vertices[vertex_id, 0], self.vertices[vertex_id, 1], '.', color='blue')
+        plt.plot(
+            self.vertices[leaving_vertices, 0],
+            self.vertices[leaving_vertices, 1],
+            '.',
+            color='red',
+        )
+        plt.plot(
+            self.vertices[vertex_id, 0], self.vertices[vertex_id, 1], '.', color='blue'
+        )
         plt.show()
 
     def visualize_graph(self):
@@ -433,14 +565,27 @@ class Graph:
         num_vertices = self.get_num_vertices()
         plt.figure()
         plt.plot(
-            np.vstack((self.vertices[self.edge_to_vertex[:num_edges, 0], 0].T,
-                       self.vertices[self.edge_to_vertex[:num_edges, 1], 0].T)),
-            np.vstack((self.vertices[self.edge_to_vertex[:num_edges, 0], 1].T,
-                       self.vertices[self.edge_to_vertex[:num_edges, 1], 1].T)),
-            color='black'
+            np.vstack(
+                (
+                    self.vertices[self.edge_to_vertex[:num_edges, 0], 0].T,
+                    self.vertices[self.edge_to_vertex[:num_edges, 1], 0].T,
+                )
+            ),
+            np.vstack(
+                (
+                    self.vertices[self.edge_to_vertex[:num_edges, 0], 1].T,
+                    self.vertices[self.edge_to_vertex[:num_edges, 1], 1].T,
+                )
+            ),
+            color='black',
         )
         plt.axis('equal')
-        plt.plot(self.vertices[:num_vertices, 0], self.vertices[:num_vertices, 1], '.', color='red')
+        plt.plot(
+            self.vertices[:num_vertices, 0],
+            self.vertices[:num_vertices, 1],
+            '.',
+            color='red',
+        )
         plt.show()
         return 0
 
@@ -455,20 +600,29 @@ class Graph:
         plt.figure()
         for edge in edges:
             plt.plot(
-                np.vstack((self.vertices[edge[0], 0].T,
-                           self.vertices[edge[1], 0].T)),
-                np.vstack((self.vertices[edge[0], 1].T,
-                           self.vertices[edge[1], 1].T)),
-                color='black'
+                np.vstack((self.vertices[edge[0], 0].T, self.vertices[edge[1], 0].T)),
+                np.vstack((self.vertices[edge[0], 1].T, self.vertices[edge[1], 1].T)),
+                color='black',
             )
-            plt.text((self.vertices[edge[0], 0] + self.vertices[edge[1], 0]) / 2 + epsilon,
-                     (self.vertices[edge[0], 1] + self.vertices[edge[1], 1]) / 2 + epsilon,
-                     str(np.intersect1d(self.vertex_to_edge[edge[0]], self.vertex_to_edge[edge[1]])[0]), fontsize=10)
+            plt.text(
+                (self.vertices[edge[0], 0] + self.vertices[edge[1], 0]) / 2 + epsilon,
+                (self.vertices[edge[0], 1] + self.vertices[edge[1], 1]) / 2 + epsilon,
+                str(
+                    np.intersect1d(
+                        self.vertex_to_edge[edge[0]], self.vertex_to_edge[edge[1]]
+                    )[0]
+                ),
+                fontsize=10,
+            )
         plt.axis('equal')
         for ii in vertices:
             plt.plot(self.vertices[ii, 0], self.vertices[ii, 1], '.', color='red')
-            plt.text(self.vertices[ii, 0] + epsilon, self.vertices[ii, 1] + epsilon,
-                     str(ii), fontsize=10)
+            plt.text(
+                self.vertices[ii, 0] + epsilon,
+                self.vertices[ii, 1] + epsilon,
+                str(ii),
+                fontsize=10,
+            )
         plt.show()
         return 0
 
@@ -493,7 +647,7 @@ class Graph:
         :return:
         """
         check_result = False
-        slice_edge_to_vertex = self.edge_to_vertex[0:self.get_num_edges()]
+        slice_edge_to_vertex = self.edge_to_vertex[0 : self.get_num_edges()]
         unique_edges = np.unique(slice_edge_to_vertex, axis=0)
         if unique_edges.shape[0] != slice_edge_to_vertex.shape[0]:
             check_result = True
@@ -518,29 +672,48 @@ class Graph:
         :return: resistance (L / aperture^2), is infinity if no direct connection exists
         """
         # Check if nodes are first-degree connected
-        common_edge = np.intersect1d(self.vertex_to_edge[vertex_from], self.vertex_to_edge[vertex_to])
+        common_edge = np.intersect1d(
+            self.vertex_to_edge[vertex_from], self.vertex_to_edge[vertex_to]
+        )
         if common_edge.size != 0:
-            return np.linalg.norm(self.vertices[vertex_from].flatten() - self.vertices[vertex_to].flatten()) / (self.apertures[common_edge[0]] ** 2)
+            return np.linalg.norm(
+                self.vertices[vertex_from].flatten()
+                - self.vertices[vertex_to].flatten()
+            ) / (self.apertures[common_edge[0]] ** 2)
         else:
             # Extract subpgrah of vertices and edges and their weights (within a radius of char_len * X around vertices)
-            vertices_in_radius = np.where(np.linalg.norm(self.vertices[:self.get_num_vertices()] -
-                                                         self.vertices[vertex_from], axis=1) < radius)[0]
+            vertices_in_radius = np.where(
+                np.linalg.norm(
+                    self.vertices[: self.get_num_vertices()]
+                    - self.vertices[vertex_from],
+                    axis=1,
+                )
+                < radius
+            )[0]
 
             edges_in_radius = []
             for ii in vertices_in_radius:
                 edges_in_radius += self.vertex_to_edge[ii]
             edges_in_radius = list(set(edges_in_radius))
-            vertices_in_radius = list(set(self.edge_to_vertex[edges_in_radius].flatten()))
+            vertices_in_radius = list(
+                set(self.edge_to_vertex[edges_in_radius].flatten())
+            )
             if vertex_to not in vertices_in_radius:
                 return np.inf
 
             edges = self.edge_to_vertex[edges_in_radius]
-            edge_weights = np.linalg.norm(self.vertices[edges[:, 0]] - self.vertices[edges[:, 1]], axis=1) / \
-                           self.apertures[edges_in_radius] ** 2 # m to km and m for aperture to cm (note: ** 2) in order to avoid extremely large values
+            edge_weights = (
+                np.linalg.norm(
+                    self.vertices[edges[:, 0]] - self.vertices[edges[:, 1]], axis=1
+                )
+                / self.apertures[edges_in_radius] ** 2
+            )  # m to km and m for aperture to cm (note: ** 2) in order to avoid extremely large values
 
             # Construct subgraph with weights in igraph and calculate shortest_path between vertices
             g = igraph.Graph(edges=edges, edge_attrs={'weight': edge_weights})
-            dist_from_to = g.shortest_paths(source=vertex_from, target=vertex_to, weights=edge_weights)
+            dist_from_to = g.shortest_paths(
+                source=vertex_from, target=vertex_to, weights=edge_weights
+            )
             return dist_from_to[0][0]
 
     def status_edge_after_merge(self, vertex_from, vertex_to, edge):
@@ -552,12 +725,25 @@ class Graph:
         :return: status of edge (str), list of two vertices making up new edge, id of new edge (or old, if simply
                 extended)
         """
-        if np.all(np.sort(self.edge_to_vertex[edge]) == np.sort(np.array([vertex_from, vertex_to]))):
+        if np.all(
+            np.sort(self.edge_to_vertex[edge])
+            == np.sort(np.array([vertex_from, vertex_to]))
+        ):
             # Edge will collapse:
             return 'collapsed', np.array([vertex_to, vertex_to]), -1
         else:
             # Loop over all edges in vertex_to and check of the new edge will overlap
-            new_edge = np.sort(np.array([vertex_to, self.edge_to_vertex[edge, self.edge_to_vertex[edge] != vertex_from][0]], dtype=int))
+            new_edge = np.sort(
+                np.array(
+                    [
+                        vertex_to,
+                        self.edge_to_vertex[
+                            edge, self.edge_to_vertex[edge] != vertex_from
+                        ][0],
+                    ],
+                    dtype=int,
+                )
+            )
             overlap = False
             new_edge_id = -1
             for curr_edge in self.vertex_to_edge[vertex_to]:
@@ -569,7 +755,15 @@ class Graph:
             else:
                 return 'extension', new_edge, edge
 
-    def calc_effective_aperture_and_heat_transfer_sequential(self, new_edge, collapsed_edge_id, extended_edge_id, resistance, vertex_from, vertex_to):
+    def calc_effective_aperture_and_heat_transfer_sequential(
+        self,
+        new_edge,
+        collapsed_edge_id,
+        extended_edge_id,
+        resistance,
+        vertex_from,
+        vertex_to,
+    ):
         """
         Calculate effect aperture and heat transfer for Type 2 corrections (similar to sequential resistors in circuit)
         :param new_edge: list of pair of vertices making up new edge
@@ -581,19 +775,32 @@ class Graph:
         :param vertex_to: id vertex which stays in domain
         :return: effective_aperture, effective_heattransfer
         """
-        len_new_edge = np.linalg.norm(self.vertices[new_edge[0]].flatten() - self.vertices[new_edge[1]].flatten())
-        len_old_edge = np.linalg.norm(self.vertices[self.edge_to_vertex[extended_edge_id, 0]].flatten() -
-                                      self.vertices[self.edge_to_vertex[extended_edge_id, 1]].flatten())
+        len_new_edge = np.linalg.norm(
+            self.vertices[new_edge[0]].flatten() - self.vertices[new_edge[1]].flatten()
+        )
+        len_old_edge = np.linalg.norm(
+            self.vertices[self.edge_to_vertex[extended_edge_id, 0]].flatten()
+            - self.vertices[self.edge_to_vertex[extended_edge_id, 1]].flatten()
+        )
 
-        dist_gap = np.linalg.norm(self.vertices[vertex_from].flatten() - self.vertices[vertex_to].flatten())
+        dist_gap = np.linalg.norm(
+            self.vertices[vertex_from].flatten() - self.vertices[vertex_to].flatten()
+        )
         weights = np.array([len_old_edge, dist_gap]) / (len_old_edge + dist_gap)
-        n_pow = 9.5608 * weights[1] + 1.18024  # fitted from tested different gaps and different lc!!!
+        n_pow = (
+            9.5608 * weights[1] + 1.18024
+        )  # fitted from tested different gaps and different lc!!!
         if resistance == np.inf:
             if self.matrix_eff_aperture < self.apertures[extended_edge_id]:
-                eff_aperture = 1 / ((1 - weights[1] ** n_pow) / (self.apertures[extended_edge_id]) + (weights[1] ** n_pow) / (self.matrix_eff_aperture))
+                eff_aperture = 1 / (
+                    (1 - weights[1] ** n_pow) / (self.apertures[extended_edge_id])
+                    + (weights[1] ** n_pow) / (self.matrix_eff_aperture)
+                )
             else:
                 weights = np.array([len_old_edge, dist_gap]) / (len_old_edge + dist_gap)
-                eff_aperture = (self.apertures[extended_edge_id] * weights[0]) + (self.matrix_eff_aperture * weights[1])
+                eff_aperture = (self.apertures[extended_edge_id] * weights[0]) + (
+                    self.matrix_eff_aperture * weights[1]
+                )
             eff_heat_transfer = 1
 
         else:
@@ -602,17 +809,28 @@ class Graph:
             eff_gap_aper = np.sqrt(dist_gap / resistance)
             if eff_gap_aper > np.max(self.apertures):
                 eff_gap_aper = np.max(self.apertures)
-            eff_aperture = 1 / (weights[0] / (self.apertures[extended_edge_id]) + weights[1] / eff_gap_aper)
+            eff_aperture = 1 / (
+                weights[0] / (self.apertures[extended_edge_id])
+                + weights[1] / eff_gap_aper
+            )
             if collapsed_edge_id.size == 0:
                 len_other_edge = 0
             else:
-                len_other_edge = np.linalg.norm(self.vertices[self.edge_to_vertex[collapsed_edge_id[0], 0]].flatten() -
-                                                self.vertices[self.edge_to_vertex[collapsed_edge_id[0], 1]].flatten())
+                len_other_edge = np.linalg.norm(
+                    self.vertices[
+                        self.edge_to_vertex[collapsed_edge_id[0], 0]
+                    ].flatten()
+                    - self.vertices[
+                        self.edge_to_vertex[collapsed_edge_id[0], 1]
+                    ].flatten()
+                )
             eff_heat_transfer = (len_other_edge + len_old_edge) / len_new_edge
 
         return eff_aperture, eff_heat_transfer
 
-    def calc_effective_aperture_and_heat_transfer_parallel(self, old_edge_id, new_edge_id):
+    def calc_effective_aperture_and_heat_transfer_parallel(
+        self, old_edge_id, new_edge_id
+    ):
         """
         Simple arithmetic mean weighted by length of the two edges which are overlapping after merge (similar to
                 parallel resistors in circuit)
@@ -620,12 +838,21 @@ class Graph:
         :param new_edge_id: id of the new edge after merging
         :return: effective_aperture, effective_heattransfer
         """
-        len_new_edge = np.linalg.norm(self.vertices[self.edge_to_vertex[new_edge_id, 0]].flatten() -
-                                      self.vertices[self.edge_to_vertex[new_edge_id, 1]].flatten())
-        len_old_edge = np.linalg.norm(self.vertices[self.edge_to_vertex[old_edge_id, 0]].flatten() -
-                                      self.vertices[self.edge_to_vertex[old_edge_id, 1]].flatten())
-        eff_aperture = np.sqrt(len_new_edge * (self.apertures[new_edge_id] ** 2 / len_new_edge +
-                                       self.apertures[old_edge_id] ** 2 / len_old_edge))
+        len_new_edge = np.linalg.norm(
+            self.vertices[self.edge_to_vertex[new_edge_id, 0]].flatten()
+            - self.vertices[self.edge_to_vertex[new_edge_id, 1]].flatten()
+        )
+        len_old_edge = np.linalg.norm(
+            self.vertices[self.edge_to_vertex[old_edge_id, 0]].flatten()
+            - self.vertices[self.edge_to_vertex[old_edge_id, 1]].flatten()
+        )
+        eff_aperture = np.sqrt(
+            len_new_edge
+            * (
+                self.apertures[new_edge_id] ** 2 / len_new_edge
+                + self.apertures[old_edge_id] ** 2 / len_old_edge
+            )
+        )
         eff_heat_transfer = (len_new_edge + len_old_edge) / len_new_edge
         return eff_aperture, eff_heat_transfer
 
@@ -646,18 +873,24 @@ class Graph:
             other_edges_vertex_from = edges_vertex_from
             other_edges_vertex_from.remove(edge_id)
             for edge in other_edges_vertex_from:
-                self.volumes[edge] += volume_collapsed_edge / len(other_edges_vertex_from) / 2
+                self.volumes[edge] += (
+                    volume_collapsed_edge / len(other_edges_vertex_from) / 2
+                )
 
             other_edges_vertex_to = edges_vertex_to
             other_edges_vertex_to.remove(edge_id)
             for edge in other_edges_vertex_to:
-                self.volumes[edge] += volume_collapsed_edge / len(other_edges_vertex_to) / 2
+                self.volumes[edge] += (
+                    volume_collapsed_edge / len(other_edges_vertex_to) / 2
+                )
 
         elif edge_id in edges_vertex_from:
             other_edges_vertex_from = edges_vertex_from
             other_edges_vertex_from.remove(edge_id)
             for edge in other_edges_vertex_from:
-                self.volumes[edge] += volume_collapsed_edge / len(other_edges_vertex_from)
+                self.volumes[edge] += volume_collapsed_edge / len(
+                    other_edges_vertex_from
+                )
 
         elif edge_id in edges_vertex_to:
             other_edges_vertex_to = edges_vertex_to
@@ -679,8 +912,15 @@ class Graph:
         self.volumes[old_edge_id] = 0
         return 0
 
-    def update_volumes_and_apertures(self, vertex_from, vertex_to, status_after_merging,
-                                     edge_to_vertex_after_merging, edge_id_after_merge, char_len):
+    def update_volumes_and_apertures(
+        self,
+        vertex_from,
+        vertex_to,
+        status_after_merging,
+        edge_to_vertex_after_merging,
+        edge_id_after_merge,
+        char_len,
+    ):
         """
         Main function that updates volumes and apertures after merging
         :param vertex_from: id vertex which gets merged
@@ -693,10 +933,17 @@ class Graph:
         """
         # First check if any of the edges leaving vertex_from is collapsing, distribute volume first, then loop
         # over the remaining edges to update properties accordingly
-        resistance = self.connectivity_merging_vertices(vertex_from, vertex_to, char_len * 2.5)
+        resistance = self.connectivity_merging_vertices(
+            vertex_from, vertex_to, char_len * 2.5
+        )
         if 'collapsed' in status_after_merging:
-            self.update_volume_collapsed_edge(vertex_from, vertex_to,
-                                              self.vertex_to_edge[vertex_from][status_after_merging.index('collapsed')])
+            self.update_volume_collapsed_edge(
+                vertex_from,
+                vertex_to,
+                self.vertex_to_edge[vertex_from][
+                    status_after_merging.index('collapsed')
+                ],
+            )
 
         for ii, status_edge in enumerate(status_after_merging):
             if status_edge == 'collapsed':
@@ -705,17 +952,31 @@ class Graph:
                 # Parallel:
                 old_edge_id = self.vertex_to_edge[vertex_from][ii]
                 new_edge_id = edge_id_after_merge[ii]
-                eff_aperture, eff_heat_transfer = self.calc_effective_aperture_and_heat_transfer_parallel(old_edge_id, new_edge_id)
+                eff_aperture, eff_heat_transfer = (
+                    self.calc_effective_aperture_and_heat_transfer_parallel(
+                        old_edge_id, new_edge_id
+                    )
+                )
                 self.apertures[new_edge_id] = eff_aperture
                 self.heat_transfer_mult[new_edge_id] = eff_heat_transfer
                 self.update_volume_overlap_edge(old_edge_id, new_edge_id)
             elif status_edge == 'extension':
                 # Sequential:
                 new_edge = edge_to_vertex_after_merging[ii]
-                collapsed_edge_id = np.intersect1d(self.vertex_to_edge[vertex_from], self.vertex_to_edge[vertex_to])
+                collapsed_edge_id = np.intersect1d(
+                    self.vertex_to_edge[vertex_from], self.vertex_to_edge[vertex_to]
+                )
                 extended_edge_id = self.vertex_to_edge[vertex_from][ii]
-                eff_aperture, eff_heat_transfer = self.calc_effective_aperture_and_heat_transfer_sequential(
-                    new_edge, collapsed_edge_id, extended_edge_id, resistance, vertex_from, vertex_to)
+                eff_aperture, eff_heat_transfer = (
+                    self.calc_effective_aperture_and_heat_transfer_sequential(
+                        new_edge,
+                        collapsed_edge_id,
+                        extended_edge_id,
+                        resistance,
+                        vertex_from,
+                        vertex_to,
+                    )
+                )
                 self.apertures[extended_edge_id] = eff_aperture
                 self.heat_transfer_mult[extended_edge_id] = eff_heat_transfer
         # self.visualize_sub_graph(self.edge_to_vertex[list(set(self.vertex_to_edge[vertex_from] + self.vertex_to_edge[vertex_to]))])
@@ -745,11 +1006,19 @@ class Graph:
             if not self.active_edges[jj]:
                 continue
             plt.plot(
-                np.vstack((self.vertices[self.edge_to_vertex[jj, 0], 0].T,
-                           self.vertices[self.edge_to_vertex[jj, 1], 0].T)),
-                np.vstack((self.vertices[self.edge_to_vertex[jj, 0], 1].T,
-                           self.vertices[self.edge_to_vertex[jj, 1], 1].T)),
-                color=colors_aper[jj, :-1]
+                np.vstack(
+                    (
+                        self.vertices[self.edge_to_vertex[jj, 0], 0].T,
+                        self.vertices[self.edge_to_vertex[jj, 1], 0].T,
+                    )
+                ),
+                np.vstack(
+                    (
+                        self.vertices[self.edge_to_vertex[jj, 0], 1].T,
+                        self.vertices[self.edge_to_vertex[jj, 1], 1].T,
+                    )
+                ),
+                color=colors_aper[jj, :-1],
             )
         plt.axis('equal')
         plt.title('Volume Weights')
@@ -780,32 +1049,57 @@ class Graph:
             if not self.active_edges[jj]:
                 continue
             plt.plot(
-                np.vstack((self.vertices[self.edge_to_vertex[jj, 0], 0].T,
-                           self.vertices[self.edge_to_vertex[jj, 1], 0].T)),
-                np.vstack((self.vertices[self.edge_to_vertex[jj, 0], 1].T,
-                           self.vertices[self.edge_to_vertex[jj, 1], 1].T)),
-                color=colors_aper[jj, :-1]
+                np.vstack(
+                    (
+                        self.vertices[self.edge_to_vertex[jj, 0], 0].T,
+                        self.vertices[self.edge_to_vertex[jj, 1], 0].T,
+                    )
+                ),
+                np.vstack(
+                    (
+                        self.vertices[self.edge_to_vertex[jj, 0], 1].T,
+                        self.vertices[self.edge_to_vertex[jj, 1], 1].T,
+                    )
+                ),
+                color=colors_aper[jj, :-1],
             )
         plt.axis('equal')
         plt.title('Aperture Weights')
         plt.show()
         return
 
-def dist_to_well(unique_nodes, nodes, i, wells):  # distance from line x,y to the closest well
+
+def dist_to_well(
+    unique_nodes, nodes, i, wells
+):  # distance from line x,y to the closest well
     p1 = np.array([unique_nodes[nodes[0], 0], unique_nodes[nodes[0], 1]])
     p2 = np.array([unique_nodes[nodes[1], 0], unique_nodes[nodes[1], 1]])
     p_cur = np.array([unique_nodes[nodes[i], 0], unique_nodes[nodes[i], 1]])
-    min_dist = 1e+10
+    min_dist = 1e10
     for ii in range(len(wells)):
         p_well = np.array([wells[ii][0], wells[ii][1]])
-        dist_line = np.linalg.norm(np.cross(p2-p1, p1-p_well))/np.linalg.norm(p2-p1)
-        dist = np.linalg.norm(p_cur-p_well)
+        dist_line = np.linalg.norm(np.cross(p2 - p1, p1 - p_well)) / np.linalg.norm(
+            p2 - p1
+        )
+        dist = np.linalg.norm(p_cur - p_well)
         min_dist = max(min(dist_line, min_dist), dist)
     return min_dist
 
-def create_geo_file(act_frac_sys, filename, decimals, z_top,
-                    height_res, char_len, box_data, char_len_boundary, export_frac=True,
-                    wells=None, char_len_well=None, input_data=None):
+
+def create_geo_file(
+    act_frac_sys,
+    filename,
+    decimals,
+    z_top,
+    height_res,
+    char_len,
+    box_data,
+    char_len_boundary,
+    export_frac=True,
+    wells=None,
+    char_len_well=None,
+    input_data=None,
+):
     """
     Creates geo file which serves as input to gmsh
     :param act_frac_sys: list of fractures in domain in format [[x1, y1, x2, y2], [...], ..., [...]]
@@ -819,9 +1113,11 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     :param export_frac: boolean which exports fractures into the meshed file
     :return:
     """
-    act_frac_sys = np.round(act_frac_sys * 10 ** decimals) * 10 ** (-decimals)
+    act_frac_sys = np.round(act_frac_sys * 10**decimals) * 10 ** (-decimals)
     num_segm_tot = act_frac_sys.shape[0]
-    unique_nodes = np.unique(np.vstack((act_frac_sys[:, :2], act_frac_sys[:, 2:])), axis=0)
+    unique_nodes = np.unique(
+        np.vstack((act_frac_sys[:, :2], act_frac_sys[:, 2:])), axis=0
+    )
     num_nodes_tot = unique_nodes.shape[0]
     f = open(filename, "w+")
 
@@ -845,14 +1141,26 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     ####
     f.write('rsv_layers = {:d};\n'.format(input_data['rsv_layers']))
 
-    f.write('overburden_thickness = {:4.3f};\n'.format(input_data['overburden_thickness']))
+    f.write(
+        'overburden_thickness = {:4.3f};\n'.format(input_data['overburden_thickness'])
+    )
     f.write('overburden_layers = {:d};\n'.format(input_data['overburden_layers']))
-    f.write('underburden_thickness = {:4.3f};\n'.format(input_data['underburden_thickness']))
+    f.write(
+        'underburden_thickness = {:4.3f};\n'.format(input_data['underburden_thickness'])
+    )
     f.write('underburden_layers = {:d};\n'.format(input_data['underburden_layers']))
 
-    f.write('overburden_2_thickness = {:4.3f};\n'.format(input_data['overburden_2_thickness']))
+    f.write(
+        'overburden_2_thickness = {:4.3f};\n'.format(
+            input_data['overburden_2_thickness']
+        )
+    )
     f.write('overburden_2_layers = {:d};\n'.format(input_data['overburden_2_layers']))
-    f.write('underburden_2_thickness = {:4.3f};\n'.format(input_data['underburden_2_thickness']))
+    f.write(
+        'underburden_2_thickness = {:4.3f};\n'.format(
+            input_data['underburden_2_thickness']
+        )
+    )
     f.write('underburden_2_layers = {:d};\n'.format(input_data['underburden_2_layers']))
 
     # Allocate memory for points_created array and counters:
@@ -864,8 +1172,12 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
         # Take two points per segment and write to .geo file:
         # e.g. point: Point(1) = {.1, 0, 0, lc};
         nodes = np.zeros((2,), dtype=int)
-        nodes[0] = np.where(np.logical_and(ii[0] == unique_nodes[:, 0], ii[1] == unique_nodes[:, 1]))[0]
-        nodes[1] = np.where(np.logical_and(ii[2] == unique_nodes[:, 0], ii[3] == unique_nodes[:, 1]))[0]
+        nodes[0] = np.where(
+            np.logical_and(ii[0] == unique_nodes[:, 0], ii[1] == unique_nodes[:, 1])
+        )[0]
+        nodes[1] = np.where(
+            np.logical_and(ii[2] == unique_nodes[:, 0], ii[3] == unique_nodes[:, 1])
+        )[0]
 
         # Check if first point is already created, if not, add it:
         if not points_created[nodes[0]]:
@@ -876,9 +1188,15 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                 dist = dist_to_well(unique_nodes, nodes, 0, wells)
                 if dist < char_len:
                     cell_size_str = 'lc_well'
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(nodes[0] + 1,
-                                                                           unique_nodes[nodes[0], 0],
-                                                                           unique_nodes[nodes[0], 1], z_top, cell_size_str))
+            f.write(
+                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(
+                    nodes[0] + 1,
+                    unique_nodes[nodes[0], 0],
+                    unique_nodes[nodes[0], 1],
+                    z_top,
+                    cell_size_str,
+                )
+            )
 
         if not points_created[nodes[1]]:
             points_created[nodes[1]] = True
@@ -889,12 +1207,22 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                 dist = dist_to_well(unique_nodes, nodes, 1, wells)
                 if dist < char_len:
                     cell_size_str = 'lc_well'
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(nodes[1] + 1,
-                                                                           unique_nodes[nodes[1], 0],
-                                                                           unique_nodes[nodes[1], 1], z_top, cell_size_str))
+            f.write(
+                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, {:s}}};\n'.format(
+                    nodes[1] + 1,
+                    unique_nodes[nodes[1], 0],
+                    unique_nodes[nodes[1], 1],
+                    z_top,
+                    cell_size_str,
+                )
+            )
 
         line_count += 1
-        f.write('Line({:d}) = {{{:d}, {:d}}};\n\n'.format(line_count, nodes[0] + 1, nodes[1] + 1))
+        f.write(
+            'Line({:d}) = {{{:d}, {:d}}};\n\n'.format(
+                line_count, nodes[0] + 1, nodes[1] + 1
+            )
+        )
 
     # Store some internal variables for gmsh (used later after extrude):
     f.write('num_points_frac = newp - 1;\n')
@@ -905,27 +1233,49 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     for ii in range(4):
         # For every corner of the box:
         point_count += 1
-        f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_box}};\n'.format(point_count,
-                                                                          box_data[ii, 0], box_data[ii, 1], z_top))
+        f.write(
+            'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_box}};\n'.format(
+                point_count, box_data[ii, 0], box_data[ii, 1], z_top
+            )
+        )
 
     # Add four lines for each side of the box:
     f.write('\n// Extra lines for boundary of domain:\n')
     line_count += 1
-    f.write('Line({:d}) = {{{:d}, {:d}}};\n'.format(line_count, point_count - 3, point_count - 2))
+    f.write(
+        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
+            line_count, point_count - 3, point_count - 2
+        )
+    )
 
     line_count += 1
-    f.write('Line({:d}) = {{{:d}, {:d}}};\n'.format(line_count, point_count - 2, point_count - 1))
+    f.write(
+        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
+            line_count, point_count - 2, point_count - 1
+        )
+    )
 
     line_count += 1
-    f.write('Line({:d}) = {{{:d}, {:d}}};\n'.format(line_count, point_count - 1, point_count - 0))
+    f.write(
+        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
+            line_count, point_count - 1, point_count - 0
+        )
+    )
 
     line_count += 1
-    f.write('Line({:d}) = {{{:d}, {:d}}};\n'.format(line_count, point_count - 0, point_count - 3))
+    f.write(
+        'Line({:d}) = {{{:d}, {:d}}};\n'.format(
+            line_count, point_count - 0, point_count - 3
+        )
+    )
 
     # Make Curve loop for the boundary:
     f.write('\n// Create line loop for boundary surface:\n')
-    f.write('Curve Loop(1) = {{{:d}, {:d}, {:d}, {:d}}};\n'.format(line_count - 3, line_count - 2,
-                                                                   line_count - 1, line_count))
+    f.write(
+        'Curve Loop(1) = {{{:d}, {:d}, {:d}, {:d}}};\n'.format(
+            line_count - 3, line_count - 2, line_count - 1, line_count
+        )
+    )
     f.write('Plane Surface(1) = {1};\n\n')
     f.write('Curve{1:num_lines_frac} In Surface{1};\n')
 
@@ -934,15 +1284,20 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
         f.write('\n// Extra points to refine the mesh around the well locations:\n')
         for ii in range(len(wells)):
             point_count += 1
-            f.write('Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_well}};\n'.format(point_count,
-                                                                              wells[ii][0], wells[ii][1], z_top))
+            f.write(
+                'Point({:d}) = {{{:8.5f}, {:8.5f}, {:8.5f}, lc_well}};\n'.format(
+                    point_count, wells[ii][0], wells[ii][1], z_top
+                )
+            )
             f.write('Point{' + str(point_count) + '} In Surface{1};\n')
 
     # Extrude model (reservoir) to pseudo-3D (2.5D):
     f.write('\n// Extrude surface with embedded features\n\n')
 
     f.write('// Reservoir\n')
-    f.write('sr[] = Extrude {0, 0, height_res}{ Surface {1}; Layers{rsv_layers}; Recombine;};\n')
+    f.write(
+        'sr[] = Extrude {0, 0, height_res}{ Surface {1}; Layers{rsv_layers}; Recombine;};\n'
+    )
 
     if input_data['overburden_2_layers'] > 0:
         top_idx = 2
@@ -958,29 +1313,35 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     else:
         bottom_idx = 0
 
-    #This list returned by Extrude() contains the "top" of the extruded surface (in `out[0]'),
-    #the newly created volume (in `out[1]') and the tags of the lateral surfaces (in `out[2]', `out[3]', ...).
+    # This list returned by Extrude() contains the "top" of the extruded surface (in `out[0]'),
+    # the newly created volume (in `out[1]') and the tags of the lateral surfaces (in `out[2]', `out[3]', ...).
 
     # reservoir top and bottom
     surf_str_prefix = [''] * 6
-    surf_str = ['']*6
+    surf_str = [''] * 6
     side_idx = 0
     for idx in range(7):
         if idx == 1:  # skip volume
             continue
-        surf_str_prefix[side_idx] = 'Physical Surface('+ str(side_idx + 1) +') = {'
-        if side_idx == 0 and top_idx == 0: # if no overburden then the reservor top is a top boundary
+        surf_str_prefix[side_idx] = 'Physical Surface(' + str(side_idx + 1) + ') = {'
+        if (
+            side_idx == 0 and top_idx == 0
+        ):  # if no overburden then the reservor top is a top boundary
             surf_str[0] += 'sr[' + str(side_idx) + ']'
-        if side_idx == 1 and bottom_idx == 0: # if no underburden then the reservor bottom is a bottom boundary
+        if (
+            side_idx == 1 and bottom_idx == 0
+        ):  # if no underburden then the reservor bottom is a bottom boundary
             surf_str[1] += '1'
         if side_idx > 1:  # lateral boundary
             surf_str[side_idx] += 'sr[' + str(side_idx) + ']'
         side_idx += 1
-    comments_str = ['top','bottom','Y-','X+','Y+','X-']
+    comments_str = ['top', 'bottom', 'Y-', 'X+', 'Y+', 'X-']
 
     if input_data['overburden_layers'] > 0:
         f.write('// Overburden\n')
-        f.write('so[] = Extrude {0, 0, overburden_thickness}{ Surface {sr[0]}; Layers{overburden_layers}; Recombine;};\n')
+        f.write(
+            'so[] = Extrude {0, 0, overburden_thickness}{ Surface {sr[0]}; Layers{overburden_layers}; Recombine;};\n'
+        )
         for side_idx in range(6):
             if side_idx == 0 and top_idx == 1:
                 if surf_str[0] != '':
@@ -992,7 +1353,9 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                 surf_str[side_idx] += 'so[' + str(side_idx) + ']'
     if input_data['underburden_layers'] > 0:
         f.write('// Underburden\n')
-        f.write('su[] = Extrude {0, 0, -underburden_thickness}{ Surface {1}; Layers{underburden_layers}; Recombine;};\n')
+        f.write(
+            'su[] = Extrude {0, 0, -underburden_thickness}{ Surface {1}; Layers{underburden_layers}; Recombine;};\n'
+        )
         for side_idx in range(6):
             if side_idx == 0 and bottom_idx == 1:
                 if surf_str[1] != '':
@@ -1004,7 +1367,9 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                 surf_str[side_idx] += 'su[' + str(side_idx) + ']'
     if input_data['overburden_2_layers'] > 0:
         f.write('// Overburden_2 (without fractures)\n')
-        f.write('so2[] = Extrude {0, 0, overburden_2_thickness}{ Surface {so[0]}; Layers{overburden_2_layers}; Recombine;};\n')
+        f.write(
+            'so2[] = Extrude {0, 0, overburden_2_thickness}{ Surface {so[0]}; Layers{overburden_2_layers}; Recombine;};\n'
+        )
         for side_idx in range(6):
             if side_idx == 0 and top_idx == 2:
                 if surf_str[0] != '':
@@ -1016,7 +1381,9 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
                 surf_str[side_idx] += 'so2[' + str(side_idx) + ']'
     if input_data['underburden_2_layers'] > 0:
         f.write('// Underburden_2 (without fractures)\n')
-        f.write('su2[] = Extrude {0, 0, -underburden_2_thickness}{ Surface {su[0]}; Layers{underburden_2_layers}; Recombine;};\n')
+        f.write(
+            'su2[] = Extrude {0, 0, -underburden_2_thickness}{ Surface {su[0]}; Layers{underburden_2_layers}; Recombine;};\n'
+        )
         for side_idx in range(6):
             if side_idx == 0 and bottom_idx == 2:
                 if surf_str[1] != '':
@@ -1029,56 +1396,76 @@ def create_geo_file(act_frac_sys, filename, decimals, z_top,
     f.write('// Horizontal surfaces\n')
     for side_idx in range(6):
         if surf_str[side_idx] != '':
-            f.write(surf_str_prefix[side_idx] + surf_str[side_idx] + '}; // ' + comments_str[side_idx] + '\n')
+            f.write(
+                surf_str_prefix[side_idx]
+                + surf_str[side_idx]
+                + '}; // '
+                + comments_str[side_idx]
+                + '\n'
+            )
 
     f.write('\n// Extrude fractures\n')
     frac_idx = 0
     for ii in range(act_frac_sys.shape[0]):
         f.write('\n// Fracture {{{:d}}}\n'.format(ii + 1))
         f.write('// Reservoir layers\n')
-        f.write('fr[] = Extrude {{0, 0, height_res}}{{ Line {{{:d}}}; Layers{{rsv_layers}}; Recombine;}};\n'.format(ii + 1))
+        f.write(
+            'fr[] = Extrude {{0, 0, height_res}}{{ Line {{{:d}}}; Layers{{rsv_layers}}; Recombine;}};\n'.format(
+                ii + 1
+            )
+        )
         if export_frac:
             f.write('Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx))
             frac_idx += 1
 
         if input_data['overburden_layers'] > 0:
             f.write('// Overburden\n')
-            f.write('fo[] = Extrude {0, 0, overburden_thickness}{ Line {fr[0]}; Layers{overburden_layers}; Recombine;};\n')
+            f.write(
+                'fo[] = Extrude {0, 0, overburden_thickness}{ Line {fr[0]}; Layers{overburden_layers}; Recombine;};\n'
+            )
             if export_frac:
-                f.write('Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx))
+                f.write(
+                    'Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx)
+                )
                 frac_idx += 1
 
         if input_data['underburden_layers'] > 0:
             f.write('// Underburden\n')
             ss = str(ii + 1)
-            f.write('fu[] = Extrude {0, 0, -underburden_thickness}{ Line {' + ss + '}; Layers{underburden_layers}; Recombine;};\n')
+            f.write(
+                'fu[] = Extrude {0, 0, -underburden_thickness}{ Line {'
+                + ss
+                + '}; Layers{underburden_layers}; Recombine;};\n'
+            )
             if export_frac:
-                f.write('Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx))
+                f.write(
+                    'Physical Surface({:d}) = {{news - 1}};\n'.format(90000 + frac_idx)
+                )
                 frac_idx += 1
 
     f.write('\n')
     f.write('num_surfaces_before = news;\n')
     f.write('num_surfaces_after = news - 1;\n')
     f.write('num_surfaces_fracs = num_surfaces_after - num_surfaces_before;\n\n')
-    
-    f.write('//Reservoir\n');
+
+    f.write('//Reservoir\n')
     vol_idx = 1
     f.write('Physical Volume("matrix", 9991) = {' + str(vol_idx) + '};\n')
     vol_idx += 1
     if input_data['overburden_layers'] > 0:
-        f.write('//Overburden\n');
+        f.write('//Overburden\n')
         f.write('Physical Volume("matrix_ov", 9992) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
     if input_data['underburden_layers'] > 0:
-        f.write('//Underburden\n');
+        f.write('//Underburden\n')
         f.write('Physical Volume("matrix_un", 9993) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
     if input_data['overburden_2_layers'] > 0:
-        f.write('//Overburden2\n');
+        f.write('//Overburden2\n')
         f.write('Physical Volume("matrix_ov2", 9994) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
     if input_data['underburden_2_layers'] > 0:
-        f.write('//Underburden2\n');
+        f.write('//Underburden2\n')
         f.write('Physical Volume("matrix_un2", 9995) = {' + str(vol_idx) + '};\n')
         vol_idx += 1
 

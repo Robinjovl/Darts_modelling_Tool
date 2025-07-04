@@ -57,7 +57,7 @@ class Compositional(PhysicsBase):
         # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
-        self.thermal = (state_spec > PhysicsBase.StateSpecification.P)
+        self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
         # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
         variables = ['pressure'] + components[:-1]

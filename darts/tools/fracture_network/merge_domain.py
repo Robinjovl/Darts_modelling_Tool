@@ -4,6 +4,7 @@ Function that merges the domain partitions
 
 import numpy as np
 
+
 def merge_domain(act_frac_sys_list, frac_set_vec, partition_lines, number_partitions_x):
     """
 
@@ -34,26 +35,48 @@ def merge_domain(act_frac_sys_list, frac_set_vec, partition_lines, number_partit
         # Each line will have one constant value, either on the x- or y-axis.
         const_value_par_line = partition_line[direction]
 
-        inds_left = np.where(np.abs(act_frac_sys[:, direction + 2] - const_value_par_line) <= merge_tolerance)
-        inds_right = np.where(np.abs(act_frac_sys[:, direction] - const_value_par_line) <= merge_tolerance)
+        inds_left = np.where(
+            np.abs(act_frac_sys[:, direction + 2] - const_value_par_line)
+            <= merge_tolerance
+        )
+        inds_right = np.where(
+            np.abs(act_frac_sys[:, direction] - const_value_par_line) <= merge_tolerance
+        )
         inds_afs = np.hstack((inds_left, inds_right))
 
         segments_left = act_frac_sys[inds_left]
         segments_right = act_frac_sys[inds_right]
 
-        segments_left_slope = np.abs((segments_left[:, 1] - segments_left[:, 3]) / (segments_left[:, 0] - segments_left[:, 2]))
-        segments_right_slope = np.abs((segments_right[:, 1] - segments_right[:, 3]) / (segments_right[:, 0] - segments_right[:, 2]))
+        segments_left_slope = np.abs(
+            (segments_left[:, 1] - segments_left[:, 3])
+            / (segments_left[:, 0] - segments_left[:, 2])
+        )
+        segments_right_slope = np.abs(
+            (segments_right[:, 1] - segments_right[:, 3])
+            / (segments_right[:, 0] - segments_right[:, 2])
+        )
         # Delete intersection information, it is not needed and stands in the way of merging segments.
-        segments_left = np.hstack((segments_left, segments_left_slope.reshape((len(segments_left_slope), 1))))
-        segments_right = np.hstack((segments_right, segments_right_slope.reshape((len(segments_right_slope), 1))))
+        segments_left = np.hstack(
+            (segments_left, segments_left_slope.reshape((len(segments_left_slope), 1)))
+        )
+        segments_right = np.hstack(
+            (
+                segments_right,
+                segments_right_slope.reshape((len(segments_right_slope), 1)),
+            )
+        )
 
         # Grouping the left and right part or bottom and top part of the newly merged fracture together.
         if segments_left.shape[0] >= segments_right.shape[0]:
             restored_fracs = np.zeros((segments_left.shape[0], 4))
             i = 0
             for segm in segments_left:
-                inds_val = np.where(segments_right[:, other_dir] == segm[other_dir + 2])[0]
-                inds_slope = np.where(np.abs(segments_right[:, 4] - segm[4] < merge_tolerance))[0]
+                mask_val = segments_right[:, other_dir] == segm[other_dir + 2]
+                inds_val = np.where(mask_val)[0]
+
+                mask_slope = np.abs(segments_right[:, 4] - segm[4] < merge_tolerance)
+                inds_slope = np.where(mask_slope)[0]
+
                 inds_restore = np.intersect1d(inds_val, inds_slope)
                 if len(inds_restore) == 1:
                     restored_fracs[i, :2] = segm[:2]
@@ -64,14 +87,17 @@ def merge_domain(act_frac_sys_list, frac_set_vec, partition_lines, number_partit
             restored_fracs = np.zeros((segments_right.shape[0], 4))
             i = 0
             for segm in segments_right:
-                inds_val = np.where(segments_left[:, other_dir + 2] == segm[other_dir])[0]
-                inds_slope = np.where(np.abs(segments_left[:, 4] - segm[4] < merge_tolerance))[0]
+                mask_val = segments_left[:, other_dir + 2] == segm[other_dir]
+                inds_val = np.where(mask_val)[0]
+
+                mask_slope = np.abs(segments_left[:, 4] - segm[4] < merge_tolerance)
+                inds_slope = np.where(mask_slope)[0]
+
                 inds_restore = np.intersect1d(inds_val, inds_slope)
                 if len(inds_restore) == 1:
                     restored_fracs[i, :2] = segments_left[inds_restore, :2]
                     restored_fracs[i, 2:] = segm[2:4]
                     i += 1
-
 
         # Deleting the previous fractures that are now merged and adding the fractures to act_frac_sys.
         act_frac_sys = np.delete(act_frac_sys, inds_afs, axis=0)

@@ -219,6 +219,6 @@ class PropertyOperators(OperatorsBase):
 
         for i, prop in enumerate(self.props_name):
             output = self.props[prop]()
-            values[i] = output if not np.isnan(output) else 0.
+            values[i] = output if not np.isnan(output) else 0.0
 
         return 0

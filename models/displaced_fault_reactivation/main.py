@@ -604,7 +604,38 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
     plt.close(fig)
     # plt.show()
 
-if __name__ == '__main__':
+def run_tests():
+    test_args_fault = []
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -250.0},
+              'friction_law': 'static',
+              'mesh_file': 'meshes/new_setup_coarse.geo',
+              'cache_discretizer': False}
+    config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+    test_args_fault += [config]
+    config = {'mode': 'quasi_static',
+              'timesteps': [1.0],
+              'depletion': {'mode': 'uniform', 'value': -172.4},  # -172.685 is more precise, requires finer mesh
+              'friction_law': 'slip_weakening',
+              'mesh_file': 'meshes/new_setup_coarse.geo',
+              'cache_discretizer': False}
+    config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+    test_args_fault += [config]
+
+    rcode = 0
+    failed_tests = []
+    for config_i in test_args_fault:
+        rcode += run_test(args=config_i, platform='cpu')[0]
+        if rcode != 0:
+            failed_tests += [config_i]
+    if rcode != 0:
+        print('Failed tests configs: ', failed_tests)
+        print('Tests failed:', len(failed_tests))
+    else:
+        print('All tests passed successfully!')
+
+def run_all():
     cases = []
 
     config = {'mode': 'mixed',
@@ -654,3 +685,7 @@ if __name__ == '__main__':
     # labels = ['DARTS: slip_weakening']
     # output_directory = 'sol_mixed_uniform_slip_weakening'
     # plot_profiles(data_folder=output_directory, labels=labels, analytics=None, animate=True)
+
+if __name__ == '__main__':
+    run_tests()
+    #run_all()

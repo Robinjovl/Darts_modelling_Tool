@@ -19,17 +19,13 @@ def find_parametric_intersect(ii_frac, jj_frac):
     :return s: Parametric distance along fracture 2 value between 0 and 1
     :return int_coord: Coordinates of the intersection
     """
-    P_0 = np.array([ii_frac[0],
-                    ii_frac[1]])
+    P_0 = np.array([ii_frac[0], ii_frac[1]])
 
-    P = np.array([ii_frac[2] - ii_frac[0],
-                  ii_frac[3] - ii_frac[1]])
+    P = np.array([ii_frac[2] - ii_frac[0], ii_frac[3] - ii_frac[1]])
 
-    Q_0 = np.array([jj_frac[0],
-                    jj_frac[1]])
+    Q_0 = np.array([jj_frac[0], jj_frac[1]])
 
-    Q = np.array([jj_frac[2] - jj_frac[0],
-                  jj_frac[3] - jj_frac[1]])
+    Q = np.array([jj_frac[2] - jj_frac[0], jj_frac[3] - jj_frac[1]])
 
     A = np.zeros((2, 2))
     A[:, 0] = P

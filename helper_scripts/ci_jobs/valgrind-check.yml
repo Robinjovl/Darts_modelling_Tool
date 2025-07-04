@@ -1,0 +1,39 @@
+valgrind-check:
+    stage: test
+    tags:
+    - linux
+    image: python:3.10
+    timeout: 2h
+    variables:
+        PY_VER: '3.10'
+        PY_SUF: 'cp310-cp310'
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    needs:
+        - build-linux-3.10-valgrind
+    before_script:
+        - export PATH="/opt/python/$PY_SUF/bin:$PATH"
+        # for gmsh
+        - apt-get update -qq && apt-get install -y -qq libglu1-mesa-dev 
+        - apt-get update -qq && apt-get install -y -qq libxcursor1      
+        - apt-get update -qq && apt-get install -y -qq libxinerama1     
+        # install valgrind
+        - apt-get update -qq && apt-get install -y -qq valgrind
+        - export PYTHONUNBUFFERED=1
+        - python -m pip install --upgrade pip
+        # remove flash installed by its pipelines, and get one from pip
+        - pip uninstall open-darts-flash
+        - pip install --upgrade --upgrade-strategy eager ./dist/*.whl
+    script:
+        - echo ">>> Running Valgrind check script <<<"
+        - python helper_scripts/valgrind_check.py
+    artifacts:
+      paths:
+        - models/_valgrind_logs/*.log
+        - models/_valgrind_logs/*.txt
+      when: always
+      expire_in: 1 week 

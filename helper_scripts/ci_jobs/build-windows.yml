@@ -1,0 +1,113 @@
+.build-windows:
+    stage: build
+    # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
+    tags: 
+        - windows-shell
+    script:
+        # Load MS Build Tools environment to the powershell
+        - D:\BuildTools\build_vars.ps1
+        # Add python folder to PATH
+        - $env:PATH +=";" + $env:PYTHONPATH + ";" + $env:PYTHONPATH + "\Scripts"
+        - $env:PY_SUFFIX=python.exe -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"
+        # make sure wheel package could be installed
+        - pip install wheel
+        # copy VS redist libraries 
+        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
+        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
+        - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
+        - echo "ODLS:" $env:ODLS
+        # compile and make the wheel
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+    artifacts:
+      paths:
+        - '*.log'
+        - '.\dist\*.whl'
+      expire_in: 1 week
+      when: always
+
+build-windows-3.12:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.12'
+        PYTHONPATH: 'D:\Python312'        
+        ODLS: '-a' 
+        
+build-windows-3.11:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.11'
+        PYTHONPATH: 'D:\Python311'        
+        ODLS: '-a' 
+
+build-windows-3.10:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.10'
+        PYTHONPATH: 'D:\Python310'
+        ODLS: '-a'
+ 
+build-windows-3.9:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.9'
+        PYTHONPATH: 'D:\Python39'        
+        ODLS: '-a'
+        
+build-windows-3.12-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.12'
+        PYTHONPATH: 'D:\Python312'        
+        ODLS: ''         # build with open-darts linear solvers
+         
+build-windows-3.11-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.11'
+        PYTHONPATH: 'D:\Python311'        
+        ODLS: ''         # build with open-darts linear solvers
+                
+build-windows-3.10-ODLS:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.10'
+        PYTHONPATH: 'D:\Python310'
+        ODLS: ''         # build with open-darts linear solvers
+                
+ 
+build-windows-3.9-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-windows
+    variables:
+        PY_VER: '3.9'
+        PYTHONPATH: 'D:\Python39'        
+        ODLS: ''         # build with open-darts linear solvers 
