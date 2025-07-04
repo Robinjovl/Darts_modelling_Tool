@@ -16,16 +16,17 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nc = property_container.nc
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
+        self.min_z = property_container.min_z if hasattr(property_container, 'min_z') else 0.
 
         self.extrapolation_flag = extrapolation_flag
         self.dz = dz
-        assert not extrapolation_flag or dz is not None, "Please provide dz for extrapolation"
+        assert self.nc <= 2 or not extrapolation_flag or dz is not None, "Please provide dz for extrapolation"
 
     def apply_extrapolation(self, state, values):
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1:self.nc], 1 - np.sum(state[1:self.nc]))
 
-        if zc[-1] < -self.dz / 10 and self.extrapolation_flag:
+        if zc[-1] < -10*self.min_z and self.extrapolation_flag:
             self.extrapolate(state, values)
             return 1
         else:
@@ -48,21 +49,23 @@ class OperatorsBase(operator_set_evaluator_iface):
             p = vec[0]
             z = vec[1:].copy()
 
-        d = z.size
-        # dz = abs(1.0 - z.sum())
+        zero_comps = [i for i in range(self.nc-1) if z[i] <= self.property.min_z + 1e-15]
+        nonzero_comps = [1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc-1)]
+        d = np.sum(nonzero_comps)
 
         # Build candidate points by subtracting dz along each axis and uniformly
-        candidates = []
-        for i in range(d):
-            zp = z.copy()
-            zp[i] -= self.dz
-            candidates.append(zp)
-        candidates.append(z - self.dz)
+        supporting_points = []
+        for i in range(self.nc-1):
+            if nonzero_comps[i]:
+                zp = z.copy()
+                zp[i] -= self.dz
+                supporting_points.append(zp)
+        supporting_points.append([z[i] - self.dz if nonzero_comps[i] else z[i] for i in range(self.nc-1)])
 
         # Gather valid reference points
         zps_list = []
         vals_list = []
-        for zp in candidates:
+        for zp in supporting_points:
             if 1: #(zp >= -1e-15).all() and zp.sum() <= 1.0+1e-15:
                 if self.thermal:
                     ref_state = value_vector(np.concatenate(([p], zp, [T])))
@@ -79,6 +82,7 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         # Build and solve B · X = vals, where B = [zps | 1]
         B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
+        B = np.delete(B, zero_comps, axis=1)
         X = np.linalg.solve(B, vals)  # shape (d+1, n_ops)
 
         # Separate coefficients
@@ -86,7 +90,8 @@ class OperatorsBase(operator_set_evaluator_iface):
         c = X[-1, :]  # shape (n_ops,)
 
         # Extrapolate values
-        ext = a.T.dot(z) + c
+        z_nonzero = z[z > self.min_z + 1e-15]
+        ext = a.T.dot(z_nonzero) + c
 
         # Write back into values array
         out = np.array(values, copy=False)
