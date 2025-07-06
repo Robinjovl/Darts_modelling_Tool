@@ -9,7 +9,8 @@ from darts.models.darts_model import DartsModel
 
 def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
                                 coupled_model: DartsModel, max_ts_idx: int = None,
-                                x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap: str = "jet"):
+                                x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap: str = "jet",
+                                save_as = 'png'):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -24,6 +25,8 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     :param x_axis: "simulation_time" or "time_step_index"
     :type x_axis: str
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
+    :param save_as: The extension of the image files that will be saved
+    :type save_as: str
     """
     main_dir = os.path.join(coupled_model.output_folder, 'heat_maps')
 
@@ -125,7 +128,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Pressure [bar]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
     plt.savefig(file_address)
     plt.show()
 
@@ -171,7 +174,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -213,7 +216,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Temperature [\u00B0C]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Temperature.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Temperature." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -254,7 +257,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas saturation [-]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation." + save_as)
     plt.savefig(file_address)
     plt.show()
 
@@ -296,7 +299,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_a saturation [-]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation.png")
+        file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -338,7 +341,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_b saturation [-]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -381,7 +384,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -425,7 +428,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
 
             plt.tight_layout()
-            file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase.png")
+            file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase." + save_as)
             plt.savefig(file_address)
             plt.show()
 
@@ -471,7 +474,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
                 cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=14)
 
                 plt.tight_layout()
-                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a.png")
+                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a." + save_as)
                 plt.savefig(file_address)
                 plt.show()
 
@@ -517,7 +520,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
                 cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=14)
 
                 plt.tight_layout()
-                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b.png")
+                file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b." + save_as)
                 plt.savefig(file_address)
                 plt.show()
 
@@ -562,7 +565,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas density [kg/m$^3$]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
     plt.savefig(file_address)
     plt.show()
 
@@ -608,7 +611,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -654,7 +657,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -700,7 +703,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -745,7 +748,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas viscosity [cP]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
     plt.savefig(file_address)
     plt.show()
 
@@ -791,7 +794,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -837,7 +840,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -883,7 +886,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
-        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity.png")
+        file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as)
         plt.savefig(file_address)
         plt.show()
 
@@ -928,7 +931,7 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Gas velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
     plt.savefig(file_address)
     plt.show()
 
@@ -973,6 +976,6 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     cbar.set_label('Liquid velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity.png")
+    file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity." + save_as)
     plt.savefig(file_address)
     plt.show()
