@@ -719,29 +719,36 @@ class Pipe:
 
         return phase_velocities, phase_velocities_derivatives
 
-    def evaluate_upwinded_phase_specific_potential_energy(self, cpp_well, well_phase_v):
-        specific_potential_energy = cpp_well.specific_potential_energy
-
-        vG = well_phase_v[:self.geometry.num_interfaces]
-        vL = well_phase_v[self.geometry.num_interfaces:]
-
-        specific_potential_energy_up_gas = np.zeros(self.geometry.num_interfaces)
-        specific_potential_energy_up_liquid = np.zeros(self.geometry.num_interfaces)
-
-        for j in range(self.geometry.num_interfaces):
-            if vG[j] > 0:
-                specific_potential_energy_up_gas[j] = specific_potential_energy[j]
-
-            elif vG[j] < 0:
-                specific_potential_energy_up_gas[j] = specific_potential_energy[j + 1]
-
-            if vL[j] > 0:
-                specific_potential_energy_up_liquid[j] = specific_potential_energy[j]
-
-            elif vL[j] < 0:
-                specific_potential_energy_up_liquid[j] = specific_potential_energy[j + 1]
-
-        phase_specific_potential_energy_up = np.concatenate((specific_potential_energy_up_gas,
-                                                             specific_potential_energy_up_liquid))
-
-        return phase_specific_potential_energy_up
+    # def evaluate_upwinded_phase_specific_potential_energy(self, cpp_well, well_phase_v):
+    #     specific_potential_energy = cpp_well.specific_potential_energy
+    #
+    #     vG = well_phase_v[:self.geometry.num_interfaces]
+    #     vL = well_phase_v[self.geometry.num_interfaces:]
+    #
+    #     specific_potential_energy_up_gas = np.zeros(self.geometry.num_interfaces)
+    #     specific_potential_energy_up_liquid = np.zeros(self.geometry.num_interfaces)
+    #
+    #     for j in range(self.geometry.num_interfaces):
+    #         if vG[j] > 0:
+    #             specific_potential_energy_up_gas[j] = specific_potential_energy[j]
+    #
+    #         elif vG[j] < 0:
+    #             specific_potential_energy_up_gas[j] = specific_potential_energy[j + 1]
+    #
+    #         if vL[j] > 0:
+    #             specific_potential_energy_up_liquid[j] = specific_potential_energy[j]
+    #
+    #         elif vL[j] < 0:
+    #             specific_potential_energy_up_liquid[j] = specific_potential_energy[j + 1]
+    #
+    #     # phase_specific_potential_energy_up = np.concatenate((specific_potential_energy_up_gas,
+    #     #                                                      specific_potential_energy_up_liquid))
+    #
+    #     specific_potential_energy_up_gas = 9.80665 * 1e-3 * (self.geometry.pipe_length - self.geometry.z_interfaces - self.geometry.z[0]) * np.cos(self.geometry.inclination_angle_radian)
+    #
+    #     specific_potential_energy_up_liquid = 9.80665 * 1e-3 * (self.geometry.pipe_length - self.geometry.z_interfaces - self.geometry.z[0]) * np.cos(self.geometry.inclination_angle_radian)
+    #
+    #     phase_specific_potential_energy_up = np.concatenate((specific_potential_energy_up_gas,
+    #                                                          specific_potential_energy_up_liquid))
+    #
+    #     return phase_specific_potential_energy_up

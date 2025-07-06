@@ -279,7 +279,7 @@ public:
   /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);                       
   std::vector<value_t> mob_multiplier;
   /// [n_blocks] array of specific potential energy of mesh blocks
-  std::vector<value_t> specific_potential_energy;
+  std::vector<value_t> cells_spe;
                                         
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;

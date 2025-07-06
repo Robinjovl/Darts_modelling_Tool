@@ -170,8 +170,9 @@ public:
 
   std::vector<value_t> phase_vels;                             // phase velocities for DFM wells
   std::vector<value_t> phase_vels_ders;                        // phase velocities derivatives for DFM wells
-  std::vector<value_t> specific_potential_energy;              // specific potential energy for DFM segments
-  std::vector<value_t> phase_specific_potential_energy_up;     // phase specific potential energy upwinded over each DFM connection
+  std::vector<value_t> segments_spe;              // specific potential energy for DFM segments
+  std::vector<value_t> conns_spe;                 // specific potential energy for DFM connections
+  //std::vector<value_t> phase_specific_potential_energy_up;     // phase specific potential energy upwinded over each DFM connection
 
   operator_set_evaluator_iface* rate_evaluator;
   operator_set_gradient_evaluator_iface *rate_etor_ad;  //adjoint method
