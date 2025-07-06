@@ -1,3 +1,14 @@
+"""
+Differences between this script and the DFM velocity evaluator in the standalone well model:
+- Here, the reference depth for potential energy evaluation is the centroid of the bottom segment, in DWell
+  it is the exterface of the bottom segment. I checked this for the validated single-phase thermal scenario
+  in DWell, it gave the same solutions.
+- Here, there is no potential energy flux at the perforation because perforation is defined at the same depth as that of
+  centroid of the bottom segment (z = 0). In the standalone well model, potential energy flux is defined at perforations,
+  but when I removed perforation potential energy and also used interface potential energy instead of upwinded
+  potential energy, it gave the same solutions as that of the validated model.
+"""
+
 import math
 from typing import Union
 
