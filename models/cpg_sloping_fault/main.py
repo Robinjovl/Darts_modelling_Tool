@@ -48,7 +48,7 @@ def run(rsv : str, physics_type : str, case: str, out_dir: str, export_vtk=True,
     if rsv == 'cpg': # cpg_reservoir
         m.init_reservoir(arrays=arrays)
     elif rsv == 'struct': # struct_reservoir
-        m.init_struct_reservoir()
+        m.init_struct_reservoir(arrays=arrays)
         # these functions are not implemented for struct reservoir, so suppress them
         m.reservoir.save_grdecl = lambda arrays_save, fname: None
         m.reservoir.create_vtk_wells = lambda output_directory: None
@@ -274,23 +274,23 @@ if __name__ == '__main__':
 
     rsv_list = []
     rsv_list += ['struct']
-    rsv_list += ['cpg']
+    # rsv_list += ['cpg']
 
     physics_list = []
     physics_list += ['geothermal']
     #physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
-    #cases_list += ['generate_51x51x1_no_burden']
-    #cases_list += ['generate_51x51x1_faultmult']
-    #cases_list += ['generate_100x100x100']
-    #cases_list += ['case_40x40x10']
+    # cases_list += ['generate_5x3x4']
+    # cases_list += ['generate_51x51x1']
+    # cases_list += ['generate_51x51x1_no_burden']
+    # cases_list += ['generate_51x51x1_faultmult']
+    # cases_list += ['generate_100x100x100']
+    cases_list += ['case_40x40x10']
 
     well_controls = []
-    #well_controls += ['wrate']
-    well_controls += ['wbhp']
+    well_controls += ['wrate']
+    # well_controls += ['wbhp']
     #well_controls += ['wperiodic']
 
     for rsv in rsv_list:

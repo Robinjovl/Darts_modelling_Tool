@@ -89,13 +89,14 @@ class Model_CPG(CICDModel):
                                            'rock_conduction': make_full_cube(self.reservoir.conduction.copy(), l2g,
                                                                              g2l)})
 
-    def init_struct_reservoir(self):
+    def init_struct_reservoir(self, arrays=None):
         # no over/under burden layers
         from darts.reservoirs.struct_reservoir import StructReservoir
         if self.idata.geom.burden_layers > 0:
             # add more layers above and below the reservoir
             burden_layers = self.idata.geom.burden_layers
             nx, ny = self.idata.geom.nx, self.idata.geom.ny
+            nz = self.idata.geom.nz
             size = nx * ny * burden_layers
 
             # Create burden properties once and reuse
@@ -104,6 +105,11 @@ class Model_CPG(CICDModel):
             rock = self.idata.rock
             geom = self.idata.geom
             total_cells = geom.nx * geom.ny * geom.nz
+            if arrays is not None:
+                rock.permx =arrays['PERMX']
+                rock.permy = arrays['PERMY']
+                rock.permz =arrays['PERMZ']
+                rock.poro =arrays['PORO']
 
             def expand_if_scalar(prop):
                 if np.isscalar(prop):
@@ -125,7 +131,7 @@ class Model_CPG(CICDModel):
             dz_additions = np.array([120, 60, 40, 10])
             geom.dz = np.concatenate([
                 dz_additions,
-                geom.dz,
+                geom.dz if not np.isscalar(geom.dz) else np.array([geom.dz]*nz),
                 dz_additions[::-1]  # Reverse for underburden
             ])
         self.reservoir = StructReservoir(self.timer, nx=self.idata.geom.nx, ny=self.idata.geom.ny,

@@ -37,7 +37,7 @@ class ModelGeothermal(Model_CPG):
             else:
                 global_to_local = self.reservoir.discr_mesh.global_to_local
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        global_to_local=global_to_local ,
+                                                                        # global_to_local=global_to_local ,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
