@@ -55,6 +55,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vecto
   discr = nullptr;
 
   init_base(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
+  this->expose_jacobian();
 
   return 0;
 }
@@ -284,7 +285,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
 	X_init.resize(n_vars * mesh->n_blocks);
 	PV.resize(mesh->n_blocks);
@@ -292,8 +292,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	darcy_fluxes.resize(mesh->n_conns);
 	structural_movement_fluxes.resize(mesh->n_conns);
@@ -316,32 +316,35 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	darcy_velocities.resize(ND * mesh->n_matrix);
 
 	Xn_ref = Xref = Xn = X = X_init;
-	for (index_t i = 0; i < mesh->n_blocks; i++)
+	for (index_t i = 0; i < mesh->n_res_blocks; i++)
 	{
 	  // reference
 	  Xref[n_vars * i + P_VAR] = Xn_ref[n_vars * i + P_VAR] = mesh->ref_pressure[i];
 	  // initial
-	  X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-	  for (uint8_t c = 0; c < nc - 1; c++)
+	
+	  for (uint8_t ii = 0; ii < NE; ii++)
 	  {
-		  X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
+		  X_init[n_vars * i + P_VAR + ii] = mesh->initial_state[i * NE + ii];
 	  }
 	  for (uint8_t d = 0; d < ND; d++)
 	  {
 		  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND * i + d];
 	  }
-
-	  PV[i] = mesh->volume[i] * mesh->poro[i];
-	  RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
 	}
+	X_init.resize(n_vars * mesh->n_blocks);
+
+	for (index_t i = 0; i < mesh->n_blocks; i++)
+	{
+		PV[i] = mesh->volume[i] * mesh->poro[i];
+	  	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
+	}
+
 	if (THERMAL)
 	{
 	  for (index_t i = 0; i < mesh_->n_blocks; i++)
 	  {
 		// reference
 		Xref[n_vars * i + T_VAR] = Xn_ref[n_vars * i + T_VAR] = mesh->ref_temperature[i];
-		// initial
-		X_init[n_vars * i + T_VAR] = mesh->temperature[i];
 	  }
 	}
 
@@ -555,7 +558,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
   const value_t *poro = mesh->poro.data();
   const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
   const value_t *hcap = mesh->heat_capacity.data();
-  const value_t *th_poro = mesh->th_poro.data();
+  const std::vector<value_t>& th_poro = mesh->th_poro;
   // Jacobian as a BCSR matrix
   value_t *Jac = jacobian->get_values();
   index_t *diag_ind = jacobian->get_diag_ind();
@@ -567,9 +570,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 
 #ifdef _OPENMP
   //#pragma omp parallel reduction (max: CFL_max)
+  if (!row_thread_starts)
+  {
+	  std::cout<<"row_thread_starts are not initialized! Check that linear solvers were compiled with OpenMP\n";
+	  exit(1);
+  }
 #pragma omp parallel
   {
     int id = omp_get_thread_num();
+
     index_t start = row_thread_starts[id];
     index_t end = row_thread_starts[id + 1];
 
@@ -647,31 +656,27 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  /*value_t trans_mult = 1;
 		  value_t trans_mult_der_i[N_STATE];
 		  value_t trans_mult_der_j[N_STATE];
-		  if (params->trans_mult_exp > 0 && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
+		  if (params->enable_permporo && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
 		  {
-			  // Calculate transmissibility multiplier:
-			  phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-			  phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+			// Calculate transmissibility multiplier:
+			mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+			mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
-			  // Take average interface porosity:
-			  phi_avg = (phi_i + phi_j) * 0.5;
-			  phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-			  trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-			  for (v = 0; v < N_STATE; v++)
-			  {
-				  trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_STATE + v];
-				  trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_STATE + v];
-			  }
-			  trans_mult = pow(phi_avg, params->trans_mult_exp);
+			// Take average interface porosity:
+			trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
+			for (uint8_t v = 0; v < N_VARS; v++)
+			{
+			  trans_mult_der_i[v] = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+			  trans_mult_der_j[v] = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
+			}
 		  }
 		  else
 		  {
-			  for (v = 0; v < N_STATE; v++)
-			  {
-				  trans_mult_der_i[v] = 0;
-				  trans_mult_der_j[v] = 0;
-			  }
+			for (v = 0; v < N_STATE; v++)
+			{
+				trans_mult_der_i[v] = 0;
+				trans_mult_der_j[v] = 0;
+			}
 		  }*/
 		  nebr_jac_idx = csr_idx_end;
 		  // [1] fluid flux evaluation q = -Kn * \nabla p & biot flux qb = u * n
@@ -867,8 +872,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * Xn[r_ind + T2U[v]]);
-						  Jac[l_ind1 + T2U[v]] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] * op_vals_arr[i * N_OPS + RE_INTER_OP];
+							  (op_vals_arr[i * N_OPS + TEMP_OP] * X[r_ind + T2U[v]] - op_vals_arr_n[i * N_OPS + TEMP_OP] * Xn[r_ind + T2U[v]]);
+						  Jac[l_ind1 + T2U[v]] -= hcap[i] * biot_vol_strain_tran[r_ind1 + v] * op_vals_arr[i * N_OPS + TEMP_OP];
 					  }
 
 					  // heat conduction
@@ -932,7 +937,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 					  for (v = 0; v < NT; v++)
 					  {
 						  RHS[l_ind] -= hcap[i] * biot_vol_strain_tran[r_ind + v] *
-							  (op_vals_arr[i * N_OPS + RE_INTER_OP] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + RE_INTER_OP] * cur_bc_prev[BC2U[v]]);
+							  (op_vals_arr[i * N_OPS + TEMP_OP] * cur_bc[BC2U[v]] - op_vals_arr_n[i * N_OPS + TEMP_OP] * cur_bc_prev[BC2U[v]]);
 					  }
 				  }
 			  }
@@ -1056,7 +1061,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
 		  // [7] add fluid heat conduction
 		  /*if (THERMAL)
 		  {
-			  t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
+			  t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
 			  gamma_t_diff = tranD[conn_id] * dt * t_diff;
 
 			  if (t_diff < 0)
@@ -1174,15 +1179,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t d
       // + rock energy (no rock compressibility included in these computations)
       if (THERMAL && !FIND_EQUILIBRIUM)
       {
-        RHS[i * N_VARS + T_VAR] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + RE_INTER_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+        RHS[i * N_VARS + T_VAR] += V[i] * ((1.0 - phi) * op_vals_arr[i * N_OPS + TEMP_OP] - (1.0 - phi_n) * op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
         for (v = 0; v < NE; v++)
         {
-          Jac[diag_idx + T_VAR * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i];
+          Jac[diag_idx + T_VAR * N_VARS + v] +=  V[i] * (1.0 - phi) * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
         } // end of fill offdiagonal part + contribute to diagonal
 
-		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
-		//Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i];
+		Jac[diag_idx + T_VAR * N_VARS + P_VAR] -= V[i] * comp_mult * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
+		Jac[diag_idx + T_VAR * N_VARS + T_VAR] += V[i] * th_poro[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i];
       }
 
       // calc CFL for reservoir cells, not connected with wells
@@ -1615,7 +1620,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		converged *= 1;
 	}
 
-	dev_u = dev_p = dev_e = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
+	dev_u = dev_p = dev_e = std::numeric_limits<value_t>::infinity();
 	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
 
 	if (!converged)
@@ -2217,7 +2222,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

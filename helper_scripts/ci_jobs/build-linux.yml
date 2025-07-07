@@ -1,0 +1,88 @@
+include:
+  - local: 'helper_scripts/ci_jobs/build-linux-base.yml'
+
+build-linux-3.12:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1" 
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.12'        # for python image selection in .build-linux
+        PY_SUF: 'cp312-cp312' # for python path selection in .build-linux-dockcross
+        ODLS: '-a'
+
+build-linux-3.11:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1" 
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.11'        # for python image selection in .build-linux
+        PY_SUF: 'cp311-cp311' # for python path selection in .build-linux-dockcross
+        ODLS: '-a'
+
+build-linux-3.10:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.10'        # for python image selection in .build-linux
+        PY_SUF: 'cp310-cp310' # for python path selection in .build-linux-dockcross
+        ODLS: '-a'
+        
+build-linux-3.9: 
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1" 
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.9'       # for python image selection in .build-linux
+        PY_SUF: 'cp39-cp39' # for python path selection in .build-linux-dockcross
+        ODLS: '-a'
+
+build-linux-3.12-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.12'        # for python image selection in .build-linux
+        PY_SUF: 'cp312-cp312' # for python path selection in .build-linux-dockcross
+        ODLS: ''              # build with open-darts linear solvers
+        
+build-linux-3.11-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.11'        # for python image selection in .build-linux
+        PY_SUF: 'cp311-cp311' # for python path selection in .build-linux-dockcross
+        ODLS: ''              # build with open-darts linear solvers
+        
+build-linux-3.10-ODLS:
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.10'        # for python image selection in .build-linux
+        PY_SUF: 'cp310-cp310' # for python path selection in .build-linux-dockcross
+        ODLS: ''              # build with open-darts linear solvers
+        
+build-linux-3.9-ODLS:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_ALL_PYTHONS == "1"
+    extends: .build-linux-dockcross
+    variables:
+        PY_VER: '3.9'        # for python image selection in .build-linux
+        PY_SUF: 'cp39-cp39'  # for python path selection in .build-linux-dockcross
+        ODLS: ''             # build with open-darts linear solvers

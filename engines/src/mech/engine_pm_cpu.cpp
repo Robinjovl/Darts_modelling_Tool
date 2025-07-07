@@ -181,7 +181,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   nc = get_n_comps();
   z_var = get_z_var();
 
-  X_init.resize(n_vars * mesh->n_blocks);
+  X_init.resize(n_vars * mesh->n_res_blocks);
   PV.resize(mesh->n_blocks);
   RV.resize(mesh->n_blocks);
   old_z.resize(nc);
@@ -199,14 +199,18 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   max_row_values.resize(n_vars * mesh->n_blocks);
   jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
 
-  for (index_t i = 0; i < mesh->n_blocks; i++)
+  for (index_t i = 0; i < mesh->n_res_blocks; i++)
   {
 	for (uint8_t d = 0; d < ND_; d++)
 	{
 	  X_init[n_vars * i + U_VAR + d] = mesh->displacement[ND_ * i + d];
 	}
-	X_init[n_vars * i + P_VAR] = mesh->pressure[i];
+	X_init[n_vars * i + P_VAR] = mesh->initial_state[i];
+  }
+  X_init.resize(n_vars * mesh->n_blocks);
 
+  for (index_t i = 0; i < mesh->n_blocks; i++)
+  {
 	PV[i] = mesh->volume[i] * mesh->poro[i];
 	RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
   }
@@ -413,7 +417,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 	value_t CFL_mech[ND_];
 	value_t CFL_max_global = 0, CFL_max_local;
 	const value_t *cur_bc, *cur_bc_n, *ref_bc, *buf, *buf_n;
-	value_t p_diff, gamma, biot_mult, biot_cur, comp_mult, phi, phi_n, p_ref_cur, *n;
+	value_t p_diff, gamma, biot_mult, comp_mult, phi, phi_n, p_ref_cur, *n;
 	uint8_t d, v;
 	value_t tmp;
 
@@ -751,8 +755,8 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	int connected_with_well;
 	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
 	value_t CFL_mech[ND_];
-	value_t CFL_max_global = 0, CFL_max_local;
-	value_t p_diff, gamma, *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
+	value_t CFL_max_global = 0, CFL_max_local = 0;
+	value_t p_diff, gamma, *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
 	uint8_t d, v;
 	value_t tmp;
 
@@ -1081,7 +1085,7 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
 	value_t CFL_mech[ND_];
 	value_t CFL_max_global = 0, CFL_max_local;
-	value_t p_diff, gamma, * cur_bc, * cur_bc_prev, * ref_bc, biot_mult, biot_cur, comp_mult, phi, phi_n, * buf, * buf_prev, p_ref_cur, * n;
+	value_t p_diff, gamma, * cur_bc, * cur_bc_prev, * ref_bc, biot_mult, comp_mult, phi, phi_n, * buf, * buf_prev, p_ref_cur, * n;
 	uint8_t d, v;
 	value_t tmp;
 
@@ -1741,8 +1745,8 @@ int engine_pm_cpu::solve_linear_equation()
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
-				dev_p, dev_u, well_residual_last_dt,
+		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+				dev_p, dev_u, dev_g, well_residual_last_dt,
 				linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
 		n_linear_last_dt += linear_solver->get_n_iters();

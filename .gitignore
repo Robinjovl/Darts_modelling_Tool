@@ -2,7 +2,7 @@
 .DS_Store
 
 # binaries
-darts/*.so
+darts/*.so*
 darts/*.pyd
 darts/*.dll
 dist/
@@ -18,14 +18,23 @@ thirdparty/install
 
 # cache
 docs/_build
+**/.cache
 **/__pycache__/
 darts/__pycache__/
 models/__pycache__/
+**/.cache/
 
 # building info
 darts/build_info.txt
 
+# simulation results
+results_*/**
+solution.pvd
+
 *.exp
+*.png
+*.xlsx
+*.pkl
 *.iobj
 *.ipdb
 *.lib
@@ -37,3 +46,4 @@ darts/build_info.txt
 *.log
 *.nc
 *.h5
+*.vim

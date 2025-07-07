@@ -3,14 +3,6 @@
 #include <assert.h>
 #include "interpolator_base.hpp"
 
-namespace std
-{
-  std::string to_string(const __uint128_t& value)
-  {
-    return std::to_string(static_cast<double>(value));
-  };
-};
-
 interpolator_base::interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator_,
                                      const std::vector<int> &axes_points,
                                      const std::vector<double> &axes_min, const std::vector<double> &axes_max)
@@ -69,6 +61,14 @@ int interpolator_base::evaluate_with_derivatives(const std::vector<double> &stat
                                                  std::vector<double> &values,
                                                  std::vector<double> &derivatives)
 {
+    // check consistency of input arrays
+    assert(n_dims * values.size() == derivatives.size());
+    if (!states_idxs.empty()) 
+    {
+        auto max_idx = *std::max_element(states_idxs.begin(), states_idxs.end());
+        assert(states.size() > max_idx * n_dims);
+    }
+
     timer->start();
     // call implementation of a derived class
     this->interpolate_with_derivatives(states, states_idxs, values, derivatives);
@@ -104,5 +104,5 @@ uint64_t interpolator_base::get_n_points_total() const
 
 uint64_t interpolator_base::get_n_points_used() const
 {
-    return static_cast<uint8_t>(n_points_used);
+    return static_cast<uint64_t>(n_points_used);
 }

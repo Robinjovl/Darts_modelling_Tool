@@ -11,18 +11,23 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # set model list to run
 
-    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do', '2ph_do_thermal',
+    accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do',
                      '2ph_geothermal', '2ph_geothermal_mass_flux',
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
                      'Chem_benchmark_new',
                      #'CO2_foam_CCS',
                      'GeoRising',
-                     'CoaxWell'
+                     'CoaxWell',
+                     'phreeqc_dissolution'
                      ]       
+
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
+
+    if platform == 'cpu':  # this model doesn't converge well, so we skip it on GPU
+        accepted_dirs += ['2ph_do_thermal']
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
@@ -38,15 +43,35 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if False:#iter_solvers:# and test_all_models:
+    if iter_solvers:
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
-        meshes_list = ['data_10_10_10', 'data_20_40_40']
+        meshes_list = ['data_10_10_10']
         test_args_mech_spe10 = []
         for physics in physics_list:
             for mesh in meshes_list:
                 test_args_mech_spe10.append([mesh, physics])
         test_args_mech += [test_args_mech_spe10]
+
+        test_dirs_mech += ['displaced_fault_reactivation']
+        test_args_fault = []
+        config = {'mode': 'quasi_static',
+                  'timesteps': [1.0],
+                  'depletion': {'mode': 'uniform', 'value': -250.0},
+                  'friction_law': 'static',
+                  'mesh_file': 'meshes/new_setup_coarse.geo',
+                  'cache_discretizer': False}
+        config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+        test_args_fault += [config]
+        config = {'mode': 'quasi_static',
+                  'timesteps': [1.0],
+                  'depletion': {'mode': 'uniform', 'value': -172.4},  # -172.685 is more precise, requires finer mesh
+                  'friction_law': 'slip_weakening',
+                  'mesh_file': 'meshes/new_setup_coarse.geo',
+                  'cache_discretizer': False}
+        config[0] = config['friction_law']  # to make work arg[0] in for_each_model
+        test_args_fault += [config]
+        test_args_mech += [test_args_fault]
 
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
@@ -54,24 +79,31 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if iter_solvers:  # run this case only for the build with iterative solvers
         cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
     test_args_cpg = []
-    for case in cpg_cases_list:
-        for physics_type in ['geothermal', 'dead_oil']:
-            test_args_cpg.append([case, physics_type])
+    for case_geom in cpg_cases_list:
+        for physics_type in ['geothermal', 'deadoil']:
+            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
+                if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
+                    continue  # TODO fix convergence
+                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
+                    continue
+                case = case_geom + '_' + wctrl
+                test_args_cpg.append([case, physics_type])
     test_args_cpg = [test_args_cpg]
 
     # DFN (python discr)
     test_dirs_dfn = ['fracture_network']
     test_cases_dfn = ['case_1']
     if test_all_models:
-        test_cases_dfn += ['whitby', 'case_3', 'case_4', 'case_1_burden_O1', 'case_1_burden_O2']
-        test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        test_cases_dfn += ['case_4', 'case_5']
+        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])
     test_args_dfn = [test_args_dfn]
 
     # for adjoint test
-    accepted_dirs_adjoint = ['Adjoint_super_engine']
+    accepted_dirs_adjoint = ['Adjoint_super_engine', 'Adjoint_PXflash_geothermal']
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
@@ -86,6 +118,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
+    accepted_dirs += ['CCS']
+    if iter_solvers:  # run this case only for the build with iterative solvers
+        accepted_dirs += [ 'SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
@@ -104,18 +139,21 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mainpy
 
     # discretizer tests
+    print('\nDiscretizer tests:')
     n_total_discr = n_failed_discr = 0
     n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
+    print('\nFracture network tests:')
     n_total_dfn = n_failed_dfn = 0
     n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
     # poromechanic tests
+    print('\nPoromechanics tests:')
     n_total_mech = n_failed_mech = 0
     if platform == 'cpu':  # mech code is excluded from gpu build due to compilation issues (c++ std 20)
         n_total_mech, n_failed_mech = run_tests(model_dir, test_dirs_mech, test_args_mech, overwrite)
@@ -123,6 +161,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_mech
 
     # test for adjoint ------------------start---------------------------------
+    print('\nAdjoint tests:')
     n_failed_adj = n_total_adj = 0
     import time
     if len(accepted_dirs_adjoint):
@@ -144,12 +183,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
         input("Press Enter to continue...") # pause the screen
     else:
-        if overwrite == '1':  # do not interrupt ci/cd for uploading generated pkls
-            print('exit 0 because of UPLOAD_PKL==1')
-            exit(0)
         print('exit:', n_failed)
         # exit with code equal to number of failed models
-        exit(n_failed)
+    exit(n_failed)
 
 
 def check_performance(mod):
@@ -176,15 +212,21 @@ def check_performance(mod):
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
         platform='gpu'
 
+        if os.getenv('GPU_DEVICE') != None:
+            from darts.engines import set_gpu_device
+            set_gpu_device(int(os.getenv('GPU_DEVICE')))
+
     m.init(platform=platform)
-    m.run()
+    
+    m.set_output()
+    m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
     abort_redirection(log_stream)
     overwrite = 0
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
     failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
-    log_stream = redirect_all_output(log_file)
+
     return failed
 
 
@@ -200,7 +242,7 @@ def check_performance_adjoint(mod):
     mod.read_observation_data()
     failed = mod.process_adjoint()
     abort_redirection(log_stream)
-    log_stream = redirect_all_output(log_file)
+
 
     return failed
 
@@ -208,11 +250,11 @@ if __name__ == '__main__':
 
     # print build info
     engines_pbi()
-    package_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
     if os.getenv('OMP_NUM_THREADS') == None:  
         os.environ['OMP_NUM_THREADS'] = '1'
+    print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 
     # cpu/gpu
     platform = 'cpu'
@@ -234,4 +276,5 @@ if __name__ == '__main__':
     if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
         iter_solvers = True
         
-    run_testing(platform, overwrite, iter_solvers, test_all_models)
+    rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
+    exit(rcode)

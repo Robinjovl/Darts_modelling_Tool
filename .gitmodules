@@ -16,3 +16,8 @@
 	path = thirdparty/hypre
 	url = https://github.com/hypre-space/hypre.git
     branch = master
+	
+[submodule "thirdparty/iphreeqc"]
+	path = thirdparty/iphreeqc
+	url = https://github.com/usgs-coupled/iphreeqc.git
+	branch = master

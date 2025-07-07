@@ -264,38 +264,26 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	nc = get_n_comps();
 	const uint8_t n_state = get_n_state();
 	z_var = get_z_var();
-	nc_fl = get_n_comps();
 
-	X_init.resize(n_vars * mesh->n_blocks);
+	X_init.resize(n_vars * mesh->n_res_blocks);  // initialize only reservoir blocks with mesh->initial_state array
 	PV.resize(mesh->n_blocks);
 	RV.resize(mesh->n_blocks);
 	old_z.resize(nc);
 	new_z.resize(nc);
 	FIPS.resize(nc);
-	old_z_fl.resize(nc_fl);
-	new_z_fl.resize(nc_fl);
+	old_z_fl.resize(nc - n_solid);
+	new_z_fl.resize(nc - n_solid);
 
 	fluxes.resize(n_vars * mesh->n_conns);
 	std::fill_n(fluxes.begin(), fluxes.size(), 0.0);
 
+	X_init = mesh->initial_state;
+	X_init.resize(n_vars * mesh->n_blocks);
 	Xn = X = X_init;
 	for (index_t i = 0; i < mesh->n_blocks; i++)
 	{
-		X_init[n_vars * i + P_VAR] = mesh->pressure[i];
-		for (uint8_t c = 0; c < nc - 1; c++)
-		{
-			X_init[n_vars * i + Z_VAR + c] = mesh->composition[i * (nc - 1) + c];
-		}
-
 		PV[i] = mesh->volume[i] * mesh->poro[i];
 		RV[i] = mesh->volume[i] * (1 - mesh->poro[i]);
-	}
-	if (THERMAL)
-	{
-		for (index_t i = 0; i < mesh_->n_blocks; i++)
-		{
-			X_init[N_VARS * i + T_VAR] = mesh->temperature[i];
-		}
 	}
 
 	op_vals_arr.resize(n_ops * (mesh->n_blocks + mesh->n_bounds));
@@ -754,7 +742,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 	index_t r_ind, r_ind1, r_ind2, r_ind3, r_ind4, l_ind, l_ind1, upwd_idx[NP];
 	index_t j, diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], conn_id = 0, st_id = 0, conn_st_id = 0;
     value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
-	value_t avg_density, *buf, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult;
+	value_t avg_density, *buf_c, *buf_diff, avg_heat_cond_multiplier, phase_presence_mult, t_cur, p_cur;
 	uint8_t d, v, c, p;
 	value_t CFL_in[NC], CFL_out[NC];
     value_t CFL_max_local = 0;
@@ -794,31 +782,27 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 			/*value_t trans_mult = 1;
 			value_t trans_mult_der_i[N_STATE];
 			value_t trans_mult_der_j[N_STATE];
-			if (params->trans_mult_exp > 0 && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
+			if (params->enable_permporo && i < mesh->n_res_blocks && j < mesh->n_res_blocks)
 			{
-				// Calculate transmissibility multiplier:
-				phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-				phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+			  // Calculate transmissibility multiplier:
+			  mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+			  mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
-				// Take average interface porosity:
-				phi_avg = (phi_i + phi_j) * 0.5;
-				phi_0_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5;
-
-				trans_mult = params->trans_mult_exp * pow(phi_avg, params->trans_mult_exp - 1) * 0.5;
-				for (v = 0; v < N_STATE; v++)
-				{
-					trans_mult_der_i[v] = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_STATE + v];
-					trans_mult_der_j[v] = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_STATE + v];
-				}
-				trans_mult = pow(phi_avg, params->trans_mult_exp);
+			  // Take average interface porosity:
+			  trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
+			  for (uint8_t v = 0; v < N_VARS; v++)
+			  {
+				trans_mult_der_i[v] = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+				trans_mult_der_j[v] = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
+			  }
 			}
 			else
 			{
-				for (v = 0; v < N_STATE; v++)
-				{
-					trans_mult_der_i[v] = 0;
-					trans_mult_der_j[v] = 0;
-				}
+			  for (v = 0; v < N_STATE; v++)
+			  {
+				  trans_mult_der_i[v] = 0;
+				  trans_mult_der_j[v] = 0;
+			  }
 			}*/
 	  
 			nebr_jac_idx = csr_idx_end;
@@ -837,22 +821,24 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 
 				if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
 				{
-					buf =		&X[N_VARS * stencil[conn_st_id]];
+					p_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + PRES_OP];
+					t_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + TEMP_OP];
 					buf_c =		&op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
 					buf_diff =	&op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
 				}
 				else									// boundary condition
 				{
-					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
+					p_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + P_VAR];
+					t_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + T_VAR];
 					buf_c =		&ZEROS[0]; // TODO: zeros only for Neumann
 					buf_diff =	&ZEROS[0]; // TODO: zeros only for Neumann
 				}
 
 
-				p_diff += tran[conn_st_id] * buf[P_VAR];
+				p_diff += tran[conn_st_id] * p_cur;
 				// heat conduction
 				if (THERMAL)
-					t_diff += tran_heat_cond[conn_st_id] * buf[T_VAR];
+					t_diff += tran_heat_cond[conn_st_id] * t_cur;
 				
 				for (p = 0; p < NP; p++)
 				{
@@ -905,13 +891,12 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 			if (j < mesh->n_res_blocks)
 			{
 			  phi_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5; // diffusion term depends on total porosity!
-			  avg_heat_cond_multiplier = (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) +
-				op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j])) * 0.5;
+			  avg_heat_cond_multiplier = ((1 - mesh->poro[i]) + (1 - mesh->poro[j])) * 0.5;
 			}
 			else
 			{
 			  phi_avg = mesh->poro[i];
-			  avg_heat_cond_multiplier = op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]);
+			  avg_heat_cond_multiplier = 1 - mesh->poro[i];
 			}
 			// rock heat conduction
 			if (THERMAL)
@@ -1020,29 +1005,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 				}
 			}
 
-			// [6] add derivatives to phase multipliers in front of heat conduction
-			if (THERMAL)
-			{
-			  for (c = 0; c < NE; c++)
-			  {
-				// rock energy
-				l_ind = diag_idx + T_VAR * N_VARS + c;
-				l_ind1 = nebr_jac_idx * N_VARS_SQ + T_VAR * N_VARS + c;
-				r_ind = (i * N_OPS + ROCK_COND) * N_STATE + c;
-				r_ind1 = (j * N_OPS + ROCK_COND) * N_STATE + c;
-				// heat conduction
-				Jac[l_ind] += dt * t_diff * op_ders_arr[r_ind] * (1 - mesh->poro[i]) / 2;
-				if (nebr_jac_idx < csr_idx_end)
-				{
-				  Jac[l_ind1] += dt * t_diff * op_ders_arr[r_ind1] * (1 - mesh->poro[j]) / 2;
-				}
-				else
-				{
-				  Jac[l_ind] += dt * t_diff * op_ders_arr[r_ind] * (1 - mesh->poro[i]) / 2;
-				}
-			  }
-			}
-			// [7] residual
+			// [6] residual
 			for (c = 0; c < NE; c++)
 			{
 				// define the multiplier value
@@ -1059,7 +1022,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 			}
 		}
 
-		// [8] accumulation terms
+		// [7] accumulation terms
 		for (c = 0; c < NE; c++)
 		{
 			RHS[i * N_VARS + P_VAR + c] += PV[i] * (op_vals_arr[i * N_OPS + ACC_OP + c] - op_vals_arr_n[i * N_OPS + ACC_OP + c]);
@@ -1070,11 +1033,11 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, st
 		}
 		if (THERMAL)
 		{
-			RHS[i * N_VARS + T_VAR] += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+			RHS[i * N_VARS + T_VAR] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
 
 			for (v = 0; v < NE; v++)
 			{
-				Jac[diag_idx + T_VAR * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i];
+				Jac[diag_idx + T_VAR * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i];
 			}
 		}
 
@@ -1196,7 +1159,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 	index_t r_ind, r_ind1, r_ind2, r_ind3, l_ind, l_ind1, upwd_idx[NP];
 	index_t diag_idx, jac_idx, nebr_jac_idx, csr_idx_start, csr_idx_end, upwd_jac_idx[NP], st_id = 0, conn_st_id = 0;
 	value_t p_diff, gamma_p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg, phi_0_avg, pc_diff[NP], diff_diff[NP * NE], phase_p_diff[NP], ZEROS[NP * NE];
-	value_t avg_density, * buf, * buf_c, * buf_diff, avg_heat_cond_multiplier;
+	value_t avg_density, * buf_c, * buf_diff, avg_heat_cond_multiplier, p_cur, t_cur;
 	uint8_t d, v, p;
 	value_t CFL_in[NC], CFL_out[NC];
 	value_t CFL_max_local = 0;
@@ -1268,22 +1231,24 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 
 				if (stencil[conn_st_id] < n_blocks)	// matrix, fault or well cells
 				{
-					buf = &X[N_VARS * stencil[conn_st_id]];
-					buf_c = &op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
-					buf_diff = &op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
+					p_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + PRES_OP];
+					t_cur =		op_vals_arr[stencil[conn_st_id] * N_OPS + TEMP_OP];
+					buf_c =		&op_vals_arr[stencil[conn_st_id] * N_OPS + PC_OP];
+					buf_diff =	&op_vals_arr[stencil[conn_st_id] * N_OPS + GRAD_OP];
 				}
 				else									// boundary condition
 				{
-					buf = &bc[N_VARS * (stencil[conn_st_id] - n_blocks)];
-					buf_c = &ZEROS[0]; // TODO: zeros only for Neumann
-					buf_diff = &ZEROS[0]; // TODO: zeros only for Neumann
+					p_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + P_VAR];
+					t_cur =		bc[N_VARS * (stencil[conn_st_id] - n_blocks) + T_VAR];
+					buf_c =		&ZEROS[0]; // TODO: zeros only for Neumann
+					buf_diff =	&ZEROS[0]; // TODO: zeros only for Neumann
 				}
 
 
-				p_diff += tran[conn_st_id] * buf[P_VAR];
+				p_diff += tran[conn_st_id] * p_cur;
 				// heat conduction
 				if (THERMAL)
-					t_diff += tran_heat_cond[conn_st_id] * buf[T_VAR];
+					t_diff += tran_heat_cond[conn_st_id] * t_cur;
 
 				for (p = 0; p < NP; p++)
 				{
@@ -1336,13 +1301,12 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 			if (j < mesh->n_res_blocks)
 			{
 				phi_avg = (mesh->poro[i] + mesh->poro[j]) * 0.5; // diffusion term depends on total porosity!
-				avg_heat_cond_multiplier = (op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]) +
-					op_vals_arr[j * N_OPS + ROCK_COND] * (1 - mesh->poro[j])) * 0.5;
+				avg_heat_cond_multiplier = ((1 - mesh->poro[i]) + (1 - mesh->poro[j])) * 0.5;
 			}
 			else
 			{
 				phi_avg = mesh->poro[i];
-				avg_heat_cond_multiplier = op_vals_arr[i * N_OPS + ROCK_COND] * (1 - mesh->poro[i]);
+				avg_heat_cond_multiplier = 1 - mesh->poro[i];
 			}
 			// rock heat conduction
 			if (THERMAL)
@@ -1389,7 +1353,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		{
 			for (v = 0; v < NE; v++)
 			{
-				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_STATE + v] * hcap[i]);
+				Jac_n[diag_idx + T_VAR * N_VARS + v] -= (RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_STATE + v] * hcap[i]);
 			}
 		}
 
@@ -1542,7 +1506,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::assemble_linear_system(value_t deltat)
 //
 //		if (THERMAL)
 //		{
-//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + RE_INTER_OP] * hcap[i]));
+//			res = fabs(RHS[i * N_VARS + T_VAR] / (PV[i] * op_vals_arr[i * N_OPS + NC] + RV[i] * op_vals_arr[i * N_OPS + TEMP_OP] * hcap[i]));
 //			if (res > residual)
 //				residual = res;
 //		}

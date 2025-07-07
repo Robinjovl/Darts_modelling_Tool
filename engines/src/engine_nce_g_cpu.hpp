@@ -30,6 +30,10 @@ using namespace opendarts::linear_solvers;
 template <uint8_t NC, uint8_t NP>
 class engine_nce_g_cpu : public engine_base
 {
+private:
+  // utilities for scaling and better conditionining of Jacobian
+  void make_dimensionless();
+  void dimensionalize_unknowns();
 
 public:
   // number of components
@@ -52,17 +56,15 @@ public:
   //         1    temperature,
   //         1    water density,
   //         1    steam density
-  const static uint8_t N_OPS = NC + NC * NP + NP + 7;
+  const static uint8_t N_OPS = NC /*acc*/ + NC * NP /*flux*/ + 2 + NP /*energy acc, flux, cond*/ + NP /*density*/ + 1 /*temperature*/;
   // order of operators:
   const static uint8_t ACC_OP = 0;
   const static uint8_t FLUX_OP = NC;
   const static uint8_t FE_ACC_OP = NC + NC * NP;
-  const static uint8_t RE_ACC_OP = NC + NC * NP + 1;
-  const static uint8_t FE_FLUX_OP = NC + NC * NP + 2;
-  const static uint8_t FE_COND_OP = NC + NC * NP + NP + 2;
-  const static uint8_t RE_COND_OP = NC + NC * NP + NP + 3;
-  const static uint8_t FE_TEMP_OP = NC + NC * NP + NP + 4;
-  const static uint8_t DENS_OP = NC + NC * NP + NP + 5;
+  const static uint8_t FE_FLUX_OP = NC + NC * NP + 1;
+  const static uint8_t FE_COND_OP = NC + NC * NP + NP + 1;
+  const static uint8_t DENS_OP = NC + NC * NP + NP + 2;
+  const static uint8_t TEMP_OP = NC + NC * NP + NP + 2 + NP;
 
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
@@ -89,5 +91,9 @@ public:
   double calc_well_residual_Linf();
 
   double H2O_MW = 18.01528;
+
+  int solve_linear_equation();
+
+  void enable_flux_output();
 };
 #endif

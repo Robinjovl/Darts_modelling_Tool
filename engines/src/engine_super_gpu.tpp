@@ -28,10 +28,10 @@
  * @tparam FLUX_OP Index for flux operators.
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
- * @tparam PORO_OP Index for porosity operators.
+ * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
  *
  * @param[in] n_res_blocks Number of reservoir blocks.
- * @param[in] trans_mult_exp Exponent for transmissibility multiplier calculation.
+ * @param[in] enable_permporo Flag to activate permeability multiplier due to permeability-porosity relationship.
  * @param[in] X Array of unknowns (pressure, temperature, etc.).
  * @param[in] op_vals_arr Array of operator values.
  * @param[in] op_num Array of operator numbers per block.
@@ -45,13 +45,13 @@
  * @param[in] molar_weights Array of molar weights for fluid components.
  * @param[in] dt Time step size.
  */
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP, 
-          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP>
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP,
+          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP>
 __global__ void
-reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans_mult_exp, 
-                      value_t *X, value_t *op_vals_arr, index_t *op_num, index_t *rows, 
-                      index_t *cols, value_t *tran,  value_t *grav_coef, value_t *velocity_appr, 
-                      index_t *velocity_offset, value_t *darcy_velocities, value_t *molar_weights, 
+reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permporo,
+                      value_t *X, value_t *op_vals_arr, index_t *op_num, index_t *rows,
+                      index_t *cols, value_t *tran,  value_t *grav_coef, value_t *velocity_appr,
+                      index_t *velocity_offset, value_t *darcy_velocities, value_t *molar_weights,
                       value_t dt)
 {
   // mesh grid block number
@@ -71,7 +71,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
   index_t conn_idx = csr_idx_start - i;
 
   index_t j, cell_conn_idx, vel_idx;
-  value_t p_diff, phi_avg, trans_mult, avg_density, phase_p_diff;
+  value_t p_diff, trans_mult, avg_density, phase_p_diff;
   value_t phase_flux;
   index_t cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
 
@@ -94,11 +94,10 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
     }
 
     trans_mult = 1.;
-    if (trans_mult_exp > 0)
+    if (enable_permporo)
     {
       // Take average interface porosity:
-      phi_avg = (op_vals_arr[i * N_OPS + PORO_OP] + op_vals_arr[j * N_OPS + PORO_OP]) * 0.5;
-      trans_mult = pow(phi_avg, (double) trans_mult_exp);
+      trans_mult = 2 * op_vals_arr[i * N_OPS + MULT_OP] * op_vals_arr[j * N_OPS + MULT_OP] / (op_vals_arr[i * N_OPS + MULT_OP] + op_vals_arr[j * N_OPS + MULT_OP]);
     }
 
     p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
@@ -107,7 +106,7 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
     {
       avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) * 0.5;
       phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
-      
+
       phase_flux = 0.0;
       if (phase_p_diff < 0)
       {
@@ -168,8 +167,8 @@ reconstruct_velocities(const unsigned int n_res_blocks, const unsigned int trans
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t GRAD_OP, uint8_t ENTH_OP,
           bool THERMAL>
 __global__ void
-assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr, 
-                    value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind, 
+assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr,
+                    value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
                     value_t *tranD, value_t *darcy_velocities, value_t *dispersivity, index_t *op_num, value_t dt)
 {
   const int i = (blockIdx.x * blockDim.x + threadIdx.x) / (NC * N_VARS);
@@ -182,7 +181,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
 
   const int N_VARS_SQ = N_VARS * N_VARS;
   const int ND = 3;
-  value_t jac_diag = 0, jac_offd, rhs = 0, avg_dispersivity, avg_enthalpy, grad_con, 
+  value_t jac_diag = 0, jac_offd, rhs = 0, avg_dispersivity, avg_enthalpy, grad_con,
           vel_norm, arith_mean_dispersivity, disp;
   value_t avg_velocity[ND];
 
@@ -210,7 +209,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
     {
       conn_idx++;
       continue;
-    }  
+    }
 
     // initialize offdiagonal value for current connection
     jac_offd = 0;
@@ -262,7 +261,7 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
           atomicAdd(&Jac[jac_idx + NC * N_VARS + v], -op_ders_arr[(j * N_OPS + ENTH_OP + p) * N_VARS + v] * disp * grad_con / 2);
       }
     }
-    
+
     Jac[csr_idx * N_VARS_SQ + block_pos] += jac_offd;
     conn_idx++;
   }
@@ -294,18 +293,17 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @tparam UPSAT_OP Index for upstream saturation operators.
  * @tparam GRAD_OP Index for gradient operators.
  * @tparam KIN_OP Index for kinetic operators.
- * @tparam RE_INTER_OP Index for reservoir interface operators.
- * @tparam RE_TEMP_OP Index for reservoir temperature operators.
- * @tparam ROCK_COND Index for rock conductivity.
  * @tparam GRAV_OP Index for gravity operators.
  * @tparam PC_OP Index for capillary pressure operators.
- * @tparam PORO_OP Index for porosity operators.
+ * @tparam MULT_OP Index for permeability multiplier due to permeability-porosity relationship.
  * @tparam ENTH_OP Index for enthalpy operators.
+ * @tparam TEMP_OP Index for temperature operators.
+ * @tparam PRES_OP Index for pressure operators.
  * @tparam THERMAL Enable or disable thermal effects.
  *
  * @param[in] n_blocks Total number of blocks.
  * @param[in] n_res_blocks Number of reservoir blocks.
- * @param[in] trans_mult_exp Exponent for transmissibility multiplier.
+ * @param[in] enable_permporo Flag to activate permeability multiplier due to permeability-porosity relationship.
  * @param[in] phase_existence_tolerance Tolerance value for phase existence.
  * @param[in] dt Time step size.
  * @param[in] X Array of unknowns.
@@ -328,11 +326,11 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @param[in] kin_fac Kinetic factor array.
  */
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
-          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t RE_INTER_OP,
-          uint8_t RE_TEMP_OP, uint8_t ROCK_COND, uint8_t GRAV_OP, uint8_t PC_OP, uint8_t PORO_OP, uint8_t ENTH_OP,
+          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP,
+          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
           bool THERMAL>
 __global__ void
-assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const unsigned int trans_mult_exp,
+assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const bool enable_permporo,
                                value_t phase_existence_tolerance,
                                value_t dt, value_t *X, value_t *RHS,
                                index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
@@ -373,7 +371,7 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   value_t phase_presence_mult;
 
   index_t j;
-  value_t p_diff, t_diff, gamma_t_diff, phi_i, phi_j, phi_avg;
+  value_t p_diff, t_diff, gamma_t_i, gamma_t_j, mult_i, mult_j;
 
   // [1] fill diagonal part for both mass (and energy equations if needed, only fluid energy is involved here)
   if (v == 0)
@@ -398,10 +396,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   {
     if (v == 0)
     {
-      rhs += RV[i] * (op_vals_arr[i * N_OPS + RE_INTER_OP] - op_vals_arr_n[i * N_OPS + RE_INTER_OP]) * hcap[i];
+      rhs += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
     }
 
-    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + RE_INTER_OP) * N_VARS + v] * hcap[i];
+    jac_diag += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
   }
 
   // index of first entry for block i in CSR cols array
@@ -426,19 +424,16 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     value_t trans_mult = 1;
     value_t trans_mult_der_i = 0;
     value_t trans_mult_der_j = 0;
-    if (trans_mult_exp > 0 && (i < n_res_blocks && j < n_res_blocks))
+    if (enable_permporo && (i < n_res_blocks && j < n_res_blocks))
     {
       // Calculate transmissibility multiplier:
-      phi_i = op_vals_arr[i * N_OPS + PORO_OP];
-      phi_j = op_vals_arr[j * N_OPS + PORO_OP];
+      mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+      mult_j = op_vals_arr[j * N_OPS + MULT_OP];
 
       // Take average interface porosity:
-      phi_avg = (phi_i + phi_j) * 0.5;
-      value_t phi_0_avg = (poro[i] + poro[j]) * 0.5;
-      trans_mult = trans_mult_exp * pow(phi_avg, (double) trans_mult_exp - 1) * 0.5;
-      trans_mult_der_i = trans_mult * op_ders_arr[(i * N_OPS + PORO_OP) * N_VARS + v];
-      trans_mult_der_j = trans_mult * op_ders_arr[(j * N_OPS + PORO_OP) * N_VARS + v];
-      trans_mult = pow(phi_avg, (double) trans_mult_exp);
+      trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
+      trans_mult_der_i = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+      trans_mult_der_j = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
     }
 
     p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
@@ -497,8 +492,6 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     } // end of loop over number of phases for convective operator with gravity and capillarity
 
     // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
-    phi_avg = (poro[i] + poro[j]) * 0.5; // diffusion term depends on total porosity!
-
     // Only if block connection is between reservoir and reservoir cells!
     if (i < n_res_blocks && j < n_res_blocks)
     {
@@ -526,13 +519,13 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
         jac_diag -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[i] * op_ders_arr[(i * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
         jac_offd -= grad_con * dt * phase_presence_mult * tranD[conn_idx] * poro[j] * op_ders_arr[(j * N_OPS + UPSAT_OP + p) * N_VARS + v] * 0.5;
-      
+
         if constexpr (THERMAL)
         {
           if (c < NC)
           {
             value_t avg_enthalpy = (op_vals_arr[i * N_OPS + ENTH_OP + p] + op_vals_arr[j * N_OPS + ENTH_OP + p]) * 0.5;
-            
+
             // use atomics below because threads for all components are writing into energy balance equation
             if (v == 0)
             {
@@ -559,36 +552,16 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
     // if thermal is enabled, full up the last equation
     if (THERMAL && (c == NE - 1))
     {
-      t_diff = op_vals_arr[j * N_OPS + RE_TEMP_OP] - op_vals_arr[i * N_OPS + RE_TEMP_OP];
-      gamma_t_diff = tranD[conn_idx] * dt * t_diff;
+      t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
+      gamma_t_i = tranD[conn_idx] * dt * (1 - poro[i]) * rock_cond[i];
+      gamma_t_j = tranD[conn_idx] * dt * (1 - poro[j]) * rock_cond[j];
 
-      if (t_diff < 0)
+      // rock heat transfers flows from cell i to j
+      rhs -= t_diff * (gamma_t_i + gamma_t_j) / 2;
+      for (uint8_t v = 0; v < N_VARS; v++)
       {
-        // rock heat transfers flows from cell i to j
-        if (v == 0)
-        {
-          rhs -= gamma_t_diff * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
-        }
-        jac_diag -= gamma_t_diff * op_ders_arr[(i * N_OPS + ROCK_COND) * N_VARS + v] * (1 - poro[i]) * rock_cond[i];
-        if (v == T_VAR)
-        {
-          jac_offd -= tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
-          jac_diag += tranD[conn_idx] * dt * op_vals_arr[i * N_OPS + ROCK_COND] * (1 - poro[i]) * rock_cond[i];
-        }
-      }
-      else
-      {
-        // rock heat transfers flows from cell j to i
-        if (v == 0)
-        {
-          rhs -= gamma_t_diff * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j]; // energy cond operator
-        }
-        jac_offd -= gamma_t_diff * op_ders_arr[(j * N_OPS + ROCK_COND) * N_VARS + v] * (1 - poro[j]) * rock_cond[j];
-        if (v == T_VAR)
-        {
-          jac_diag += tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j];
-          jac_offd -= tranD[conn_idx] * dt * op_vals_arr[j * N_OPS + ROCK_COND] * (1 - poro[j]) * rock_cond[j];
-        }
+        jac_offd -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+        jac_diag += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
       }
     }
     // write down offdiag value
@@ -611,17 +584,6 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             sim_params *params_, timer_node *timer_)
 {
-
-  X_init.resize(N_VARS * mesh_->n_blocks);
-
-  if (THERMAL)
-  {
-    for (index_t i = 0; i < mesh_->n_blocks; i++)
-    {
-      X_init[N_VARS * i + T_VAR] = mesh_->temperature[i];
-    }
-  }
-
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
@@ -649,9 +611,9 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
   //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
-  assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP, RE_INTER_OP,
-                                 RE_TEMP_OP, ROCK_COND, GRAV_OP, PC_OP, PORO_OP, ENTH_OP, THERMAL>
-      KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->trans_mult_exp,
+  assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, UPSAT_OP, GRAD_OP, KIN_OP,
+                                 GRAV_OP, PC_OP, MULT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
+      KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->enable_permporo,
                                                      params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
                                                      jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
@@ -667,19 +629,19 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       exit(-1);
     }
 
-    reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, PORO_OP>
-        KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->trans_mult_exp, 
-                                        X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d, 
+    reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, MULT_OP>
+        KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->enable_permporo,
+                                        X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d,
                                         jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,
-                                        mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d, 
+                                        mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d,
                                         dt);
     copy_data_to_host(darcy_velocities, darcy_velocities_d);
 
     if (!dispersivity.empty())
     {
       assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, GRAD_OP, ENTH_OP, THERMAL>
-        KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d, 
-                                                    op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d, 
+        KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d,
+                                                    op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
                                                     mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
     }
   }
