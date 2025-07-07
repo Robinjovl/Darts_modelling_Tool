@@ -67,8 +67,8 @@ class OperatorsSuper(OperatorsBase):
         print("DELTA (reaction)", values[self.KIN_OP : self.GRAV_OP])
         print("GRAVITY", values[self.GRAV_OP : self.PC_OP])
         print("CAPILLARITY", values[self.PC_OP : self.MULT_OP])
-        print("LAMBDA", values[self.LAMBDA_OP:self.SAT_OP])
-        print("SAT", values[self.SAT_OP:self.ENTH_OP])
+        print("LAMBDA", values[self.LAMBDA_OP : self.SAT_OP])
+        print("SAT", values[self.SAT_OP : self.ENTH_OP])
         print("ENTHALPY", values[self.ENTH_OP : self.ENTH_OP + self.nph])
         print("PERM_MULT", values[self.MULT_OP])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
@@ -123,10 +123,7 @@ class ReservoirOperators(OperatorsSuper):
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = (
-                self.property.x[j][: self.nc_fl]
-                * self.property.dens_m[j]
-            )
+            ] = (self.property.x[j][: self.nc_fl] * self.property.dens_m[j])
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
         # fluid diffusive flux sat: c_r phi_f s_j (-)
@@ -178,7 +175,9 @@ class ReservoirOperators(OperatorsSuper):
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:
             # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
+            vec_values_as_np[self.LAMBDA_OP + j] = (
+                self.property.kr[j] / self.property.mu[j]
+            )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
         # Not used for reservoir
@@ -337,10 +336,7 @@ class WellOperators(OperatorsSuper):
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             vec_values_as_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = (
-                self.property.x[j][: self.nc_fl]
-                * self.property.dens_m[j]
-            )
+            ] = (self.property.x[j][: self.nc_fl] * self.property.dens_m[j])
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
 
@@ -364,7 +360,9 @@ class WellOperators(OperatorsSuper):
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:
             # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-            vec_values_as_np[self.LAMBDA_OP + j] = self.property.kr[j] / self.property.mu[j]
+            vec_values_as_np[self.LAMBDA_OP + j] = (
+                self.property.kr[j] / self.property.mu[j]
+            )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
         for j in self.property.ph:
