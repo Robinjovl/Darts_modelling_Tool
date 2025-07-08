@@ -19,9 +19,9 @@ void pybind_mesh_conn(py::module &m)
 	  .def(py::init<>())
 	  //methods
 	  .def("init", (int (conn_mesh::*)(std::vector<index_t> &, std::vector<index_t> &,
-		  std::vector<value_t> &, std::vector<value_t> &)) &conn_mesh::init,
+		  std::vector<value_t> &, std::vector<value_t> &, std::vector<value_t> &, std::vector<value_t> &)) &conn_mesh::init,
 		  "Initialize by connection list defined by block_m, block_p, tran and tranD arrays ",
-		  py::arg("block_m"), py::arg("block_p"), py::arg("tran"), py::arg("tranD") = std::vector<value_t>(0))
+		  py::arg("block_m"), py::arg("block_p"), py::arg("tran"), py::arg("tranD"), py::arg("cell_half_length"), py::arg("connection_area") = std::vector<value_t>(0))
 	  //.def("init_mpfa", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		//  std::vector<index_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t)) & conn_mesh::init_mpfa)
 	  .def("init_mpfa", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
@@ -67,6 +67,7 @@ void pybind_mesh_conn(py::module &m)
 	  .def_readwrite("n_blocks", &conn_mesh::n_blocks)
 	  .def_readwrite("n_res_blocks", &conn_mesh::n_res_blocks)
 	  .def_readwrite("poro", &conn_mesh::poro)
+	  .def_readwrite("permx", &conn_mesh::permx)
 	  .def_readwrite("volume", &conn_mesh::volume)
 	  .def_readwrite("initial_state", &conn_mesh::initial_state)
 	  .def_readwrite("ref_pressure", &conn_mesh::ref_pressure)
@@ -84,6 +85,8 @@ void pybind_mesh_conn(py::module &m)
 	  .def_readwrite("tran", &conn_mesh::tran)
 	  .def_readwrite("tran_ref", &conn_mesh::tran_ref)
 	  .def_readwrite("tranD", &conn_mesh::tranD)
+	  .def_readwrite("connection_area", &conn_mesh::connection_area)
+	  .def_readwrite("forchheimer_coefficient", &conn_mesh::forchheimer_coefficient)
 	  .def_readwrite("displacement", &conn_mesh::displacement)
 	  .def_readwrite("bc", &conn_mesh::bc)
 	  .def_readwrite("bc_prev", &conn_mesh::bc_n)

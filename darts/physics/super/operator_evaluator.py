@@ -34,7 +34,8 @@ class OperatorsSuper(OperatorsBase):
         self.LAMBDA_OP = self.MULT_OP + 1
         self.SAT_OP = self.LAMBDA_OP + self.nph
         self.ENTH_OP = self.SAT_OP + self.nph  # enthalpy operator - nph
-        self.TEMP_OP = self.ENTH_OP + self.nph  # temperature operator - 1
+        self.VIS_OP = self.ENTH_OP + self.nph  # viscosity operator - nph
+        self.TEMP_OP = self.VIS_OP + self.nph  # temperature operator - 1
         self.PRES_OP = self.TEMP_OP + 1
         self.n_ops = self.PRES_OP + 1
 
@@ -48,6 +49,7 @@ class OperatorsSuper(OperatorsBase):
             (self.GRAV_OP, "GRAV"),
             (self.MULT_OP, "MULT"),
             (self.ENTH_OP, "ENTH"),
+            (self.VIS_OP, "VIS"),
             (self.TEMP_OP, "TEMP"),
             (self.PRES_OP, "PRES"),
         ]
@@ -71,6 +73,7 @@ class OperatorsSuper(OperatorsBase):
         print("SAT", values[self.SAT_OP : self.ENTH_OP])
         print("ENTHALPY", values[self.ENTH_OP : self.ENTH_OP + self.nph])
         print("PERM_MULT", values[self.MULT_OP])
+        print("VISCOSITY", values[self.VIS_OP: self.VIS_OP + self.nph])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
@@ -169,8 +172,10 @@ class ReservoirOperators(OperatorsSuper):
             self.phi_f
         )
 
-        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
-        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
+        # Viscosity
+        vec_values_as_np[self.VIS_OP + self.property.ph] = self.property.mu[
+            self.property.ph
+        ]
 
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:
@@ -181,6 +186,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
         # Not used for reservoir
+
+        # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)
+        vec_values_as_np[self.PRES_OP] = vec_state_as_np[0]
 
         if self.thermal:
             self.evaluate_thermal(vec_state_as_np, vec_values_as_np)
@@ -356,6 +364,11 @@ class WellOperators(OperatorsSuper):
 
         # E5_> permeability multiplier due to permporo relationship
         vec_values_as_np[self.MULT_OP] = 1.0
+
+        # Viscosity
+        vec_values_as_np[self.VIS_OP + self.property.ph] = self.property.mu[
+            self.property.ph
+        ]
 
         """ Lambda operator for velocity calculations """
         for j in self.property.ph:

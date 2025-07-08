@@ -132,7 +132,7 @@ class StructReservoir(ReservoirBase):
         if self.discretizer.is_cpg:
             cell_m, cell_p, tran, tran_thermal = self.discretizer.calc_cpg_discr()
         else:
-            cell_m, cell_p, tran, tran_thermal = (
+            cell_m, cell_p, tran, tran_thermal, cell_half_length, connection_area = (
                 self.discretizer.calc_structured_discr()
             )
         self.timer.node['connection list generation'].stop()
@@ -149,6 +149,7 @@ class StructReservoir(ReservoirBase):
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [
             self.global_data['poro'],
+            self.global_data['permx'],
             self.global_data['rcond'],
             self.global_data['hcap'],
             self.global_data['depth'],
@@ -160,7 +161,7 @@ class StructReservoir(ReservoirBase):
                 self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
             )
         )
-        poro, rcond, hcap, depth, volume, op_num = arrs_local
+        poro, permx, rcond, hcap, depth, volume, op_num = arrs_local
         self.global_data['global_to_local'] = self.discretizer.global_to_local
 
         # Assign layer properties
@@ -173,10 +174,13 @@ class StructReservoir(ReservoirBase):
             index_vector(self.cell_p),
             value_vector(tran),
             value_vector(tran_thermal),
+            value_vector(cell_half_length),
+            value_vector(connection_area)
         )
 
         # Create numpy arrays wrapped around mesh data (no copying)
         np.array(mesh.poro, copy=False)[:] = poro
+        np.array(mesh.permx, copy=False)[:] = permx  # Assume isotropic porous medium
         np.array(mesh.rock_cond, copy=False)[:] = rcond
         np.array(mesh.heat_capacity, copy=False)[:] = hcap
         np.array(mesh.depth, copy=False)[:] = depth

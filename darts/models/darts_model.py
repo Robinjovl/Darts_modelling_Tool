@@ -599,6 +599,8 @@ class DartsModel:
                     if mult < dt_mult_new:
                         dt_mult_new = mult
 
+                self.physics.engine.darcy_forchheimer_velocities_n = value_vector(np.array(self.physics.engine.darcy_forchheimer_volumetric_rate) / np.array(self.reservoir.mesh.connection_area))
+
                 if verbose:
                     print(
                         "# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"

@@ -513,6 +513,14 @@ class StructDiscretizer:
         perm_y_int = np.zeros(self.arr_shape)
         perm_z_int = np.zeros(self.arr_shape)
 
+        cell_half_length_x = np.zeros(self.arr_shape)
+        cell_half_length_y = np.zeros(self.arr_shape)
+        cell_half_length_z = np.zeros(self.arr_shape)
+
+        conn_area_x = np.zeros(self.arr_shape)
+        conn_area_y = np.zeros(self.arr_shape)
+        conn_area_z = np.zeros(self.arr_shape)
+
         # Calculate interface permeability array with harmonic average of permeability in x, y and z directions:
         old_settings = np.seterr(divide='ignore', invalid='ignore')
         perm_x_int[:-1, :, :] = (
@@ -522,6 +530,9 @@ class StructDiscretizer:
             + self.len_cell_xdir[1:, :, :] / self.perm_x_cell[1:, :, :]
         )
 
+        cell_half_length_x[:-1, :, :] = self.len_cell_xdir[:-1, :, :] / 2
+        conn_area_x[:-1, :, :] = self.len_cell_ydir[:-1, :, :] * self.len_cell_zdir[:-1, :, :]
+
         perm_y_int[:, :-1, :] = (
             self.len_cell_ydir[:, :-1, :] + self.len_cell_ydir[:, 1:, :]
         ) / (
@@ -529,12 +540,18 @@ class StructDiscretizer:
             + self.len_cell_ydir[:, 1:, :] / self.perm_y_cell[:, 1:, :]
         )
 
+        cell_half_length_y[:, :-1, :] = self.len_cell_ydir[:, :-1, :] / 2
+        conn_area_y[:, :-1, :] = self.len_cell_xdir[:, :-1, :] * self.len_cell_zdir[:, :-1, :]
+
         perm_z_int[:, :, :-1] = (
             self.len_cell_zdir[:, :, :-1] + self.len_cell_zdir[:, :, 1:]
         ) / (
             self.len_cell_zdir[:, :, :-1] / self.perm_z_cell[:, :, :-1]
             + self.len_cell_zdir[:, :, 1:] / self.perm_z_cell[:, :, 1:]
         )
+
+        cell_half_length_z[:, :, :-1] = self.len_cell_zdir[:, :, :-1] / 2
+        conn_area_z[:, :, :-1] = self.len_cell_xdir[:, :, :-1] * self.len_cell_ydir[:, :, :-1]
 
         # Calculate geometric coefficient (useful for thermal transmissibility):
         geom_coef_xdir = np.zeros(self.arr_shape)
@@ -577,6 +594,26 @@ class StructDiscretizer:
             perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F'
         )
 
+        half_length_x = np.reshape(
+            cell_half_length_x, (self.nodes_tot), order='F'
+        )
+        half_length_y = np.reshape(
+            cell_half_length_y, (self.nodes_tot), order='F'
+        )
+        half_length_z = np.reshape(
+            cell_half_length_z, (self.nodes_tot), order='F'
+        )
+
+        connection_area_x = np.reshape(
+            conn_area_x, (self.nodes_tot), order='F'
+        )
+        connection_area_y = np.reshape(
+            conn_area_y, (self.nodes_tot), order='F'
+        )
+        connection_area_z = np.reshape(
+            conn_area_z, (self.nodes_tot), order='F'
+        )
+
         # Construct connection list:
         # Store connection in x-direction:
         cell_m_x = np.array(range(trans_xdir.size), dtype=np.int32)
@@ -594,6 +631,8 @@ class StructDiscretizer:
         cell_m = np.concatenate((cell_m_x, cell_m_y, cell_m_z))
         cell_p = np.concatenate((cell_p_x, cell_p_y, cell_p_z))
         tran = np.concatenate((trans_xdir, trans_ydir, trans_zdir))
+        cell_half_length = np.concatenate((half_length_x, half_length_y, half_length_z))
+        connection_area = np.concatenate((connection_area_x, connection_area_y, connection_area_z))
 
         # mult by darcy constant
         tran *= StructDiscretizer.darcy_constant
@@ -606,6 +645,8 @@ class StructDiscretizer:
         cell_p = cell_p[geom_coef > 0]
         tran = tran[geom_coef > 0]
         tran_thermal = tran_thermal[geom_coef > 0]
+        cell_half_length = cell_half_length[geom_coef > 0]
+        connection_area = connection_area[geom_coef > 0]
 
         # And apply global to local indexing (even if default)
         cell_m = self.global_to_local[cell_m]
@@ -617,7 +658,7 @@ class StructDiscretizer:
         # applied
         np.seterr(**old_settings)
 
-        return cell_m, cell_p, tran, tran_thermal
+        return cell_m, cell_p, tran, tran_thermal, cell_half_length, connection_area
 
     def discretize_velocities(self, cell_m, cell_p, geom_coef, n_res_blocks):
         """
