@@ -29,10 +29,7 @@ from darts.discretizer import (
 )
 from darts.discretizer import value_vector
 from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import (
-    vector_matrix33,
-    vector_vector3,
-)
+from darts.discretizer import vector_matrix33, vector_vector3
 from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
@@ -792,7 +789,6 @@ class CPG_Reservoir(ReservoirBase):
         vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
-
         from darts.tools import GRDECL2VTK
 
         self.vtkobj = GRDECL2VTK.GeologyModel()

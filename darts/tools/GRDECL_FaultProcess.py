@@ -141,9 +141,11 @@ class FaultProcess:
         # https://gis.stackexchange.com/questions/283352/most-efficient-way-to-split-a-polygon-with-lines-c-api
 
         # Extend Fault lines
-        BoundaryLine_Splitted, FaultLine_Extend, NewIntersectPts = (
-            self.extendFaultLines()
-        )
+        (
+            BoundaryLine_Splitted,
+            FaultLine_Extend,
+            NewIntersectPts,
+        ) = self.extendFaultLines()
 
         # Find the 2D sub domain
         results = polygonize(MultiLineString(BoundaryLine_Splitted + FaultLine_Extend))
@@ -279,7 +281,6 @@ class FaultProcess:
         )
 
     def plotLines(self, bdlines=[], faultlines=[], endpoints=[]):
-
         # Plot the fault line map
         if len(bdlines) + len(faultlines) == 0:
             BoundaryLabels = ['Edge' + str(i) for i in range(len(self.BoundaryLines))]

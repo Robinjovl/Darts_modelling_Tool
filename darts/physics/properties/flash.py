@@ -50,7 +50,6 @@ from numba import jit
 
 @jit(nopython=True)
 def RR2(k, zc, eps):
-
     a = 1 / (1 - np.max(k)) + eps
     b = 1 / (1 - np.min(k)) - eps
     k_minus_1 = k - 1

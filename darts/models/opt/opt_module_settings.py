@@ -774,12 +774,12 @@ class OptModuleSettings:
 
                     inj_rate_value = np.array(rate_serie.values)
                     if self.inj_rate_measurement_error != 0:
-                        inj_rate_value[inj_rate_value < self.inj_error_lower_bound] = (
-                            self.inj_error_lower_bound
-                        )
-                        inj_rate_value[inj_rate_value > self.inj_error_upper_bound] = (
-                            self.inj_error_upper_bound
-                        )
+                        inj_rate_value[
+                            inj_rate_value < self.inj_error_lower_bound
+                        ] = self.inj_error_lower_bound
+                        inj_rate_value[
+                            inj_rate_value > self.inj_error_upper_bound
+                        ] = self.inj_error_upper_bound
 
                     # rate_list[p] = rate_serie.values * (1 + self.inj_rate_measurement_error * gaussian_noise_list[p])
                     rate_list[p] = (
@@ -818,12 +818,12 @@ class OptModuleSettings:
 
                 BHP_value = np.array(BHP_serie.values)
                 if self.BHP_measurement_error != 0:
-                    BHP_value[BHP_value < self.BHP_error_lower_bound] = (
-                        self.BHP_error_lower_bound
-                    )
-                    BHP_value[BHP_value > self.BHP_error_upper_bound] = (
-                        self.BHP_error_upper_bound
-                    )
+                    BHP_value[
+                        BHP_value < self.BHP_error_lower_bound
+                    ] = self.BHP_error_lower_bound
+                    BHP_value[
+                        BHP_value > self.BHP_error_upper_bound
+                    ] = self.BHP_error_upper_bound
 
                 # BHP_list = BHP_serie.values * (1 + self.BHP_measurement_error * gaussian_noise_list)
                 BHP_list = (
@@ -893,12 +893,12 @@ class OptModuleSettings:
 
             tempr_value = np.array(self.temperature_report_data)
             if self.temperature_measurement_error != 0:
-                tempr_value[tempr_value < self.temperature_error_lower_bound] = (
-                    self.temperature_error_lower_bound
-                )
-                tempr_value[tempr_value > self.temperature_error_upper_bound] = (
-                    self.temperature_error_upper_bound
-                )
+                tempr_value[
+                    tempr_value < self.temperature_error_lower_bound
+                ] = self.temperature_error_lower_bound
+                tempr_value[
+                    tempr_value > self.temperature_error_upper_bound
+                ] = self.temperature_error_upper_bound
 
             if self.temperature_measurement_error == 0:
                 std_dev_list = np.ones(np.shape(self.temperature_report_data))
@@ -927,12 +927,12 @@ class OptModuleSettings:
 
             op_value = np.array(self.customized_op_report_data)
             if self.customized_op_measurement_error != 0:
-                op_value[op_value < self.customized_op_error_lower_bound] = (
-                    self.customized_op_error_lower_bound
-                )
-                op_value[op_value > self.customized_op_error_upper_bound] = (
-                    self.customized_op_error_upper_bound
-                )
+                op_value[
+                    op_value < self.customized_op_error_lower_bound
+                ] = self.customized_op_error_lower_bound
+                op_value[
+                    op_value > self.customized_op_error_upper_bound
+                ] = self.customized_op_error_upper_bound
 
             if self.customized_op_measurement_error == 0:
                 std_dev_list = np.ones(np.shape(self.customized_op_report_data))
@@ -2325,12 +2325,12 @@ class OptModuleSettings:
 
                         rate_value_Q = np.array(rate_serie_Q.values)
                         if self.prod_rate_measurement_error != 0:
-                            rate_value_Q[rate_value_Q < self.prod_error_lower_bound] = (
-                                self.prod_error_lower_bound
-                            )
-                            rate_value_Q[rate_value_Q > self.prod_error_upper_bound] = (
-                                self.prod_error_upper_bound
-                            )
+                            rate_value_Q[
+                                rate_value_Q < self.prod_error_lower_bound
+                            ] = self.prod_error_lower_bound
+                            rate_value_Q[
+                                rate_value_Q > self.prod_error_upper_bound
+                            ] = self.prod_error_upper_bound
 
                         # rate_list_Q[p] = rate_serie_Q.values * self.phase_relative_density[p] \
                         #                  * (1 + self.prod_rate_measurement_error * gaussian_noise_list[p])
@@ -2620,18 +2620,18 @@ class OptModuleSettings:
 
                 gaussian_noise_list = np.random.randn(BHP_serie.size)
                 random_training_period = self.std_gaussian_noise_BHP[n]
-                gaussian_noise_list[0 : np.size(random_training_period)] = (
-                    random_training_period
-                )
+                gaussian_noise_list[
+                    0 : np.size(random_training_period)
+                ] = random_training_period
 
                 BHP_value = np.array(BHP_serie.values)
                 if self.BHP_measurement_error != 0:
-                    BHP_value[BHP_value < self.BHP_error_lower_bound] = (
-                        self.BHP_error_lower_bound
-                    )
-                    BHP_value[BHP_value > self.BHP_error_upper_bound] = (
-                        self.BHP_error_upper_bound
-                    )
+                    BHP_value[
+                        BHP_value < self.BHP_error_lower_bound
+                    ] = self.BHP_error_lower_bound
+                    BHP_value[
+                        BHP_value > self.BHP_error_upper_bound
+                    ] = self.BHP_error_upper_bound
 
                 if self.BHP_measurement_error == 0:
                     std_dev_list = np.ones(BHP_serie.size)
@@ -2752,18 +2752,18 @@ class OptModuleSettings:
 
                 gaussian_noise_list = np.random.randn(WT_serie.size)
                 random_training_period = self.std_gaussian_noise_well_tempr[n]
-                gaussian_noise_list[0 : np.size(random_training_period)] = (
-                    random_training_period
-                )
+                gaussian_noise_list[
+                    0 : np.size(random_training_period)
+                ] = random_training_period
 
                 WT_value = np.array(WT_serie.values)
                 if self.well_tempr_measurement_error != 0:
-                    WT_value[WT_value < self.well_tempr_error_lower_bound] = (
-                        self.well_tempr_error_lower_bound
-                    )
-                    WT_value[WT_value > self.well_tempr_error_upper_bound] = (
-                        self.well_tempr_error_upper_bound
-                    )
+                    WT_value[
+                        WT_value < self.well_tempr_error_lower_bound
+                    ] = self.well_tempr_error_lower_bound
+                    WT_value[
+                        WT_value > self.well_tempr_error_upper_bound
+                    ] = self.well_tempr_error_upper_bound
 
                 if self.well_tempr_measurement_error == 0:
                     std_dev_list = np.ones(WT_serie.size)
@@ -2878,12 +2878,12 @@ class OptModuleSettings:
 
             tempr_value = np.array(truth_TEMPR)
             if self.temperature_measurement_error != 0:
-                tempr_value[tempr_value < self.temperature_error_lower_bound] = (
-                    self.temperature_error_lower_bound
-                )
-                tempr_value[tempr_value > self.temperature_error_upper_bound] = (
-                    self.temperature_error_upper_bound
-                )
+                tempr_value[
+                    tempr_value < self.temperature_error_lower_bound
+                ] = self.temperature_error_lower_bound
+                tempr_value[
+                    tempr_value > self.temperature_error_upper_bound
+                ] = self.temperature_error_upper_bound
 
             if self.temperature_measurement_error == 0:
                 std_dev_list = np.ones(np.shape(truth_TEMPR))
@@ -2997,12 +2997,12 @@ class OptModuleSettings:
 
             op_value = np.array(truth_OP)
             if self.customized_op_measurement_error != 0:
-                op_value[op_value < self.customized_op_error_lower_bound] = (
-                    self.customized_op_error_lower_bound
-                )
-                op_value[op_value > self.customized_op_error_upper_bound] = (
-                    self.customized_op_error_upper_bound
-                )
+                op_value[
+                    op_value < self.customized_op_error_lower_bound
+                ] = self.customized_op_error_lower_bound
+                op_value[
+                    op_value > self.customized_op_error_upper_bound
+                ] = self.customized_op_error_upper_bound
 
             if self.customized_op_measurement_error == 0:
                 std_dev_list = np.ones(np.shape(truth_OP))
@@ -3545,7 +3545,6 @@ class OptModuleSettings:
         temperature_clean_overall = 0
         TEMPERATURE_L2_overall = 0
         if self.objfun_temperature:
-
             temperature_separate = opt_tempr
             TEMPERATURE_separate = truth_TEMPR
 
@@ -3677,7 +3676,6 @@ class OptModuleSettings:
         customized_op_clean_overall = 0
         CUSTOMIZED_OP_L2_overall = 0
         if self.objfun_customized_op:
-
             customized_op_separate = opt_op
             CUSTOMIZED_OP_separate = truth_OP
 
@@ -4112,7 +4110,6 @@ class transmissibility_fracture_modifier:
         self.nr_frac_frac_con = nr_frac_frac_con
 
     def get_x0(self, model) -> np.array:
-
         t = value_vector([])
         t_D = value_vector([])
 

@@ -132,9 +132,12 @@ class StructReservoir(ReservoirBase):
         if self.discretizer.is_cpg:
             cell_m, cell_p, tran, tran_thermal = self.discretizer.calc_cpg_discr()
         else:
-            cell_m, cell_p, tran, tran_thermal = (
-                self.discretizer.calc_structured_discr()
-            )
+            (
+                cell_m,
+                cell_p,
+                tran,
+                tran_thermal,
+            ) = self.discretizer.calc_structured_discr()
         self.timer.node['connection list generation'].stop()
 
         volume = self.discretizer.calc_volumes()
@@ -155,10 +158,14 @@ class StructReservoir(ReservoirBase):
             volume,
             self.global_data['op_num'],
         ]
-        self.cell_m, self.cell_p, tran, tran_thermal, arrs_local = (
-            self.discretizer.apply_actnum_filter(
-                self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
-            )
+        (
+            self.cell_m,
+            self.cell_p,
+            tran,
+            tran_thermal,
+            arrs_local,
+        ) = self.discretizer.apply_actnum_filter(
+            self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
         )
         poro, rcond, hcap, depth, volume, op_num = arrs_local
         self.global_data['global_to_local'] = self.discretizer.global_to_local
@@ -341,7 +348,6 @@ class StructReservoir(ReservoirBase):
                 data = data * np.ones((self.nx, self.ny, self.nz))
         else:
             if data.ndim == 1:
-
                 # make 3d array if 1d array is passed with lenght nx or ny or nz
                 data_array = np.zeros((self.nx, self.ny, self.nz))
                 if data.size == self.nz:

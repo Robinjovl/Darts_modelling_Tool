@@ -103,9 +103,12 @@ class UnstructReservoir(ReservoirBase):
         self.set_layer_properties()
 
         # Perform discretization:
-        cell_m, cell_p, tran, tran_thermal = (
-            self.discretizer.calc_connections_all_cells()
-        )
+        (
+            cell_m,
+            cell_p,
+            tran,
+            tran_thermal,
+        ) = self.discretizer.calc_connections_all_cells()
 
         # Initialize mesh using built connection list
         mesh = conn_mesh()
@@ -136,9 +139,9 @@ class UnstructReservoir(ReservoirBase):
         boundary_data = (
             dict()
         )  # Dictionary containing boundary condition data (coordinate and value of boundary):
-        boundary_data['first_boundary_dir'] = (
-            'X'  # Indicates the boundary is located at constant X (in this case!)
-        )
+        boundary_data[
+            'first_boundary_dir'
+        ] = 'X'  # Indicates the boundary is located at constant X (in this case!)
         # Constant X-coordinate value at which the boundary is located (used to be 3.40885):
         boundary_data['first_boundary_val'] = np.min(
             self.discretizer.mesh_data.points[:, 0]
@@ -152,9 +155,10 @@ class UnstructReservoir(ReservoirBase):
         )
 
         # Calculate boundary cells using the calc_boundary_cells method:
-        self.left_boundary_cells, self.right_boundary_cells = (
-            self.discretizer.calc_boundary_cells(boundary_data)
-        )
+        (
+            self.left_boundary_cells,
+            self.right_boundary_cells,
+        ) = self.discretizer.calc_boundary_cells(boundary_data)
 
         # Calc maximum size of well cells (used to have more homogeneous injection conditions by scaling the WI):
         dummy_vol = np.array(self.volume, copy=True)

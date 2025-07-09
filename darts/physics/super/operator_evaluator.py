@@ -150,9 +150,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Delta operator for reaction """
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
-        vec_values_as_np[self.KIN_OP : self.KIN_OP + self.nc] = (
-            self.property.mass_source
-        )
+        vec_values_as_np[
+            self.KIN_OP : self.KIN_OP + self.nc
+        ] = self.property.mass_source
 
         """ Gravity and Capillarity operators """
         # E3-> gravity
@@ -342,9 +342,9 @@ class WellOperators(OperatorsSuper):
 
         """ Delta operator for reaction """
         # fluid/solid mass source: dt [day] n_c [kmol/m3.day] (kmol/m3)
-        vec_values_as_np[self.KIN_OP : self.KIN_OP + self.nc] = (
-            self.property.mass_source
-        )
+        vec_values_as_np[
+            self.KIN_OP : self.KIN_OP + self.nc
+        ] = self.property.mass_source
 
         """ Gravity and Porosity operators """
         # E3-> gravity

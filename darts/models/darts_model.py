@@ -16,22 +16,13 @@ except ImportError:
     pass
 
 from darts.discretizer import print_build_info as discretizer_pbi
-from darts.engines import (
-    index_vector,
-    ms_well_vector,
-    op_vector,
-)
+from darts.engines import index_vector, ms_well_vector, op_vector
 from darts.engines import print_build_info as engines_pbi
-from darts.engines import (
-    sim_params,
-    timer_node,
-    value_vector,
-)
+from darts.engines import sim_params, timer_node, value_vector
 from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-
     def __init__(self, n_vars):
         self.eta = 1e20 * np.ones(
             n_vars
@@ -91,13 +82,17 @@ class DartsModel:
         package_pbi()
         self.timer = timer_node()  # Create time_node object for time record
         self.timer.start()  # Start time record
-        self.timer.node["simulation"] = (
+        self.timer.node[
+            "simulation"
+        ] = (
             timer_node()
         )  # Create timer.node called "simulation" to record simulation time
         self.timer.node["newton update"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
-        self.timer.node["initialization"] = (
+        self.timer.node[
+            "initialization"
+        ] = (
             timer_node()
         )  # Create timer.node called "initialization" to record initialization time
         self.timer.node[

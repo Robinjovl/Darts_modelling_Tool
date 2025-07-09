@@ -171,15 +171,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
-                                ii
-                            ][
-                                jj
-                            ]
-                        )
+                        temp_dict[
+                            f"{name}_{self.physics.phases[j]}"
+                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                            rr
+                        ].phase_props[
+                            ii
+                        ][
+                            jj
+                        ]
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
@@ -236,15 +236,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
-                                ii
-                            ][
-                                jj
-                            ]
-                        )
+                        temp_dict[
+                            f"{name}_{self.physics.phases[j]}"
+                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                            rr
+                        ].phase_props[
+                            ii
+                        ][
+                            jj
+                        ]
 
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, thermal=False, props=temp_dict
@@ -907,7 +907,6 @@ class Output:
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
                 for region, prop_itor in self.physics.property_itor.items():
-
                     block_idx = np.where(self.op_num == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
@@ -1170,9 +1169,12 @@ class Output:
         time = h5_well_data['dynamic']['time']
         time_data_dict = {'time': time}
 
-        perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans = (
-            self.get_connection_info()
-        )
+        (
+            perfs_conn_ids,
+            well_head_conn_ids,
+            geometric_WI,
+            well_head_conn_trans,
+        ) = self.get_connection_info()
 
         if types_of_well_rates is None:
             types_of_well_rates = [
@@ -1394,9 +1396,9 @@ class Output:
                     ] = arr
             elif rate_type.startswith('advective_heat_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = (
-                        wh_rates[:, well_idx, phase_idx]
-                    )
+                    time_data_dict[
+                        f'{tag}_advective_heat_rate_{phase_name}_at_wh'
+                    ] = wh_rates[:, well_idx, phase_idx]
 
     def store_bhp_bht(self, h5_well_data: dict, time_data_dict: dict):
         """

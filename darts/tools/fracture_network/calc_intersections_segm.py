@@ -58,7 +58,6 @@ def calc_intersections_segm(
     glob_segm_count = 0
 
     for ii in range(0, n_fracs):
-
         # Obtaining the x and y coords of the start and end of the frac
         ith_old = ith_pt + 1
         ii_frac = act_frac_sys[ii, :]
@@ -82,7 +81,6 @@ def calc_intersections_segm(
                 or np.linalg.norm(ii_frac[2:] - jj_frac[:2]) < tolerance_intersect
                 or np.linalg.norm(ii_frac[2:] - jj_frac[2:]) < tolerance_intersect
             ):
-
                 t, s, int_coord = find_parametric_intersect(ii_frac, jj_frac)
 
                 if (
@@ -90,7 +88,6 @@ def calc_intersections_segm(
                 ) and (
                     s >= (0 - tolerance_intersect) and s <= (1 + tolerance_intersect)
                 ):
-
                     ith_pt = ith_pt + 1
                     new_points[ith_pt, :] = int_coord
                     ith_jj[ith_pt] = jj
@@ -109,9 +106,9 @@ def calc_intersections_segm(
         if num_prev_int == 0 and num_new_int == 0:
             glob_segm_count += 1
             new_fract_sys[glob_segm_count : (glob_segm_count + 1), :] = ii_frac
-            new_frac_order_vec[glob_segm_count : (glob_segm_count + 1)] = (
-                frac_order_vec[ii]
-            )
+            new_frac_order_vec[
+                glob_segm_count : (glob_segm_count + 1)
+            ] = frac_order_vec[ii]
             glob_segm_count += 1
             continue
 
@@ -121,9 +118,9 @@ def calc_intersections_segm(
         tot_loc_pts_list[0, :] = act_frac_sys[ii, :2]
         tot_loc_pts_list[-1, :] = act_frac_sys[ii, 2:]
         tot_loc_pts_list[1 : num_prev_int + 1, :] = prev_jj_int
-        tot_loc_pts_list[num_prev_int + 1 : num_new_int + num_prev_int + 1, :] = (
-            new_ii_int
-        )
+        tot_loc_pts_list[
+            num_prev_int + 1 : num_new_int + num_prev_int + 1, :
+        ] = new_ii_int
 
         tot_loc_pts_list = tot_loc_pts_list[
             np.lexsort((tot_loc_pts_list[:, 1], tot_loc_pts_list[:, 0]))
@@ -140,13 +137,13 @@ def calc_intersections_segm(
                 tot_loc_pts_list[mm + 1, 1],
             ]
 
-        new_fract_sys[glob_segm_count : (glob_segm_count + tot_new_segm), :] = (
-            tot_loc_segm_list
-        )
+        new_fract_sys[
+            glob_segm_count : (glob_segm_count + tot_new_segm), :
+        ] = tot_loc_segm_list
 
-        new_frac_order_vec[glob_segm_count : (glob_segm_count + tot_new_segm)] = (
-            frac_order_vec[ii]
-        )
+        new_frac_order_vec[
+            glob_segm_count : (glob_segm_count + tot_new_segm)
+        ] = frac_order_vec[ii]
 
         glob_segm_count += tot_new_segm
 

@@ -88,7 +88,6 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         s2_add.fill(s2[1])
                         b = np.append(b, s2_add)
                     else:
-
                         try:
                             value = float(s1[x])
                         except ValueError:

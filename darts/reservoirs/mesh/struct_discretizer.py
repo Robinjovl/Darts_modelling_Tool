@@ -678,9 +678,9 @@ class StructDiscretizer:
 
         # create a boolean mask indicating existing directions per cell
         existing_dir_mask = np.zeros((n_res_blocks, 6), dtype=bool)
-        existing_dir_mask[cell_m, direction_mapping] = (
-            True  # Set existing directions to True
-        )
+        existing_dir_mask[
+            cell_m, direction_mapping
+        ] = True  # Set existing directions to True
 
         # fill normals with interior and boundary normals (unit normals)
         total_connections = 6 * n_res_blocks
@@ -1018,7 +1018,6 @@ class StructDiscretizer:
 
         # check if target grid block is active
         if self.global_to_local[res_block] > -1:
-
             # Store grid-dimensions of segmet and permeability:
             if self.is_cpg:
                 dx, dy, dz = self.calc_cell_dimensions(i, j, k)
@@ -1034,7 +1033,9 @@ class StructDiscretizer:
                 if kx * ky != 0:
                     peaceman_rad = (
                         0.28
-                        * np.sqrt(np.sqrt(ky / kx) * dx**2 + np.sqrt(kx / ky) * dy**2)
+                        * np.sqrt(
+                            np.sqrt(ky / kx) * dx**2 + np.sqrt(kx / ky) * dy**2
+                        )
                         / ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
                     )
                     well_index = (
@@ -1053,7 +1054,9 @@ class StructDiscretizer:
                 if kz * ky != 0:
                     peaceman_rad = (
                         0.28
-                        * np.sqrt(np.sqrt(ky / kz) * dz**2 + np.sqrt(kz / ky) * dy**2)
+                        * np.sqrt(
+                            np.sqrt(ky / kz) * dz**2 + np.sqrt(kz / ky) * dy**2
+                        )
                         / ((ky / kz) ** (1 / 4) + (kz / ky) ** (1 / 4))
                     )
                     well_index = (
@@ -1072,7 +1075,9 @@ class StructDiscretizer:
                 if kx * kz != 0:
                     peaceman_rad = (
                         0.28
-                        * np.sqrt(np.sqrt(kz / kx) * dx**2 + np.sqrt(kx / kz) * dz**2)
+                        * np.sqrt(
+                            np.sqrt(kz / kx) * dx**2 + np.sqrt(kx / kz) * dz**2
+                        )
                         / ((kz / kx) ** (1 / 4) + (kx / kz) ** (1 / 4))
                     )
                     well_index = (
