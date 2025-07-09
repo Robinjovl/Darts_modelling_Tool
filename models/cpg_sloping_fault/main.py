@@ -290,7 +290,7 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    # cases_list += ['generate_5x3x4']
+    cases_list += ['generate_5x3x4']
     # cases_list += ['generate_51x51x1']
     # cases_list += ['generate_51x51x1_no_burden']
     # cases_list += ['generate_51x51x1_faultmult']
