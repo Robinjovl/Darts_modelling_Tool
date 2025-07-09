@@ -1,12 +1,9 @@
 .build-linux-gpu:
     stage: build
     tags:
-        - linux_gpu
+        - linux_wsl
     before_script:
-        - module load cuda/23.5
-        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
-        - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
-        - conda activate darts_gitlab_gpu_build
+        - nvidia-smi
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p
