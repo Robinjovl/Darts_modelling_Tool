@@ -68,7 +68,7 @@ class Compositional(PhysicsBase):
         # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
         # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
         # + 2 /*temperature and pressure*/
-        # = NE * (2 * nph + 2) + 4 * nph + 3
+        # = NE * (2 * nph + 2) + 6 * nph + 3
         n_ops = n_vars * (2 * nph + 2) + 6 * nph + 3
 
         # axes_min
