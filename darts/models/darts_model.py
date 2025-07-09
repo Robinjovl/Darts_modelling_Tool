@@ -16,17 +16,9 @@ except ImportError:
     pass
 
 from darts.discretizer import print_build_info as discretizer_pbi
-from darts.engines import (
-    index_vector,
-    ms_well_vector,
-    op_vector,
-)
+from darts.engines import index_vector, ms_well_vector, op_vector
 from darts.engines import print_build_info as engines_pbi
-from darts.engines import (
-    sim_params,
-    timer_node,
-    value_vector,
-)
+from darts.engines import sim_params, timer_node, value_vector
 from darts.print_build_info import print_build_info as package_pbi
 
 
