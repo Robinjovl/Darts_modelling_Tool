@@ -1041,13 +1041,21 @@ class DartsModel:
         '''
         from darts.engines import well_control_iface
 
-        eps_time = 1e-15  # threshold between the current time and the time for the well control
+        # store next control index for each well in idata.well_data.wells_next_control_idx
+        if not hasattr(self.idata.well_data, 'wells_next_control_idx'):
+            self.idata.well_data.wells_next_control_idx = dict()
+            for w in self.reservoir.wells:
+                self.idata.well_data.wells_next_control_idx[w.name] = 0
+
         for w in self.reservoir.wells:
             # find next well control in controls list for different timesteps
             wctrl = None
-            for wctrl_t in self.idata.well_data.wells[w.name].controls:
-                if np.fabs(wctrl_t[0] - time) < eps_time:  # check time
+            start_idx = self.idata.well_data.wells_next_control_idx[w.name]
+            for wctrl_t in self.idata.well_data.wells[w.name].controls[start_idx:]:
+                # if the simulation time passed the well control change time and the control is not already set
+                if wctrl_t[0] <= time:
                     wctrl = wctrl_t[1]
+                    self.idata.well_data.wells_next_control_idx[w.name] += 1
                     break
             if wctrl is None:  # no control is defined for the current timestep
                 continue
