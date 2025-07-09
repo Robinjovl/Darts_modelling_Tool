@@ -107,7 +107,7 @@ class Model(CICDModel):
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         rhs_flux = np.zeros(self.reservoir.mesh.n_res_blocks * self.physics.n_vars)
         inj_cell_idx = 0
-        inj_rate = 10
+        inj_rate = 10000
         inj_comp = np.array([1 - self.zero, self.zero])
         inj_flux = inj_rate * inj_comp
         cell_start_idx = inj_cell_idx * self.physics.n_vars
