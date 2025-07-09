@@ -138,14 +138,14 @@ class Model_CPG(CICDModel):
 
             overburden_dz = np.repeat(dz_additions, dz_repeats)
             underburden_dz = np.repeat(dz_additions[::-1], dz_repeats)
-            if geom.dz.size<geom.ny*geom.nx:
-                geom.dz = np.repeat(geom.dz, geom.ny*geom.nx)
+            if geom.dz.size < geom.ny * geom.nx:
+                geom.dz = np.repeat(geom.dz, geom.ny * geom.nx)
             geom.dz = np.concatenate([overburden_dz, geom.dz, underburden_dz])
 
             dx_dy_additions = np.repeat(dx_additions, burden_repeats)
             actnum_additions = np.repeat(actnum_additions, burden_repeats)
-            if geom.dx.size<geom.ny*nz:
-                geom.dx = np.repeat(geom.dx, geom.ny*nz)
+            if geom.dx.size < geom.ny * nz:
+                geom.dx = np.repeat(geom.dx, geom.ny * nz)
             geom.dx = np.concatenate([dx_dy_additions, geom.dx, dx_dy_additions])
             if geom.dy.size < geom.nx * nz:
                 geom.dy = np.repeat(geom.dy, geom.nx * nz)
