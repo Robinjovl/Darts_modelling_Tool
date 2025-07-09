@@ -14,10 +14,11 @@ def get_case_files(case: str):
     grid_file = os.path.join(prefix, 'grid.grdecl')
     prop_file = os.path.join(prefix, 'reservoir.in')
     sch_file = os.path.join(prefix, 'sch.inc')
+    resol_file = os.path.join(prefix, 'resolution.grdecl')
     assert os.path.exists(grid_file), 'cannot open' + grid_file
     assert os.path.exists(prop_file), 'cannot open' + prop_file
     assert os.path.exists(sch_file), 'cannot open' + sch_file
-    return grid_file, prop_file, sch_file
+    return grid_file, prop_file, sch_file, resol_file
 
 def input_data_base(idata: InputData, case: str):
     dt = 365.25  # one report timestep length, [days]
@@ -69,10 +70,11 @@ def input_data_base(idata: InputData, case: str):
 
     else:  # read from files
         # setup filenames
-        gridfile, propfile, schfile = get_case_files(case)
+        gridfile, propfile, schfile, resolfile = get_case_files(case)
         idata.gridfile = gridfile
         idata.propfile = propfile if os.path.exists(propfile) else gridfile
         idata.schfile = schfile
+        idata.resolfile = resolfile
         # read from a file to idata.well_data.wells[well_name].perforations
         idata.well_data.read_and_add_perforations(idata.schfile)
     idata.grid_out_dir = None  # output path for the generated grid and prop files

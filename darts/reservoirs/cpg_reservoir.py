@@ -4,6 +4,7 @@ import warnings
 from typing import Dict, List, Union
 
 import numpy as np
+from numpy import int32
 from opmcpg._cpggrid import UnstructuredGrid
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
@@ -1290,9 +1291,9 @@ def make_burden_layers(
         # which are the same the values from the top reservoir layer
         property_dictionary['ACTNUM'] = np.concatenate(
             [
-                property_dictionary['ACTNUM'][: nx * ny],
+                np.ones(nx*ny).astype(int32),
                 property_dictionary['ACTNUM'],
-                property_dictionary['ACTNUM'][-nx * ny :],
+                np.ones(nx*ny).astype(int32),
             ]
         )
 

@@ -9,6 +9,7 @@ from darts.engines import value_vector
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
 from darts.models.cicd_model import CICDModel
+from darts.tools.keyword_file_tools import load_single_keyword
 
 
 def fmt(x):
@@ -96,7 +97,6 @@ class Model_CPG(CICDModel):
             # add more layers above and below the reservoir
             burden_layers = self.idata.geom.burden_layers
             nx, ny = self.idata.geom.nx, self.idata.geom.ny
-            nz = self.idata.geom.nz
             size = nx * ny * burden_layers
 
             # Create burden properties once and reuse
@@ -106,10 +106,10 @@ class Model_CPG(CICDModel):
             geom = self.idata.geom
             total_cells = geom.nx * geom.ny * geom.nz
             if arrays is not None:
-                rock.permx =arrays['PERMX']
+                rock.permx = arrays['PERMX']
                 rock.permy = arrays['PERMY']
-                rock.permz =arrays['PERMZ']
-                rock.poro =arrays['PORO']
+                rock.permz = arrays['PERMZ']
+                rock.poro = arrays['PORO']
 
             def expand_if_scalar(prop):
                 if np.isscalar(prop):
@@ -127,20 +127,32 @@ class Model_CPG(CICDModel):
 
             geom.nz += 2 * burden_layers  # Both overburden and underburden
 
-            # Precompute dz additions
+            # Define additions
             dz_additions = np.array([120, 60, 40, 10])
-            geom.dz = np.concatenate([
-                dz_additions,
-                geom.dz if not np.isscalar(geom.dz) else np.array([geom.dz]*nz),
-                dz_additions[::-1]  # Reverse for underburden
-            ])
+            dx_additions = np.array([40])
+            actnum_additions = np.array([1])
+
+            burden_repeats = geom.nx * geom.ny * burden_layers
+            dz_repeats = geom.nx * geom.ny
+
+            overburden_dz = np.repeat(dz_additions, dz_repeats)
+            underburden_dz = np.repeat(dz_additions[::-1], dz_repeats)
+            geom_dz = geom.dz if not np.isscalar(geom.dz) else np.full(geom.nz * geom.ny * geom.nx, geom.dz)
+            geom.dz = np.concatenate([overburden_dz, geom_dz, underburden_dz])
+
+            dx_dy_additions = np.repeat(dx_additions, burden_repeats)
+            actnum_additions = np.repeat(actnum_additions, burden_repeats)
+            geom.dx = np.concatenate([dx_dy_additions, geom.dx, dx_dy_additions])
+            geom.dy = np.concatenate([dx_dy_additions, geom.dy, dx_dy_additions])
+
+            arrays['ACTNUM'] = np.concatenate([actnum_additions, arrays['ACTNUM'], actnum_additions])
         self.reservoir = StructReservoir(self.timer, nx=self.idata.geom.nx, ny=self.idata.geom.ny,
                                          nz=self.idata.geom.nz,
                                          dx=self.idata.geom.dx, dy=self.idata.geom.dy, dz=self.idata.geom.dz,
                                          permx=self.idata.rock.permx, permy=self.idata.rock.permy,
                                          permz=self.idata.rock.permz, poro=self.idata.rock.poro,
                                          hcap=self.idata.rock.hcap_sand, rcond=self.idata.rock.conduction_sand,
-                                         start_z=self.idata.geom.start_z)
+                                         start_z=self.idata.geom.start_z, actnum=arrays['ACTNUM'])
         self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume

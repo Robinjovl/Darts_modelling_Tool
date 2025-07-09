@@ -196,7 +196,7 @@ class StructReservoir(ReservoirBase):
         for i in range(self.n):
             cv = c_struct[i]
             c[i, 0], c[i, 1], c[i, 2] = cv[0], cv[1], cv[2]  # x, y, z
-        x, y, z = c[:, 0].flatten(), c[:, 1].flatten(), -c[:, 2].flatten()
+        x, y, z = c[:, 0].flatten()[self.actnum==1], c[:, 1].flatten()[self.actnum==1], -c[:, 2].flatten()[self.actnum==1]
         return x, y, z
 
     def set_boundary_volume(self, boundary_volumes: dict):
