@@ -233,10 +233,9 @@ class PropertyContainer(PropertyBase):
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
-
         for j, reaction in self.kinetic_rate_ev.items():
             dm, self.dX[j] = reaction.evaluate(
-                pressure, temperature, self.x, zc[self.nc_fl + j]
+                pressure, temperature, self.x, self.sat[-1]
             )
             self.mass_source += dm
 
@@ -334,7 +333,7 @@ class PropertyContainer(PropertyBase):
 
         for j, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
-                pressure, self.temperature, self.x, zc[self.nc_fl + j]
+                pressure, self.temperature, self.x, self.sat[-1]
             )
 
         return
