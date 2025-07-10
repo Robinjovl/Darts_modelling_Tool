@@ -35,6 +35,7 @@ class Compositional(PhysicsBase):
         max_p: float,
         min_z: float,
         max_z: float,
+        epsilon_z: float = 1e-13,
         min_t: float = None,
         max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
@@ -97,17 +98,20 @@ class Compositional(PhysicsBase):
 
         # axes_min
         if axes_min is None:
+            z_min = [min_z + epsilon_z for i in range(nc-1)] if np.isscalar(min_z) else [min_z[i] + epsilon_z for i in range(nc-1)]
             if self.thermal:
-                axes_min = [min_p] + [min_z] * (nc - 1) + [min_t]
+                axes_min = [min_p] + z_min + [min_t]
             else:
-                axes_min = [min_p] + [min_z] * (nc - 1)
+                axes_min = [min_p] + z_min
 
         # axes_max
         if axes_max is None:
+            z_max = [max_z - (nc-1) * epsilon_z for i in range(nc - 1)] if np.isscalar(min_z) \
+                else [max_z[i] - (nc-1) * epsilon_z for i in range(nc - 1)]
             if self.thermal:
-                axes_max = [max_p] + [max_z] * (nc - 1) + [max_t]
+                axes_max = [max_p] + z_max + [max_t]
             else:
-                axes_max = [max_p] + [max_z] * (nc - 1)
+                axes_max = [max_p] + z_max
 
         # n_axes_points
         if n_axes_points is None:
@@ -119,8 +123,7 @@ class Compositional(PhysicsBase):
         self.dz = (
             (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
         )
-
-        # Call PhysicsBase constructor
+                # Call PhysicsBase constructor
         super().__init__(
             state_spec=state_spec,
             variables=variables,
