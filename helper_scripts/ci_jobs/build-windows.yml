@@ -2,7 +2,7 @@
     stage: build
     # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
     tags: 
-        - windows-shell
+        - windows_gpu
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
