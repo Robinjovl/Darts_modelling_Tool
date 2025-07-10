@@ -73,7 +73,7 @@ class OperatorsSuper(OperatorsBase):
         print("SAT", values[self.SAT_OP : self.ENTH_OP])
         print("ENTHALPY", values[self.ENTH_OP : self.ENTH_OP + self.nph])
         print("PERM_MULT", values[self.MULT_OP])
-        print("VISCOSITY", values[self.VIS_OP: self.VIS_OP + self.nph])
+        print("VISCOSITY", values[self.VIS_OP : self.VIS_OP + self.nph])
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
