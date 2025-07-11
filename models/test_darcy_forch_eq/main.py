@@ -50,9 +50,6 @@ if __name__ == '__main__':
     n.init()
     n.set_output()
 
-    n.reservoir.mesh.forchheimer_coefficient = 1e9
-
-
     if True:
         n.run(0.5)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])

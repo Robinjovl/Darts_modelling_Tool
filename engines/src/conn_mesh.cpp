@@ -39,6 +39,7 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   depth.assign(n_res_blocks, 0);
   heat_capacity.assign(n_res_blocks, 0);
   rock_cond.assign(n_res_blocks, 0);
+  forchheimer_coefficient.assign(n_res_blocks, 0);
 
   // kinetic property
   kin_factor.assign(n_res_blocks, 1);  // if I want backwards compatibility with older version of python files I assume it needs to be filled with a 1 here (in case people don't actually use this factor!)

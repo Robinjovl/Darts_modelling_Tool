@@ -294,10 +294,10 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 value_t C2 = 1.142 * 1e-17;
                 if (1)   // Only for reservoir connections
                 {
-                    value_t forchheimer_coef = mesh->forchheimer_coefficient;
+                    std::vector<value_t> forch_coef = mesh->forchheimer_coefficient;
 
-                    value_t a = C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forchheimer_coef * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[i * N_OPS + VIS_OP + p];
-                    value_t b = C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forchheimer_coef * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[j * N_OPS + VIS_OP + p];
+                    value_t a = C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[i * N_OPS + VIS_OP + p];
+                    value_t b = C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]) / op_vals_arr[j * N_OPS + VIS_OP + p];
                     value_t fi = mesh->connection_area[conn_idx] * mesh->permx[i] / (mesh->cell_half_length[conn_idx] * op_vals_arr[i * N_OPS + VIS_OP + p]) / (1 + a);
                     value_t fj = mesh->connection_area[conn_idx] * mesh->permx[j] / (mesh->cell_half_length[conn_idx] * op_vals_arr[j * N_OPS + VIS_OP + p]) / (1 + b);
                     darcy_forchheimer_trans = fi * fj / (fi + fj);
@@ -307,8 +307,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
                     for (uint8_t v = 0; v < N_VARS; v++)
                     {
-                        value_t fi_der_i = -mesh->connection_area[conn_idx] * mesh->permx[i] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(i * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v] * forchheimer_coef * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[i * N_OPS + VIS_OP + p] + C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forchheimer_coef * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
-                        value_t fj_der_j = -mesh->connection_area[conn_idx] * mesh->permx[j] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(j * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v] * forchheimer_coef * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[j * N_OPS + VIS_OP + p] + C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forchheimer_coef * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
+                        value_t fi_der_i = -mesh->connection_area[conn_idx] * mesh->permx[i] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(i * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(i * N_OPS + GRAV_OP + p) * N_VARS + v] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[i * N_OPS + VIS_OP + p] + C2 * op_vals_arr[i * N_OPS + GRAV_OP + p] * forch_coef[i] * mesh->permx[i] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
+                        value_t fj_der_j = -mesh->connection_area[conn_idx] * mesh->permx[j] / mesh->cell_half_length[conn_idx] * (op_ders_arr[(j * N_OPS + VIS_OP + p) * N_VARS + v] + C2 * op_ders_arr[(j * N_OPS + GRAV_OP + p) * N_VARS + v] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx])) / (std::pow(op_vals_arr[j * N_OPS + VIS_OP + p] + C2 * op_vals_arr[j * N_OPS + GRAV_OP + p] * forch_coef[j] * mesh->permx[j] * std::abs(darcy_forchheimer_velocities_n[conn_idx]), 2));
 
                         darcy_forch_trans_der_i[v] = fi_der_i * fj * fj / ((fi + fj) * (fi + fj));
                         darcy_forch_trans_der_j[v] = fi * fi * fj_der_j / ((fi + fj) * (fi + fj));

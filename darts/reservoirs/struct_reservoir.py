@@ -35,6 +35,7 @@ class StructReservoir(ReservoirBase):
         start_z=0,
         rcond=0,
         hcap=0,
+        forch_coef=1e9,
         actnum=1,
         global_to_local=0,
         op_num=0,
@@ -59,6 +60,7 @@ class StructReservoir(ReservoirBase):
         :param poro: porosity of the reservoir blocks
         :param depth: nx*ny*nz array of depths in KJI-order (I is the fastest index). If None, will be computed based on geometry (start_z and dz)
         :param start_z: top reservoir depth (a single float value or nx*ny values)
+        :param forch_coef: Forchheimer coefficient
         :param actnum: attribute of activity of the reservoir blocks (all are active by default)
         :param global_to_local: one can define arbitrary indexing (mapping from global to local) for local
           arrays. Default indexing is by X (fastest),then Y, and finally Z (slowest)
@@ -83,6 +85,7 @@ class StructReservoir(ReservoirBase):
         permx = self.convert_to_3d_array(permx)
         permy = self.convert_to_3d_array(permy)
         permz = self.convert_to_3d_array(permz)
+        forch_coef = self.convert_to_3d_array(forch_coef)
         self.global_data = {
             "dx": dx,
             "dy": dy,
@@ -97,6 +100,7 @@ class StructReservoir(ReservoirBase):
             "depth": depth,
             "actnum": actnum,
             "op_num": op_num,
+            "forch_coef": forch_coef,
         }
 
         self.actnum = actnum
@@ -155,13 +159,14 @@ class StructReservoir(ReservoirBase):
             self.global_data["depth"],
             volume,
             self.global_data["op_num"],
+            self.global_data["forch_coef"],
         ]
         self.cell_m, self.cell_p, tran, tran_thermal, arrs_local = (
             self.discretizer.apply_actnum_filter(
                 self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
             )
         )
-        poro, permx, rcond, hcap, depth, volume, op_num = arrs_local
+        poro, permx, rcond, hcap, depth, volume, op_num, forch_coef = arrs_local
         self.global_data["global_to_local"] = self.discretizer.global_to_local
 
         # Assign layer properties
@@ -187,6 +192,7 @@ class StructReservoir(ReservoirBase):
         self.volume = np.array(mesh.volume, copy=False)
         self.volume[:] = volume
         np.array(mesh.op_num, copy=False)[:] = op_num
+        np.array(mesh.forchheimer_coefficient, copy=False)[:] = forch_coef
 
         self.set_boundary_volume(self.boundary_volumes)
         # copy the values of mesh.volume instead of using the pointer

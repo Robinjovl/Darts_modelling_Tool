@@ -210,8 +210,6 @@ public:
   std::vector<value_t> velocity;
   /// [n_conns] array of temporary const transmissibilities                       
   std::vector<value_t> tran_const;
-  /// [1] Forchheimer doefficient
-  value_t forchheimer_coefficient;
   /// [n_conns] array of half of cell lengths
   std::vector<value_t> cell_half_length;
   /// [n_conns] array of connections areas
@@ -281,6 +279,8 @@ public:
   std::vector<value_t> kin_factor;
   /// [np * n_blocks] array of phase mobility multiplier (dependent on phase index!);                       
   std::vector<value_t> mob_multiplier;
+  /// [n_blocks] Forchheimer doefficient
+  std::vector<value_t> forchheimer_coefficient;
                                         
   /// [n_blocks * n_vars] array of initial state for solution
   std::vector<value_t> initial_state;

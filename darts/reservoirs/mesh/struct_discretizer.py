@@ -297,6 +297,8 @@ class StructDiscretizer:
         self.perm_y_cell = self.convert_to_3d_array(permy, "permy")
         self.perm_z_cell = self.convert_to_3d_array(permz, "permz")
 
+        self.forch_coef = global_data["forch_coef"]
+
         # Initialize mapping arrays assuming all cells are active
         if np.isscalar(global_to_local):
             # default indexing
