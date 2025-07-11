@@ -433,23 +433,16 @@ class PhysicsBase:
                 else list(max_z)
             )
 
-            zi = np.append(np.zeros(self.nc - 1), np.array([1.0]))
-            min_h = self.property_containers[0].compute_total_enthalpy(
-                state_pt=np.array([max_p] + list(zi) + [min_t])
-            )
-            max_h = self.property_containers[0].compute_total_enthalpy(
-                state_pt=np.array([min_p] + list(zi) + [max_t])
-            )
-            for i in range(self.nc - 1):
-                zi = np.array([1.0 if i == ii else 0.0 for ii in range(self.nc)])
-                min_hi = self.property_containers[0].compute_total_enthalpy(
-                    state_pt=np.array([max_p] + list(zi) + [min_t])
-                )
-                min_h = min_hi if min_hi < min_h else min_h
-                max_hi = self.property_containers[0].compute_total_enthalpy(
-                    state_pt=np.array([min_p] + list(zi) + [max_t])
-                )
-                max_h = max_hi if max_hi > max_h else max_h
+            min_h, max_h = np.nan, np.nan
+            for i in range(self.nc):
+                for pres in [min_p, max_p]:
+                    for temp in [min_t, max_t]:
+                        zi = np.array([1.0 if i == ii else 0.0 for ii in range(self.nc-1)])
+                        hi = self.property_containers[0].compute_total_enthalpy(
+                            state_pt=np.array([pres] + list(zi) + [temp])
+                        )
+                        min_h = hi if hi < min_h or np.isnan(min_h) else min_h
+                        max_h = hi if hi > max_h or np.isnan(max_h) else max_h
 
             axes_min = value_vector(pz_axes_min + [min_h])
             axes_max = value_vector(pz_axes_max + [max_h])
