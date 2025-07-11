@@ -20,8 +20,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      'GeoRising',
                      'CoaxWell',
                      'phreeqc_dissolution'
-                     ]       
-
+                     ]
 
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs += ['2ph_do_thermal_mpfa']
@@ -76,18 +75,20 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
+    rsv_list = ['cpg', 'struct']
     if iter_solvers:  # run this case only for the build with iterative solvers
         cpg_cases_list += ['generate_51x51x1', 'case_40x40x10']
     test_args_cpg = []
-    for case_geom in cpg_cases_list:
-        for physics_type in ['geothermal', 'deadoil']:
-            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
-                if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
-                    continue  # TODO fix convergence
-                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
-                    continue
-                case = case_geom + '_' + wctrl
-                test_args_cpg.append([case, physics_type])
+    for rsv in rsv_list:
+        for case_geom in cpg_cases_list:
+            for physics_type in ['geothermal', 'deadoil']:
+                for wctrl in ['wrate', 'wbhp', 'wperiodic']:
+                    if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
+                        continue  # TODO fix convergence
+                    if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
+                        continue
+                    case = case_geom + '_' + wctrl
+                    test_args_cpg.append([case, physics_type, rsv])
     test_args_cpg = [test_args_cpg]
 
     # DFN (python discr)
