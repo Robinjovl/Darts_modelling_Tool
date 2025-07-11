@@ -554,8 +554,14 @@ class DartsModel:
         data_ts = self.data_ts
 
         self.output.save_well_after_run = save_well_data_after_run
-        if save_well_data_after_run is True:
-            self.output.configure_output(kind = 'well')
+
+        if save_well_data_after_run:
+            if not hasattr(self, "_well_output_configured"):
+                self.output.configure_output(kind="well")
+                self._well_output_configured = True
+            else:
+                pass
+
             self.output.well_time_labels = []
             self.output.well_data = []
 
