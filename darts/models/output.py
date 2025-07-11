@@ -656,33 +656,50 @@ class Output:
         else:
             self.output_configured = [kind]
 
-    def save_specific_data(self, filename):
+    def save_specific_data(self, filename, X_data = None):
         """
         Function to write output to *.h5 file
 
         :param filename: path to *.h5 filename to append data to
         :type filename: str
         """
-        X = np.array(
-            self.physics.engine.X, copy=False
-        )  # [:self.physics.n_vars*self.reservoir.n]
+
+        if X_data is None:
+            X = np.array(
+                self.physics.engine.X, copy=False
+            )
+            dim_expansion = 1
+        else:
+            well_time_labels_np = np.array(X_data[0])
+            well_data_np = np.array(X_data[1])
+            dim_expansion = len(X_data[0])
 
         # Open the HDF5 file in append mode
         with h5py.File(filename, "a") as f:
             # Append to time dataset under the dynamic group
             time_dataset = f["dynamic/time"]
-            time_dataset.resize((time_dataset.shape[0] + 1,))
-            time_dataset[-1] = self.physics.engine.t
+            og_length = time_dataset.shape[0]
+            time_dataset.resize((time_dataset.shape[0] + dim_expansion,))
+
+            if dim_expansion == 1:
+                time_dataset[-1] = self.physics.engine.t
+            else:
+                time_dataset[og_length:dim_expansion] = well_time_labels_np
 
             cell_id = f["dynamic/cell_id"][:]
 
             x_dataset = f["dynamic/X"]
+
             x_dataset.resize(
-                (x_dataset.shape[0] + 1, x_dataset.shape[1], x_dataset.shape[2])
+                (x_dataset.shape[0] + dim_expansion, x_dataset.shape[1], x_dataset.shape[2])
             )
-            x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape(
-                (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-            )[cell_id]
+
+            if dim_expansion == 1:
+                x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape(
+                    (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+                )[cell_id]
+            else:
+                x_dataset[og_length:dim_expansion, :, :] = well_data_np
 
         if self.verbose:
             print(f'Saving data to {filename} at time = {self.physics.engine.t}')

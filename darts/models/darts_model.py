@@ -529,7 +529,7 @@ class DartsModel:
         days: float = None,
         restart_dt: float = 0.0,
         save_well_data: bool = True,
-        save_well_data_after_run: bool = False,
+        save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
         verbose: bool = True,
     ):
@@ -658,33 +658,11 @@ class DartsModel:
 
         # save well data after run
         if save_well_data and save_well_data_after_run is True:
-            self.output.save_data_to_h5(kind='well')
+            path = os.path.join(self.output_folder, self.well_filename)
 
             self.output.timer.start()
             self.output.timer.node['saving_well_data'].start()
-
-            well_time_labels_np = np.array(self.output.well_time_labels)
-            well_data_np = np.array(self.output.well_data)
-
-            no_time_steps_previous = 0
-            no_time_steps = len(well_time_labels_np)
-
-            with h5py.File(self.well_filepath, "a") as f:
-                # Append to time dataset under the dynamic group
-                time_dataset = f["dynamic/time"]
-                time_dataset.resize((time_dataset.shape[0] + no_time_steps - 1,))
-                time_dataset[no_time_steps_previous:no_time_steps] = well_time_labels_np
-
-                # cell_id = f["dynamic/cell_id"][:]
-
-                x_dataset = f["dynamic/X"]
-                x_dataset.resize(
-                    (x_dataset.shape[0] + len(well_time_labels_np) - 1, x_dataset.shape[1], x_dataset.shape[2])
-                )
-                x_dataset[no_time_steps_previous:no_time_steps, :, :] = well_data_np
-
-                # no_time_steps_previous = no_time_steps
-
+            self.output.save_specific_data(path, [self.output.well_time_labels, self.output.well_data])
             self.output.timer.node['saving_well_data'].stop()
             self.output.timer.stop()
 
