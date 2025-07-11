@@ -31,7 +31,7 @@ def run(rsv: str, physics_type: str, case: str, out_dir: str, export_vtk=True, r
     if physics_type == 'geothermal':
         m = ModelGeothermal(rsv, iapws_physics=True)
     elif physics_type == 'deadoil':
-        m = ModelDeadOil()
+        m = ModelDeadOil(rsv)
     else:
         print('Error: wrong physics specified:', physics_type)
         exit(1)
@@ -284,7 +284,7 @@ if __name__ == '__main__':
 
     rsv_list = []
     rsv_list += ['struct']
-    # rsv_list += ['cpg']
+    rsv_list += ['cpg']
 
     physics_list = []
     physics_list += ['geothermal']

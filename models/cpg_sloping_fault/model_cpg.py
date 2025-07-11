@@ -19,7 +19,8 @@ def fmt(x):
 #####################################################
 
 class Model_CPG(CICDModel):
-    def __init__(self):
+    def __init__(self, rsv):
+        self.rsv = rsv
         super().__init__()
 
     def init_input_arrays(self):
@@ -91,6 +92,12 @@ class Model_CPG(CICDModel):
                                                                              g2l)})
 
     def init_struct_reservoir(self, arrays=None):
+        rock = self.idata.rock
+        if arrays is not None:
+            rock.permx = arrays['PERMX']
+            rock.permy = arrays['PERMY']
+            rock.permz = arrays['PERMZ']
+            rock.poro = arrays['PORO']
         # no over/under burden layers
         from darts.reservoirs.struct_reservoir import StructReservoir
         if self.idata.geom.burden_layers > 0:
@@ -102,15 +109,8 @@ class Model_CPG(CICDModel):
 
             # Create burden properties once and reuse
             burden_prop = np.full(size, 1e-5)
-
-            rock = self.idata.rock
             geom = self.idata.geom
             total_cells = geom.nx * geom.ny * geom.nz
-            if arrays is not None:
-                rock.permx = arrays['PERMX']
-                rock.permy = arrays['PERMY']
-                rock.permz = arrays['PERMZ']
-                rock.poro = arrays['PORO']
 
             def expand_if_scalar(prop):
                 if np.isscalar(prop):

@@ -12,9 +12,9 @@ from set_case import set_input_data
 
 
 class ModelDeadOil(Model_CPG):
-    def __init__(self):
+    def __init__(self, rsv):
         self.zero = 1e-13
-        super().__init__()
+        super().__init__(rsv=rsv)
 
     def set_physics(self):
         self.physics = DeadOil(self.idata, self.timer, thermal=False)
@@ -29,8 +29,12 @@ class ModelDeadOil(Model_CPG):
             input_distribution = {'pressure': [P_at_surface, P_at_surface + input_depth[1] * 0.1],  # gradient 0.1 bar/m
                                   self.physics.vars[1]: [self.ini[0], self.ini[0]]
                                   }
+            if self.rsv == 'struct':
+                global_to_local = self.reservoir.discretizer.global_to_local
+            else:
+                global_to_local = self.reservoir.discr_mesh.global_to_local
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        global_to_local=self.reservoir.global_to_local,
+                                                                        global_to_local=global_to_local,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         else:

@@ -13,8 +13,7 @@ from model_cpg import Model_CPG, fmt
 class ModelGeothermal(Model_CPG):
     def __init__(self, rsv, iapws_physics: bool = True):
         self.iapws_physics = iapws_physics
-        self.rsv = rsv
-        super().__init__()
+        super().__init__(rsv=rsv)
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables
@@ -37,7 +36,7 @@ class ModelGeothermal(Model_CPG):
             else:
                 global_to_local = self.reservoir.discr_mesh.global_to_local
             return self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh,
-                                                                        # global_to_local=global_to_local ,
+                                                                        global_to_local=global_to_local ,
                                                                         input_distribution=input_distribution,
                                                                         input_depth=input_depth)
         elif self.idata.initial.type == 'uniform':
