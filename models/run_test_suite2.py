@@ -6,6 +6,7 @@ import sys, os, shutil
 import subprocess
 from darts.engines import sim_params
 
+
 def run_testing(platform, overwrite, iter_solvers, test_all_models):
     model_dir = r'.'
 
@@ -16,7 +17,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                      '3ph_comp_w', '3ph_do', '3ph_bo',
                      'Uniform_Brugge',
                      'Chem_benchmark_new',
-                     #'CO2_foam_CCS',
+                     # 'CO2_foam_CCS',
                      'GeoRising',
                      'CoaxWell',
                      'phreeqc_dissolution'
@@ -33,7 +34,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
         for discr_name in ['mech_discretizer', 'pm_discretizer']:
             if case == 'bai' and discr_name == 'pm_discretizer':
-                continue # is not supported by poroelastic as bai is thermoporoelasticity
+                continue  # is not supported by poroelastic as bai is thermoporoelasticity
             for mesh in ['rect', 'wedge', 'hex']:
                 if case == 'terzaghi_two_layers' and mesh == 'hex':
                     continue
@@ -96,8 +97,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_cases_dfn = ['case_1']
     if test_all_models:
         test_cases_dfn += ['case_4', 'case_5']
-        #test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
-        #test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
+        # test_cases_dfn += ['whitby', 'case_3', 'case_1_burden_O1', 'case_1_burden_O2']
+        # test_cases_dfn += ['case_1_burden_U1', 'case_1_burden_U2', 'case_1_burden_O1_U1', 'case_1_burden_O2_U2']
     test_args_dfn = []
     for case in test_cases_dfn:
         test_args_dfn.append([case])
@@ -121,14 +122,15 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # check main.py files runs, without comparison of pkl files
     accepted_dirs += ['CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
-        accepted_dirs += [ 'SPE11b']
+        accepted_dirs += ['SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
     for mdir in accepted_dirs:
         print('running main.py for model', mdir)
         n_total_mainpy += 1
         os.chdir(mdir)
         import subprocess
-        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'), stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
+        mrun = subprocess.run(["python", "main.py", platform], stdout=open('../_logs/' + mdir + '_mainpy.log', 'w'),
+                              stderr=open('../_logs/' + mdir + '_mainpy_err.log', 'w'))
         rcode = mrun.returncode
         n_failed_mainpy += rcode
         if not rcode:
@@ -142,14 +144,16 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # discretizer tests
     print('\nDiscretizer tests:')
     n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
+    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg,
+                                              overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
     print('\nFracture network tests:')
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
+    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn,
+                                          overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 
@@ -180,9 +184,9 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     print('n_failed_dfn=', n_failed_dfn)
     print('n_failed_mech=', n_failed_mech)
     print('n_failed_adj=', n_failed_adj)
-    
+
     if len(sys.argv) == 1 or sys.argv[1] != 'LOG':
-        input("Press Enter to continue...") # pause the screen
+        input("Press Enter to continue...")  # pause the screen
     else:
         print('exit:', n_failed)
         # exit with code equal to number of failed models
@@ -207,18 +211,18 @@ def check_performance(mod):
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
     m = mod.Model()
-    #m.params.linear_type = sim_params.cpu_superlu
+    # m.params.linear_type = sim_params.cpu_superlu
 
-    platform='cpu'
+    platform = 'cpu'
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
-        platform='gpu'
+        platform = 'gpu'
 
         if os.getenv('GPU_DEVICE') != None:
             from darts.engines import set_gpu_device
             set_gpu_device(int(os.getenv('GPU_DEVICE')))
 
     m.init(platform=platform)
-    
+
     m.set_output()
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
@@ -244,8 +248,8 @@ def check_performance_adjoint(mod):
     failed = mod.process_adjoint()
     abort_redirection(log_stream)
 
-
     return failed
+
 
 if __name__ == '__main__':
 
@@ -253,7 +257,7 @@ if __name__ == '__main__':
     engines_pbi()
 
     # multithreaded run can be enabled by setting OMP_NUM_THREADS environment variable
-    if os.getenv('OMP_NUM_THREADS') == None:  
+    if os.getenv('OMP_NUM_THREADS') == None:
         os.environ['OMP_NUM_THREADS'] = '1'
     print('OMP_NUM_THREADS=', os.environ['OMP_NUM_THREADS'])
 
@@ -267,15 +271,16 @@ if __name__ == '__main__':
     overwrite = '0'
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
-        
+
     # run larger set of models (takes longer)
     test_all_models = False
     if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
         test_all_models = True
 
     iter_solvers = False
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':  # run this case only for the build with iterative solvers
+    if os.getenv('ODLS') != None and os.getenv(
+            'ODLS') == '-a':  # run this case only for the build with iterative solvers
         iter_solvers = True
-        
+
     rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
     exit(rcode)

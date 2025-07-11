@@ -268,7 +268,7 @@ def run_test(args: list = [], platform='cpu'):
         rsv = args[2]
 
         out_dir = 'results_' + rsv + '_' + physics_type + '_' + case
-        ret = run(case=case, physics_type=physics_type, out_dir=out_dir, platform=platform, compare_with_ref=True)
+        ret = run(rsv=rsv, case=case, physics_type=physics_type, out_dir=out_dir, platform=platform, compare_with_ref=True)
         return ret[0], ret[1]  # failed_flag, sim_time
     else:
         print('Not enough arguments provided')
