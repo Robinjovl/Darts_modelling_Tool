@@ -2064,13 +2064,9 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 			  {
 				  int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
 				  int w_i = wells[iw]->well_head_idx + p;
-				  // copy properties for the well blocks from the reservoir blocks
-				  //pressure[w_i] = pressure[r_i];
-				  //temperature[w_i] = temperature[r_i];
 				  rock_cond[w_i] = rock_cond[r_i];
 				  // depth of well segments
 				  depth[wells[iw]->well_head_idx + p] = wells[iw]->well_body_depth + (p - 1) * wells[iw]->segment_depth_increment;
-				  //std::copy(composition.begin() + r_i * nc_1, composition.begin() + (r_i + 1) * nc_1, composition.begin() + w_i * nc_1);
 			  }
 		  }
 	  }
@@ -2088,8 +2084,6 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 		  //	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2] = 1;
 		  //	mob_multiplier[wells[iw]->well_head_idx * 2 + p * 2 + 1] = 1;
 		  //}
-
-		  // The rest of the varialbles of the wellbore segments, such as pressure, temperature, and composition, will be specified by the user later.
 	  }
   }
 
