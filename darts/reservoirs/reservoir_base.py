@@ -124,10 +124,6 @@ class ReservoirBase:
             well.conns_spe = value_vector(connections_specific_potential_energy)
             well.num_segments = well_geometry.num_segments
 
-            # will be updated in add_perforation
-            # well.well_head_depth = well_geometry.pipe_length - well_geometry.z[-1]
-            # well.well_body_depth = well_geometry.pipe_length - well_geometry.z[0]
-
         self.wells.append(well)
 
         return
