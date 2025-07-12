@@ -111,30 +111,32 @@ class UnstructReservoir(ReservoirBase):
         self.volume[self.right_boundary_cells] = self.volume[self.right_boundary_cells] * 1e8
         return
 
-    def add_perforation(self, well_name: str, cell_index: int, well_radius: float = 0.1524,
+    def add_perforation(self, well_name: str, res_cell_idx: int, well_seg_idx: int = None, well_ID: float = 0.3048,
                         well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
                         skin: float = 0, multi_segment: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
+
+        :param well_seg_idx: This is only currently used for struct_reservoir
         """
         well = self.get_well(well_name)
 
         perf_indices = np.array(well.perforations, dtype=int)
-        # cell_index has index=1 in perforation element: (well_block, cell_index, well_index, well_indexD)
+        # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
         perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
-        if cell_index in perf_indices:
+        if res_cell_idx in perf_indices:
             print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
             exit()
 
         #  update well depth
-        perf_indices = np.append(perf_indices, cell_index).astype(int)  # add current cell to previous perforation list
+        perf_indices = np.append(perf_indices, res_cell_idx).astype(int)  # add current cell to previous perforation list
         # set well depth to the top perforation depth 
         well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()  
         well.well_body_depth = well.well_head_depth
 
         if well_index is None or well_indexD is None:
             # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(cell_index, well_radius, skin)
+            wi, wid = self.discretizer.calc_equivalent_well_index(res_cell_idx, well_ID, skin)
             well_index = wi if well_index is None else well_index
             well_indexD = wid if well_indexD is None else well_indexD
 
@@ -147,10 +149,10 @@ class UnstructReservoir(ReservoirBase):
         else:
             well_block = 0
 
-        well.perforations = well.perforations + [(well_block, cell_index, well_index, well_indexD)]
+        well.perforations = well.perforations + [(well_block, res_cell_idx, well_index, well_indexD)]
 
         if verbose:
-            print('Added perforation for well %s to block %d with WI=%f, WID=%f' % (well.name, cell_index,
+            print('Added perforation for well %s to block %d with WI=%f, WID=%f' % (well.name, res_cell_idx,
                                                                                     well_index, well_indexD))
         return
 

@@ -129,9 +129,10 @@ class ReservoirBase:
         return
 
     @abc.abstractmethod
-    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_ID: float = 0.3048,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
-                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None,
+                        well_ID: float = 0.3048, well_index: float = None, well_indexD: float = None,
+                        segment_direction: str = 'z_axis', skin: float = 0, multi_segment: bool = False,
+                        verbose: bool = False):
         """
         Function to add perforations to well objects.
 
@@ -139,6 +140,8 @@ class ReservoirBase:
         :type well_name: str
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: int or tuple
+        :param well_seg_idx: Index of well segment to be perforated
+        :type well_seg_idx: int
         :param well_ID: Internal diameter of the wellbore
         :param well_index: Well index, default is calculated inside
         :param well_indexD: Thermal well index, default is calculated inside

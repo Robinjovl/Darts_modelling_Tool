@@ -2879,15 +2879,17 @@ class UnstructDiscretizer:
 
         return cell_m, cell_p, stencil, offset, trans
 
-    def calc_equivalent_well_index(self, res_block: int, well_radius: float =0.1524, skin: float =0.) -> List[float]:
+    def calc_equivalent_well_index(self, res_block: int, well_ID: float =0.3048, skin: float =0.) -> List[float]:
         '''
         works only for wedge 2.5D extruded cells
         approximate calculation: triangle -> square with the same area -> Peaceman formula
         :param res_block: cell block index
-        :param well_radius: well radius, m.
+        :param well_ID: well inside diameter, m.
         :param skin: skin
         :return: well_index, well_index_thermal
         '''
+        well_radius = well_ID / 2
+
         if res_block < self.frac_cells_tot:
             well_index = well_indexD = 1e+5 # set big value for well perf in fracture
             return well_index, well_indexD
