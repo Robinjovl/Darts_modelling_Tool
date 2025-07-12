@@ -41,11 +41,11 @@ class Pipe:
         :param Fv: A multiplier on the flooding velocity fraction, set to be 1 by default, and its value can be tuned
         to fit the observations.
         :type Fv: float
-        :param eps_p: A very small number used for numerically differentiating residual equations with respect to pressure
+        :param eps_p: A very small value used for numerically differentiating pipe phase velocities with respect to pressure
         :type eps_p: float
-        :param eps_temp: A very small number used for numerically differentiating residual equations with respect to temperature
+        :param eps_temp: A very small value used for numerically differentiating pipe phase velocities with respect to temperature
         :type eps_temp: float
-        :param eps_z: A very small number used for numerically differentiating residual equations with respect to composition
+        :param eps_z: A very small value used for numerically differentiating pipe phase velocities with respect to composition
         :type eps_z: float
         :param verbose: Whether to display extra info about PipeModel
         :type verbose: boolean
@@ -128,6 +128,22 @@ class Pipe:
             print("** Model of the pipe \"%s\" is created!" % self.geometry.pipe_name)
 
     def evaluate_phase_velocities(self, Xn_ms_well, X_ms_well, dt, iter_counter, flag):
+        """
+        Evaluates pipe phase velocities
+
+        :param Xn_ms_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
+        :type Xn_ms_well: np.ndarray
+        :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
+        :type X_ms_well: np.ndarray
+        :param dt: Time step size [days]
+        :type dt: float
+        :param iter_counter: Iteration counter of the current time step
+        :type iter_counter: int
+        :param flag: Flag indicating if we want to update the solution of the previous time step based on the new solution or not
+            If 0  -> Used when we don't want to update the solution of the previous time step, e.g., during numerical differentiation
+            If 1  -> Used when we want to update the solution of the previous time step
+        :type flag: int
+        """
         dt = dt * 24 * 60 * 60   # convert day to second
 
         num_segments = self.geometry.num_segments
@@ -672,6 +688,18 @@ class Pipe:
         self.vD0 = - vD0   # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.
 
     def evaluate_phase_velocities_and_derivatives(self, Xn_ms_well, X_ms_well, dt, iter_counter):
+        """
+        Evaluates pipe phase velocities and their derivatives with respect to primary variables
+
+        :param Xn_ms_well: Vector containing the state of pipe segments (ordered block by block) of the previous time step
+        :type Xn_ms_well: np.ndarray
+        :param X_ms_well: Vector containing the state of pipe segments (ordered block by block) of the current time step
+        :type X_ms_well: np.ndarray
+        :param dt: Time step size [days]
+        :type dt: float
+        :param iter_counter: Iteration counter of the current time step
+        :type iter_counter: int
+        """
         num_segments = self.geometry.num_segments
         num_conn = self.geometry.num_interfaces
         num_phase_velocities = num_conn * 2
@@ -704,7 +732,7 @@ class Pipe:
 
         # Update properties at the current time step with the original primary variables (original X_ms_well)
         # unaffected by eps_p, eps_temp, and eps_z
-        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=-1)
+        phase_velocities = self.evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag=0)
 
         jac_phase_A = jac[:num_phase_velocities // 2, :]
         jac_phase_B = jac[num_phase_velocities // 2:, :]
