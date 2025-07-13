@@ -149,7 +149,7 @@ class NumericalWellLateralHeatTransfer:
         # Thermal transmissibility simply equals geom_coef = A / L
         assert isinstance(pipe_geometry.pipe_IR, float), "Pipe radius must be a float; otherwise, it's not supported!"
         pipe_perimeter = 2 * np.pi * pipe_geometry.pipe_IR
-        A = pipe_perimeter * pipe_geometry.segments_lengths
+        A = pipe_perimeter * pipe_geometry.segments_lengths[:-1]
         assert isinstance(pipe_wall_thickness, float), "Pipe wall thickness must be a float; otherwise, it's not supported!"
         L = (pipe_geometry.pipe_ID + pipe_wall_thickness) / 2
         geom_coef = A / L
@@ -164,7 +164,7 @@ class NumericalWellLateralHeatTransfer:
             print(f"** NumericalWellLateralHeatTransfer for the well {pipe_name} is added!")
 
     def evaluate(self, T_segments: np.ndarray, T_pipe_wall_cells: np.ndarray, well_fluid_conductivity):
-        # Implement similar to rock heat conduction in the super engine
+        # Implemented similar to rock heat conduction in the super engine
         t_diff = T_pipe_wall_cells - T_segments
         gamma_t_i = self.tran_thermal * well_fluid_conductivity
         gamma_t_j = self.tran_thermal * self.pipe_wall_cond
