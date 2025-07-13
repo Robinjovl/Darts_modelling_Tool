@@ -15,7 +15,8 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
-    n.set_output()
+    # n.set_output(well_filename = 'well_data_og.h5', verbose = True)
+    n.set_output(well_filename = 'well_data_post.h5', verbose = True)
 
     prop_list = n.physics.vars + n.output.properties
     # output primary (state) and secondary variables to .vtk files from engine.X at the current engine.time
@@ -25,8 +26,9 @@ if __name__ == '__main__':
                            engine = True)
 
     if True:
-        n.run(2000)
-        n.print_timers()
+        for ts in range(2):
+            n.run(1000, save_well_data_after_run = True)
+
         n.print_stat()
         n.output.print_simulation_parameters()
 
@@ -39,15 +41,24 @@ if __name__ == '__main__':
         n.load_restart_data('output/solution.h5')
         time_data = pd.read_pickle("darts_time_data.pkl")
 
-    # compute well rates
-    well_rates_dict = n.output.store_well_time_data()
+    if 1:
+        post = n.output.read_specific_data(os.path.join(n.output_folder, 'well_data_post.h5')) # time, cell_id, X, var_names
+        og = n.output.read_specific_data(os.path.join(n.output_folder, 'well_data_og.h5'))
 
-    # save dataframe of well rates
-    time_data_df = pd.DataFrame.from_dict(well_rates_dict)
-    time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
-    writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
-    time_data_df.to_excel(writer, sheet_name='Sheet1')
-    writer.close()
+        assert np.sum(post[0] - og[0]) == 0 # times
+        assert np.sum(post[2] - og[2]) == 0 # X
+
+    if 0:
+        # compute well rates
+        well_rates_dict = n.output.store_well_time_data()
+
+        # save dataframe of well rates
+        time_data_df = pd.DataFrame.from_dict(well_rates_dict)
+        time_data_df.to_pickle(os.path.join(n.output_folder, "well_time_data.pkl"))  # as a pickle file
+        writer = pd.ExcelWriter(os.path.join(n.output_folder, "well_time_data.xlsx"))  # as an excel file
+        time_data_df.to_excel(writer, sheet_name='Sheet1')
+        writer.close()
+    n.print_timers()
 
     # plot well data
     # td.plot(x='time', y=['well_I1_BHP', 'well_P1_BHP'])\

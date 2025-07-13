@@ -28,7 +28,6 @@ from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 class THMCModel(DartsModel):
     def __init__(self, n_points=64, discretizer='mech_discretizer'):
-
         try:
             from darts.engines import get_num_threads
 
@@ -334,13 +333,13 @@ class THMCModel(DartsModel):
             perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
             perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
             perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = (
-                self.physics.engine.stat.n_newton_wasted
-            )
+            perf_data[
+                'wasted newton iterations'
+            ] = self.physics.engine.stat.n_newton_wasted
             perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
-            perf_data['wasted linear iterations'] = (
-                self.physics.engine.stat.n_linear_wasted
-            )
+            perf_data[
+                'wasted linear iterations'
+            ] = self.physics.engine.stat.n_linear_wasted
 
             sim = self.timer.node['simulation']
             jac = sim.node['jacobian assembly']

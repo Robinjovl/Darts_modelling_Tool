@@ -1,10 +1,9 @@
 import os
 import pickle
 import warnings
-import h5py
-
 from math import fabs
 
+import h5py
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -18,22 +17,13 @@ except ImportError:
     pass
 
 from darts.discretizer import print_build_info as discretizer_pbi
-from darts.engines import (
-    index_vector,
-    ms_well_vector,
-    op_vector,
-)
+from darts.engines import index_vector, ms_well_vector, op_vector
 from darts.engines import print_build_info as engines_pbi
-from darts.engines import (
-    sim_params,
-    timer_node,
-    value_vector,
-)
+from darts.engines import sim_params, timer_node, value_vector
 from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-
     def __init__(self, n_vars):
         self.eta = 1e20 * np.ones(
             n_vars
@@ -93,13 +83,17 @@ class DartsModel:
         package_pbi()
         self.timer = timer_node()  # Create time_node object for time record
         self.timer.start()  # Start time record
-        self.timer.node["simulation"] = (
+        self.timer.node[
+            "simulation"
+        ] = (
             timer_node()
         )  # Create timer.node called "simulation" to record simulation time
         self.timer.node["newton update"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
         self.timer.node["output"] = timer_node()
-        self.timer.node["initialization"] = (
+        self.timer.node[
+            "initialization"
+        ] = (
             timer_node()
         )  # Create timer.node called "initialization" to record initialization time
         self.timer.node[
@@ -645,7 +639,9 @@ class DartsModel:
                     X = np.array(self.physics.engine.X, copy=False)
 
                     self.output.well_data.append(
-                        X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[self.output.id_well_data]
+                        X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[
+                            self.output.id_well_data
+                        ]
                     )
 
             else:
@@ -668,7 +664,9 @@ class DartsModel:
 
             self.output.timer.start()
             self.output.timer.node['saving_well_data'].start()
-            self.output.save_specific_data(path, [self.output.well_time_labels, self.output.well_data])
+            self.output.save_specific_data(
+                path, [self.output.well_time_labels, self.output.well_data]
+            )
             self.output.timer.node['saving_well_data'].stop()
             self.output.timer.stop()
 

@@ -286,9 +286,11 @@ class UnstructDiscretizer:
             self.mesh_data = meshio.read(self.mesh_file)
 
             # Count all the cells, boundary cells and fractures by their types
-            self.mat_cells_tot = self.frac_cells_tot = self.bound_faces_tot = (
-                self.frac_bound_faces_tot
-            ) = self.output_faces_tot = 0
+            self.mat_cells_tot = (
+                self.frac_cells_tot
+            ) = (
+                self.bound_faces_tot
+            ) = self.frac_bound_faces_tot = self.output_faces_tot = 0
             for geometry, types in self.mesh_data.cell_data_dict[
                 'gmsh:physical'
             ].items():
@@ -962,7 +964,6 @@ class UnstructDiscretizer:
             for key, nodes_to_face in self.frac_cell_info_dict[
                 ith_frac
             ].nodes_to_faces.items():
-
                 # Size of nodesToFace in 3D == 2, in 2D == 1.  This is because fractures
                 # in 2D intersect in a point (which is one node) and
                 # in 3D intersect in a line (which has two nodes)!
@@ -985,7 +986,6 @@ class UnstructDiscretizer:
                     # Compute star-delta transformation and store connectivity for
                     # for each unique fracture-fracture connection:
                     if intsect_cells_of_face[0] == ith_frac:
-
                         # If statement is necessary to have unique connections, since
                         # the main outer loop is over all fracture cells, and e.g. if
                         # fracture 5 and 6 are connected, would otherwise appear twice
@@ -1013,13 +1013,14 @@ class UnstructDiscretizer:
                             ]
 
                             # FUNCTION TO COMPUTE ALPHA AND STAR DELTA HERE
-                            trans_i_j, thermal_i_j = (
-                                TransCalculations.calc_trans_frac_frac(
-                                    connect_array,
-                                    temp_frac_elem,
-                                    self.frac_cell_info_dict,
-                                    self.mesh_data.points[nodes_to_face],
-                                )
+                            (
+                                trans_i_j,
+                                thermal_i_j,
+                            ) = TransCalculations.calc_trans_frac_frac(
+                                connect_array,
+                                temp_frac_elem,
+                                self.frac_cell_info_dict,
+                                self.mesh_data.points[nodes_to_face],
                             )
 
                             # Instead of appending, use list or dictionary:
@@ -1088,10 +1089,8 @@ class UnstructDiscretizer:
                     # matrix 5 and 6 are connected, would otherwise appear twice
                     # in the connection list (as (5, 6, Trans56) and (6, 5, Trans65)):
                     if intsect_cells_to_face[0] == ith_cell:
-
                         # Check if any fractures are present throughout the domain:
                         if self.frac_cells_tot > 0:
-
                             # Check if there exists a fracture on the currently investigated
                             # interface:
                             try:
@@ -1129,14 +1128,15 @@ class UnstructDiscretizer:
                         if face_has_fracture:
                             # Calculate transmissibility between fracture and matrix
                             # for cell_i:
-                            trans_i_j, thermal_i_j = (
-                                TransCalculations.calc_trans_mat_frac(
-                                    intsect_cells_to_face[0],
-                                    frac_element_nr[0],
-                                    self.mat_cell_info_dict,
-                                    self.frac_cell_info_dict,
-                                    self.mesh_data.points[nodes_to_face, :],
-                                )
+                            (
+                                trans_i_j,
+                                thermal_i_j,
+                            ) = TransCalculations.calc_trans_mat_frac(
+                                intsect_cells_to_face[0],
+                                frac_element_nr[0],
+                                self.mat_cell_info_dict,
+                                self.frac_cell_info_dict,
+                                self.mesh_data.points[nodes_to_face, :],
                             )
 
                             # Instead of appending, use list or dictionary:
@@ -1192,14 +1192,15 @@ class UnstructDiscretizer:
 
                             # Calculate transmissibility between fracture and matrix
                             # for cell_j:
-                            trans_i_j, thermal_i_j = (
-                                TransCalculations.calc_trans_mat_frac(
-                                    intsect_cells_to_face[1],
-                                    frac_element_nr[0],
-                                    self.mat_cell_info_dict,
-                                    self.frac_cell_info_dict,
-                                    self.mesh_data.points[nodes_to_face, :],
-                                )
+                            (
+                                trans_i_j,
+                                thermal_i_j,
+                            ) = TransCalculations.calc_trans_mat_frac(
+                                intsect_cells_to_face[1],
+                                frac_element_nr[0],
+                                self.mat_cell_info_dict,
+                                self.frac_cell_info_dict,
+                                self.mesh_data.points[nodes_to_face, :],
                             )
 
                             cell_m[count_connection] = (
@@ -1255,12 +1256,13 @@ class UnstructDiscretizer:
 
                         else:
                             # Calculate matrix-matrix transmissibility:
-                            trans_i_j, thermal_i_j = (
-                                TransCalculations.calc_trans_mat_mat(
-                                    intsect_cells_to_face,
-                                    self.mat_cell_info_dict,
-                                    self.mesh_data.points[nodes_to_face, :],
-                                )
+                            (
+                                trans_i_j,
+                                thermal_i_j,
+                            ) = TransCalculations.calc_trans_mat_mat(
+                                intsect_cells_to_face,
+                                self.mat_cell_info_dict,
+                                self.mesh_data.points[nodes_to_face, :],
                             )
 
                             cell_m[count_connection] = (
@@ -2655,9 +2657,9 @@ class UnstructDiscretizer:
                         stencil[cell_id2] = pos
                         pos += 1
 
-                    W[j * n_dim + diag_id, j * n_dim + diag_id] = (
-                        1.0  # / np.linalg.norm(dx)
-                    )
+                    W[
+                        j * n_dim + diag_id, j * n_dim + diag_id
+                    ] = 1.0  # / np.linalg.norm(dx)
                     D[
                         j * self.n_dim : (j + 1) * n_dim,
                         stencil[cell_id2] * n_dim : (stencil[cell_id2] + 1) * n_dim,
@@ -2723,9 +2725,9 @@ class UnstructDiscretizer:
                     R[j * self.n_dim : (j + 1) * self.n_dim, :] = alpha.dot(
                         np.kron(np.identity(self.n_dim), t_face1)
                     ) + beta * P.dot(tmp)
-                    W[j * n_dim + diag_id, j * n_dim + diag_id] = (
-                        1.0  # / np.linalg.norm(face.centroid - cell.centroid)
-                    )
+                    W[
+                        j * n_dim + diag_id, j * n_dim + diag_id
+                    ] = 1.0  # / np.linalg.norm(face.centroid - cell.centroid)
                 elif face.type == FType.MAT_TO_FRAC:
                     j0 = np.argwhere(cur_conns == face.face_id1)[0][0]
                     face0 = self.faces[cell_id][cur_conns[j0]]
@@ -2784,9 +2786,9 @@ class UnstructDiscretizer:
                 R[j * self.n_dim : (j + 1) * self.n_dim, :] = np.kron(
                     np.identity(self.n_dim), dx
                 )
-                W[j * n_dim + diag_id, j * n_dim + diag_id] = (
-                    1.0  # / np.linalg.norm(dx)
-                )
+                W[
+                    j * n_dim + diag_id, j * n_dim + diag_id
+                ] = 1.0  # / np.linalg.norm(dx)
                 D[
                     j * self.n_dim : (j + 1) * n_dim,
                     stencil[cell_id2] * n_dim : (stencil[cell_id2] + 1) * n_dim,
@@ -3435,9 +3437,9 @@ class UnstructDiscretizer:
                     bound_id + self.mat_cells_tot + self.frac_cells_tot
                     not in stenc_cells
                 ):
-                    stenc_cells[bound_id + self.mat_cells_tot + self.frac_cells_tot] = (
-                        cell_pos
-                    )
+                    stenc_cells[
+                        bound_id + self.mat_cells_tot + self.frac_cells_tot
+                    ] = cell_pos
                     cell_pos += 1
                 B[stenc_cells[bound_id + self.mat_cells_tot + self.frac_cells_tot]] += T
             else:  # Roller boundary
@@ -3973,10 +3975,10 @@ class UnstructDiscretizer:
                 for face_id1, face in faces.items():
                     cell_id2 = face.cell_id2
                     face_id2 = face.face_id2
-                    self.mpsa_connections[cell_id1][face_id1] = (
-                        self.calc_mpsa_connection(
-                            cell_id1, face_id1, cell_id2, face_id2
-                        )
+                    self.mpsa_connections[cell_id1][
+                        face_id1
+                    ] = self.calc_mpsa_connection(
+                        cell_id1, face_id1, cell_id2, face_id2
                     )
                     self.mpsa_connections_num += 1
             else:

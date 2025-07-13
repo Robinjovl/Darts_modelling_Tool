@@ -321,9 +321,9 @@ class Compositional(PhysicsBase):
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
-                np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
-                    input_distribution['temperature']
-                )
+                np.asarray(mesh.initial_state)[
+                    (self.n_vars - 1) :: self.n_vars
+                ] = input_distribution['temperature']
             else:
                 # interpolate pressure and temperature to compute enthalpies
                 enthalpy = np.empty(mesh.n_res_blocks)

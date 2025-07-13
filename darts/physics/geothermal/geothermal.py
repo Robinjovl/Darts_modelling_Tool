@@ -136,7 +136,6 @@ class GeothermalPropertiesBase(PropertyBase):
 
 
 class GeothermalIAPWSProperties(GeothermalPropertiesBase):
-
     def evaluate(self, state):
         self.temperature = self.temperature_ev.evaluate(state)
 
@@ -189,7 +188,6 @@ class GeothermalIAPWSFluidProps(FluidProps):
 
 class GeothermalPHProperties(GeothermalPropertiesBase):
     def __init__(self):
-
         super().__init__()
         self.phases = ["water", "steam"]
 
