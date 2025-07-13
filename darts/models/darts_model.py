@@ -18,6 +18,8 @@ from darts.engines import print_build_info as engines_pbi
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
+from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer, NumericalWellLateralHeatTransfer
+
 
 class DataTS:
 
@@ -608,7 +610,8 @@ class DartsModel:
 
     def apply_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
-            if well.ms_type == ms_well.MS_Type.DFM and self.wells[well.name].lateral_heat_flux is not None:
+            if well.ms_type == ms_well.MS_Type.DFM and self.wells[well.name].lateral_heat_rate_eval is not None:
+                # Get temperatures of segments
                 if self.physics.state_spec == self.physics.StateSpecification.PT:
                     T_segments = self.physics.engine.X[well.well_head_idx * self.physics.n_vars + (self.physics.n_vars - 1)::self.physics.n_vars]
                 elif self.physics.state_spec == self.physics.StateSpecification.PH:
@@ -617,9 +620,24 @@ class DartsModel:
                         state = self.physics.engine.X[(well.well_head_idx + i) * self.physics.n_vars:(well.well_head_idx + i + 1) * self.physics.n_vars]
                         self.physics.property_containers[0].evaluate(state)
                         T_segments[i] = self.physics.property_containers[0].temperature
-                well_lateral_heat_rate = self.wells[well.name].lateral_heat_flux.evaluate(T_segments, t + dt)
-                rhs = np.array(self.physics.engine.RHS, copy=False)
-                rhs[(self.physics.n_vars - 1) + well.well_head_idx * self.physics.n_vars::self.physics.n_vars] -= well_lateral_heat_rate * dt
+
+                # Evaluate lateral heat rates and add them to the rhs
+                if isinstance(self.wells[well.name].lateral_heat_rate_eval, SemiAnalyticalWellLateralHeatTransfer):
+                    well_lateral_heat_rate = self.wells[well.name].lateral_heat_rate_eval.evaluate(T_segments, t + dt)
+                    rhs = np.array(self.physics.engine.RHS, copy=False)
+                    rhs[well.well_head_idx * self.physics.n_vars + (self.physics.n_vars - 1)::self.physics.n_vars] -= well_lateral_heat_rate * dt
+                elif isinstance(self.wells[well.name].lateral_heat_rate_eval, NumericalWellLateralHeatTransfer):
+                    pipe_wall_cells_idx = self.wells[well.name].lateral_heat_rate_eval.pipe_wall_cells_idx
+                    T_pipe_wall_cells = self.physics.engine.X[pipe_wall_cells_idx * self.physics.n_vars + (self.physics.n_vars - 1)]
+                    well_cell_indices = list(range(well.well_head_idx, well.well_head_idx + well.num_segments))
+                    # TODO: This must be written for conductivities of both phases
+                    well_fluid_conductivity = [(self.physics.engine.op_vals_arr[(well.well_head_idx + i) * self.physics.well_operators.n_ops + self.physics.well_operators.GRAD_OP+1] / T_segments[i]) for i in well_cell_indices]
+                    well_lateral_heat_rate = self.wells[well.name].lateral_heat_rate_eval.evaluate(T_segments, T_pipe_wall_cells, well_fluid_conductivity)
+                    rhs = np.array(self.physics.engine.RHS, copy=False)
+                    rhs[well.well_head_idx * self.physics.n_vars + (self.physics.n_vars - 1)::self.physics.n_vars] -= well_lateral_heat_rate * dt
+                    rhs[pipe_wall_cells_idx * self.physics.n_vars + (self.physics.n_vars - 1)] += well_lateral_heat_rate * dt
+                else:
+                    raise TypeError(f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!")
 
     def line_search(self, dt, t, coef, history, verbose: bool = False):
         """

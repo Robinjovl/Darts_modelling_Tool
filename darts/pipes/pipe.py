@@ -122,7 +122,7 @@ class Pipe:
         self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
 
         self.source_props = {}
-        self.lateral_heat_flux = None
+        self.lateral_heat_rate_eval = None
 
         if verbose:
             print("** Model of the pipe \"%s\" is created!" % self.geometry.pipe_name)
