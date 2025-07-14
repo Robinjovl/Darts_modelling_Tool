@@ -39,3 +39,5 @@ m.init(platform='gpu')
 
 with `N` being your GPU device number. For example if you have 2 GPUs, you can call `set_gpu_device(0)` or `set_gpu_device(1)`.
 The function set_gpu_device` should be called before `Model.init()`.
+
+Only NVIDIA GPUs are currently supported. It is possible to use one GPU for one simulation.
