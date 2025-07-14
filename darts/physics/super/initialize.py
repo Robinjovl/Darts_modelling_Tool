@@ -77,7 +77,8 @@ class Initialize:
         pc.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
 
         # Create PropertyOperators and interpolators
-        self.etor = PropertyOperators(pc, self.thermal, self.props, extrapolation_flag=True, dz=self.physics.dz)
+        self.etor = PropertyOperators(pc, self.thermal, self.props,
+                                      extrapolation_flag=self.physics.extrapolation_flag, dz=self.physics.dz)
         self.itor = physics.create_interpolator(
             evaluator=self.etor,
             n_ops=physics.n_ops,
