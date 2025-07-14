@@ -1939,13 +1939,11 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			{
 				new_z = min_zc;
 				z_corrected = true;
-				std::cout << "new z " << c << " < min_zc: " << new_z << std::endl;
 			}
 			else if (new_z > max_zc)
 			{
 				new_z = max_zc;
 				z_corrected = true;
-				std::cout << "new z " << c << " > max_zc: " << new_z << std::endl;
 			}
 			sum_z += new_z;
 		}
@@ -1955,13 +1953,11 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		{
 			new_z = min_zc;
 			z_corrected = true;
-			std::cout << "new z " << nc-1 << " < min_zc: " << new_z << std::endl;
 		}
 		sum_z += new_z;
 		// correction
 		if (z_corrected)
 		{
-			std::cout << "sum z: " << sum_z << std::endl;
 			// normalize compositions and set appropriate update
 			for (index_t c = n_solid; c < nc - 1; c++)
 			{
@@ -1972,7 +1968,6 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 
 				new_z = new_z / sum_z;
 				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
-				std::cout << "correcting " << c << ": " << i << " " << new_z << std::endl;
 			}
 			n_fluid_corrected++;
 		}
