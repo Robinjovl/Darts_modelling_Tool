@@ -1881,6 +1881,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 	index_t nb = mesh->n_blocks;
 	bool z_corrected;
 	index_t n_solid_corrected = 0, n_fluid_corrected = 0;
+	double max_zc = 1. - (nc-1)*min_zc - 0.1*min_zc;
 
 	for (index_t i = 0; i < nb; i++)
 	{
@@ -1940,9 +1941,9 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 				new_z = min_zc;
 				z_corrected = true;
 			}
-			else if (new_z > 1 - min_zc)
+			else if (new_z > max_zc)
 			{
-				new_z = 1 - min_zc;
+				new_z = max_zc;
 				z_corrected = true;
 			}
 			sum_z += new_z;
@@ -1964,7 +1965,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 				new_z = X[i * n_vars + z_var + c] - dX[i * n_vars + z_var + c];
 
 				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
+				new_z = std::min(max_zc, new_z);
 
 				new_z = new_z / sum_z;
 				dX[i * n_vars + z_var + c] = X[i * n_vars + z_var + c] - new_z;
