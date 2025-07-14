@@ -93,7 +93,7 @@ add_subdirectory(interpolation)
 
 
 # --- Include mechanics --------------------------------------------------------
-add_subdirectory(mech)
+#add_subdirectory(mech)
 # ------------------------------------------------------------------------------
 
 

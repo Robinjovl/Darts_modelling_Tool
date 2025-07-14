@@ -136,6 +136,8 @@ namespace std
 
 namespace std
 {
+
+#if 0
   template <>
   struct hash<__uint128_t>
   {
@@ -151,7 +153,7 @@ namespace std
       return h1 ^ (h2 * 0x9e3779b97f4a7c15 + 0x7f4a7c15);  // Use a large prime multiplier and a random offset
     }
   };
-
+#endif
   // Custom to_string for __uint128_t
   std::string to_string(const __uint128_t& value);
 };

@@ -165,6 +165,24 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   endif()
   
   # Compiler specific helper variables (currently not needed)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel" OR CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  message(STATUS "Intel compiler detected: ${CMAKE_CXX_COMPILER_ID}")
+  # Compiler flags 
+  set(opendarts_cxx_compiler_flags "-fPIC;-std=c++20")
+  
+  # Linker flags
+  set(opendarts_cxx_linker_flags "")
+
+  if(${OPENDARTS_CONFIG} STREQUAL "MT")
+    list(APPEND opendarts_cxx_compiler_flags "-qopenmp")
+    list(APPEND opendarts_cxx_linker_flags "-qopenmp")
+  endif()
+
+  if(SET_CXX11_ABI_0)
+    list(APPEND opendarts_cxx_compiler_flags "-D_GLIBCXX_USE_CXX11_ABI=0")
+  endif()
+  
+  # Compiler specific helper variables (currently not needed)
 
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(STATUS "  Setting Clang compiler and linker flags")
@@ -309,7 +327,7 @@ endif()
 
 # Discretizer ------------------------------------------------------------------
 if(NOT ONLY_SOLVERS)
-  add_subdirectory(discretizer)
+  #add_subdirectory(discretizer)
 endif()
 # ------------------------------------------------------------------------------
 

@@ -1035,6 +1035,8 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
   }
 }
 
-
+namespace dis 
+{
 template class MechDiscretizer<POROELASTIC>;
 template class MechDiscretizer<THERMOPOROELASTIC>;
+}

@@ -42,7 +42,7 @@ public:
      * @brief Get the number of operators to be interpolated
      *
      */
-    int get_n_ops() const { return N_OPS; };
+    int get_n_ops() const override { return N_OPS; } ;
     /**
      * @brief Compute interpolation for all operators at the given point
      *
