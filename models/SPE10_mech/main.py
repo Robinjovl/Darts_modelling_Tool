@@ -112,7 +112,16 @@ def run_timestep_python(m, dt, t):
     self.timer.node['simulation'].stop()
     return converged
 
-def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decouple_geomech=False, generate_mesh=False):
+def run(model_folder, physics_type, uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False):
+    '''
+    :param model_folder: output folder for mesh, vtk results and figures
+    :param physics_type: 'single_phase', 'single_phase_thermal'
+    :param uniform_props: if False then set other values for perm and porosity out of the reservoir
+    :param wells_type: 'prod', 'inj', 'doublet'
+    :param decouple_geomech: turn off mechanics->porosity (so pressure and flow) influence
+    :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
+    :return:
+    '''
     try:
         # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
         from darts.engines import set_num_threads
@@ -120,15 +129,14 @@ def run(model_folder, physics_type, is_finalize=True, uniform_props=False, decou
     except:
         pass
 
-    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props,
+    m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
-    m.params.finalize_mpi = is_finalize
     m.init()
 
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
-    m.output_directory = 'sol_cpp_' + physics_type + '_' + model_folder
+    m.output_directory = 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder
     if os.path.exists(m.output_directory):
         shutil.rmtree(m.output_directory)
 
@@ -239,12 +247,9 @@ if __name__ == '__main__':
     physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
     meshes_list = ['10_10_10', '20_40_40']
     if test_all:
-        is_finalize = False
         for physics in physics_list:
             for mesh in meshes_list:
-                if physics == physics_list[-1] and mesh == meshes_list[-1]:
-                    is_finalize = True
-                run(model_folder=mesh, physics_type=physics, is_finalize=is_finalize)
+                run(model_folder=mesh, physics_type=physics)
 
 
     #run(model_folder='16_16_12', physics_type='single_phase_thermal', uniform_props=True)

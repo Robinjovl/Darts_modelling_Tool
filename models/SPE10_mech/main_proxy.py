@@ -80,15 +80,15 @@ def geomech_init_geometry(mesh_data):
 
     return prisms
 
-def run_geomech_proxy(case, physics_type='single_phase'):
-    folder = 'sol_cpp_' + physics_type + '_' + case
+def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
+    folder = 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case
 
     # init geomech proxy
     from geomechanics import geomech
     g = geomech()
     # just to set input data
     from model import Model
-    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, decouple_geomech=True, generate_mesh=True)
+    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
     # elastic constants
     g.poisson = m.idata.rock.nu
     g.young = m.idata.rock.E.mean() * bars2mpa # bars to MPa
@@ -193,7 +193,6 @@ def run_geomech_proxy(case, physics_type='single_phase'):
     point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point of the mesh
 
     for mode in ['displ_z', 'stress']:
-
         # compare U-Z at a line along z-axis
         z_min = 0.
         z_max = centroids[:, 2].max() #+ 1000.
@@ -230,18 +229,22 @@ if __name__ == '__main__':
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
-    #physics_type = 'single_phase'
-    physics_type = 'single_phase_thermal'
+    physics_type = 'single_phase'
+    #physics_type = 'single_phase_thermal'
+
+    #wells_type = 'prod'
+    #wells_type = 'inj'
+    wells_type = 'doublet'
 
     # run THM with no mechanics->flow impact
     t1 = datetime.now()
-    run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, decouple_geomech=True, generate_mesh=True)
+    run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
     t2 = datetime.now()
     thm_time = t2 - t1
 
     # run geomech proxy
     t1 = datetime.now()
-    run_geomech_proxy(case=case, physics_type=physics_type)
+    run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type)
     t2 = datetime.now()
     proxy_time = t2 - t1
 

@@ -19,7 +19,7 @@ from darts.input.input_data import InputData
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False, decouple_geomech=False, generate_mesh=False):
+    def __init__(self, model_folder, physics_type='dead_oil', uniform_props=False, wells_type=None, decouple_geomech=False, generate_mesh=False):
         self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
@@ -31,7 +31,7 @@ class Model(THMCModel):
             self.thermal = False
         self.decouple_geomech = decouple_geomech
         self.generate_mesh = generate_mesh
-
+        self.wells_type = wells_type
         # call base class constructor
         super().__init__()
 
@@ -207,17 +207,17 @@ class Model(THMCModel):
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
         middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), well_init_depth #centroids_3d[:, 2].mean()
 
-        # one well (prod)
-        #well_names = ['PRD1']
-        #well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
+        if self.wells_type == 'prod':  # one well (prod)
+            well_names = ['PRD1']
+            well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
 
-        # one well (inj)
-        #well_names = ['INJ1']
-        #well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
+        if self.wells_type == 'inj': # one well (inj)
+            well_names = ['INJ1']
+            well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
 
-        # two wells (doublet)
-        well_names = ['PRD1', 'INJ1']
-        well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
+        if self.wells_type == 'doublet':# two wells (doublet)
+            well_names = ['PRD1', 'INJ1']
+            well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
 
         print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
