@@ -67,14 +67,24 @@ class OperatorsBase(operator_set_evaluator_iface):
             1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc - 1)
         ]
         d = np.sum(nonzero_comps)
+        last_z = 1. - np.sum(z)
 
         # Build candidate points by subtracting dz along each axis and uniformly
         supporting_points = []
-        for i in range(self.nc - 1):
-            if nonzero_comps[i]:
-                zp = z.copy()
-                zp[i] -= self.dz
-                supporting_points.append(zp)
+        if last_z >= -1.1*self.dz:
+            for i in range(self.nc - 1):
+                if nonzero_comps[i]:
+                    zp = z.copy()
+                    zp[i] -= self.dz
+                    supporting_points.append(zp)
+        else:
+            for i in range(self.nc - 1):
+                if nonzero_comps[i]:
+                    for j in range(i+1, self.nc-1):
+                        zp = z.copy()
+                        zp[i] -= self.dz
+                        zp[j] -= self.dz
+                        supporting_points.append(zp)
         supporting_points.append(
             np.array([z[i] - self.dz if nonzero_comps[i] else z[i] for i in range(self.nc - 1)])
         )
@@ -83,43 +93,18 @@ class OperatorsBase(operator_set_evaluator_iface):
         zps_list = []
         vals_list = []
         for zp in supporting_points:
-            if  (zp >= -1e-15).all() and sum(zp) <= 1.0+1e-15:
-                if self.thermal:
-                    ref_state = value_vector(np.concatenate(([p], zp, [T])))
-                else:
-                    ref_state = value_vector(np.concatenate(([p], zp)))
-                ref_vals = value_vector(np.zeros(self.n_ops))
-                self.evaluate(ref_state, ref_vals)
-                zps_list.append(zp)
-                vals_list.append(ref_vals.to_numpy())
-
-
-        # if len(zps_list) < d + 1:
-        #     # not enough reference points to extrapolate
-        #
-        #     return values
-            # If insufficient references, push deeper inside and re-evaluate
-        # if len(zps_list) < d + 1:
-        #     # push composition inside by 2·dz
-        #     z_fb = z - 2 * self.dz
-        #     z_fb = np.clip(z_fb, 0, None)
-        #     if z_fb.sum() > 0:
-        #         z_fb /= z_fb.sum()
-        #     # build new state and get values
-        #     if self.thermal:
-        #         vec_fb = np.concatenate(([p], z_fb, [T]))
-        #     else:
-        #         vec_fb = np.concatenate(([p], z_fb))
-        #     state_fb = value_vector(vec_fb)
-        #     vals_fb = value_vector(np.zeros(self.n_ops))
-        #     self.evaluate(state_fb, vals_fb)
-        #     out = np.array(vals_fb.to_numpy(), copy=False)
-        #     return out
+            if self.thermal:
+                ref_state = value_vector(np.concatenate(([p], zp, [T])))
+            else:
+                ref_state = value_vector(np.concatenate(([p], zp)))
+            ref_vals = value_vector(np.zeros(self.n_ops))
+            self.evaluate(ref_state, ref_vals)
+            zps_list.append(zp)
+            vals_list.append(ref_vals.to_numpy())
 
         # Use the first d+1 valid points to define hyperplane implicitly via val = a·z + c
         zps = np.stack(zps_list[: d + 1])  # shape (d+1, d)
         vals = np.stack(vals_list[: d + 1])  # shape (d+1, n_ops)
-
 
         # Build and solve B · X = vals, where B = [zps | 1]
         B = np.hstack((zps, np.ones((d + 1, 1))))  # shape (d+1, d+1)
