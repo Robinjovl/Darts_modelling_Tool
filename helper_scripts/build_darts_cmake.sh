@@ -258,7 +258,8 @@ else
     echo "Phreeqc support: DISABLED"
 fi
 
-cmake_options+="-D CMAKE_CXX_COMPILER=icpx -D CMAKE_CXX_FLAGS=-fsanitize=thread"
+# for intel sanitizer
+cmake_options+="-D CMAKE_CXX_FLAGS=-fsanitize=thread"
 
 echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
