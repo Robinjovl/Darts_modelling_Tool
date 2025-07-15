@@ -16,6 +16,7 @@ for arg in "$@"; do
     -c) CLEAN_FLAG="-c"         ;;  # trigger clean
     -p) PHREEQC_FLAG="-p"       ;;  # enable IPhreeqc support
     -d) DEBUG_FLAG="-d Debug"   ;;  # enable Debug configuration
+    -r) REQUIREMENTS_FLAG="-r"  ;;  # clean previous cmake configuration for third parties
   esac
 done
 
@@ -26,5 +27,6 @@ done
   -w \
   $CLEAN_FLAG \
   $PHREEQC_FLAG \
-  $DEBUG_FLAG
+  $DEBUG_FLAG \
+  $REQUIREMENTS_FLAG
 
