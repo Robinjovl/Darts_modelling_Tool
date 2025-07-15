@@ -175,7 +175,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
-        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = temperature * self.property.cond[self.property.ph]
+        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = self.property.temperature * self.property.cond[self.property.ph]
 
         """ Delta operator for reaction """
         # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
@@ -187,7 +187,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Additional energy operators """
         # Temperature operator
-        values[self.TEMP_OP] = temperature
+        values[self.TEMP_OP] = self.property.temperature
 
         return 0
 
@@ -328,7 +328,7 @@ class WellOperators(OperatorsSuper):
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
-        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = temperature * self.property.cond[self.property.ph]
+        values[self.GRAD_OP + self.property.ph * self.ne + self.nc] = self.property.temperature * self.property.cond[self.property.ph]
 
         """ Delta operator for reaction """
         # energy source: V [m3] dt [day] c_r phi^T Q [kJ/m3.days] (kJ/m3)
@@ -340,7 +340,7 @@ class WellOperators(OperatorsSuper):
 
         """ Additional energy operators """
         # Temperature operator
-        values[self.TEMP_OP] = temperature
+        values[self.TEMP_OP] = self.property.temperature
 
         return 0
 
