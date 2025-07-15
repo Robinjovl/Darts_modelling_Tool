@@ -9,8 +9,8 @@ set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_nce_g_cpu.cpp # geothermal
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_cpu.cpp
   #${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_elastic_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  
+  #${CMAKE_CURRENT_SOURCE_DIR}/py_engine_elasticity_cpu.cpp
+  #${CMAKE_CURRENT_SOURCE_DIR}/py_engine_pm_cpu.cpp  # poromechanics  
   ${CMAKE_CURRENT_SOURCE_DIR}/py_engine_super_mp_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_evaluator_iface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_globals.cpp
@@ -21,10 +21,10 @@ set(OD_ENGINES_PYBIND11_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/py_operator_set_interpolator_rates.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_well_controls.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_main.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_contact.cpp
+  #${CMAKE_CURRENT_SOURCE_DIR}/py_contact.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/py_mesh_conn.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_mech_operators.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/py_pm_discretizer.cpp
+  #${CMAKE_CURRENT_SOURCE_DIR}/py_mech_operators.cpp
+  #${CMAKE_CURRENT_SOURCE_DIR}/py_pm_discretizer.cpp
 )
 
 # Then the public headers
