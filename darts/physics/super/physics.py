@@ -336,7 +336,9 @@ class Compositional(PhysicsBase):
                                 if not np.isscalar(input_distribution[component])
                                 else input_distribution[component]
                             )
-                            for component in self.property_containers[0].components_name[:-1]
+                            for component in self.property_containers[
+                                0
+                            ].components_name[:-1]
                         ]
                         temp = (
                             input_distribution['temperature'][j]
@@ -353,10 +355,14 @@ class Compositional(PhysicsBase):
                 else:
                     composition = [
                         input_distribution[component]
-                        for component in self.property_containers[0].components_name[:-1]
+                        for component in self.property_containers[0].components_name[
+                            :-1
+                        ]
                     ]
                     state = value_vector(
-                        [input_distribution['pressure']] + composition + [input_distribution['temperature']]
+                        [input_distribution['pressure']]
+                        + composition
+                        + [input_distribution['temperature']]
                     )  # enthalpy is dummy variable
                     enth = self.property_containers[0].compute_total_enthalpy(state)
                     enthalpy[:] = enth

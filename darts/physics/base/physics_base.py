@@ -438,7 +438,9 @@ class PhysicsBase:
             for i in range(self.nc):
                 for pres in [min_p, max_p]:
                     for temp in [min_t, max_t]:
-                        zi = np.array([1.0 if i == ii else 0.0 for ii in range(self.nc-1)])
+                        zi = np.array(
+                            [1.0 if i == ii else 0.0 for ii in range(self.nc - 1)]
+                        )
                         hi = self.property_containers[0].compute_total_enthalpy(
                             state_pt=np.array([pres] + list(zi) + [temp])
                         )
