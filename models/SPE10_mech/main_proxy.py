@@ -159,7 +159,8 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
         return Sp_xx + St_xx # thermoporoelastic stress XX in MPa
 
 
-    def compare_vert_line(z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
+    def compare_vert_line(point_xy, z_min, z_max, suffix, z_step=100, output_folder='.', mode='displ_z'):
+        point = np.array([point_xy[1], point_xy[2], 0.])  # XY from point and Z will be changed
         z_range = np.arange(z_min, z_max+1., z_step)
         thm = []
         prx = []
@@ -168,13 +169,15 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             if mode == 'displ_z':
                 thm.append(get_thm_displs(point) * m2mm)
                 prx.append(get_proxy_displs(point) * m2mm)
+                label = 'uz'
             elif mode == 'stress':
                 thm.append(get_thm_stress(point) * bars2mpa)
                 prx.append(get_proxy_stress(point))
+                label = 'delta_stress'
 
         from matplotlib import pyplot as plt
-        plt.plot(thm, z_range, label='uz_thm')
-        plt.plot(prx, z_range, label='uz_prx')
+        plt.plot(thm, z_range, label=label + '_thm')
+        plt.plot(prx, z_range, label=label + '_prx')
         plt.axhline(y=m.reservoir.rsv_top, color='red', linestyle='--', label='rsv top')
         plt.axhline(y=m.reservoir.rsv_bottom, color='red', linestyle='--', label='rsv bottom')
         plt.gca().invert_yaxis()
@@ -182,26 +185,35 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
             s = 'Vertical displacement, mm.'
         elif mode == 'stress':
             s = 'Horizontal stress delta, MPa.'
+        s += ' at ' + point_xy[0]
         plt.xlabel(s)
         plt.title(s)
         plt.ylabel('Depth, m.')
         plt.legend()
         plt.grid()
-        plt.savefig(os.path.join(output_folder, mode + '_' + suffix + '.png'))
+        plt.savefig(os.path.join(output_folder, mode + '_' + point_xy[0] + '_' + suffix + '.png'))
         plt.close()
 
-    point = np.array([centroids[:, 0].mean(), centroids[:, 1].mean(), centroids[:, 2].mean()])  # middle point of the mesh
+    ######################################
 
-    for mode in ['displ_z', 'stress']:
-        # compare U-Z at a line along z-axis
-        z_min = 0.
-        z_max = centroids[:, 2].max() #+ 1000.
-        compare_vert_line(z_min, z_max, 'all', z_step=20, output_folder=folder, mode=mode)
+    points_xy = []
+    points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
 
-        compare_vert_line(m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder, mode=mode)
+    if  wells_type in ['prod', ' doublet']:
+        points_xy += [['prod well'] + m.prod_well_coords[:-1]] # -1 to skip z coord
+    if wells_type in ['inj', ' doublet']:
+        points_xy += [['inj well'] + m.inj_well_coords[:-1]]
+
+    for point_xy in points_xy:
+        for mode in ['displ_z', 'stress']:
+            # compare U-Z at a line along z-axis
+            z_min = 0.
+            z_max = centroids[:, 2].max() #+ 1000.
+            compare_vert_line(point_xy, z_min, z_max, 'all', z_step=20, output_folder=folder, mode=mode)
+            compare_vert_line(point_xy, m.reservoir.rsv_top-100., m.reservoir.rsv_bottom+100.,'rsv',  z_step=10, output_folder=folder, mode=mode)
 
     # compare vert displs at the middle point at the surface and print
-    point[2] = 0. # at the surface (depth=0)
+    point = [points_xy[0][1], points_xy[0][2], 0.] # at the surface (depth=0)
     uz_thm = get_thm_displs(point)*m2mm
     uz_prx = get_proxy_displs(point)*m2mm
     print('Compare at single point ', point)
@@ -209,7 +221,7 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     print('\tProxy ', 'uz=', uz_prx, 'mm.')
 
     # compare delta Sxx at the middle point in the reservoir and print
-    point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle of the reservoir
+    point[2] = (m.reservoir.rsv_top + m.reservoir.rsv_bottom) * 0.5  # at the middle depth of the reservoir
     dsxx_thm = get_thm_stress(point)*bars2mpa
     dsxx_prx = get_proxy_stress(point)
     print('Compare at single point ', point)
@@ -229,25 +241,31 @@ if __name__ == '__main__':
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
-    physics_type = 'single_phase'
-    #physics_type = 'single_phase_thermal'
+    physics_types_list = []
+    #physics_types_list += ['single_phase']
+    physics_types_list += ['single_phase_thermal']
 
-    #wells_type = 'prod'
-    #wells_type = 'inj'
-    wells_type = 'doublet'
+    wells_types_list = []
+    wells_types_list += ['prod']
+    wells_types_list += ['inj']
+    wells_types_list += ['doublet']
 
-    # run THM with no mechanics->flow impact
-    t1 = datetime.now()
-    run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
-    t2 = datetime.now()
-    thm_time = t2 - t1
+    for physics_type in physics_types_list:
+        for wells_type in wells_types_list:
+            print(physics_type, wells_type)
 
-    # run geomech proxy
-    t1 = datetime.now()
-    run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type)
-    t2 = datetime.now()
-    proxy_time = t2 - t1
+            # run THM with no mechanics->flow impact
+            t1 = datetime.now()
+            run(model_folder=case, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type, decouple_geomech=True, generate_mesh=True)
+            t2 = datetime.now()
+            thm_time = t2 - t1
 
-    print('case', case, 'done')
-    print('THM   time', thm_time)
-    print('proxy time', proxy_time)
+            # run geomech proxy
+            t1 = datetime.now()
+            run_geomech_proxy(case=case, physics_type=physics_type, wells_type=wells_type)
+            t2 = datetime.now()
+            proxy_time = t2 - t1
+
+            print('case', case, 'done')
+            print('THM   time', thm_time)
+            print('proxy time', proxy_time)

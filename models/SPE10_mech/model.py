@@ -35,6 +35,8 @@ class Model(THMCModel):
         # call base class constructor
         super().__init__()
 
+        self.set_wells_locations()
+
     def set_solver_params(self):
         super().set_solver_params()
         self.params.linear_type = sim_params.cpu_gmres_fs_cpr
@@ -118,6 +120,7 @@ class Model(THMCModel):
         self.idata.obl.max_t = 273.15 + 300
         self.idata.obl.min_z = self.idata.obl.zero
         self.idata.obl.max_z = 1 - self.idata.obl.zero
+
         super().set_input_data()
 
     def set_physics(self):
@@ -197,27 +200,35 @@ class Model(THMCModel):
 
         return
 
-    def set_wells(self):
+    def set_wells_locations(self):
         # well locations:
         # prod well - 250 m to the left from the center of the mesh
         # inj well - 250 m to the right from the center of the mesh
         # perforate only one cell of the mesh at depth  well_init_depth
-        well_init_depth = 2150.
+        self.well_init_depth = 2150.
         centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
                               c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
-        middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), well_init_depth #centroids_3d[:, 2].mean()
+        middle = centroids_3d[:, 0].mean(), centroids_3d[:, 1].mean(), self.well_init_depth #centroids_3d[:, 2].mean()
+
+        self.prod_well_coords = [middle[0] - 250, middle[1], middle[2]]
+        self.inj_well_coords = [middle[0] + 250, middle[1], middle[2]]
+
+
+    def set_wells(self):
+        centroids_3d = np.array([np.array([c.values[0], c.values[1], c.values[2]]) for
+                              c in self.reservoir.discr_mesh.centroids])[:self.reservoir.n_matrix]
 
         if self.wells_type == 'prod':  # one well (prod)
             well_names = ['PRD1']
-            well_coords = np.array([[middle[0] - 250, middle[1], middle[2]]])
+            well_coords = np.array([self.prod_well_coords])
 
         if self.wells_type == 'inj': # one well (inj)
             well_names = ['INJ1']
-            well_coords = np.array([[middle[0] + 250, middle[1], middle[2]]])
+            well_coords = np.array([self.inj_well_coords])
 
         if self.wells_type == 'doublet':# two wells (doublet)
             well_names = ['PRD1', 'INJ1']
-            well_coords = np.array([[middle[0] - 250, middle[1], middle[2]], [middle[0] + 250, middle[1], middle[2]]])
+            well_coords = np.array([self.prod_well_coords, self.inj_well_coords])
 
         print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
@@ -231,7 +242,7 @@ class Model(THMCModel):
             ids_1 = [ids]
             self.well_cell_ids.append(ids_1)
             # adding well
-            self.reservoir.add_well(well_names[i], depth=well_init_depth)
+            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]
@@ -260,22 +271,24 @@ class Model(THMCModel):
 
     def set_boundary_conditions(self):
         from darts.engines import well_control_iface
-        self.physics.set_well_controls(wctrl=self.reservoir.wells[0].control,
-                                       control_type=well_control_iface.MOLAR_RATE,
-                                       is_inj=False, target=0., phase_name='wat')
-        if len(self.reservoir.wells) > 1:
-            inj = []
-            inj_temp = None
-            if self.physics_type == 'single_phase_thermal':
-                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
-            elif self.physics_type == 'dead_oil':
-                inj = [1.0 - self.idata.obl.zero]
-            elif self.physics_type == 'dead_oil_thermal':
-                inj = [1.0 - self.idata.obl.zero]
-                inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]])
-            self.physics.set_well_controls(wctrl=self.reservoir.wells[1].control,
-                                           control_type=well_control_iface.MOLAR_RATE,
-                                           is_inj=True, target=0., phase_name='wat', inj_composition=inj, inj_temp=inj_temp)
+        for i, w in enumerate(self.reservoir.wells):
+            if 'PRD' in w.name:
+                self.physics.set_well_controls(w.control,
+                                               control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=False, target=0., phase_name='wat')
+            elif 'INJ' in w.name:
+                inj = []
+                inj_temp = None
+                if self.physics_type == 'single_phase_thermal':
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]])
+                elif self.physics_type == 'dead_oil':
+                    inj = [1.0 - self.idata.obl.zero]
+                elif self.physics_type == 'dead_oil_thermal':
+                    inj = [1.0 - self.idata.obl.zero]
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]])
+                self.physics.set_well_controls(wctrl=w.control,
+                                               control_type=well_control_iface.MOLAR_RATE,
+                                               is_inj=True, target=0., phase_name='wat', inj_composition=inj, inj_temp=inj_temp)
 
     def set_boundary_conditions_after_initialization(self):
         #return
@@ -292,19 +305,19 @@ class Model(THMCModel):
             delta_temp_inj = 40 # [K] - delta for temperature control
             delta_p = 50  # [bar] - delta for BHP control
 
-            if 'INJ' in w.name:
+            if 'PRD' in w.name:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=np.min(p_cell) - delta_p)
-            else:
+            elif 'INJ' in w.name:
                 inj = []
                 inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]]) - delta_temp_inj
                 elif self.physics_type == 'dead_oil':
                     inj = [1.0 - self.idata.obl.zero]
                 elif self.physics_type == 'dead_oil_thermal':
                     inj = [1.0 - self.idata.obl.zero]
-                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[1]]) - delta_temp_inj
+                    inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]]) - delta_temp_inj
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=np.max(p_cell) + delta_p, inj_composition=inj,
                                                inj_temp=inj_temp)
