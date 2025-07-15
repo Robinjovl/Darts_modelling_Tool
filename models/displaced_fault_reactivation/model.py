@@ -24,7 +24,7 @@ class Model(THMCModel):
             self.cache_discretizer = config['cache_discretizer']
         else:
             self.cache_discretizer = True
-        super().__init__(n_points=256, discretizer=self.discretizer_name)
+        super().__init__()
     def set_physics(self):
         self.fluid_compressibility = 1.e-6
         self.rock_density0 = 2650.0

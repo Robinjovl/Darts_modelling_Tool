@@ -153,7 +153,7 @@ class PropertyContainerPH(PropertyBase):
 
         # PH-flash from DARTS-flash
         from dartsflash.components import CompData
-        from dartsflash.libflash import AQEoS, CubicEoS, EoSParams, FlashParams, PHFlash
+        from dartsflash.libflash import AQEoS, CubicEoS, FlashParams, PHFlash
 
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw

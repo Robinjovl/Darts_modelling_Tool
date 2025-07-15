@@ -8,8 +8,6 @@ Author: Ole de Koning
 Last updated: 12/12/2020 by Ole de Koning
 """
 
-import time
-
 import numpy as np
 
 from .find_parametric_intersect import find_parametric_intersect
