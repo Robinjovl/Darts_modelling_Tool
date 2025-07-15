@@ -95,6 +95,7 @@ class PhysicsBase:
         """
         # Define variables and number of operators
         self.state_spec = state_spec
+        self.is_ph = state_spec > PhysicsBase.StateSpecification.PT
         self.vars = variables
         self.n_vars = len(variables)
 

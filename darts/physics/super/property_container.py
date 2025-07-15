@@ -170,16 +170,17 @@ class PropertyContainer(PropertyBase):
 
         return
 
-    def compute_saturation_full(self, state):
-        pressure, temperature, zc = self.get_state(state)
+    def compute_saturation_full(self, state_pt, evaluate_PT_from_PHflash: bool = False):
+        pressure, temperature, zc = self.get_state(state_pt)
         self.clean_arrays()
-        self.ph = self.run_flash(pressure, temperature, zc)
+        self.ph = self.run_flash(pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash)
+        self.temperature = temperature if not evaluate_PT_from_PHflash else self.flash_ev.get_flash_results().temperature
 
         for j in self.ph:
             M = np.sum(self.Mw * self.x[j][:])
             self.dens_m[j] = (
                 self.density_ev[self.phases_name[j]].evaluate(
-                    pressure, temperature, self.x[j, :]
+                    pressure, self.temperature, self.x[j, :]
                 )
                 / M
             )
