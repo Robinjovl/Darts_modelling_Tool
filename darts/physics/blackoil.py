@@ -31,9 +31,11 @@ class BlackOil(Compositional):
             max_p=idata.obl.max_p,
             min_z=idata.obl.min_z,
             max_z=idata.obl.max_z,
+            epsilon_z=idata.obl.epsilon_z,
             min_t=idata.obl.min_t,
             max_t=idata.obl.max_t,
             state_spec=state_spec,
+            extrapolation_flag=True
         )
 
         temperature = None if thermal else 1.0
@@ -41,7 +43,7 @@ class BlackOil(Compositional):
             phases_name=idata.fluid.phases,
             components_name=idata.fluid.components,
             Mw=idata.fluid.Mw,
-            min_z=idata.obl.min_z,
+            min_z=idata.obl.epsilon_z,
             temperature=temperature,
         )
 

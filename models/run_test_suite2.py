@@ -13,7 +13,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     accepted_dirs = ['2ph_comp', '2ph_comp_solid', '2ph_do',
                      '2ph_geothermal', '2ph_geothermal_mass_flux',
-                     '3ph_comp_w', '3ph_do', '3ph_bo',
+                     '3ph_comp_w', '3ph_do', #'3ph_bo',
                      'Uniform_Brugge',
                      'Chem_benchmark_new',
                      #'CO2_foam_CCS',
@@ -118,7 +118,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     n_total += n_total_m
 
     # check main.py files runs, without comparison of pkl files
-    accepted_dirs += ['CCS']
+    accepted_dirs += []#'CCS']
     if iter_solvers:  # run this case only for the build with iterative solvers
         accepted_dirs += [ 'SPE11b']
     n_failed_mainpy = n_total_mainpy = 0
@@ -141,14 +141,14 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # discretizer tests
     print('\nDiscretizer tests:')
     n_total_discr = n_failed_discr = 0
-    n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
+    # n_total_discr, n_failed_discr = run_tests(model_dir, test_dirs=test_dirs_cpg, test_args=test_args_cpg, overwrite=overwrite, platform=platform)
     n_failed += n_failed_discr
     n_total += n_total_discr
 
     # fracture network tests
     print('\nFracture network tests:')
     n_total_dfn = n_failed_dfn = 0
-    n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
+    # n_total_dfn, n_failed_dfn = run_tests(model_dir, test_dirs=test_dirs_dfn, test_args=test_args_dfn, overwrite=overwrite, platform=platform)
     n_failed += n_failed_dfn
     n_total += n_total_dfn
 

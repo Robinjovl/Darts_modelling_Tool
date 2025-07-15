@@ -103,12 +103,13 @@ class Model(DartsModel, OptModuleSettings):
     def set_physics(self):
         """Physical properties"""
         zero = 1e-13
+        epsilon = 1e-14
         components = ['w', 'o']
         phases = ['wat', 'oil']
         self.cell_property = ['pressure'] + ['water']
         self.cell_property += ['temperature']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=zero/10)
+        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=epsilon)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -128,8 +129,8 @@ class Model(DartsModel, OptModuleSettings):
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=zero, max_z=1-zero,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     min_t=273.15 + 20, max_t=273.15 + 200,  extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         self.runtime = 1000

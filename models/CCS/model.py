@@ -47,6 +47,7 @@ class Model(DartsModel):
     def set_physics(self,  zero, n_points, temperature=None, temp_inj=350.):
         """Physical properties"""
         self.zero = zero
+        epsilon = zero/10
 
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
@@ -77,7 +78,7 @@ class Model(DartsModel):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=temperature, min_z=zero/10)
+                                               temperature=temperature, min_z=epsilon)
 
         property_container.flash_ev = NegativeFlash(flash_params, ["AQ", "PR"], [InitialGuess.Henry_AV])
         property_container.density_ev = dict([('V', EoSDensity(pr, comp_data.Mw)),
@@ -98,8 +99,9 @@ class Model(DartsModel):
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=zero/10,
-                                     max_z=1-zero/10, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False)
+        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
+                                     epsilon_z=epsilon, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return

@@ -136,6 +136,7 @@ class Model(DartsModel):
     def set_physics(self):
         """Physical properties"""
         self.zero = 1e-8
+        epsilon = 1e-9
         # Create property containers:
 
         n_comps = len(self.components)
@@ -221,7 +222,7 @@ class Model(DartsModel):
         thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
-                                               Mw=Mw, min_z=self.zero / 10, temperature=1.)
+                                             Mw=Mw, min_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(self.components), K, self.zero)
@@ -235,7 +236,7 @@ class Model(DartsModel):
         """ Activate physics """
         max_p = 500.
         if n_comps != 20:
-            axes_max = [max_p, 1.-self.zero/10, 0.9]
+            axes_max = [max_p, 1. - (n_comps-1) * epsilon, 0.9]
             if n_comps > 3:
                 axes_max += [0.7]
             if n_comps > 4:
@@ -244,7 +245,7 @@ class Model(DartsModel):
                 axes_max += (n_comps - 5) * [0.4]
             assert(len(axes_max) == n_comps)
         else:
-            axes_max = np.array([max_p, 1-self.zero/10, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
+            axes_max = np.array([max_p, 1. - (n_comps-1) * epsilon, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
                                  0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005])
             axes_max[2:] *= 2
             assert(axes_max.size == n_comps)
@@ -257,8 +258,8 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
-                                     min_p=40, max_p=max_p, min_z=self.zero/10, max_z=1-self.zero/10, cache=False,
-                                     axes_max=axes_max)
+                                     min_p=40, max_p=max_p, min_z=0., max_z=1., epsilon_z=epsilon, cache=False,
+                                     axes_max=axes_max, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
         
         return

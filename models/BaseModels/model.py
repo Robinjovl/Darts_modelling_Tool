@@ -109,10 +109,11 @@ class Model(DartsModel):
     def set_do_physics(self, n_points, zero):
         from darts.physics.super.physics import Compositional
         # create pre-defined physics for geothermal
+        epsilon = zero / 10
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        property_container = DOProperties(phases_name=phases, components_name=components, min_z=zero)
+        property_container = DOProperties(phases_name=phases, components_name=components, min_z=epsilon,)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -125,7 +126,8 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=0, max_p=1000, min_z=zero/10, max_z=1 - zero/10)
+                                     n_points=n_points, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
