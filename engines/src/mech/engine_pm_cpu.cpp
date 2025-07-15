@@ -310,7 +310,8 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   /*if (params->log_transform == 0)
   {
 	  min_zc = acc_flux_op_set_list[0]->get_minzc() * params->obl_min_fac;
-	  max_zc = 1 - min_zc * params->obl_min_fac;
+	  //max_zc = 1 - min_zc * params->obl_min_fac;
+	  max_zc = 1. - (nc-1) * acc_flux_op_set_list[0]->get_axis_min(z_var) - min_zc;
 	  //max_zc = acc_flux_op_set_list[0]->get_maxzc();
   }
   else if (params->log_transform == 1)

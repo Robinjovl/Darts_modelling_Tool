@@ -371,7 +371,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	if (params->log_transform == 0)
 	{
 		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
+		// max_zc = 1 - min_zc * params->obl_min_fac;
+		max_zc = 1. - (nc-1) * acc_flux_op_set_list[0]->get_axis_min(z_var) - min_zc;
 		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
 	}
 	else if (params->log_transform == 1)

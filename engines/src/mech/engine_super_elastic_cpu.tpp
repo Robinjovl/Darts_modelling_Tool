@@ -435,7 +435,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	  if (params->log_transform == 0)
 	  {
 		min_zc = acc_flux_op_set_list[0]->get_axis_min(z_var) * params->obl_min_fac;
-		max_zc = 1 - min_zc * params->obl_min_fac;
+		// max_zc = 1 - min_zc * params->obl_min_fac;
+		max_zc = 1. - (nc-1) * acc_flux_op_set_list[0]->get_axis_min(z_var) - min_zc;
 		//max_zc = acc_flux_op_set_list[0]->get_maxzc();
 	  }
 	  else if (params->log_transform == 1)
@@ -1837,7 +1838,7 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std
 		z_corrected = false;
 
 		// check all but one composition in grid block
-		for (char c = 0; c < nc - 1; c++)
+		for (index_t c = 0; c < nc - 1; c++)
 		{
 			new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
 			if (new_z < min_zc)
@@ -1845,9 +1846,9 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std
 				new_z = min_zc;
 				z_corrected = true;
 			}
-			else if (new_z > 1 - min_zc)
+			else if (new_z > max_zc)
 			{
-				new_z = 1 - min_zc;
+				new_z = max_zc;
 				z_corrected = true;
 			}
 			sum_z += new_z;
@@ -1861,15 +1862,16 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_composition_correction(std
 		}
 		sum_z += new_z;
 
+		// correction
 		if (z_corrected)
 		{
 			// normalize compositions and set appropriate update
-			for (char c = 0; c < nc - 1; c++)
+			for (index_t c = 0; c < nc - 1; c++)
 			{
 				new_z = X[i * N_VARS + Z_VAR + c] - dX[i * N_VARS + Z_VAR + c];
 
 				new_z = std::max(min_zc, new_z);
-				new_z = std::min(1 - min_zc, new_z);
+				new_z = std::min(max_zc, new_z);
 
 				new_z = new_z / sum_z;
 				dX[i * N_VARS + Z_VAR + c] = X[i * N_VARS + Z_VAR + c] - new_z;
