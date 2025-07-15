@@ -176,6 +176,9 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel" OR CMAKE_CXX_COMPILER_ID STREQUAL 
   if(${OPENDARTS_CONFIG} STREQUAL "MT")
     list(APPEND opendarts_cxx_compiler_flags "-qopenmp")
     list(APPEND opendarts_cxx_linker_flags "-qopenmp")
+    list(APPEND opendarts_cxx_compiler_flags "-fsanitize=thread")
+    list(APPEND opendarts_cxx_linker_flags "-fsanitize=thread")
+    list(APPEND opendarts_cxx_linker_flags "-ltsan")
   endif()
 
   if(SET_CXX11_ABI_0)

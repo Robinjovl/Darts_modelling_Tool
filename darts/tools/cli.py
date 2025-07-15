@@ -22,7 +22,7 @@ from pathlib import Path
 import darts
 
 # Make sure all modules are imported successfully
-from .. import discretizer, engines
+from .. import engines
 
 
 def valid_path(string):
