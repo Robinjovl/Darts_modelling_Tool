@@ -12,7 +12,6 @@
 #########################################################################
 
 import collections
-import operator
 
 # Polygon
 import matplotlib
@@ -755,7 +754,7 @@ def isFaultOnBoundaryEdge(GRDECL_Data, fault):
     return BoundaryEdge
 
 
-##------------------Geometry--------------------
+# ------------------Geometry--------------------
 def Shapely2List_MultiLineString(lines):
     LinesList = []
     for line in lines:

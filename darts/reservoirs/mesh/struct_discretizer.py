@@ -444,7 +444,7 @@ class StructDiscretizer:
         :return data: true data 3D data array
         """
         if np.isscalar(data):
-            if type(data) != int:
+            if not isinstance(data, int):
                 data = data * np.ones(self.arr_shape, dtype=type(data))
             else:
                 data = data * np.ones(self.arr_shape)
