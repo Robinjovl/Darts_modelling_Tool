@@ -1,45 +1,35 @@
-import datetime
 import time
 import warnings
-from typing import Dict, List, Union
+from typing import Union
 
 import numpy as np
-from opmcpg._cpggrid import UnstructuredGrid
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
-from pyevtk import hl, vtk
 from pyevtk.hl import pointsToVTK
 
 import darts
 from darts.discretizer import (
     BoundaryCondition,
     Discretizer,
-    Elem,
     Mesh,
     elem_loc,
-    elem_type,
 )
 from darts.discretizer import index_vector
 from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import (
     load_single_float_keyword,
     load_single_int_keyword,
-    matrix33,
 )
 from darts.discretizer import value_vector
 from darts.discretizer import value_vector as value_vector_discr
-from darts.discretizer import (
-    vector_matrix33,
-    vector_vector3,
-)
-from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node
+from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 
 try:
     from vtk import vtkCellArray, vtkHexahedron, vtkPoints
-    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+    from vtk.util.numpy_support import numpy_to_vtk
 except ImportError:
     warnings.warn("No vtk module loaded.")
 

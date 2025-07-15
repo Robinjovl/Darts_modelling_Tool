@@ -13,7 +13,6 @@ Or directly run a model.py model script:
 """
 
 import argparse
-import ctypes
 import os
 import subprocess
 import sys
@@ -22,7 +21,6 @@ from pathlib import Path
 import darts
 
 # Make sure all modules are imported successfully
-from .. import discretizer, engines
 
 
 def valid_path(string):

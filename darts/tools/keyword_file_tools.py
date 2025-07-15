@@ -1,5 +1,4 @@
 import os.path as osp
-import re
 
 import numpy as np
 
@@ -133,7 +132,7 @@ def save_few_keywords(fname, keys, data):
         for i, val in enumerate(data[id]):
             if i % 6 == 0:
                 f.write('\n')
-            if type(val) != float:
+            if not isinstance(val, float):
                 f.write(str(val))
             else:
                 f.write("%12.10f" % val)

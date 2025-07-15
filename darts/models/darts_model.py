@@ -1,12 +1,10 @@
 import os
-import pickle
 import warnings
 import h5py
 
 from math import fabs
 
 import numpy as np
-from scipy.interpolate import interp1d
 
 from darts.models.output import Output
 from darts.physics.base.physics_base import PhysicsBase
@@ -19,7 +17,6 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    index_vector,
     ms_well_vector,
     op_vector,
 )
@@ -27,7 +24,6 @@ from darts.engines import print_build_info as engines_pbi
 from darts.engines import (
     sim_params,
     timer_node,
-    value_vector,
 )
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -440,7 +436,7 @@ class DartsModel:
         if self.data_ts.linear_type is not None:
             self.params.linear_type = self.data_ts.linear_type
 
-    def run_simple(self, physics, data_ts, days):
+    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 

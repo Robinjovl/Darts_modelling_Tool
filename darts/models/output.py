@@ -10,8 +10,6 @@ import xarray as xr
 
 from darts.engines import (
     index_vector,
-    ms_well_vector,
-    op_vector,
     timer_node,
     value_vector,
     well_control_iface,

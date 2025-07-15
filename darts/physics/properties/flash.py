@@ -1,6 +1,7 @@
 import abc
 
 import numpy as np
+from numba import jit
 
 
 class Flash:
@@ -43,9 +44,6 @@ class ConstantK(Flash):
         self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
         self.temperature = temperature
         return 0
-
-
-from numba import jit
 
 
 @jit(nopython=True)

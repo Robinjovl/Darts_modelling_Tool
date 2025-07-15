@@ -4,17 +4,11 @@ import numpy as np
 
 from darts.engines import (
     contact_solver,
-    contact_state,
-    critical_stress,
-    friction,
     linear_solver_params,
     mech_operators,
-    rsf_props,
     sim_params,
-    state_law,
     value_vector,
 )
-from darts.input.input_data import InputData
 from darts.models.darts_model import DartsModel
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
@@ -22,12 +16,11 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.super.property_container import PropertyContainer
-from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
 class THMCModel(DartsModel):
-    def __init__(self, n_points=64, discretizer='mech_discretizer'):
+    def __init__(self):
 
         try:
             from darts.engines import get_num_threads
@@ -73,7 +66,6 @@ class THMCModel(DartsModel):
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(
             timer=timer,
-            discretizer=discretizer,
             thermoporoelasticity=self.idata.type_mech == 'thermal',
             fluid_vars=self.physics.vars,
         )
@@ -357,7 +349,6 @@ class THMCModel(DartsModel):
 
     def save_performance_data(self, data, file_name):
         import pickle
-        import platform
 
         """
         Function to save performance data for future comparison.
@@ -417,8 +408,6 @@ class THMCModel(DartsModel):
             diff = sol_cur - sol_et
             diff_abs = np.abs(diff)
             diff_max_abs = diff_abs.max()
-            diff_norm = np.linalg.norm(diff)
-            diff_norm_normalized = diff_norm / len(sol_et) / sol_range
             diff_abs_max_normalized = np.max(diff_abs) / sol_range
             if (
                 diff_max_abs > diff_max_tol
