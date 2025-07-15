@@ -90,13 +90,11 @@ class WellInitOperators(OperatorsBase):
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
 
-        if self.is_pt:
+        if not self.thermal:
+            vec_values_as_np[0] = self.property.temperature
+        elif self.is_pt:
             vec_values_as_np[0] = state_pt[-1]
         else:
-            state_pt = np.array(
-                list(state_pt[: self.nc])
-                + [state_pt[-1]] if self.thermal else []
-            )
             vec_values_as_np[0] = self.property.compute_total_enthalpy(
                 state_pt=state_pt
             )
