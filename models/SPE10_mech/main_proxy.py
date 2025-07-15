@@ -242,16 +242,17 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    #physics_types_list += ['single_phase']
+    physics_types_list += ['single_phase']
     physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
-    wells_types_list += ['prod']
+    #wells_types_list += ['prod']
     wells_types_list += ['inj']
-    wells_types_list += ['doublet']
+    #wells_types_list += ['doublet']
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
+            print('\n\n' + '='*30)
             print(physics_type, wells_type)
 
             # run THM with no mechanics->flow impact
