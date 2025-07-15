@@ -277,7 +277,6 @@ class GeothermalPHFluidProps(FluidProps):
             AQEoS,
             CubicEoS,
             EoS,
-            EoSParams,
             FlashParams,
             PHFlash,
         )

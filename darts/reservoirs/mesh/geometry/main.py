@@ -1,5 +1,3 @@
-import numpy as np
-from geometry import Geometry
 from shapes import *
 from structured import Structured
 from unstructured import Unstructured

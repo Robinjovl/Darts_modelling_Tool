@@ -67,11 +67,11 @@ class OperatorsBase(operator_set_evaluator_iface):
             1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc - 1)
         ]
         d = np.sum(nonzero_comps)
-        last_z = 1. - np.sum(z)
+        last_z = 1.0 - np.sum(z)
 
         # Build candidate points by subtracting dz along each axis and uniformly
         supporting_points = []
-        if last_z >= -1.1*self.dz:
+        if last_z >= -1.1 * self.dz:
             for i in range(self.nc - 1):
                 if nonzero_comps[i]:
                     zp = z.copy()
@@ -80,13 +80,18 @@ class OperatorsBase(operator_set_evaluator_iface):
         else:
             for i in range(self.nc - 1):
                 if nonzero_comps[i]:
-                    for j in range(i+1, self.nc-1):
+                    for j in range(i + 1, self.nc - 1):
                         zp = z.copy()
                         zp[i] -= self.dz
                         zp[j] -= self.dz
                         supporting_points.append(zp)
         supporting_points.append(
-            np.array([z[i] - self.dz if nonzero_comps[i] else z[i] for i in range(self.nc - 1)])
+            np.array(
+                [
+                    z[i] - self.dz if nonzero_comps[i] else z[i]
+                    for i in range(self.nc - 1)
+                ]
+            )
         )
 
         # Gather valid reference points
@@ -195,8 +200,6 @@ class OperatorsBase(operator_set_evaluator_iface):
     #     return out
 
 
-
-
 class WellControlOperators(OperatorsBase):
     """
     Set of operators for well controls. It contains the pressure, composition and temperature of the wellhead,
@@ -291,13 +294,11 @@ class WellInitOperators(OperatorsBase):
         vec_values_as_np = values.to_numpy()
         vec_values_as_np[:] = 0
 
-        if self.is_pt:
+        if not self.thermal:
+            vec_values_as_np[0] = self.property.temperature
+        elif self.is_pt:
             vec_values_as_np[0] = state_pt[-1]
         else:
-            state_pt = np.array(
-                list(state_pt[: self.nc])
-                + [state_pt[-1] if self.thermal else self.temperature]
-            )
             vec_values_as_np[0] = self.property.compute_total_enthalpy(
                 state_pt=state_pt
             )

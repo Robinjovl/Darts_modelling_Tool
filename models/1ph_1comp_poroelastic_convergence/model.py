@@ -7,13 +7,13 @@ from darts.input.input_data import InputData
 from darts.engines import value_vector, sim_params, mech_operators
 
 class Model(THMCModel):
-    def __init__(self, mode, mesh_filename, n_points=64, discretizer='mech_discretizer', heat_cond_mult=1.):
+    def __init__(self, mode, mesh_filename, discretizer='mech_discretizer', heat_cond_mult=1.):
         self.mode = mode
         self.mesh_filename = mesh_filename
         self.discretizer_name = discretizer
         self.physics_type = 'poromechanics'  # folder name for vtk output
         self.heat_cond_mult = heat_cond_mult
-        super().__init__(n_points=n_points, discretizer=discretizer)
+        super().__init__()
 
     def init(self):
         super().init()

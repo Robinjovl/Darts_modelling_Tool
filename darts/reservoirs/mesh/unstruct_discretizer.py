@@ -1,12 +1,11 @@
 # Section of the Python code where we import all dependencies on third party Python modules/libaries or our own
 # libraries (exposed C++ code to Python, i.e. darts.engines && darts.physics)
-import copy
 import os
 import pickle
 import subprocess
 import time
 import warnings
-from itertools import combinations, compress
+from itertools import combinations
 from typing import List
 
 import meshio
@@ -14,7 +13,6 @@ import numpy as np
 from scipy.linalg import null_space
 
 from .geometrymodule import (
-    Cylinder,
     Face,
     FType,
     Hexahedron,

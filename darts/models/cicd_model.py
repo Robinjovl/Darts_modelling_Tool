@@ -3,7 +3,6 @@ import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 from darts.models.darts_model import DartsModel
 
@@ -88,7 +87,7 @@ class CICDModel(DartsModel):
                     plt.close()
 
             for key, value in sorted(data.items()):
-                if key == 'solution' or type(value) != int:
+                if key == 'solution' or not isinstance(value, int):
                     continue
                 reference = data_et[key]
 

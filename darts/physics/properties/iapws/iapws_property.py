@@ -1,4 +1,4 @@
-from iapws._iapws import _D2O_Viscosity, _Viscosity
+from iapws._iapws import _Viscosity
 from iapws.iapws97 import (
     Pmin,
     _Backward1_T_Ph,

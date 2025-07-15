@@ -6,6 +6,28 @@ from scipy.sparse import bsr_matrix
 from darts.models.darts_model import DartsModel
 
 
+def check_jacobian(m: DartsModel):
+    '''
+    Check the current jacobian and rhs from the engine for NaN values.
+    :param m: model instance
+    :return:
+    '''
+    # get current jacobian and rhs from the engine
+    jac_rows = np.asarray(m.physics.engine.jac_rows)
+    jac_cols = np.asarray(m.physics.engine.jac_cols)
+    jac_diag = np.asarray(m.physics.engine.jac_diags)
+    jac_vals = np.asarray(m.physics.engine.jac_vals)
+
+    n_res = m.reservoir.mesh.n_res_blocks * m.physics.n_vars
+    rhs = np.array(m.physics.engine.RHS, copy=False)
+
+    has_nan = np.isnan(jac_vals).any()
+    assert not has_nan, 'jac_vals has nan'
+
+    has_nan = np.isnan(rhs).any()
+    assert not has_nan, 'rhs has nan'
+
+
 def write_jacobian_to_pkl(m: DartsModel, filename: str):
     # get current jacobian and rhs from the engine
     jac_rows = np.asarray(m.physics.engine.jac_rows)

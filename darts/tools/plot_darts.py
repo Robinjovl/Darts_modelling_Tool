@@ -234,8 +234,6 @@ def plot_oil_rate_rate_vs_obsrate(
     min_oil_rate_truth = min(abs(truth_df[search_str + ' (m3/day)'].values))
     max_oil_rate_sim = max(abs(darts_df[search_str + ' (m3/day)'].values))
     max_oil_rate_truth = max(abs(truth_df[search_str + ' (m3/day)'].values))
-    max_rate = max(max_oil_rate_sim, max_oil_rate_truth)
-    min_rate = min(min_oil_rate_sim, min_oil_rate_truth)
     plt.plot(
         [max_oil_rate_truth, min_oil_rate_truth],
         [max_oil_rate_truth, min_oil_rate_truth],
@@ -508,7 +506,7 @@ def tersurf(a, b, c, d, line=None, inf_p=None):
     """
     z = np.array([[0, 0], [1, 0], [0, 1], [0, 0]])
     # transfer matrix
-    mt = np.transpose([[1 / 2, 1], [np.sqrt(3) / 2, 0]])
+    # mt = np.transpose([[1 / 2, 1], [np.sqrt(3) / 2, 0]])
     # plot triangle
     # p = np.matmul(z, mt)
     # plt.figure(figsize=(10, 8), dpi=100)

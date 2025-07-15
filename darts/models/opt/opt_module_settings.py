@@ -1,23 +1,16 @@
-import math
-import multiprocessing
 import os.path as osp
 import pickle
 import sys
 import time
-from pickle import Pickler
 from typing import List
 
 import numpy as np
 import pandas as pd
-from numpy import linalg
-from scipy.optimize import approx_fprime
 
 from darts.engines import *
-from darts.engines import value_vector
+from darts.engines import value_vector, well_control_iface
 
 sq_norm = lambda x: np.inner(x, x)
-
-from darts.engines import well_control_iface
 
 
 class OptModuleSettings:
@@ -205,8 +198,6 @@ class OptModuleSettings:
         self.set_boundary_conditions()
         self.set_op_list()
         self.reset()
-
-        from darts.models.output import Output
 
         # self.output_folder = 'jaja'
         # self.output = Output(self.timer, self.reservoir, self.physics, self.op_list, self.params,
@@ -660,7 +651,7 @@ class OptModuleSettings:
         # setting the random seeds for generating the noise to the observation data
         try:
             np.random.seed(int(self.task_id))
-        except:
+        except (ValueError, TypeError):
             np.random.seed(0)
 
         # add production phase rate data in objective function-----------------

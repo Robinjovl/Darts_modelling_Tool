@@ -98,7 +98,11 @@ class Compositional(PhysicsBase):
 
         # axes_min
         if axes_min is None:
-            z_min = [min_z + epsilon_z for i in range(nc-1)] if np.isscalar(min_z) else [min_z[i] + epsilon_z for i in range(nc-1)]
+            z_min = (
+                [min_z + epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [min_z[i] + epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
                 axes_min = [min_p] + z_min + [min_t]
             else:
@@ -106,8 +110,11 @@ class Compositional(PhysicsBase):
 
         # axes_max
         if axes_max is None:
-            z_max = [max_z - (nc-1) * epsilon_z for i in range(nc - 1)] if np.isscalar(min_z) \
-                else [max_z[i] - (nc-1) * epsilon_z for i in range(nc - 1)]
+            z_max = (
+                [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
+                if np.isscalar(min_z)
+                else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
+            )
             if self.thermal:
                 axes_max = [max_p] + z_max + [max_t]
             else:
@@ -123,7 +130,7 @@ class Compositional(PhysicsBase):
         self.dz = (
             (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
         )
-                # Call PhysicsBase constructor
+        # Call PhysicsBase constructor
         super().__init__(
             state_spec=state_spec,
             variables=variables,
@@ -356,13 +363,15 @@ class Compositional(PhysicsBase):
                 if not np.isscalar(input_distribution['pressure']):
                     # Pressure specified as an array
                     for j in range(mesh.n_res_blocks):
-                        components = [
+                        composition = [
                             (
-                                input_distribution[name][j]
-                                if not np.isscalar(input_distribution[name])
-                                else input_distribution[name]
+                                input_distribution[component][j]
+                                if not np.isscalar(input_distribution[component])
+                                else input_distribution[component]
                             )
-                            for name in self.property_containers[0].components_name[:-1]
+                            for component in self.property_containers[
+                                0
+                            ].components_name[:-1]
                         ]
                         temp = (
                             input_distribution['temperature'][j]
@@ -371,22 +380,22 @@ class Compositional(PhysicsBase):
                         )
 
                         state = np.array(
-                            [input_distribution['pressure'][j], *components, temp]
+                            [input_distribution['pressure'][j]] + composition + [temp]
                         )
                         enthalpy[j] = self.property_containers[
                             0
                         ].compute_total_enthalpy(state)
                 else:
-                    components = [
-                        input_distribution[name]
-                        for name in self.property_containers[0].components_name[:-1]
+                    composition = [
+                        input_distribution[component]
+                        for component in self.property_containers[0].components_name[
+                            :-1
+                        ]
                     ]
                     state = value_vector(
-                        [
-                            input_distribution['pressure'],
-                            *components,
-                            input_distribution['temperature'],
-                        ]
+                        [input_distribution['pressure']]
+                        + composition
+                        + [input_distribution['temperature']]
                     )  # enthalpy is dummy variable
                     enth = self.property_containers[0].compute_total_enthalpy(state)
                     enthalpy[:] = enth

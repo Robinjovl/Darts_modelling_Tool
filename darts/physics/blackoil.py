@@ -35,7 +35,7 @@ class BlackOil(Compositional):
             min_t=idata.obl.min_t,
             max_t=idata.obl.max_t,
             state_spec=state_spec,
-            extrapolation_flag=True
+            extrapolation_flag=True,
         )
 
         temperature = None if thermal else 1.0

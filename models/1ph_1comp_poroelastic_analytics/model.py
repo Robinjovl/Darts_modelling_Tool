@@ -9,11 +9,11 @@ from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_con
 from darts.input.input_data import InputData
 
 class Model(THMCModel):
-    def __init__(self, n_points=64, discretizer='mech_discretizer', case='mandel', mesh='rect'):
+    def __init__(self, discretizer='mech_discretizer', case='mandel', mesh='rect'):
         self.case = case
         self.mesh = mesh
         self.discretizer_name = discretizer
-        super().__init__(n_points=n_points, discretizer=discretizer)
+        super().__init__()
 
     def set_solver_params(self):
         super().set_solver_params()

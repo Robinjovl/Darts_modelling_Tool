@@ -1,7 +1,5 @@
-import math
 import warnings
 
-import gmsh
 import numpy as np
 
 # from dataclasses import dataclass, is_dataclass, field
