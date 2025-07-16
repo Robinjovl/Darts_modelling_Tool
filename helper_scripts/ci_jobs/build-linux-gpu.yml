@@ -4,6 +4,7 @@
         - linux_wsl
     before_script:
         - source /home/gitlab-runner/miniconda/bin/activate
+        - source /home/gitlab-runner/env_vars.sh
         - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
         - conda activate darts_gitlab_gpu_build
     script:
