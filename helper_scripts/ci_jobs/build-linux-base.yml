@@ -3,7 +3,7 @@
     image: "python:$PY_VER"
     # Will be executed on runner with linux tag - that assumed to run on linux host
     tags:
-        - linux_wsl
+        - linux_wsl_docker
     before_script:
         - echo 'before build-linux'
         - apt-get update -qq && apt-get install -y -qq smbclient libjpeg-dev

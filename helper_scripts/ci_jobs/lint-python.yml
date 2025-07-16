@@ -2,7 +2,7 @@ lint-python:
     stage: pre_commit
     image: "python:3.10"
     tags:
-        - linux_wsl
+        - linux_wsl_docker
     before_script:
         - echo 'Installing linting tools...'
         - pip install flake8 black isort

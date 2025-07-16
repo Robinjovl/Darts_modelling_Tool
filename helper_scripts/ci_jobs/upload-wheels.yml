@@ -4,7 +4,7 @@ upload_wheels:
     rules:
         - if: $UPLOAD_WHEELS == "1"
     tags:
-        - linux
+        - linux_wsl_docker
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
     script:
@@ -24,7 +24,7 @@ upload_wheels_gse:
     rules:
         - if: $UPLOAD_WHEELS == "1"
     tags:
-        - linux_gpu
+        - linux_wsl_docker
     script:
         - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
         - export wheel=`ls ./dist/*linux*`
@@ -39,7 +39,7 @@ upload_wheels_odls:
     rules:
         - if: $UPLOAD_WHEELS == "1"
     tags:
-        - linux
+        - linux_wsl_docker
     before_script:
         - apt-get update -qq && apt-get install -y -qq smbclient
     script:

@@ -1,7 +1,7 @@
 vtune-profile:
     stage: test
     tags:
-    - linux
+    - linux_wsl_docker
     image: python:3.10
     timeout: 2h
     variables:
