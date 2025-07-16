@@ -3,7 +3,7 @@
     tags:
         - linux_wsl
     before_script:
-        - source ~/miniconda3/bin/activate
+        - source /home/gitlab-runner/miniconda/bin/activate
         - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
         - conda activate darts_gitlab_gpu_build
     script:
