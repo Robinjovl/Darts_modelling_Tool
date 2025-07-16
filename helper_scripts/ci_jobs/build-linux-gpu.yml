@@ -2,6 +2,10 @@
     stage: build
     tags:
         - linux_wsl
+    before_script:
+        - source ~/miniconda3/bin/activate
+        - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
+        - conda activate darts_gitlab_gpu_build
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p
