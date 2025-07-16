@@ -2,8 +2,6 @@
     stage: build
     tags:
         - linux_wsl
-    before_script:
-        - nvidia-smi
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p
