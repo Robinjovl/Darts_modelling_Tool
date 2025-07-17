@@ -84,7 +84,7 @@ class Model(THMCModel):
             biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
 
-        self.idata.rock.th_expn = 0 #9.0 * 1.E-7  # TODO
+        self.idata.rock.th_expn = 9.0 * 1.E-7  # TODO
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
         self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
         self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]

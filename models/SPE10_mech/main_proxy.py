@@ -245,8 +245,8 @@ if __name__ == '__main__':
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    physics_types_list += ['single_phase']
-    #physics_types_list += ['single_phase_thermal']
+    #physics_types_list += ['single_phase']
+    physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['prod']
