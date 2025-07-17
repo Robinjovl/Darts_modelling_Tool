@@ -2,7 +2,7 @@
     stage: test
 
     tags:
-        - linux_gpu
+        - linux_wsl
     before_script:
         - source /home/gitlab-runner/miniconda/bin/activate
         - conda create -n darts_gitlab_gpu_test python=${PY_VER} --yes 
