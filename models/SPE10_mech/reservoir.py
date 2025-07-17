@@ -67,7 +67,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             elif nx == 28: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-7000 m
                 self.Xc = np.array([-15000, -8000, -4000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 4000, 8000, 15000])
             elif nx == 34: # -15..15 km XY, dx = 100 m in the reservoir, outside 1000-15000 m
-                self.Xc = np.array([-15000,-10000,-8000,-6000, -4000, -3000, -2000, -1000] + np.arange(-900, 1000, 100).tolist() + [1000, 2000, 3000, 4000, 6000,8000,10000,15000])
+                self.Xc = np.array([-15000,-8000,-4000,-2400,-1600,-1200,-1100,-1000] + np.arange(-900, 1000, 100).tolist() + [1000, 1100,1200, 1600, 2400, 4000,8000,15000])
             elif nx == 41: # 41x41
                 pass
                 #rsv = np.arange(-900, 1000, 200)
@@ -87,8 +87,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.Zc = np.hstack([np.arange(0, self.rsv_top, 150), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 150)])
             elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
                 self.Zc = np.hstack([np.arange(0, self.rsv_top, 100), np.arange(self.rsv_top, self.rsv_bottom, 20), np.arange(self.rsv_bottom, 5000, 100)])
+            elif nz == 56:  # uniform dz = 100 m
+                self.Zc = np.hstack([np.arange(0, self.rsv_top - 100, 100),
+                                     self.rsv_top - 100,
+                                     np.arange(self.rsv_top - 50, self.rsv_bottom, 20),
+                                     self.rsv_bottom + 50,
+                                     np.arange(self.rsv_bottom + 100, 5000, 100)])
             elif nz == 60:  # uniform dz = 100 m
-                self.Zc = np.linspace(0, 6000, num=61)  # mesh Z range
+                np.linspace(0, 6000, num=61)  # mesh Z range
             else:
                 print('not found an option to mesh with nz = ', nz)
                 exit(1)

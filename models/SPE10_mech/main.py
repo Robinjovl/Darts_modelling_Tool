@@ -166,7 +166,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None, decoup
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    sim_time = 12 * size_report_step * 40
+    sim_time = 12 * size_report_step #* 40
     m.time_steps = []
     data = []
     # Run over all reporting time-steps:
