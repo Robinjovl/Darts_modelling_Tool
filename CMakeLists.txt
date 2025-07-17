@@ -329,7 +329,11 @@ if(WITH_PHREEQC)
     set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/bin/IPhreeqc.dll")
     set(IPHREEQC_RENAME "IPhreeqc.dll")
   else()
-    set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/libIPhreeqc.so")
+    if(CUDA)
+      set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib/libIPhreeqc.so")
+	else
+	   set(IPHREEQC_LINK   "${IPHREEQC_ROOT}/lib64/libIPhreeqc.so")
+	  endif()
     set(IPHREEQC_RENAME "libIPhreeqc.so")
   endif()
 
