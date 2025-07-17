@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [[ "$GSELINSOLVERSPATH" == "" ]]; then
+  echo "Error: the environment variable GSELINSOLVERSPATH is not defined!"
+  exit 1
+fi
+
 CLEAN_FLAG=""
 PHREEQC_FLAG=""
 DEBUG_FLAG=""
@@ -17,7 +22,7 @@ done
 ./helper_scripts/build_darts_cmake.sh \
   -G \
   -j20 \
-  -b $LINSOLVERSPATH \
+  -b $GSELINSOLVERSPATH \
   -w \
   $CLEAN_FLAG \
   $PHREEQC_FLAG \
