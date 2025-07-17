@@ -17,7 +17,7 @@ done
 ./helper_scripts/build_darts_cmake.sh \
   -G \
   -j20 \
-  -a \
+  -b $LINSOLVERSPATH \
   -w \
   $CLEAN_FLAG \
   $PHREEQC_FLAG \
