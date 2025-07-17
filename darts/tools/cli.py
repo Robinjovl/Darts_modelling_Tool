@@ -46,22 +46,19 @@ def get_darts_path():
 
 
 def main():
-    # Show help if no arguments are passed( same as 'darts -h')
-    if len(sys.argv) <= 1:
-        sys.argv.append('-h')
+    args_list = sys.argv.copy()
+    # Show help if no arguments are passed (same as 'darts -h')
+    if len(args_list) <= 1:
+        args_list.append('-h')
 
-    # --- Handle multiprocessing spawn / resource_tracker callbacks ---
-    # The spawn start method uses: python -c "...spawn_main(...)"
-    # We detect '-c' or '-m' as the first passthrough argument and forward directly.
-    if sys.argv[1] in ('-c', '-m'):
+    # Handle multiprocessing spawn / resource_tracker callbacks
+    if args_list[1] in ('-c', '-m'):
         lib_var = get_lib_var()
         if lib_var:
-            # Prepend our DARTS library path to existing
             os.environ[lib_var] = (
                 str(get_darts_path()) + os.pathsep + os.environ.get(lib_var, "")
             )
-        # Forward directly to the real Python executable
-        python_args = [sys.executable] + sys.argv[1:]
+        python_args = [sys.executable] + args_list[1:]
         res = subprocess.run(python_args)
         sys.exit(res.returncode)
 
@@ -96,19 +93,18 @@ def main():
         "args", nargs=argparse.REMAINDER, help="Arguments to pass to the script."
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args_list[1:])
 
     def print_version():
         import pkg_resources
-
         version = pkg_resources.get_distribution("open-darts").version
         print(f"open-darts: v{version}")
 
     if args.version:
         print_version()
         exit()
-    path = args.path
 
+    path = args.path
     python_args = [sys.executable]
 
     if not path:
@@ -116,7 +112,7 @@ def main():
         parser.print_usage()
         exit()
 
-    if path and os.path.isdir(path):
+    if os.path.isdir(path):
         file = "model.py" if args.model else "main.py"
         filepath = os.path.join(path, file)
 
@@ -128,14 +124,11 @@ def main():
             )
             exit(1)
 
-    if path:
-        python_args.append(path)
-
+    python_args.append(path)
     python_args += args.args
 
     # Update env vars for running DARTS
     lib_var = get_lib_var()
-
     if lib_var:
         os.environ[lib_var] = str(get_darts_path()) + ":" + os.environ.get(lib_var, "")
 
