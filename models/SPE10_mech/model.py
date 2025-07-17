@@ -318,6 +318,7 @@ class Model(THMCModel):
                 elif self.physics_type == 'dead_oil_thermal':
                     inj = [1.0 - self.idata.obl.zero]
                     inj_temp = np.mean(self.reservoir.t_init[self.well_cell_ids[i]]) - delta_temp_inj
+                print('inj_temp = ', inj_temp)
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=np.max(p_cell) + delta_p, inj_composition=inj,
                                                inj_temp=inj_temp)

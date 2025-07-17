@@ -199,12 +199,13 @@ def run_geomech_proxy(case, physics_type='single_phase', wells_type=None):
     points_xy = []
     points_xy += [['center', centroids[:, 0].mean(), centroids[:, 1].mean()]]  # middle point of the mesh
 
-    if  wells_type in ['prod', ' doublet']:
+    if wells_type in ['prod', 'doublet']:
         points_xy += [['prod well'] + m.prod_well_coords[:-1]] # -1 to skip z coord
-    if wells_type in ['inj', ' doublet']:
+    if wells_type in ['inj', 'doublet']:
         points_xy += [['inj well'] + m.inj_well_coords[:-1]]
 
     for point_xy in points_xy:
+        print('plotting for point', point_xy[0], 'XY=', point_xy[1:3])
         for mode in ['displ_z', 'stress']:
             # compare U-Z at a line along z-axis
             z_min = 0.
@@ -235,20 +236,21 @@ if __name__ == '__main__':
     #case = '16_16_53'
     #case = '28_28_53' # bad allocation only for thermal
     #case = '28_28_29'  # crashes after initialization
-    case = '28_28_37'  #
+    #case = '28_28_37'  #
+    case = '28_28_53'  #
     #case = '34_34_53' # bad allocation for both isothermal and thermal
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
     physics_types_list = []
-    physics_types_list += ['single_phase']
+    #physics_types_list += ['single_phase']
     physics_types_list += ['single_phase_thermal']
 
     wells_types_list = []
     #wells_types_list += ['prod']
-    wells_types_list += ['inj']
-    #wells_types_list += ['doublet']
+    #wells_types_list += ['inj']
+    wells_types_list += ['doublet']
 
     for physics_type in physics_types_list:
         for wells_type in wells_types_list:
