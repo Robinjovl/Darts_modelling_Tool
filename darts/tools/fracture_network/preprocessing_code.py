@@ -23,7 +23,7 @@ SOFTWARE.
 import os
 import subprocess
 import sys
-from multiprocessing import Process, freeze_support
+from multiprocessing import freeze_support
 
 import numpy as np
 

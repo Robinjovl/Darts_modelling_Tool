@@ -1,5 +1,3 @@
-from math import exp, log, sqrt
-
 import numpy as np
 
 
