@@ -46,6 +46,10 @@ def get_darts_path():
 
 
 def main():
+    # Show help if no arguments are passed( same as 'darts -h')
+    if len(sys.argv) <= 1:
+        sys.argv.append('-h')
+
     # --- Handle multiprocessing spawn / resource_tracker callbacks ---
     # The spawn start method uses: python -c "...spawn_main(...)"
     # We detect '-c' or '-m' as the first passthrough argument and forward directly.
