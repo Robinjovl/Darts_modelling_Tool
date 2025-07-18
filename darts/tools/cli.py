@@ -97,6 +97,7 @@ def main():
 
     def print_version():
         import pkg_resources
+
         version = pkg_resources.get_distribution("open-darts").version
         print(f"open-darts: v{version}")
 
