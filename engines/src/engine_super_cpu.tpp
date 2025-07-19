@@ -1028,27 +1028,27 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 if (enabled_flux_output) cur_fourier_fluxes[NP] = -t_diff * (gamma_t_i + gamma_t_j) / 2 / dt;
                 for (uint8_t v = 0; v < N_VARS; v++)
                 {
-                  Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
-                  Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+                    Jac[jac_idx + NC * N_VARS + v] -= op_ders_arr[(j * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
+                    Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
                 }
             }
+
             conn_idx++;
             if (j < n_res_blocks)
                 cell_conn_idx++;
-
         }
 
-      // [5] finally add rock energy
-      // + rock energy (no rock compressibility included in these computations)
-      if (THERMAL)
-      {
-        RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
-
-        for (uint8_t v = 0; v < N_VARS; v++)
+        // [5] finally add rock energy
+        // + rock energy (no rock compressibility included in these computations)
+        if (THERMAL)
         {
-          Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
-        } // end of fill offdiagonal part + contribute to diagonal
-      }
+          RHS[i * N_VARS + NC] += RV[i] * (op_vals_arr[i * N_OPS + TEMP_OP] - op_vals_arr_n[i * N_OPS + TEMP_OP]) * hcap[i];
+
+          for (uint8_t v = 0; v < N_VARS; v++)
+          {
+            Jac[diag_idx + NC * N_VARS + v] += RV[i] * op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * hcap[i];
+          } // end of fill offdiagonal part + contribute to diagonal
+        }
 
         // calc CFL for reservoir cells, not connected with wells
         if (i < n_res_blocks && !connected_with_well)
