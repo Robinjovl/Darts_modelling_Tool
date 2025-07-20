@@ -29,7 +29,7 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     :param save_as: The extension of the image files that will be saved
     :type save_as: str
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps')
+    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_pcolormesh')
 
     # Reset_directory
     if os.path.exists(main_dir):

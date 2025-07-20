@@ -46,7 +46,7 @@ def visualize_results_heat_maps_contourf(
     :param n_cmap_bins_miu: Number of bins of the colorbar and colormap of viscosity
     :type n_cmap_bins_miu: int
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'contourf_heat_maps')
+    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_contourf')
 
     # Reset_directory
     if os.path.exists(main_dir):
@@ -197,7 +197,7 @@ def visualize_results_heat_maps_contourf(
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
-        z_c_min, z_c_max = np.min(z_c_matrix), np.max(z_c_matrix)
+        z_c_min, z_c_max = np.nanmin(z_c_matrix), np.nanmax(z_c_matrix)   # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
         levels = np.linspace(z_c_min, z_c_max, n_cmap_bins_comp + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
@@ -537,7 +537,7 @@ def visualize_results_heat_maps_contourf(
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a discrete colorbar and colormap
-        x_min, x_max = np.nanmin(xG_mole_c_matrix), np.nanmax(xG_mole_c_matrix)   # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+        x_min, x_max = np.nanmin(xG_mole_c_matrix), np.nanmax(xG_mole_c_matrix)   # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
         levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
