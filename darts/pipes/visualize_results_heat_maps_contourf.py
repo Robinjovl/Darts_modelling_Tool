@@ -4,13 +4,17 @@ import numpy as np
 import os
 import shutil
 from matplotlib.ticker import MultipleLocator
+from matplotlib.colors import BoundaryNorm
 
 from darts.models.darts_model import DartsModel
 
-def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
-                                coupled_model: DartsModel, max_ts_idx: int = None,
-                                x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap: str = "jet",
-                                save_as = 'png'):
+def visualize_results_heat_maps_contourf(
+        primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
+        coupled_model: DartsModel, max_ts_idx: int = None,
+        x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap_color: str = "jet",
+        save_as = 'png', y_axis_tick_interval=50., n_cmap_bins_p: int = 10,
+        n_cmap_bins_comp: int = 10, n_cmap_bins_t: int = 10, n_cmap_bins_s: int = 10,
+        n_cmap_bins_rho: int = 10, n_cmap_bins_miu: int = 10, n_cmap_bins_v: int = 10):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -27,8 +31,22 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     :param y_axis: "segments_MD" or "segments_TVD" or "segment_index"
     :param save_as: The extension of the image files that will be saved
     :type save_as: str
+    :param y_axis_tick_interval: The interval of the ticks of the y axis.
+    :type y_axis_tick_interval: float
+    :param n_cmap_bins_p: Number of bins of the colorbar and colormap of pressure
+    :type n_cmap_bins_p: int
+    :param n_cmap_bins_comp: Number of bins of the colorbar and colormap of composition
+    :type n_cmap_bins_comp: int
+    :param n_cmap_bins_t: Number of bins of the colorbar and colormap of temperature
+    :type n_cmap_bins_t: int
+    :param n_cmap_bins_s: Number of bins of the colorbar and colormap of saturation
+    :type n_cmap_bins_s: int
+    :param n_cmap_bins_rho: Number of bins of the colorbar and colormap of density
+    :type n_cmap_bins_rho: int
+    :param n_cmap_bins_miu: Number of bins of the colorbar and colormap of viscosity
+    :type n_cmap_bins_miu: int
     """
-    main_dir = os.path.join(coupled_model.output_folder, 'heat_maps')
+    main_dir = os.path.join(coupled_model.output_folder, 'contourf_heat_maps')
 
     # Reset_directory
     if os.path.exists(main_dir):
@@ -106,26 +124,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, p_matrix, cmap=cmap, shading='auto')
+    # Create a discrete colorbar and colormap
+    pmin, pmax = np.min(p_matrix), np.max(p_matrix)
+    levels = np.linspace(pmin, pmax, n_cmap_bins_p + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_p)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_segments, p_matrix,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_segments, p_matrix,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Pressure [bar]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Pressure profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the pressure values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Pressure [bar]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
@@ -152,26 +196,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, z_c_matrix, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        z_c_min, z_c_max = np.min(z_c_matrix), np.max(z_c_matrix)
+        levels = np.linspace(z_c_min, z_c_max, n_cmap_bins_comp + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, z_c_matrix,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, z_c_matrix,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the overall mole fraction values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction." + save_as)
@@ -194,26 +264,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, T_matrix, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        t_min, t_max = np.min(T_matrix), np.max(T_matrix)
+        levels = np.linspace(t_min, t_max, n_cmap_bins_t + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_t)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, T_matrix,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, T_matrix,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Temperature [\u00B0C]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the temperature values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Temperature [\u00B0C]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Temperature." + save_as)
@@ -235,26 +331,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, sG_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+    # Create a discrete colorbar and colormap
+    sg_min, sg_max = np.min(sG_matrix), np.max(sG_matrix)
+    levels = np.linspace(sg_min, sg_max, n_cmap_bins_s + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_segments, sG_matrix,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_segments, sG_matrix,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Gas saturation [-]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Gas saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the gas saturation values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas saturation [-]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation." + save_as)
@@ -277,26 +399,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, sL_a_matrix, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        sla_min, sla_max = np.min(sL_a_matrix), np.max(sL_a_matrix)
+        levels = np.linspace(sla_min, sla_max, n_cmap_bins_s + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, sL_a_matrix,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, sL_a_matrix,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_a saturation [-]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_a saturation values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a saturation [-]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation." + save_as)
@@ -319,26 +467,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, sL_b_matrix, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        slb_min, slb_max = np.min(sL_b_matrix), np.max(sL_b_matrix)
+        levels = np.linspace(slb_min, slb_max, n_cmap_bins_s + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, sL_b_matrix,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, sL_b_matrix,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_b saturation [-]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_b saturation values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b saturation [-]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as)
@@ -362,26 +536,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, xG_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+        # Create a discrete colorbar and colormap
+        x_min, x_max = np.nanmin(xG_mole_c_matrix), np.nanmax(xG_mole_c_matrix)   # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+        levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, xG_mole_c_matrix,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, xG_mole_c_matrix,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the xG_mole values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase." + save_as)
@@ -406,26 +606,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
             # Initialize the plot
             fig, ax = plt.subplots(figsize=(12, 6))
 
-            # Create the heatmap
-            cax = ax.pcolormesh(x, y_segments, xL_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+            # Create a discrete colorbar and colormap
+            x_min, x_max = np.nanmin(xL_mole_c_matrix), np.nanmax(xL_mole_c_matrix)  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+            levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
+            cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+            norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+            # Region‐based fill
+            cf = ax.contourf(
+                x, y_segments, xL_mole_c_matrix,
+                levels=levels,
+                cmap=cmap,
+                norm=norm,
+                # extend='both'  # if you want arrows at the ends
+            )
+
+            # Overlay the exact same contour lines
+            cs = ax.contour(
+                x, y_segments, xL_mole_c_matrix,
+                levels=levels,
+                colors='k',
+                linewidths=0.7
+            )
+            # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+            # Create the colorbar
+            cbar = fig.colorbar(
+                cf,
+                ax=ax,
+                boundaries=levels,
+                ticks=levels,
+                spacing='proportional',
+            )
+            cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
 
             # Set the y-axis ticks
-            if y_axis == "segment_index":
-                ax.yaxis.set_major_locator(MultipleLocator(1))
+            ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+            # Reverse the y-axis
+            ax.invert_yaxis()
 
             # Add axes labels
             ax.set_xlabel(x_label, fontsize=14)
             ax.set_ylabel(y_segments_label, fontsize=14)
 
-            # Reverse the y-axis
-            ax.invert_yaxis()
-
             # Add title
             ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
-
-            # Add a colorbar to show the xL_mole values
-            cbar = fig.colorbar(cax, ax=ax)
-            cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
 
             plt.tight_layout()
             file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase." + save_as)
@@ -450,28 +676,54 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
                 # Initialize the plot
                 fig, ax = plt.subplots(figsize=(12, 6))
 
-                # Create the heatmap
-                cax = ax.pcolormesh(x, y_segments, xL_a_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+                # Create a discrete colorbar and colormap
+                x_min, x_max = np.nanmin(xL_a_mole_c_matrix), np.nanmax(xL_a_mole_c_matrix)  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+                levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
+                cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+                norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+                # Region‐based fill
+                cf = ax.contourf(
+                    x, y_segments, xL_a_mole_c_matrix,
+                    levels=levels,
+                    cmap=cmap,
+                    norm=norm,
+                    # extend='both'  # if you want arrows at the ends
+                )
+
+                # Overlay the exact same contour lines
+                cs = ax.contour(
+                    x, y_segments, xL_a_mole_c_matrix,
+                    levels=levels,
+                    colors='k',
+                    linewidths=0.7
+                )
+                # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+                # Create the colorbar
+                cbar = fig.colorbar(
+                    cf,
+                    ax=ax,
+                    boundaries=levels,
+                    ticks=levels,
+                    spacing='proportional',
+                )
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=14)
 
                 # Set the y-axis ticks
-                if y_axis == "segment_index":
-                    ax.yaxis.set_major_locator(MultipleLocator(1))
+                ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+                # Reverse the y-axis
+                ax.invert_yaxis()
 
                 # Add axes labels
                 ax.set_xlabel(x_label, fontsize=14)
                 ax.set_ylabel(y_segments_label, fontsize=14)
 
-                # Reverse the y-axis
-                ax.invert_yaxis()
-
                 # Add title
                 ax.set_title(
                     'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
                     fontsize=14, fontweight='bold')
-
-                # Add a colorbar to show the xL_a_mole values
-                cbar = fig.colorbar(cax, ax=ax)
-                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=14)
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a." + save_as)
@@ -496,28 +748,54 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
                 # Initialize the plot
                 fig, ax = plt.subplots(figsize=(12, 6))
 
-                # Create the heatmap
-                cax = ax.pcolormesh(x, y_segments, xL_b_mole_c_matrix, cmap=cmap, shading='auto', vmin=0, vmax=1)
+                # Create a discrete colorbar and colormap
+                x_min, x_max = np.nanmin(xL_b_mole_c_matrix), np.nanmax(xL_b_mole_c_matrix)  # Using np.nanmin because if nan exists in the matrix, np.min and np.max return nan as min and max
+                levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
+                cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+                norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+                # Region‐based fill
+                cf = ax.contourf(
+                    x, y_segments, xL_b_mole_c_matrix,
+                    levels=levels,
+                    cmap=cmap,
+                    norm=norm,
+                    # extend='both'  # if you want arrows at the ends
+                )
+
+                # Overlay the exact same contour lines
+                cs = ax.contour(
+                    x, y_segments, xL_b_mole_c_matrix,
+                    levels=levels,
+                    colors='k',
+                    linewidths=0.7
+                )
+                # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+                # Create the colorbar
+                cbar = fig.colorbar(
+                    cf,
+                    ax=ax,
+                    boundaries=levels,
+                    ticks=levels,
+                    spacing='proportional',
+                )
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=14)
 
                 # Set the y-axis ticks
-                if y_axis == "segment_index":
-                    ax.yaxis.set_major_locator(MultipleLocator(1))
+                ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+                # Reverse the y-axis
+                ax.invert_yaxis()
 
                 # Add axes labels
                 ax.set_xlabel(x_label, fontsize=14)
                 ax.set_ylabel(y_segments_label, fontsize=14)
 
-                # Reverse the y-axis
-                ax.invert_yaxis()
-
                 # Add title
                 ax.set_title(
                     'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
                     fontsize=14, fontweight='bold')
-
-                # Add a colorbar to show the xL_b_mole values
-                cbar = fig.colorbar(cax, ax=ax)
-                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=14)
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b." + save_as)
@@ -543,26 +821,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, rhoG_matrix_masked, cmap=cmap, shading='auto')
+    # Create a discrete colorbar and colormap
+    rhog_min, rhog_max = np.min(rhoG_matrix_masked), np.max(rhoG_matrix_masked)
+    levels = np.linspace(rhog_min, rhog_max, n_cmap_bins_rho + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_segments, rhoG_matrix_masked,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_segments, rhoG_matrix_masked,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Gas density [kg/m$^3$]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Gas density profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the gas density values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas density [kg/m$^3$]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
@@ -589,26 +893,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, rhoL_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        rhol_min, rhol_max = np.min(rhoL_matrix_masked), np.max(rhoL_matrix_masked)
+        levels = np.linspace(rhol_min, rhol_max, n_cmap_bins_rho + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, rhoL_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, rhoL_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid density profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid density values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density." + save_as)
@@ -635,26 +965,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, rhoL_a_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        rhola_min, rhola_max = np.min(rhoL_a_matrix_masked), np.max(rhoL_a_matrix_masked)
+        levels = np.linspace(rhola_min, rhola_max, n_cmap_bins_rho + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, rhoL_a_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, rhoL_a_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_a density values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density." + save_as)
@@ -681,26 +1037,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, rhoL_b_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        rholb_min, rholb_max = np.min(rhoL_b_matrix_masked), np.max(rhoL_b_matrix_masked)
+        levels = np.linspace(rholb_min, rholb_max, n_cmap_bins_rho + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, rhoL_b_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, rhoL_b_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_b density values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density." + save_as)
@@ -726,26 +1108,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_segments, miuG_matrix_masked, cmap=cmap, shading='auto')
+    # Create a discrete colorbar and colormap
+    miug_min, miug_max = np.min(miuG_matrix_masked), np.max(miuG_matrix_masked)
+    levels = np.linspace(miug_min, miug_max, n_cmap_bins_miu + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_segments, miuG_matrix_masked,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_segments, miuG_matrix_masked,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Gas viscosity [cP]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_segments_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the gas viscosity values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas viscosity [cP]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
@@ -772,26 +1180,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, miuL_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        miul_min, miul_max = np.min(miuL_matrix_masked), np.max(miuL_matrix_masked)
+        levels = np.linspace(miul_min, miul_max, n_cmap_bins_miu + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, miuL_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, miuL_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid viscosity values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity." + save_as)
@@ -818,26 +1252,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, miuL_a_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        miula_min, miula_max = np.min(miuL_a_matrix_masked), np.max(miuL_a_matrix_masked)
+        levels = np.linspace(miula_min, miula_max, n_cmap_bins_miu + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, miuL_a_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, miuL_a_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_a viscosity values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as)
@@ -864,26 +1324,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
         # Initialize the plot
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create the heatmap
-        cax = ax.pcolormesh(x, y_segments, miuL_b_matrix_masked, cmap=cmap, shading='auto')
+        # Create a discrete colorbar and colormap
+        miulb_min, miulb_max = np.min(miuL_b_matrix_masked), np.max(miuL_b_matrix_masked)
+        levels = np.linspace(miulb_min, miulb_max, n_cmap_bins_miu + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+        # Region‐based fill
+        cf = ax.contourf(
+            x, y_segments, miuL_b_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
+        )
+
+        # Overlay the exact same contour lines
+        cs = ax.contour(
+            x, y_segments, miuL_b_matrix_masked,
+            levels=levels,
+            colors='k',
+            linewidths=0.7
+        )
+        # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=14)
 
         # Set the y-axis ticks
-        if y_axis == "segment_index":
-            ax.yaxis.set_major_locator(MultipleLocator(1))
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
 
         # Add axes labels
         ax.set_xlabel(x_label, fontsize=14)
         ax.set_ylabel(y_segments_label, fontsize=14)
 
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
         # Add title
         ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-        # Add a colorbar to show the liquid L_b viscosity values
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=14)
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as)
@@ -909,26 +1395,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_interfaces, vG_matrix_masked, cmap=cmap, shading='auto')
+    # Create a discrete colorbar and colormap
+    vg_min, vg_max = np.min(vG_matrix_masked), np.max(vG_matrix_masked)
+    levels = np.linspace(vg_min, vg_max, n_cmap_bins_v + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_interfaces, vG_matrix_masked,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_interfaces, vG_matrix_masked,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Gas velocity [m/s]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_interfaces_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Gas velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the gas velocity values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
@@ -954,26 +1466,52 @@ def visualize_results_heat_maps(primary_vars_and_phase_props_file_address: str, 
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the heatmap
-    cax = ax.pcolormesh(x, y_interfaces, vL_matrix_masked, cmap=cmap, shading='auto')
+    # Create a discrete colorbar and colormap
+    vl_min, vl_max = np.min(vL_matrix_masked), np.max(vL_matrix_masked)
+    levels = np.linspace(vl_min, vl_max, n_cmap_bins_v + 1)
+    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # Region‐based fill
+    cf = ax.contourf(
+        x, y_interfaces, vL_matrix_masked,
+        levels=levels,
+        cmap=cmap,
+        norm=norm,
+        # extend='both'  # if you want arrows at the ends
+    )
+
+    # Overlay the exact same contour lines
+    cs = ax.contour(
+        x, y_interfaces, vL_matrix_masked,
+        levels=levels,
+        colors='k',
+        linewidths=0.7
+    )
+    # ax.clabel(cs, fmt='%.0f')  # if you want labels on the lines
+
+    # Create the colorbar
+    cbar = fig.colorbar(
+        cf,
+        ax=ax,
+        boundaries=levels,
+        ticks=levels,
+        spacing='proportional',
+    )
+    cbar.set_label('Liquid velocity [m/s]', fontsize=14)
 
     # Set the y-axis ticks
-    if y_axis == "segment_index":
-        ax.yaxis.set_major_locator(MultipleLocator(1))
+    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+    # Reverse the y-axis
+    ax.invert_yaxis()
 
     # Add axes labels
     ax.set_xlabel(x_label, fontsize=14)
     ax.set_ylabel(y_interfaces_label, fontsize=14)
 
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
     # Add title
     ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
-
-    # Add a colorbar to show the liquid velocity values
-    cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Liquid velocity [m/s]', fontsize=14)
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity." + save_as)
