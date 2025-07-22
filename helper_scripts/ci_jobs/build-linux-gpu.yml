@@ -36,7 +36,6 @@ build-linux-tahiti-3.10-gpu:
         - linux_tahiti_gpu
     before_script:
         - spack env activate open_darts_gcc134
-        - source /oahu/data/open-darts-gitlab-runner-data/anaconda3/bin/activate
         - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
         - conda activate darts_gitlab_gpu_build
     rules:
