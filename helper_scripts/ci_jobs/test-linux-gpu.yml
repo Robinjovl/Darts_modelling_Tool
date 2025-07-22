@@ -52,3 +52,29 @@ test-linux-3.10-gpu:
         TEST_GPU: '1'
     needs:
         - build-linux-3.10-gpu 
+
+test-linux-tahiti-3.10-gpu:
+    tags:
+        - linux_tahiti_gpu
+    before_script:
+        - spack env activate open_darts_gcc134
+        - eval "$(conda shell.bash hook)"
+        - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
+        - conda activate darts_gitlab_gpu_build
+        # upgrade pip package first
+        - python -m pip install --upgrade pip
+        - pip uninstall open-darts-flash  --yes
+        - pip install ./dist/*.whl
+    rules:
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - if: $TEST_CUSTOM_BRANCH == "1"
+        - if: $TEST_GPU_LINUX == "1"
+    extends: .test-linux-gpu
+    variables:
+        PY_VER: '3.10'
+        ODLS: '-a'
+        TEST_GPU: '1'
+    needs:
+        - build-linux-tahiti-3.10-gpu 
