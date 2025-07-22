@@ -10,7 +10,7 @@ from darts.models.darts_model import DartsModel
 def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
                                 coupled_model: DartsModel, max_ts_idx: int = None,
                                 x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap_color: str = "jet",
-                                save_as: str = 'png'):
+                                save_as: str = 'png', font_size = 14):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -115,18 +115,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Pressure profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Pressure profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the pressure values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Pressure [bar]', fontsize=14)
+    cbar.set_label('Pressure [bar]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
@@ -161,18 +164,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the overall mole fraction values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=14)
+        cbar.set_label(components_names[comp_idx] + ' overall mole fraction [-]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction." + save_as)
@@ -203,18 +209,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Temperature profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Temperature profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the temperature values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Temperature [\u00B0C]', fontsize=14)
+        cbar.set_label('Temperature [\u00B0C]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Temperature." + save_as)
@@ -244,18 +253,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Gas saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas saturation values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas saturation [-]', fontsize=14)
+    cbar.set_label('Gas saturation [-]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation." + save_as)
@@ -286,18 +298,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_a saturation values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a saturation [-]', fontsize=14)
+        cbar.set_label('Liquid L_a saturation [-]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation." + save_as)
@@ -328,18 +343,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_b saturation values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b saturation [-]', fontsize=14)
+        cbar.set_label('Liquid L_b saturation [-]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as)
@@ -371,18 +389,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the xG_mole values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=14)
+        cbar.set_label(comp_name + ' mole fraction in the gaseous phase [-]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase." + save_as)
@@ -415,18 +436,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                 ax.yaxis.set_major_locator(MultipleLocator(1))
 
             # Add axes labels
-            ax.set_xlabel(x_label, fontsize=14)
-            ax.set_ylabel(y_segments_label, fontsize=14)
+            ax.set_xlabel(x_label, fontsize=font_size)
+            ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+            ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
             # Reverse the y-axis
             ax.invert_yaxis()
 
             # Add title
-            ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=14, fontweight='bold')
+            ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=font_size, fontweight='bold')
 
             # Add a colorbar to show the xL_mole values
             cbar = fig.colorbar(cax, ax=ax)
-            cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=14)
+            cbar.set_label(comp_name + ' mole fraction in the liquid phase [-]', fontsize=font_size)
+            cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
             plt.tight_layout()
             file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase." + save_as)
@@ -459,8 +483,10 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                     ax.yaxis.set_major_locator(MultipleLocator(1))
 
                 # Add axes labels
-                ax.set_xlabel(x_label, fontsize=14)
-                ax.set_ylabel(y_segments_label, fontsize=14)
+                ax.set_xlabel(x_label, fontsize=font_size)
+                ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+                ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
                 # Reverse the y-axis
                 ax.invert_yaxis()
@@ -468,11 +494,12 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                 # Add title
                 ax.set_title(
                     'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
-                    fontsize=14, fontweight='bold')
+                    fontsize=font_size, fontweight='bold')
 
                 # Add a colorbar to show the xL_a_mole values
                 cbar = fig.colorbar(cax, ax=ax)
-                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=14)
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_a [-]', fontsize=font_size)
+                cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a." + save_as)
@@ -505,8 +532,10 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                     ax.yaxis.set_major_locator(MultipleLocator(1))
 
                 # Add axes labels
-                ax.set_xlabel(x_label, fontsize=14)
-                ax.set_ylabel(y_segments_label, fontsize=14)
+                ax.set_xlabel(x_label, fontsize=font_size)
+                ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+                ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
                 # Reverse the y-axis
                 ax.invert_yaxis()
@@ -514,11 +543,12 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                 # Add title
                 ax.set_title(
                     'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
-                    fontsize=14, fontweight='bold')
+                    fontsize=font_size, fontweight='bold')
 
                 # Add a colorbar to show the xL_b_mole values
                 cbar = fig.colorbar(cax, ax=ax)
-                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=14)
+                cbar.set_label(comp_name + ' mole fraction in the liquid phase L_b [-]', fontsize=font_size)
+                cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b." + save_as)
@@ -552,18 +582,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas density profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Gas density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas density values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas density [kg/m$^3$]', fontsize=14)
+    cbar.set_label('Gas density [kg/m$^3$]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
@@ -598,18 +631,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid density profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid density values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid density [kg/m$^3$]', fontsize=14)
+        cbar.set_label('Liquid density [kg/m$^3$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density." + save_as)
@@ -644,18 +680,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_a density values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=14)
+        cbar.set_label('Liquid L_a density [kg/m$^3$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density." + save_as)
@@ -690,18 +729,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_b density values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=14)
+        cbar.set_label('Liquid L_b density [kg/m$^3$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density." + save_as)
@@ -735,18 +777,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_segments_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas viscosity values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas viscosity [cP]', fontsize=14)
+    cbar.set_label('Gas viscosity [cP]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
@@ -781,18 +826,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid viscosity values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid viscosity [$cP$]', fontsize=14)
+        cbar.set_label('Liquid viscosity [$cP$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity." + save_as)
@@ -827,18 +875,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_a viscosity values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=14)
+        cbar.set_label('Liquid L_a viscosity [$cP$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as)
@@ -873,18 +924,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.yaxis.set_major_locator(MultipleLocator(1))
 
         # Add axes labels
-        ax.set_xlabel(x_label, fontsize=14)
-        ax.set_ylabel(y_segments_label, fontsize=14)
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+        ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
         # Reverse the y-axis
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=14, fontweight='bold')
+        ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the liquid L_b viscosity values
         cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=14)
+        cbar.set_label('Liquid L_b viscosity [$cP$]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as)
@@ -918,18 +972,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_interfaces_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Gas velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas velocity values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Gas velocity [m/s]', fontsize=14)
+    cbar.set_label('Gas velocity [m/s]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
@@ -963,18 +1020,21 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.yaxis.set_major_locator(MultipleLocator(1))
 
     # Add axes labels
-    ax.set_xlabel(x_label, fontsize=14)
-    ax.set_ylabel(y_interfaces_label, fontsize=14)
+    ax.set_xlabel(x_label, fontsize=font_size)
+    ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+
+    ax.tick_params(axis='both', labelsize=font_size)   # Set the font size of tick labels
 
     # Reverse the y-axis
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=14, fontweight='bold')
+    ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the liquid velocity values
     cbar = fig.colorbar(cax, ax=ax)
-    cbar.set_label('Liquid velocity [m/s]', fontsize=14)
+    cbar.set_label('Liquid velocity [m/s]', fontsize=font_size)
+    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity." + save_as)
