@@ -37,22 +37,17 @@ apptainer-image-builder:
       else
         apptainer build --fakeroot \
           --build-arg DLS_TOKEN="${DLS_TOKEN}" \
-          --build-arg DLS_SHA="${DLS_SHA}" \
           singularity.sif .cicd/build-linux/singularity.def;
         mv singularity.sif "$IMG";
       fi
-
   artifacts:
     paths:
-      - dist/darts-${BUILD_KEY}.sif
-      - dist/darts-latest.sif
+      - "$IMG"
     expire_in: 14 days
-
   cache:
     key: "$BUILD_KEY"
     paths:
-      - dist/darts-${BUILD_KEY}.sif
-
+      - "$IMG"
   rules:
     # if any tracked file changes -> run
     - changes:

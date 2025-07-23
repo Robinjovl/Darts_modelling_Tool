@@ -51,18 +51,10 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     # install darts-linear-solvers
     # Expect CI to pass:
     #   DLS_TOKEN  – read-only personal/deploy token (protected variable)
-    #   DLS_SHA    – commit hash (from git ls-remote) to pin build
-    #   DLS_REF    – fallback branch/tag (default: main)
-    set -x
-    DLS_REF="${DLS_REF:-main}"
-    # DLS_SHA="${DLS_SHA:-HEAD}"
-    DLS_URL="https://oauth2:${DLS_TOKEN}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git"
+    DLS_URL="https://oauth2:{{DLS_TOKEN}}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git"
     mkdir -p /opt
-    git clone --depth 1 --branch "${DLS_REF}" "${DLS_URL}" /opt/darts-linear-solvers
+    git clone "${DLS_URL}" /opt/darts-linear-solvers
     cd /opt/darts-linear-solvers
-    # If a specific SHA is provided, ensure we checkout exactly that
-    # if [ "${DLS_SHA}" != "HEAD" ]; then git fetch origin "${DLS_SHA}" && git checkout "${DLS_SHA}"; fi
-
     ./helper_scripts/build_gpu.sh
 
     # Standardize library/include layout for consumers
@@ -72,7 +64,6 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
 
     # Ensure path is exported at runtime
     echo 'export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build' >> /environment
-    set +x  
 
 %runscript
     exec /bin/bash "$@"
