@@ -40,6 +40,7 @@ build-linux-tahiti-3.10-gpu:
         - conda create -n darts_gitlab_gpu_build python=${PY_VER} --yes
         - conda activate darts_gitlab_gpu_build
         - export GSELINSOLVERSPATH=/home/gitlab-runner/darts-linear-solvers/build
+        - export GPU_DEVICE=0
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
