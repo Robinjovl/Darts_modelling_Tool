@@ -10,7 +10,7 @@ from darts.models.darts_model import DartsModel
 def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_address: str, h5_well_data: dict,
                                 coupled_model: DartsModel, max_ts_idx: int = None,
                                 x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap_color: str = "jet",
-                                save_as: str = 'png', font_size = 14):
+                                save_as: str = 'png', font_size: float = 14, with_title: bool = True):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -28,6 +28,10 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     :type y_axis: str
     :param save_as: The extension of the image files that will be saved
     :type save_as: str
+    :param font_size: Size of the fonts
+    :type font_size: float
+    :param with_title: If you want the figure to have a title or not
+    :type with_title: bool
     """
     main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_pcolormesh')
 
@@ -124,7 +128,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Pressure profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Pressure profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the pressure values
     cbar = fig.colorbar(cax, ax=ax)
@@ -173,7 +178,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] +
+                         ' along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the overall mole fraction values
         cbar = fig.colorbar(cax, ax=ax)
@@ -218,7 +225,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Temperature profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Temperature profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the temperature values
         cbar = fig.colorbar(cax, ax=ax)
@@ -262,7 +270,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas saturation values
     cbar = fig.colorbar(cax, ax=ax)
@@ -307,7 +316,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_a saturation values
         cbar = fig.colorbar(cax, ax=ax)
@@ -352,7 +363,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_b saturation values
         cbar = fig.colorbar(cax, ax=ax)
@@ -398,7 +411,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time',
+                         fontsize=font_size, fontweight='bold')
 
         # Add a colorbar to show the xG_mole values
         cbar = fig.colorbar(cax, ax=ax)
@@ -445,7 +460,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
             ax.invert_yaxis()
 
             # Add title
-            ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=font_size, fontweight='bold')
+            if with_title:
+                ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time',
+                             fontsize=font_size, fontweight='bold')
 
             # Add a colorbar to show the xL_mole values
             cbar = fig.colorbar(cax, ax=ax)
@@ -492,9 +509,10 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                 ax.invert_yaxis()
 
                 # Add title
-                ax.set_title(
-                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
-                    fontsize=font_size, fontweight='bold')
+                if with_title:
+                    ax.set_title(
+                        'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
+                        fontsize=font_size, fontweight='bold')
 
                 # Add a colorbar to show the xL_a_mole values
                 cbar = fig.colorbar(cax, ax=ax)
@@ -541,9 +559,10 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
                 ax.invert_yaxis()
 
                 # Add title
-                ax.set_title(
-                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
-                    fontsize=font_size, fontweight='bold')
+                if with_title:
+                    ax.set_title(
+                        'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
+                        fontsize=font_size, fontweight='bold')
 
                 # Add a colorbar to show the xL_b_mole values
                 cbar = fig.colorbar(cax, ax=ax)
@@ -591,7 +610,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas density values
     cbar = fig.colorbar(cax, ax=ax)
@@ -640,7 +660,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid density values
         cbar = fig.colorbar(cax, ax=ax)
@@ -689,7 +711,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_a density values
         cbar = fig.colorbar(cax, ax=ax)
@@ -738,7 +762,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_b density values
         cbar = fig.colorbar(cax, ax=ax)
@@ -786,7 +812,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas viscosity values
     cbar = fig.colorbar(cax, ax=ax)
@@ -835,7 +862,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid viscosity values
         cbar = fig.colorbar(cax, ax=ax)
@@ -884,7 +913,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_a viscosity values
         cbar = fig.colorbar(cax, ax=ax)
@@ -933,7 +964,9 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
         ax.invert_yaxis()
 
         # Add title
-        ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         # Add a colorbar to show the liquid L_b viscosity values
         cbar = fig.colorbar(cax, ax=ax)
@@ -981,7 +1014,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Gas velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the gas velocity values
     cbar = fig.colorbar(cax, ax=ax)
@@ -1029,7 +1063,8 @@ def visualize_results_heat_maps_pcolormesh(primary_vars_and_phase_props_file_add
     ax.invert_yaxis()
 
     # Add title
-    ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     # Add a colorbar to show the liquid velocity values
     cbar = fig.colorbar(cax, ax=ax)

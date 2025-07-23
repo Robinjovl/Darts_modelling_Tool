@@ -14,7 +14,8 @@ def visualize_results_heat_maps_contourf(
         x_axis: str = "simulation_time", y_axis: str = "segments_MD", cmap_color: str = "jet",
         save_as = 'png', y_axis_tick_interval=50., n_cmap_bins_p: int = 10,
         n_cmap_bins_comp: int = 10, n_cmap_bins_t: int = 10, n_cmap_bins_s: int = 10,
-        n_cmap_bins_rho: int = 10, n_cmap_bins_miu: int = 10, n_cmap_bins_v: int = 10, font_size = 14):
+        n_cmap_bins_rho: int = 10, n_cmap_bins_miu: int = 10, n_cmap_bins_v: int = 10, font_size: float = 14,
+        with_title: bool = True):
     """
     :param primary_vars_and_phase_props_file_address: Address of the pickle file in which primary variables and phase
     properties of well segments are stored
@@ -45,6 +46,12 @@ def visualize_results_heat_maps_contourf(
     :type n_cmap_bins_rho: int
     :param n_cmap_bins_miu: Number of bins of the colorbar and colormap of viscosity
     :type n_cmap_bins_miu: int
+    :param n_cmap_bins_v: Number of bins of the colorbar and colormap of velocity
+    :type n_cmap_bins_v: int
+    :param font_size: Size of the fonts
+    :type font_size: float
+    :param with_title: If you want the figure to have a title or not
+    :type with_title: bool
     """
     main_dir = os.path.join(coupled_model.output_folder, 'heat_maps_contourf')
 
@@ -172,7 +179,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Pressure profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Pressure profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Pressure." + save_as)
@@ -250,7 +258,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] + ' along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Profile of overall mole fraction of ' + components_names[comp_idx] +
+                         ' along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {components_names[comp_idx]} overall mole fraction." + save_as)
@@ -321,7 +331,8 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Temperature profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Temperature profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Temperature." + save_as)
@@ -391,7 +402,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Gas saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas saturation." + save_as)
@@ -462,7 +474,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a saturation profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(coupled_model.output_folder, f"{figure_counter}- Liquid L_a saturation." + save_as)
@@ -533,7 +547,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b saturation profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b saturation." + save_as)
@@ -608,7 +624,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Profile of ' + comp_name + ' mole fraction in the gaseous phase along the wellbore over time',
+                         fontsize=font_size, fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the gaseous phase." + save_as)
@@ -684,7 +702,9 @@ def visualize_results_heat_maps_contourf(
             ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
             # Add title
-            ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time', fontsize=font_size, fontweight='bold')
+            if with_title:
+                ax.set_title('Profile of ' + comp_name + ' mole fraction in the liquid phase along the wellbore over time',
+                             fontsize=font_size, fontweight='bold')
 
             plt.tight_layout()
             file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase." + save_as)
@@ -760,9 +780,10 @@ def visualize_results_heat_maps_contourf(
                 ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
                 # Add title
-                ax.set_title(
-                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
-                    fontsize=font_size, fontweight='bold')
+                if with_title:
+                    ax.set_title(
+                        'Profile of ' + comp_name + ' mole fraction in the liquid phase L_a along the wellbore over time',
+                        fontsize=font_size, fontweight='bold')
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_a." + save_as)
@@ -838,9 +859,10 @@ def visualize_results_heat_maps_contourf(
                 ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
                 # Add title
-                ax.set_title(
-                    'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
-                    fontsize=font_size, fontweight='bold')
+                if with_title:
+                    ax.set_title(
+                        'Profile of ' + comp_name + ' mole fraction in the liquid phase L_b along the wellbore over time',
+                        fontsize=font_size, fontweight='bold')
 
                 plt.tight_layout()
                 file_address = os.path.join(main_dir, f"{figure_counter}- {comp_name} mole fraction in the liquid phase L_b." + save_as)
@@ -914,7 +936,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Gas density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas density." + save_as)
@@ -989,7 +1012,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid density." + save_as)
@@ -1064,7 +1089,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a density." + save_as)
@@ -1139,7 +1166,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b density profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b density." + save_as)
@@ -1213,7 +1242,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas viscosity." + save_as)
@@ -1288,7 +1318,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid viscosity." + save_as)
@@ -1363,7 +1395,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_a viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_a viscosity." + save_as)
@@ -1438,7 +1472,9 @@ def visualize_results_heat_maps_contourf(
         ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
         # Add title
-        ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+        if with_title:
+            ax.set_title('Liquid L_b viscosity profile along the wellbore over time', fontsize=font_size,
+                         fontweight='bold')
 
         plt.tight_layout()
         file_address = os.path.join(main_dir, f"{figure_counter}- Liquid L_b viscosity." + save_as)
@@ -1512,7 +1548,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Gas velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Gas velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity." + save_as)
@@ -1586,7 +1623,8 @@ def visualize_results_heat_maps_contourf(
     ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
 
     # Add title
-    ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
+    if with_title:
+        ax.set_title('Liquid velocity profile along the wellbore over time', fontsize=font_size, fontweight='bold')
 
     plt.tight_layout()
     file_address = os.path.join(main_dir, f"{figure_counter}- Liquid velocity." + save_as)
