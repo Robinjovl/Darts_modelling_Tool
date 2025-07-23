@@ -20,6 +20,8 @@ apptainer-image-builder:
   stage: build_images
   tags:
     - linux_tahiti_gpu
+  variables:
+    IMG_DIR: /home/gitlab-runner
   script:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
@@ -30,9 +32,10 @@ apptainer-image-builder:
     # combine into BUILD_KEY
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
-    - IMG="/home/gitlab-runner/open-darts-${BUILD_KEY}.sif"
+    - IMG="$IMG_DIR/open-darts-${BUILD_KEY}.sif"
     # build only if not already present (cache/artifacts from previous runs)
-    - if [[ -f "$IMG" ]]; then
+    - |    
+      if [ -f "$IMG" ]; then
         echo "Reusing cached image $IMG";
       else
         apptainer build --fakeroot \
@@ -40,6 +43,7 @@ apptainer-image-builder:
           singularity.sif .cicd/build-linux/singularity.def;
         mv singularity.sif "$IMG";
       fi
+    - ln -sf "$(basename "$IMG")" "$IMG_DIR/open-darts-latest.sif"
   artifacts:
     paths:
       - "$IMG"
