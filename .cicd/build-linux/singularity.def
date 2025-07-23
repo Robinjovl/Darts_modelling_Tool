@@ -1,0 +1,78 @@
+Bootstrap: docker
+From:      nvidia/cuda:12.8.1-devel-rockylinux8
+
+%labels
+    PROJECT     open-darts
+
+%environment
+    source /opt/rh/gcc-toolset-13/enable
+    source /opt/conda/etc/profile.d/conda.sh
+    export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build
+
+%post
+    # exiting pipeline with a non-zero exit code if any command in a pipeline fails
+    set -euo pipefail
+
+    # install base packages
+    dnf -y clean all
+    dnf -y upgrade
+    dnf -y install epel-release dnf-plugins-core
+    dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+        jq patchelf wget git ca-certificates which tar xz bzip2 make cmake python3 python3-pip \
+        gcc-toolset-13-gcc-c++
+    echo 'source /opt/rh/gcc-toolset-13/enable' >> /etc/profile.d/gcc13.sh
+
+    # miniconda installation
+    CONDA_DIR=/opt/conda
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    bash /tmp/miniconda.sh -b -p $CONDA_DIR
+    rm -f /tmp/miniconda.sh
+    source /opt/conda/bin/activate
+    $CONDA_DIR/bin/conda init --all
+    conda clean -a -y
+    
+    # cleanup & size reduction 
+    dnf -y remove gmp-devel mpfr-devel libmpc-devel isl-devel zlib-devel || true
+    dnf -y autoremove
+    dnf clean all
+
+    # capture actual GCC version, build date and CUDA version
+    source /opt/rh/gcc-toolset-13/enable
+    GCC_VERSION="$(gcc -dumpfullversion 2>/dev/null || gcc -dumpversion || echo unknown)"
+    BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    CUDA_VERSION="$(nvcc --version | awk -F',| ' '/release/{print $6}')"
+    # inject into labels.json - %labels section
+    LBL=/.singularity.d/labels.json
+    TMP=$(mktemp)
+    jq --arg gv "$GCC_VERSION" --arg bd "$BUILD_DATE" --arg cv "$CUDA_VERSION" \
+    '.GCC=$gv | .BUILT_AT=$bd | .CUDA=$cv' \
+    "$LBL" > "$TMP" && mv "$TMP" "$LBL"
+
+    # install darts-linear-solvers
+    # Expect CI to pass:
+    #   DLS_TOKEN  – read-only personal/deploy token (protected variable)
+    #   DLS_SHA    – commit hash (from git ls-remote) to pin build
+    #   DLS_REF    – fallback branch/tag (default: main)
+    set -x
+    DLS_REF="${DLS_REF:-main}"
+    # DLS_SHA="${DLS_SHA:-HEAD}"
+    DLS_URL="https://oauth2:${DLS_TOKEN}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git"
+    mkdir -p /opt
+    git clone --depth 1 --branch "${DLS_REF}" "${DLS_URL}" /opt/darts-linear-solvers
+    cd /opt/darts-linear-solvers
+    # If a specific SHA is provided, ensure we checkout exactly that
+    # if [ "${DLS_SHA}" != "HEAD" ]; then git fetch origin "${DLS_SHA}" && git checkout "${DLS_SHA}"; fi
+
+    ./helper_scripts/build_gpu.sh
+
+    # Standardize library/include layout for consumers
+    mkdir -p build/lib build/include
+    mv *.a ./lib/AMGX/build/*.so ./build/lib/
+    cp -r ./include/* ./lib/bos_linear_solver_lib/include/* ./build/include/ || true
+
+    # Ensure path is exported at runtime
+    echo 'export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build' >> /environment
+    set +x  
+
+%runscript
+    exec /bin/bash "$@"
