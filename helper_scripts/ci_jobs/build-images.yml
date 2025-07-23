@@ -20,8 +20,6 @@ apptainer-image-builder:
   stage: build_images
   tags:
     - linux_tahiti_gpu
-  variables:
-    IMG_DIR: /home/gitlab-runner
   script:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
@@ -32,6 +30,7 @@ apptainer-image-builder:
     # combine into BUILD_KEY
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
+    - IMG_DIR="/home/gitlab-runner"
     - IMG="$IMG_DIR/open-darts-${BUILD_KEY}.sif"
     # build only if not already present (cache/artifacts from previous runs)
     - |    
