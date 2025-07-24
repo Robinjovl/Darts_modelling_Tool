@@ -11,7 +11,7 @@ from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
 
-def run(rsv: str, physics_type: str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu',
+def run(rsv: str, physics_type: str, case: str, out_dir: str, export_vtk=False, redirect_log=False, platform='cpu',
         compare_with_ref=True):
     '''
     :param physics_type: "geothermal" or "dead_oil"
@@ -159,7 +159,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
         if physics_type == 'geothermal':
             ax = None
             for time_data_report, label in zip(time_data_report_list, label_list):
-                ax = plot_temp_darts(well_name, time_data_report, ax=ax)  # , label=label)
+                ax = plot_temp_darts(well_name, time_data_report, ax=ax)
+            ax.legend(label_list)
             ax.set(xlabel="Days", ylabel="temperature [degrees]")
             plt.tight_layout()
             plt.savefig(os.path.join(out_dir, 'well_temperature_' + well_name + '_' + case + '.png'))
@@ -168,7 +169,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
             # use time_data here as we are going to compute a cumulative plot
             ax = None
             for time_data, label in zip(time_data_list, label_list):
-                ax = plot_extracted_energy_darts(time_data, ax=ax)  # , label=label)
+                ax = plot_extracted_energy_darts(time_data, ax=ax)
+            ax.legend(label_list)
             ax.set(xlabel="Days", ylabel="energy [PJ]")
             plt.tight_layout()
             plt.savefig(os.path.join(out_dir, 'energy_extracted_' + well_name + '_' + case + '.png'))
@@ -177,7 +179,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
             # rate plotting
             ax = None
             for time_data_report, label in zip(time_data_report_list, label_list):
-                ax = plot_total_prod_oil_rate_darts(time_data_report, ax=ax)  # , label=label)
+                ax = plot_total_prod_oil_rate_darts(time_data_report, ax=ax)
+            ax.legend(label_list)
             ax.set(xlabel="Days", ylabel="Total produced oil rate, kmol/day")
             plt.savefig(os.path.join(out_dir, 'production_oil_rate_' + well_name + '_' + case + '.png'), )
             plt.close()
@@ -201,7 +204,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
     # common plots for both physics
     ax = None
     for time_data_report, label in zip(time_data_report_list, label_list):
-        ax = plot_total_inj_water_rate_darts(time_data_report, ax=ax)  # , label=label)
+        ax = plot_total_inj_water_rate_darts(time_data_report, ax=ax)
+    ax.legend(label_list)
     ax.set(xlabel="Days", ylabel="Total injected water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'injection_water_rate_' + case + '.png'))
@@ -209,7 +213,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
 
     ax = None
     for time_data_report, label in zip(time_data_report_list, label_list):
-        ax = plot_total_prod_water_rate_darts(time_data_report, ax=ax)  # , label=label)
+        ax = plot_total_prod_water_rate_darts(time_data_report, ax=ax)
+    ax.legend(label_list)
     ax.set(xlabel="Days", ylabel="Total produced water rate, " + rate_units)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, 'production_water_rate_' + case + '.png'))
@@ -218,7 +223,8 @@ def plot_results(wells, well_is_inj, time_data_list, time_data_report_list, labe
     for well_name in wells:
         ax = None
         for time_data_report, label in zip(time_data_report_list, label_list):
-            ax = plot_bhp_darts(well_name, time_data_report, ax=ax)  # , label=label)
+            ax = plot_bhp_darts(well_name, time_data_report, ax=ax)
+        ax.legend(label_list)
         ax.set(xlabel="Days", ylabel="BHP [bar]")
         plt.savefig(os.path.join(out_dir, 'well_' + well_name + '_bhp_' + case + '.png'))
         plt.tight_layout()
@@ -284,24 +290,24 @@ if __name__ == '__main__':
 
     rsv_list = []
     rsv_list += ['struct']
-    rsv_list += ['cpg']
+    # rsv_list += ['cpg']
 
     physics_list = []
     physics_list += ['geothermal']
-    physics_list += ['deadoil']
+    # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    cases_list += ['generate_51x51x1']
-    cases_list += ['generate_51x51x1_no_burden']
-    cases_list += ['generate_51x51x1_faultmult']
-    cases_list += ['generate_100x100x100']
+    # cases_list += ['generate_5x3x4']
+    # cases_list += ['generate_51x51x1']
+    # cases_list += ['generate_51x51x1_no_burden']
+    # cases_list += ['generate_51x51x1_faultmult']
+    # cases_list += ['generate_100x100x100']
     cases_list += ['case_40x40x10']
 
     well_controls = []
     well_controls += ['wrate']
-    well_controls += ['wbhp']
-    well_controls += ['wperiodic']
+    # well_controls += ['wbhp']
+    # well_controls += ['wperiodic']
 
     for rsv in rsv_list:
         for physics_type in physics_list:
@@ -334,7 +340,7 @@ if __name__ == '__main__':
                         time_data_report_1 = pd.read_pickle(os.path.join(pkl1_dir, pkl_report_fname))
                         time_data_list = [time_data_1, time_data]
                         time_data_report_list = [time_data_report_1, time_data_report]
-                        label_list = ['1', 'current']
+                        label_list = ['struct', 'cpg']
 
                     plot_results(wells=wells, well_is_inj=well_is_inj,
                                  time_data_list=time_data_list, time_data_report_list=time_data_report_list,

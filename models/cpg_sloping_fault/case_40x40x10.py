@@ -17,7 +17,7 @@ def input_data_case_40x40x10(idata: InputData, case: str):
     geom.dx = load_single_keyword(idata.resolfile, 'DX', cache=True)
     geom.dy = load_single_keyword(idata.resolfile, 'DY', cache=True)
     geom.dz = load_single_keyword(idata.resolfile, 'DZ', cache=True)
-    geom.start_z = 2000
+    geom.start_z = 1890
 
     # change properties here
 
