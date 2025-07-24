@@ -99,7 +99,7 @@ class ReservoirOperators(OperatorsSuper):
             vec_values_as_np[self.FLUX_OP + j * self.ne:self.FLUX_OP + j * self.ne + self.nc_fl] = \
                 self.property.x[j][:self.nc_fl] * self.property.dens_m[j]
 
-        """ Gamma operator for diffusion (same for thermal and isothermal) """
+        """ Gamma operator for diffusion (same for heat conduction and molecular diffusion) """
         # fluid diffusive flux sat: c_r phi_f s_j (-)
         vec_values_as_np[self.UPSAT_OP + self.property.ph] = self.compr * self.phi_f * self.property.sat[self.property.ph]
         # solid diffusive flux sat: c_r z_s* (-)

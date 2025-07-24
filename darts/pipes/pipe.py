@@ -7,6 +7,10 @@ Differences between this script and the DFM velocity evaluator in the standalone
   centroid of the bottom segment (z = 0). In the standalone well model, potential energy flux is defined at perforations,
   but when I removed perforation potential energy and also used interface potential energy instead of upwinded
   potential energy, it gave the same solutions as that of the validated model.
+
+Notes:
+    - The kinetic energy is not added to the energy conservation equation of the coupled model yet, while it was in the
+    standalone wellbore model.
 """
 
 import math
