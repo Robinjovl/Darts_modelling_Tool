@@ -241,7 +241,7 @@ def check_performance_local(m, case, physics_type):
         pkl_suffix = '_odls'
     print('pkl_suffix=', pkl_suffix)
 
-    file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
+    file_name = os.path.join('ref', m.rsv+'_'+'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + case + '_' + physics_type + '.pkl')
     overwrite = 0
     if os.getenv('UPLOAD_PKL') == '1':
