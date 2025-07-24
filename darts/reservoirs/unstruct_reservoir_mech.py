@@ -5,13 +5,14 @@ import meshio
 import numpy as np
 from scipy.linalg import null_space
 
-from darts.discretizer import BoundaryCondition, Elem, Mesh
+from darts.discretizer import (
+    BoundaryCondition,
+    Mesh,
+)
 from darts.discretizer import Stiffness as disc_stiffness
 from darts.discretizer import (
     THMBoundaryCondition,
-    conn_type,
     elem_loc,
-    elem_type,
     index_vector,
     matrix,
 )
@@ -20,8 +21,6 @@ from darts.discretizer import (
     poro_mech_discretizer,
     thermoporo_mech_discretizer,
     value_vector,
-    vector_matrix33,
-    vector_vector3,
 )
 from darts.engines import Face
 from darts.engines import Stiffness as engine_stiffness
@@ -35,12 +34,13 @@ from darts.engines import (
     matrix,
 )
 from darts.engines import matrix33 as engine_matrix33
-from darts.engines import ms_well, ms_well_vector, pm_discretizer, stf_vector
-from darts.engines import value_vector
-from darts.engines import value_vector as engine_value_vector
-from darts.engines import vector_face_vector, vector_matrix, vector_matrix33
+from darts.engines import (
+    ms_well,
+    ms_well_vector,
+    value_vector,
+    vector_matrix,
+)
 from darts.input.input_data import InputData
-from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 
 
 class bound_cond:
@@ -1084,6 +1084,8 @@ class UnstructReservoirMech:
     def set_scheme_pm_discretizer(self, scheme='non_stabilized'):
         assert self.discretizer_name == 'pm_discretizer'
         if scheme == 'stabilized':
+            from darts.discretizer.Discretizer import scheme_type
+
             self.pm.scheme = scheme_type.apply_eigen_splitting_new
             self.pm.min_alpha_stabilization = 0.5
         elif scheme == 'non_stabilized':
@@ -1417,6 +1419,8 @@ class UnstructReservoirMech:
         #    self.mech_operators.eval_porosities(physics.engine.X, self.mesh.bc_prev)
         #    self.mech_operators.eval_stresses(physics.engine.X, self.mesh.bc_prev, physics.engine.op_vals_arr)
 
+        dX = np.asarray(engine.dX, copy=False)
+
         # Matrix
         Mesh.cells = []
         cell_data = {}
@@ -1669,21 +1673,6 @@ class UnstructReservoirMech:
                 newl='\n',
             )
 
-    def get_normal_to_bound_face(self, b_id):
-        cell = self.unstr_discr.bound_face_info_dict[b_id]
-        cells = [self.unstr_discr.mat_cells_to_node[pt] for pt in cell.nodes_to_cell]
-        cell_id = next(iter(set(cells[0]).intersection(*cells)))
-        for face in self.unstr_discr.faces[cell_id].values():
-            if face.cell_id1 == face.cell_id2 and face.face_id2 == b_id:
-                t_face = (
-                    cell.centroid
-                    - self.unstr_discr.mat_cell_info_dict[cell_id].centroid
-                )
-                n = face.n
-                if np.inner(t_face, n) < 0:
-                    n = -n
-                return n
-
     def get_parametrized_fault_props(self):
         ref_id = next(iter(self.unstr_discr.frac_cell_info_dict))
         tags = np.array(
@@ -1769,6 +1758,8 @@ class UnstructReservoirMech:
         return s, z_output, inds  # gap, Ftan, Fnorm
 
     def write_fault_props(self, output_directory, property_array, ith_step, engine):
+        from matplotlib import pyplot as plt
+
         n_vars = 4
         n_dim = 3
         fluxes = np.array(engine.fluxes, copy=False)

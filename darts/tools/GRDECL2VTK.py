@@ -11,10 +11,12 @@
 # Email: binwang.0213@gmail.com                                         #
 #########################################################################
 
-import os
 import warnings
 
 import numpy as np
+
+from darts.tools.GRDECL_FaultProcess import *
+from darts.tools.GRDECL_Parser import *
 
 warnings.simplefilter(
     action='ignore', category=FutureWarning
@@ -26,9 +28,6 @@ try:
 except ImportError:
     warnings.warn("No vtk module loaded.")
 
-
-from darts.tools.GRDECL_FaultProcess import *
-from darts.tools.GRDECL_Parser import *
 
 # from GRDECL_CADExporter import *
 

@@ -21,7 +21,6 @@ SOFTWARE.
 """
 
 import copy
-import os
 
 import igraph
 import matplotlib.cm as cm

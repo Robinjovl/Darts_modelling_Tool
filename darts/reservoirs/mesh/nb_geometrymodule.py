@@ -1,5 +1,4 @@
 # For the class defintions here, only numpy is used:
-import numba as nb
 import numpy as np
 from numba import float64, int32, types
 from numba.experimental import jitclass

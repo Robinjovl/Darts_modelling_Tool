@@ -102,7 +102,7 @@ class GRDECL_Parser:
         # Derived variabls
         self.CELL_FAULT = []
 
-    ######[read_GRDECL]######
+    # #####[read_GRDECL]######
     def read_GRDECL(self):
         """Read input file(GRDECL) of Reservoir Simulator- Petrel (Eclipse)
         file format:http://petrofaq.org/wiki/Eclipse_Input_Data
@@ -231,7 +231,7 @@ class GRDECL_Parser:
             )
         return block_dataset
 
-    ######[DataInterperator]######
+    # #####[DataInterperator]######
     def getPillar(self, Pid):
         """Get a pillar line from COORD
         Pillar is the vertical cell edge line (top point-bottm point)

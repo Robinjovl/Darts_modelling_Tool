@@ -1,5 +1,4 @@
 import os
-from math import pi
 from typing import Union
 
 import numpy as np
@@ -8,8 +7,6 @@ from scipy.interpolate import griddata
 from darts.engines import (
     conn_mesh,
     index_vector,
-    ms_well,
-    ms_well_vector,
     timer_node,
     value_vector,
 )
@@ -344,7 +341,7 @@ class StructReservoir(ReservoirBase):
         :return data: true data 3D data array
         """
         if np.isscalar(data):
-            if type(data) != int:
+            if not isinstance(data, int):
                 data = data * np.ones((self.nx, self.ny, self.nz), dtype=type(data))
             else:
                 data = data * np.ones((self.nx, self.ny, self.nz))
