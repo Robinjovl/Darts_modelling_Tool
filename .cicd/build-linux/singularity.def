@@ -55,6 +55,7 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     mkdir -p /opt
     git clone "${DLS_URL}" /opt/darts-linear-solvers
     cd /opt/darts-linear-solvers
+    export CUDA_ARCH={{CUDA_ARCH}}
     ./helper_scripts/build_gpu.sh
 
     # Standardize library/include layout for consumers
@@ -63,7 +64,7 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     cp -r ./include/* ./lib/bos_linear_solver_lib/include/* ./build/include/ || true
 
     # Ensure path is exported at runtime
-    echo 'export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build' >> /environment
+    export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build >> /environment
 
 %runscript
     exec /bin/bash "$@"

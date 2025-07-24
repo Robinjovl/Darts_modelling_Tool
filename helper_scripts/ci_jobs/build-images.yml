@@ -39,6 +39,7 @@ apptainer-image-builder:
       else
         apptainer build --fakeroot \
           --build-arg DLS_TOKEN="${DLS_TOKEN}" \
+          --build-arg CUDA_ARCH="70" \
           singularity.sif .cicd/build-linux/singularity.def;
         mv singularity.sif "$IMG";
       fi
