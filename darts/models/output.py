@@ -1148,12 +1148,12 @@ class Output:
         2- calculating the rates directly at the wellhead connection
 
         :param types_of_well_rates: List of types of well rates that can be computed:
-                                    "phases_molar_rates"
-                                    "phases_mass_rates"
-                                    "phases_volumetric_rates"
-                                    "components_molar_rates"
-                                    "components_mass_rates"
-                                    "advective_heat_rate" for thermal scenarios
+                                    "phase_molar_rates"
+                                    "phase_mass_rates"
+                                    "phase_volumetric_rates"
+                                    "component_molar_rates"
+                                    "component_mass_rates"
+                                    "advective_heat_rates" for thermal scenarios
         :type types_of_well_rates: list
         :param save_output_files: Flag to save time_data as a .pkl and .xlsx file in the output folder, default false
         :type save_output_files: bool
@@ -1176,19 +1176,22 @@ class Output:
 
         if types_of_well_rates is None:
             types_of_well_rates = [
-                "phases_molar_rates",
-                "phases_mass_rates",
-                "phases_volumetric_rates",
-                "components_molar_rates",
-                "components_mass_rates",
+                "phase_molar_rates",
+                "phase_mass_rates",
+                "phase_volumetric_rates",
+                "component_molar_rates",
+                "component_mass_rates",
             ]
             if self.physics.thermal:
-                types_of_well_rates.append("advective_heat_rate")
+                types_of_well_rates.append("advective_heat_rates")
 
         # Store BHP and BHT
         self.store_bhp_bht(h5_well_data, time_data_dict)
 
         for rate_type in types_of_well_rates:
+            if ((rate_type == "component_molar_rates" or rate_type == "component_mass_rates") and
+                    self.physics.property_containers[0].physics_type == "geothermal_engine"):
+                continue
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_connections(
                 h5_well_data,
@@ -1408,27 +1411,30 @@ class Output:
         :param time_data_dict: Dictionary in which well time series will be stored
         :type time_data_dict: dict
         """
-        dyn = h5_well_data['dynamic']
-        nt = len(dyn['time'])
+        nt = len(h5_well_data['dynamic']['time'])
+        cell_id = h5_well_data['dynamic']['cell_id']
+        variable_names = h5_well_data['dynamic']['variable_names']
+        X = h5_well_data['dynamic']['X']
         pc = self.physics.property_containers[0]
+
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
             BHT = np.zeros(nt) if self.physics.thermal else np.full(nt, pc.temperature)
             wellhead_cell_idx = self.find_values_in_an_array(
-                [well.well_head_idx], dyn['cell_id']
+                [well.well_head_idx], cell_id
             )
-            p_idx = dyn['variable_names'].index('pressure')
+            p_idx = variable_names.index('pressure')
             for i in range(nt):
-                p = dyn['X'][i, :, p_idx]
+                p = X[i, :, p_idx]
                 BHP[i] = p[wellhead_cell_idx]
                 if self.physics.thermal:
-                    if 'temperature' in dyn['variable_names']:
-                        idx_T = dyn['variable_names'].index('temperature')
-                        BHT[i] = dyn['X'][i, :, idx_T][wellhead_cell_idx]
+                    if 'temperature' in variable_names:
+                        t_idx = variable_names.index('temperature')
+                        BHT[i] = X[i, :, t_idx][wellhead_cell_idx]
                     else:
-                        h_idx = dyn['variable_names'].index('enthalpy')
+                        h_idx = variable_names.index('enthalpy')
                         BHT[i] = pc.temperature_ev.evaluate(
-                            [BHP[i], dyn['X'][i, wellhead_cell_idx, h_idx]]
+                            [BHP[i], X[i, wellhead_cell_idx, h_idx]]
                         )
             time_data_dict[f'well_{well.name}_BHP'] = BHP
             time_data_dict[f'well_{well.name}_BHT'] = BHT
@@ -1459,43 +1465,24 @@ class Output:
         # Evaluate position of block_m, block_p in stored data, for every connection
         block_m = h5_well_data['static']['block_m']
         block_p = h5_well_data['static']['block_p']
+        cell_id = h5_well_data['dynamic']['cell_id']
         cell_m = self.find_values_in_an_array(
-            block_m[conn_ids], h5_well_data['dynamic']['cell_id']
+            block_m[conn_ids], cell_id
         )  # well cells
         cell_p = self.find_values_in_an_array(
-            block_p[conn_ids], h5_well_data['dynamic']['cell_id']
+            block_p[conn_ids], cell_id
         )  # reservoir cells
-        assert cell_m.size == len(conn_ids) and cell_p.size == len(conn_ids)
+        num_conn = len(conn_ids)
+        assert cell_m.size == num_conn and cell_p.size == num_conn
 
         num_ts = h5_well_data['dynamic']['time'].size
 
         pc = self.physics.property_containers[0]
-        # Pre-allocate data
-        if rate_type in [
-            'phases_molar_rates',
-            'phases_mass_rates',
-            'phases_volumetric_rates',
-        ]:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nph))
-        elif rate_type in ['components_molar_rates', 'components_mass_rates']:
-            rates = np.zeros((num_ts, len(conn_ids), pc.nc_fl * pc.nph))
-        elif rate_type == 'advective_heat_rate':
-            if thermal:
-                rates = np.zeros((num_ts, len(conn_ids), pc.nph))
-            else:
-                raise Exception(
-                    'The model is isothermal, so advective heat rate cannot be calculated for it!'
-                )
-        else:
-            raise Exception(
-                "The rate type is not entered correctly or is not supported!"
-            )
-        id_state_cell = np.zeros(len(conn_ids), dtype=np.intp)
 
-        id_pres = h5_well_data['dynamic']['variable_names'].index('pressure')
+        p_idx = h5_well_data['dynamic']['variable_names'].index('pressure')
         if thermal:
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                id_temp = h5_well_data['dynamic']['variable_names'].index(
+                t_idx = h5_well_data['dynamic']['variable_names'].index(
                     'temperature'
                 )  # This does not work for geothermal engine
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
@@ -1504,96 +1491,114 @@ class Output:
                 raise Exception(
                     'Neither temperature nor enthalpy exists in the list of variables!'
                 )
+        elif not thermal and rate_type == "advective_heat_rate":
+            raise Exception(
+                'The model is isothermal, so advective heat rate cannot be calculated for it!'
+            )
 
-        # Looping over time steps
-        for i in range(num_ts):
-            p = h5_well_data['dynamic']['X'][i, :, id_pres]
-            # Determine upwind cell indices for all connections
-            dp = p[cell_p] - p[cell_m]
-            downstream = dp < 0
-            upstream = dp >= 0
-            id_state_cell[downstream] = cell_m[downstream]
-            id_state_cell[upstream] = cell_p[upstream]
+        p = h5_well_data['dynamic']['X'][:, :, p_idx]
 
-            # Looping over perforations
-            for j in range(len(conn_ids)):
-                if self.precision == 's':
-                    raw_state = h5_well_data['dynamic']['X'][i, id_state_cell[j]]
-                    state = np.asarray(raw_state, dtype=np.float64)
-                    for k in range(len(state)):
-                        state[k] = min(
-                            max(state[k], self.physics.axes_min[k]),
-                            self.physics.axes_max[k],
-                        )
-                else:
-                    state = h5_well_data['dynamic']['X'][i, id_state_cell[j]]
+        dp = p[:, cell_p] - p[:, cell_m]
 
-                # Calculate operators for phase molar, mass, volumetric, and advective heat rates from WellControlOperators
-                state = value_vector(state)
-                all_values = value_vector(
-                    np.zeros(self.physics.well_ctrl_operators.n_ops)
-                )
-                self.physics.well_ctrl_itor.evaluate(state, all_values)
+        id_upwind = np.where(dp < 0, cell_m, cell_p)
 
-                if rate_type == 'phases_molar_rates':
-                    ph_molar_rate_op_start_idx = (
-                        int(well_control_iface.MOLAR_RATE) * pc.nph
-                    )
-                    values = all_values[
-                        ph_molar_rate_op_start_idx : ph_molar_rate_op_start_idx + pc.nph
-                    ].to_numpy()
-                elif rate_type == 'phases_mass_rates':
-                    ph_mass_rate_op_start_idx = (
-                        int(well_control_iface.MASS_RATE) * pc.nph
-                    )
-                    values = all_values[
-                        ph_mass_rate_op_start_idx : ph_mass_rate_op_start_idx + pc.nph
-                    ].to_numpy()
-                elif rate_type == 'phases_volumetric_rates':
-                    ph_vol_rate_op_start_idx = (
-                        int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
-                    )
-                    values = all_values[
-                        ph_vol_rate_op_start_idx : ph_vol_rate_op_start_idx + pc.nph
-                    ].to_numpy()
-                elif rate_type in ['components_molar_rates']:
-                    values = self.components_molar_rates_operators(state, pc)
-                elif rate_type == 'components_mass_rates':
-                    values = self.components_mass_rates_operators(state, pc)
-                elif rate_type == 'advective_heat_rate':
-                    ph_ad_heat_rate_op_start_idx = (
-                        int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                    )
-                    values = all_values[
-                        ph_ad_heat_rate_op_start_idx : ph_ad_heat_rate_op_start_idx
-                        + pc.nph
-                    ].to_numpy()
+        # This adds a new axis, turning a 1D array into a 2D column vector
+        time_idx = np.arange(num_ts)[:, None]
 
-                    # Calc heat operators for the dead state (1 atm and 15 deg C)
-                    if self.physics.state_spec == self.physics.StateSpecification.PT:
-                        state_dead = state.to_numpy().copy()
-                        state_dead[id_pres] = 1.01325  # Dead pressure (1 atm)
-                        state_dead[id_temp] = 273.15 + 15  # Dead temperature (15 deg C)
-                        values_dead = self.heat_rate_operators(state_dead, pc)
-                    elif self.physics.state_spec == self.physics.StateSpecification.PH:
-                        # TODO This does not work properly if the super engine is of the PH type
-                        enthalpy_w, dens_m_w, kr_w, miu_w = (
-                            -44582.229072,
-                            55.457385,
-                            1,
-                            1.132781,
-                        )  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
-                        value_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
-                        values_dead = np.zeros(len(values))
-                        for ph_idx, value in enumerate(values):
-                            if value != 0.0:
-                                values_dead[ph_idx] = value_dead_phase
+        states = h5_well_data['dynamic']['X'][time_idx, id_upwind]
 
-                    values = values - values_dead
-                else:
-                    raise Exception("Rate type is entered incorrectly!")
+        if self.precision == 's':
+            states = np.clip(states,
+                             self.physics.axes_min[None, None, :],
+                             self.physics.axes_max[None, None, :])
 
-                rates[i, j] = -values * trans[j] * dp[j]
+        batch_size = num_ts * num_conn
+        flat_states = states.reshape(batch_size, self.physics.n_vars)
+
+        states_vec = value_vector(flat_states.ravel())
+
+        if rate_type in ["phase_molar_rates", "phase_mass_rates", "phase_volumetric_rates", "advective_heat_rates"]:
+            values = value_vector(np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops))
+            dvalues = value_vector(np.zeros((num_ts * num_conn * self.physics.well_ctrl_operators.n_ops) * self.physics.n_vars))
+
+            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
+            self.physics.well_ctrl_itor.evaluate_with_derivatives(states_vec, index_vector(block_idx), values, dvalues)
+
+            # self.physics.well_ctrl_itor.evaluate(states_vec, values)
+
+            values_reshaped = np.asarray(values).reshape(batch_size, self.physics.well_ctrl_operators.n_ops)
+
+        elif rate_type in ["component_molar_rates", "component_mass_rates"]:
+            values = value_vector(np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops))
+            dvalues = value_vector(np.zeros((num_ts * num_conn * self.physics.reservoir_operators[0].n_ops) * self.physics.n_vars))
+
+            block_idx = np.arange(num_ts * num_conn).astype(np.int32)
+            self.physics.acc_flux_itor[0].evaluate_with_derivatives(states_vec, index_vector(block_idx), values, dvalues)
+
+            values_reshaped = np.asarray(values).reshape(batch_size, self.physics.reservoir_operators[0].n_ops)
+
+        else:
+            raise Exception(
+                "The rate type is not entered correctly or is not supported!"
+            )
+
+        if rate_type == "phase_molar_rates":
+            start = int(well_control_iface.MOLAR_RATE) * pc.nph
+            ops = values_reshaped[:, start:start + pc.nph]
+        elif rate_type == "phase_mass_rates":
+            start = int(well_control_iface.MASS_RATE) * pc.nph
+            ops = values_reshaped[:, start:start + pc.nph]
+        elif rate_type == "phase_volumetric_rates":
+            op_start = int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
+            ops = values_reshaped[:, op_start:op_start + pc.nph]
+        elif rate_type == "component_molar_rates":
+            op_start = self.physics.reservoir_operators[0].FLUX_OP
+            ops = values_reshaped[:, op_start:op_start + pc.nc_fl * pc.nph]   # molar ops
+        elif rate_type == "component_mass_rates":
+            op_start = self.physics.reservoir_operators[0].FLUX_OP
+            molar_ops = values_reshaped[:, op_start:op_start + pc.nc_fl * pc.nph]
+            mw = np.array(self.physics.property_containers[0].Mw[:pc.nc_fl])
+            mw_tiled = np.tile(mw, pc.nph)
+            ops = molar_ops * mw_tiled
+        elif rate_type == "advective_heat_rates":
+            op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
+            ops = values_reshaped[:, op_start:op_start + pc.nph]
+
+            # Calc heat operators for the dead state (1 atm and 15 deg C)
+            if self.physics.state_spec == self.physics.StateSpecification.PT:
+                flat_states[:, p_idx] = 1.01325  # Dead pressure (1 atm)
+                flat_states[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
+                states_vec_dead = value_vector(flat_states.ravel())
+                self.physics.well_ctrl_itor.evaluate_with_derivatives(states_vec_dead, index_vector(block_idx), values, dvalues)
+                op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
+                values_reshaped_dead = np.asarray(values).reshape(batch_size, self.physics.well_ctrl_operators.n_ops)
+                ops_dead = values_reshaped_dead[:, op_start:op_start + pc.nph]
+            elif self.physics.state_spec == self.physics.StateSpecification.PH:
+                # TODO This does not work properly if the super engine is of the PH type
+                enthalpy_w, dens_m_w, kr_w, miu_w = (-44582.229072, 55.457385, 1, 1.132781)  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
+                ops_dead = np.zeros(ops.shape)
+                ops_dead[ops != 0.] = ops_dead_phase   # If value is zero, no need to subtract ops_dead_phase from it
+
+            ops = ops - ops_dead
+
+        # Reshape arrays
+        if rate_type in ['phase_molar_rates', 'phase_mass_rates', 'phase_volumetric_rates']:
+            # ops_reshaped = ops.reshape(num_ts, pc.nph, num_conn)
+            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
+        elif rate_type in ['component_molar_rates', 'component_mass_rates']:
+            # ops_reshaped = ops.reshape(num_ts, pc.nc_fl * pc.nph, num_conn)
+            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
+            ops_reshaped = ops.reshape(num_ts, num_conn, -1)
+        elif rate_type == 'advective_heat_rates':
+            # ops_reshaped = ops.reshape(num_ts, pc.nph, num_conn)
+            ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
+            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
+
+        trans_exp = trans[None, :, None]
+        dp_exp = dp[:, :, None]
+        rates = -ops_reshaped * trans_exp * dp_exp
 
         return rates
 
@@ -1636,22 +1641,6 @@ class Output:
                 values[pc.nc_fl * j + i] = (
                     pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
                 )
-        return values
-
-    def heat_rate_operators(self, state: np.ndarray, pc):
-        """
-        This function is used for calculating advective heat rate operator for dead state only [kJ/day]
-
-        :param state: State of the fluid containing the primary variables
-        :type state: np.ndarray
-        :param pc: An instance of the class PropertyContainer
-        :type pc: PropertyContainer
-        """
-        pc.evaluate(state)
-        pc.evaluate_thermal(state)
-        values = np.zeros(pc.nph)
-        for j in pc.ph:
-            values[j] = pc.enthalpy[j] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
         return values
 
     # %% Auxiliary functions
@@ -1699,16 +1688,16 @@ class Output:
     def plot_well_time_data(self, types_of_well_rates: list = None):
         """
         Plots well time data that are specified in the list types_of_well_time_data over time, including
-        phases_molar_rates, phases_mass_rates, phases_volumetric_rates, components_molar_rates, components_mass_rates,
-        advective_heat_rate, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
+        phase_molar_rates, phase_mass_rates, phase_volumetric_rates, component_molar_rates, component_mass_rates,
+        advective_heat_rates, BHP (bottom-hole pressure), and BHT (bottom-hole temperature)
 
         :param types_of_well_rates: List of types of well rates that can be computed:
-                                    "phases_molar_rates"
-                                    "phases_mass_rates"
-                                    "phases_volumetric_rates"
-                                    "components_molar_rates"
-                                    "components_mass_rates"
-                                    "advective_heat_rate" for thermal scenarios
+                                    "phase_molar_rates"
+                                    "phase_mass_rates"
+                                    "phase_volumetric_rates"
+                                    "component_molar_rates"
+                                    "component_mass_rates"
+                                    "advective_heat_rates" for thermal scenarios
         :type types_of_well_rates: list
         """
         main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
@@ -1726,14 +1715,14 @@ class Output:
         # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
         if types_of_well_rates is None:
             types_of_well_rates = [
-                "phases_molar_rates",
-                "phases_mass_rates",
-                "phases_volumetric_rates",
-                "components_molar_rates",
-                "components_mass_rates",
+                "phase_molar_rates",
+                "phase_mass_rates",
+                "phase_volumetric_rates",
+                "component_molar_rates",
+                "component_mass_rates",
             ]
             if self.physics.thermal:
-                types_of_well_rates.append("advective_heat_rate")
+                types_of_well_rates.append("advective_heat_rates")
 
         self.unit_dict = {
             'molar': 'kmol/day',
