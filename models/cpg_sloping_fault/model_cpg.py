@@ -94,7 +94,6 @@ class Model_CPG(CICDModel):
     def init_struct_reservoir(self, arrays=None):
         from darts.reservoirs.struct_reservoir import StructReservoir
 
-
         if self.idata.geom.burden_layers > 0:
             # add over- and underburden layers
             make_burden_layers(number_of_burden_layers=self.idata.geom.burden_layers,
@@ -112,7 +111,7 @@ class Model_CPG(CICDModel):
                                          permz=arrays['PERMZ'], poro=arrays['PORO'],
                                          hcap=self.idata.rock.hcap_sand, rcond=self.idata.rock.conduction_sand,
                                          actnum=arrays['ACTNUM'], zcorn=arrays['ZCORN'],
-                                         coord=arrays['COORD'],is_cpg=True)
+                                         coord=arrays['COORD'], is_cpg=True)
         self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume

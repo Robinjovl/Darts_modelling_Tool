@@ -136,12 +136,12 @@ class StructReservoir(ReservoirBase):
 
         volume = self.discretizer.calc_volumes()
 
-        if (
-            self.global_data['depth'] is None
-        ):  # pick z coordinates from the centers, and change the order from KJI to IJK
-            self.global_data['depth'] = self.discretizer.centroids_all_cells[
-                :, 2
-            ].flatten(order='F')
+        if self.global_data['depth'] is None:
+            centroids = self.discretizer.centroids_all_cells
+            self.global_data['depth'] = (
+                centroids[:, :, :, 2].flatten(order='F') if self.is_cpg
+                else centroids[:, 2].flatten(order='F')
+            )
 
         # apply actnum filter if needed - all arrays providing a value for a single grid block should be passed
         arrs = [
