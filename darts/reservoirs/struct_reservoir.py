@@ -272,7 +272,7 @@ class StructReservoir(ReservoirBase):
                         i - 1, j - 1, k - 1
                     )
                     if dz == 0:
-                        dz = self.mesh.volume[i, j, k] / (dx * dy)
+                        dz = np.array(self.mesh.volume, copy=False)[res_block_local] / (dx * dy)
                     # TODO: need segment_depth_increment and segment_length logic
                     if segment_direction == 'z_axis':
                         well.segment_depth_increment = dz
