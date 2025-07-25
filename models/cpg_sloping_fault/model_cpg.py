@@ -109,14 +109,23 @@ class Model_CPG(CICDModel):
                                          dx=dx, dy=dy, dz=dz,
                                          permx=arrays['PERMX'], permy=arrays['PERMY'],
                                          permz=arrays['PERMZ'], poro=arrays['PORO'],
-                                         hcap=self.idata.rock.hcap_sand, rcond=self.idata.rock.conduction_sand,
                                          actnum=arrays['ACTNUM'], zcorn=arrays['ZCORN'],
                                          coord=arrays['COORD'], is_cpg=True)
+        mesh = self.reservoir.discretize()
+        poro_shale_threshold = self.idata.rock.poro_shale_threshold  # short name
+        poro = np.array(mesh.poro)
+        cond_mesh = np.array(mesh.rock_cond, copy=False)
+        hcap_mesh = np.array(mesh.heat_capacity, copy=False)
+        cond_mesh[poro <= poro_shale_threshold] = self.idata.rock.conduction_shale
+        cond_mesh[poro > poro_shale_threshold] = self.idata.rock.conduction_sand
+        hcap_mesh[poro <= poro_shale_threshold] = self.idata.rock.hcap_shale
+        hcap_mesh[poro > poro_shale_threshold] = self.idata.rock.hcap_sand
+
         self.reservoir.boundary_volumes['yz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['yz_plus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_minus'] = self.idata.geom.bound_volume
         self.reservoir.boundary_volumes['xz_plus'] = self.idata.geom.bound_volume
-        self.reservoir.discretize()
+
 
     def set_wells(self):
         # add wells and perforations, 1-based IJK indices

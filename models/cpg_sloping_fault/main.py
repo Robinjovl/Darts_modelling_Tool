@@ -11,7 +11,7 @@ from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
 
 
-def run(rsv: str, physics_type: str, case: str, out_dir: str, export_vtk=False, redirect_log=False, platform='cpu',
+def run(rsv: str, physics_type: str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu',
         compare_with_ref=True):
     '''
     :param physics_type: "geothermal" or "dead_oil"

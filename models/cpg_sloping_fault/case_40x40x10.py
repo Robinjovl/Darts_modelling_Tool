@@ -14,10 +14,6 @@ def input_data_case_40x40x10(idata: InputData, case: str):
     geom.nz = 10
 
     # idata.gridfile is defined in get_case_files (case_base.py)
-    geom.dx = load_single_keyword(idata.resolfile, 'DX', cache=True)
-    geom.dy = load_single_keyword(idata.resolfile, 'DY', cache=True)
-    geom.dz = load_single_keyword(idata.resolfile, 'DZ', cache=True)
-    geom.start_z = 1890
 
     # change properties here
 

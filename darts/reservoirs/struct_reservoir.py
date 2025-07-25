@@ -188,7 +188,10 @@ class StructReservoir(ReservoirBase):
         return mesh
 
     def get_centers(self):
-        c_struct = self.discretizer.centroids_all_cells[: self.n]
+        centroids = self.discretizer.centroids_all_cells
+        if self.is_cpg:
+            centroids = np.reshape(centroids,  (self.nx * self.ny * self.nz, 3), order='F')
+        c_struct = centroids[: self.n]
         c = np.zeros((self.n, 3))
         for i in range(self.n):
             cv = c_struct[i]
@@ -617,7 +620,7 @@ class StructReservoir(ReservoirBase):
             else:
                 for key, value in cell_data.items():
                     self.vtkobj.AppendScalarData(
-                        key, cell_data[key][self.global_data['actnum'] == 1]
+                        key, cell_data[key]
                     )
 
                 vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
