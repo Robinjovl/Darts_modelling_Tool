@@ -38,7 +38,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def spe10(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
-        self.mesh_filename = model_folder + '/spe10.msh'
+        self.mesh_filename = os.path.join(model_folder, 'spe10.msh')
         nx, ny, nz = list(map(int, os.path.basename(model_folder).split('_')))
 
         if generate_mesh:
