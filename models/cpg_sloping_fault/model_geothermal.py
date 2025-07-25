@@ -100,8 +100,8 @@ class ModelGeothermal(Model_CPG):
               fmt(temp_prd), 'TEMP_inj =', fmt(temp_inj))
 
     def set_input_data(self, case=''):
-        init_type = 'uniform'
-        # init_type = 'gradient'
+        # init_type = 'uniform'
+        init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
 
         self.idata.other.iapws_physics = True
