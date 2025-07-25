@@ -271,6 +271,8 @@ class StructReservoir(ReservoirBase):
                     dx, dy, dz = self.discretizer.calc_cell_dimensions(
                         i - 1, j - 1, k - 1
                     )
+                    if dz == 0:
+                        dz = self.mesh.volume[i, j, k] / (dx * dy)
                     # TODO: need segment_depth_increment and segment_length logic
                     if segment_direction == 'z_axis':
                         well.segment_depth_increment = dz
