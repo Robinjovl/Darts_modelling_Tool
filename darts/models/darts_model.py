@@ -554,7 +554,11 @@ class DartsModel:
             if self.platform == 'gpu':
                 copy_data_to_device(self.physics.engine.RHS, self.physics.engine.get_RHS_d())
 
-            self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
+            if not self.physics.engine.has_DFM:
+                self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
+            elif self.physics.engine.has_DFM:   # TODO Function line_search is not updated for the coupled model.
+                # Method is either 1 or 2
+                self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_coupled_well_reservoir_residual(method=2)
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0

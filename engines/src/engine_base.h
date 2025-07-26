@@ -143,6 +143,7 @@ public:
 	virtual double calc_well_residual_L1();
 	virtual double calc_well_residual_L2();
 	virtual double calc_well_residual_Linf();
+	virtual double calc_coupled_well_reservoir_residual(int method);
 
 	virtual void average_operator(std::vector<value_t> &av_op);
 

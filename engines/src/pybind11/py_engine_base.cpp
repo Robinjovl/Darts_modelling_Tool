@@ -18,6 +18,7 @@ void pybind_engine_base (py::module &m)
 		.def("assemble_linear_system", &engine_base::assemble_linear_system, py::call_guard<py::gil_scoped_release>())  \
 		.def("calc_newton_residual", &engine_base::calc_newton_residual, py::call_guard<py::gil_scoped_release>())  \
 		.def("calc_well_residual", &engine_base::calc_well_residual, py::call_guard<py::gil_scoped_release>())  \
+		.def("calc_coupled_well_reservoir_residual", &engine_base::calc_coupled_well_reservoir_residual, py::arg("method"), py::call_guard<py::gil_scoped_release>())  \
 		.def("apply_newton_update", &engine_base::apply_newton_update, py::call_guard<py::gil_scoped_release>())  \
 		.def("post_newtonloop", &engine_base::post_newtonloop, py::call_guard<py::gil_scoped_release>())  \
 		.def("solve_linear_equation", &engine_base::solve_linear_equation, py::call_guard<py::gil_scoped_release>())  \

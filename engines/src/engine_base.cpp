@@ -1602,7 +1602,7 @@ engine_base::calc_newton_residual_L2()
 	std::vector<value_t> res(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 
-	for (int i = 0; i < mesh->n_blocks; i++)
+	for (int i = 0; i < mesh->n_res_blocks; i++)
 	{
 		for (int c = 0; c < n_vars; c++)
 		{
@@ -1779,6 +1779,67 @@ engine_base::calc_newton_residual()
 		return calc_newton_residual_L2();
 	}
 	}
+}
+
+double
+engine_base::calc_coupled_well_reservoir_residual(int method)
+{
+	double residual = 0;
+
+	if (method == 1)   // Method 1
+	{
+		std::vector<value_t> res(n_vars, 0);
+		std::vector<value_t> norm(n_vars, 0);
+
+		for (int i = 0; i < mesh->n_blocks; i++)
+		{
+			for (int c = 0; c < n_vars; c++)
+			{
+				res[c] += RHS[i * n_vars + c] * RHS[i * n_vars + c];
+				norm[c] += (PV[i] * op_vals_arr[i * n_ops + c]) * (PV[i] * op_vals_arr[i * n_ops + c]);
+			}
+		}
+		for (int c = 0; c < n_vars; c++)
+		{
+			residual = std::max(residual, sqrt(res[c] / norm[c]));
+		}
+	}
+	else if (method == 2)   // Method 2
+	{
+		value_t max_res = 0;
+
+		for (int i = 0; i < mesh->n_res_blocks; i++)
+		{
+			if (mesh->volume[i] < 1e10)   // The residual of an extremely large block is not important. I did this because when I used a very large reservoir block for having a standalone well 
+				// model, the residual of the reservoir block changed and it created convergence problems.
+			{
+				for (int c = 0; c < n_vars; c++)
+				{
+					max_res = std::max(max_res, std::abs(RHS[i * n_vars + c]));
+				}
+			}
+		}
+		for (ms_well* w : wells)
+		{
+			if (w->ms_type == ms_well::MS_Type::DFM)
+			{
+				for (int i = w->well_head_idx; i < (w->well_head_idx + w->num_segments); i++)
+				{
+					if (mesh->volume[i] < 1e10)
+					{
+						for (int c = 0; c < n_vars; c++)
+						{
+							max_res = std::max(max_res, std::abs(RHS[i * n_vars + c]));
+						}
+					}
+				}
+			}
+		}
+
+		residual = max_res;
+	}
+
+	return residual;
 }
 
 double
