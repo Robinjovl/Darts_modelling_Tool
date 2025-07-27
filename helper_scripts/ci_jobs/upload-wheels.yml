@@ -31,7 +31,7 @@ upload_wheels_gse:
         - cp $wheel $GSEWHEELSPATH
     dependencies:
         # get the wheels from the build stage
-        - build-linux-3.10-gpu
+        - build-linux-oahu-3.10-gpu
 
 upload_wheels_odls:
     stage: deploy
