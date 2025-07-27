@@ -6,6 +6,7 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
 
 %arguments
     GITLAB_CI_TOOLS=0
+    PY_VER=3.12
 
 %environment
     source /opt/rh/gcc-toolset-13/enable
