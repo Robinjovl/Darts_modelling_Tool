@@ -4,6 +4,9 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
 %labels
     PROJECT     open-darts
 
+%arguments
+    GITLAB_CI_TOOLS=0
+
 %environment
     source /opt/rh/gcc-toolset-13/enable
     source /opt/conda/etc/profile.d/conda.sh
