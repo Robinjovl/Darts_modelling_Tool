@@ -24,7 +24,7 @@ apptainer-image-builder:
     # hash image config
     - DEF_SHA="$(sha256sum .cicd/build-linux/singularity.def | awk '{print $1}')"
     # hash other inputs that should trigger rebuild
-    - BLD_FILES_SHA="$(sha256sum helper_scripts/ci_jobs/build-images.yml .gitlab-ci.yml | awk '{print $1}' | sha256sum | awk '{print $1}')"
+    - BLD_FILES_SHA="$(sha256sum .cicd/jobs/build-images.yml .gitlab-ci.yml | awk '{print $1}' | sha256sum | awk '{print $1}')"
     # commit hash of darts-linear-solvers
     - DLS_SHA="$(git ls-remote https://oauth2:${DLS_TOKEN}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git HEAD | awk '{print $1}')"
     # combine into BUILD_KEY
@@ -56,6 +56,6 @@ apptainer-image-builder:
     # if any tracked file changes -> run
     - changes:
         - .cicd/build-linux/singularity.def
-        - helper_scripts/ci_jobs/build-images.yml
+        - .cicd/jobs/build-images.yml
     - when: always
   
