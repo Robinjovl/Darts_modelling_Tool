@@ -51,7 +51,7 @@ test-linux-3.10-gpu:
         ODLS: '-a'
         TEST_GPU: '1'
     needs:
-        - build-linux-3.10-gpu 
+        - build-linux-oahu-3.10-gpu
 
 test-linux-tahiti-3.10-gpu:
     tags:
