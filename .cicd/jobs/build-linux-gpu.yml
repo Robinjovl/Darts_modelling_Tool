@@ -55,23 +55,27 @@ build-linux-tahiti-image-3.10-gpu:
     image: 
         name: "apptainer"
         entrypoint: [""]
+    needs:
+        - apptainer-image-builder
     variables:
         APPTAINER_IMAGE: "/data/gitlab-runner/open-darts-latest.sif"
         CONDA_ENV: "tahiti-gpu"
+        PY_VER: "3.10"
     before_script:
-    - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
-    # initialize conda commands in bash
-    - apptainer exec --nv "$APPTAINER_IMAGE" bash -lc '
-        eval "$(conda shell.bash hook)" \
-        && conda create -n '"${CONDA_ENV}"' python='"${PY_VER}"' --yes \
-        && conda clean -afy
-      '
+        - echo "🔧 Creating Conda env '${CONDA_ENV}' inside the Apptainer image…"
+        - |
+          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            eval \"\$(conda shell.bash hook)\" \
+            && conda create -n ${CONDA_ENV} python=${PY_VER} --yes \
+            && conda clean -afy
+          "
     script:
-    - echo "🚀 Building DARTS GPU libs inside '${CONDA_ENV}'…"
-    - apptainer exec --nv "$APPTAINER_IMAGE" bash -lc '
-        set -euo pipefail \
-        eval "$(conda shell.bash hook)" \
-        conda activate '"${CONDA_ENV}"' \
-        ./helper_scripts/build_install_darts_gpu.sh -c -p
-      '
+        - echo "🚀 Building DARTS GPU libs inside '${CONDA_ENV}'…"
+        - |
+          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            set -euo pipefail \
+            eval \"\$(conda shell.bash hook)\" \
+            conda activate ${CONDA_ENV} \
+            ./helper_scripts/build_install_darts_gpu.sh -c -p
+          "
     extends: .build-linux-gpu
