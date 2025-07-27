@@ -91,6 +91,8 @@ class Compositional(PhysicsBase):
         else:
             n_axes_points = index_vector(n_axes_points)
 
+        self.is_coupled_well_res_model = False
+
         # Call PhysicsBase constructor
         super().__init__(state_spec=state_spec, variables=variables, components=components, phases=phases, n_ops=n_ops,
                          axes_min=axes_min, axes_max=axes_max, n_axes_points=n_axes_points, timer=timer, cache=cache)
@@ -125,10 +127,13 @@ class Compositional(PhysicsBase):
             self.reservoir_operators[region] = ReservoirOperators(self.property_containers[region], self.thermal)
             self.property_operators[region] = PropertyOperators(self.property_containers[region], self.thermal)
 
-        # if self.thermal:
-        #     self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)   # This works well for the non-isothermal scenarios with basic wells.
-        # else:
-        self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)   # This works well for the non-isothermal scenarios with multi-segment wells.
+        if not self.is_coupled_well_res_model:
+            if self.thermal:
+                self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+            else:
+                self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+        elif self.is_coupled_well_res_model:
+            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
 
         self.well_ctrl_operators = WellControlOperators(self.property_containers[self.regions[0]], self.thermal)
         self.well_init_operators = WellInitOperators(self.property_containers[self.regions[0]], self.thermal,
