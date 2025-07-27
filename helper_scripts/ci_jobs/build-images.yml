@@ -30,7 +30,7 @@ apptainer-image-builder:
     # combine into BUILD_KEY
     - BUILD_KEY="$(printf '%s\n%s\n%s\n' "$DEF_SHA" "$BLD_FILES_SHA" "$DLS_SHA" | sha256sum | awk '{print $1}')"
     - echo "BUILD_KEY=$BUILD_KEY"
-    - IMG_DIR="/home/gitlab-runner"
+    - IMG_DIR="/data/gitlab-runner"
     - IMG="$IMG_DIR/open-darts-${BUILD_KEY}.sif"
     # build only if not already present (cache/artifacts from previous runs)
     - |    
