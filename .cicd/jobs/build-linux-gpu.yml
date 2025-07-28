@@ -72,10 +72,14 @@ build-linux-tahiti-image-3.10-gpu:
     script:
         - echo "🚀 Building DARTS GPU libs inside '${CONDA_ENV}'…"
         - |
-          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
-            set -euo pipefail \
-            eval \"\$(conda shell.bash hook)\" \
-            conda activate ${CONDA_ENV} \
-            ./helper_scripts/build_install_darts_gpu.sh -c -p
-          "
+            apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+                # exit on any error, print commands as you go
+                set -euxo pipefail && \
+                # enable Conda in this shell
+                eval \"\$(conda shell.bash hook)\" && \
+                # activate your env
+                conda activate ${CONDA_ENV} && \
+                # _this_ is your real build
+                ./helper_scripts/build_install_darts_gpu.sh -c -p
+            "
     extends: .build-linux-gpu
