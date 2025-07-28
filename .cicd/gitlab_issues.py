@@ -1,78 +1,118 @@
-import debugpy
-debugpy.listen(("0.0.0.0", 5678))  # Listen on all interfaces, port 5678
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()  # Pause until debugger attaches
-
 import os
+import re
 import subprocess
 import sys
+import git
+from datetime import datetime, timezone
 from gitlab_utils import get_instances
+
 
 def get_instance_gitlab_issue():
     token = os.environ.get("OP_TOKEN")
     instance = get_instances(
-        "https://gitlab.com/open-darts/open-darts/-/issues/1",
+        "https://gitlab.com/open-darts/open-darts/-/issues/82",
         token=token
     )[0]
-    compare_with = {
-        "repo": "open-darts/open-darts",
-        "instance_id": "open-darts__open-darts-i1",
-        "repo_type": "gitlab",
-    }
-    for key in compare_with:
-        assert instance[key] == compare_with[key]
-    assert "problem_statement" in instance
-    assert len(instance["base_commit"]) > 10
-    assert instance["version"]
+    assert instance.get("repo"), "Missing repository info"
+    assert instance.get("instance_id"), "Missing issue instance ID"
+    assert "problem_statement" in instance, "Missing problem statement"
+    assert "created_at" in instance, "Missing issue creation date"
+    return instance
 
 
-def setup_codex_codebase(repo_info: dict, repo_path: str) -> str:
+def extract_commit_hash_via_llm(issue_text: str) -> str | None:
     """
-    Clone or prepare the codebase for Codex CLI, ensuring dependencies are installed
-    and the repo is at the correct base commit.
+    Ask Codex CLI (LLM) to extract a commit hash from the issue text.
+    Returns the hash string or None if not found.
     """
-    target_path = repo_path
+    prompt = (
+        "Extract the Git commit hash (7–40 hex characters) from the following issue text. "
+        "If no commit hash is mentioned, respond with NONE.\n---\n" + issue_text
+    )
+    # Pass prompt as positional arg per Codex CLI usage
+    result = subprocess.run(
+        ["codex", "exec", prompt],
+        capture_output=True, text=True
+    )
+    output = result.stdout.strip()
+    if result.returncode != 0:
+        print(f"Warning: Codex CLI returned status {result.returncode}", file=sys.stderr)
+        if result.stderr:
+            print(f"Codex stderr: {result.stderr}", file=sys.stderr)
+    # Look for "Agent message:" and extract following text
+    agent_msg = None
+    for line in output.splitlines()[::-1]:  # scan backwards for last occurrence
+        if "Agent message:" in line:
+            parts = line.split("Agent message:", 1)
+            agent_msg = parts[1].strip()
+            break
+    text_to_search = agent_msg if agent_msg is not None else output
+    if agent_msg is None:
+        print("Warning: 'Agent message:' not found in LLM output, using full output", file=sys.stderr)
+    # Extract a valid hash from the extracted text
+    match = re.search(r"\b[0-9a-f]{7,40}\b", text_to_search)
+    return match.group(0) if match else None
 
-    # Clone or update GitLab repo
-    if repo_info["repo_type"] == "gitlab":
-        clone_url = f"https://gitlab.com/{repo_info['repo']}.git"
-        if os.path.isdir(target_path):
-            print(f"Updating existing repo at {target_path}")
-            subprocess.run(["git", "-C", target_path, "fetch"], check=True)
-            subprocess.run(["git", "-C", target_path, "checkout", repo_info["base_commit"]], check=True)
-            subprocess.run(["git", "-C", target_path, "reset", "--hard", repo_info["base_commit"]], check=True)
-        else:
-            print(f"Cloning {clone_url} into {target_path}")
-            subprocess.run(["git", "clone", clone_url, target_path], check=True)
-            subprocess.run(["git", "-C", target_path, "checkout", repo_info["base_commit"]], check=True)
+def find_closest_commit_on_branch(repo: git.Repo, branch: str, issue_date: str) -> str:
+    """
+    Find the commit on `branch` whose commit date is closest to issue_date.
+    issue_date must be an ISO 8601 string.
+    """
+    target_dt = datetime.fromisoformat(issue_date.replace("Z", "+00:00")).astimezone(timezone.utc)
+    commits = list(repo.iter_commits(branch))
+    closest = None
+    min_diff = None
+    for commit in commits:
+        dt = datetime.fromtimestamp(commit.committed_date, tz=timezone.utc)
+        diff = abs((dt - target_dt).total_seconds())
+        if min_diff is None or diff < min_diff:
+            min_diff = diff
+            closest = commit.hexsha
+    if not closest:
+        raise RuntimeError(f"No commits found on branch {branch}")
+    return closest
 
-    elif repo_info["repo_type"] == "local":
-        target_path = repo_info["repo"]
 
+def prepare_repository_state(issue: dict) -> str:
+    """
+    Checkout the commit mentioned in the issue via LLM extraction or fallback to `development` branch.
+    Configure Codex CLI to use this path.
+    """
+    repo_path = os.getcwd()
+    repo = git.Repo(repo_path)
+    problem = issue["problem_statement"]
+    created_at = issue["created_at"]
+
+    # Try LLM extraction
+    commit_hash = extract_commit_hash_via_llm(problem)
+    if commit_hash:
+        print(f"LLM-extracted commit hash: {commit_hash}")
     else:
-        raise ValueError(f"Unsupported repo_type: {repo_info['repo_type']}")
+        print("Warning: Could not extract commit hash via LLM. Falling back to development branch closest commit.")
+        commit_hash = find_closest_commit_on_branch(repo, "development", created_at)
+        print(f"Using fallback commit {commit_hash} from development branch")
 
-    # Install Python dependencies if requirements.txt exists
-    req_file = os.path.join(target_path, "requirements.txt")
-    if os.path.isfile(req_file):
-        print("Installing Python dependencies...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=True)
+    # Checkout the chosen commit
+    print(f"Checking out commit {commit_hash} in {repo_path}")
+    repo.git.checkout(commit_hash)
 
-    # Install Node.js dependencies if package.json exists
-    pkg_file = os.path.join(target_path, "package.json")
-    if os.path.isfile(pkg_file):
-        print("Installing Node.js dependencies...")
-        subprocess.run(["npm", "install"], cwd=target_path, check=True)
+    # Verify working tree is clean
+    if repo.is_dirty(untracked_files=True):
+        print("Warning: working tree not clean after checkout")
 
     # Ensure OPENAI_API_KEY is set for Codex CLI
     if not os.environ.get("OPENAI_API_KEY"):
-        raise EnvironmentError("OPENAI_API_KEY environment variable is not set for Codex CLI")
+        raise EnvironmentError(
+            "OPENAI_API_KEY environment variable is not set for Codex CLI"
+        )
 
-    # Configure Codex CLI to use this codebase
-    print("Configuring Codex CLI for repository...")
-    subprocess.run(["codex", "config", "set", "repo", target_path], check=True)
-
-    return target_path
+    # Configure Codex CLI to point to this codebase
+    print("Configuring Codex CLI to use this codebase...")
+    subprocess.run(
+        ["codex", "config", "set", "repo", repo_path],
+        check=True
+    )
+    return repo_path
 
 
 def run_codex_on_issue(issue: dict, repo_path: str):
@@ -94,14 +134,6 @@ def run_codex_on_issue(issue: dict, repo_path: str):
 
 
 if __name__ == "__main__":
-    # Retrieve issue instance from GitLab
     issue_instance = get_instance_gitlab_issue()
-
-    # Determine local repository path (override with REPO_PATH env var if set)
-    repo_path = os.environ.get("REPO_PATH", "/tmp/repo")
-
-    # Setup the codebase for the Codex CLI
-    prepared_path = setup_codex_codebase(issue_instance, repo_path)
-
-    # Run Codex CLI to generate a proposed solution
-    run_codex_on_issue(issue_instance, prepared_path)
+    repo_path = prepare_repository_state(issue_instance)
+    run_codex_on_issue(issue_instance, repo_path)

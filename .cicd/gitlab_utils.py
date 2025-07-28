@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import hashlib
 import json
 import os
@@ -26,12 +24,10 @@ CTF_CHALLENGES_CATEGORIES = {
 
 class NoOutputTimeoutError(TimeoutError):
     """Raised when no output is produced within the specified timeout duration."""
-
     pass
 
 class InvalidGitlabURL(ValueError):
     """Raised when a GitLab URL is invalid."""
-
     pass
 
 def get_data_path_name(data_path: str) -> str:
@@ -119,44 +115,6 @@ def get_gitlab_issue_data(issue_url: str, *, token: str = ""):
     return issue.attributes  # Return as a dictionary
 
 
-def get_problem_statement_from_github_issue(owner: str, repo: str, issue_number: str, *, token: str | None = "") -> str:
-    """Return problem statement from GitHub issue.
-
-    Args:
-        owner (str): Repo owner.
-        repo (str): Repo name.
-        issue_number (str): Issue number as string.
-        token (str, optional): GitHub API token.
-
-    Returns:
-        Problem statement as a string.
-    """
-    api = GhApi(token=token)
-    issue = api.issues.get(owner, repo, issue_number)
-    title = issue.title if issue.title else ""
-    body = issue.body if issue.body else ""
-    return f"{title}\n{body}\n"
-
-
-def get_problem_statement_from_gitlab_issue(owner: str, repo: str, issue_number: str, *, token: str | None = "") -> str:
-    """Return problem statement from GitLab issue.
-
-    Args:
-        owner (str): Repo owner/group.
-        repo (str): Repo name.
-        issue_number (str): Issue number as string.
-        token (str, optional): GitLab API token.
-
-    Returns:
-        Problem statement as a string.
-    """
-    issue = get_gitlab_issue_data(
-        f"https://gitlab.com/{owner}/{repo}/-/issues/{issue_number}", token=token
-    )
-    title = issue.get("title", "")
-    description = issue.get("description", "")
-    return f"{title}\n{description}\nDo not try to run the server just give the updated code as git diff"
-
 class InstanceBuilder:
     def __init__(self, token: str | None = None):
         """This helper class is used to build the data for an instance object,
@@ -169,13 +127,17 @@ class InstanceBuilder:
         self._instance_id_problem_suffix = ""
 
     def set_problem_statement_from_gitlab_issue(self, issue_url: str):
+        # Fetch raw issue JSON to include creation date
         owner, repo, issue_number = parse_gitlab_issue_url(issue_url)
-        self.args["problem_statement"] = get_problem_statement_from_gitlab_issue(
-            owner,
-            repo,
-            issue_number,
-            token=self.token,
-        )
+        issue = get_gitlab_issue_data(issue_url, token=self.token)
+        title = issue.get("title", "")
+        description = issue.get("description", "")
+        created_at = issue.get("created_at") or issue.get("created_on")
+        if not created_at:
+            raise KeyError(f"GitLab issue JSON missing creation timestamp: {issue_url}")
+
+        self.args["problem_statement"] = f"{title}\n{description}"  # preserve formatting
+        self.args["created_at"] = created_at
         self.args["instance_id"] = f"{owner}__{repo}-i{issue_number}"
         self.args["problem_statement_source"] = "online"
 

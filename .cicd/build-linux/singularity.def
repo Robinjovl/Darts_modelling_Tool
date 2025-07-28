@@ -79,8 +79,12 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
         conda create -n ci_cd python={{PY_VER}} --yes
         eval "$(conda shell.bash hook)"
         conda activate ci_cd
-        conda install datasets debugpy
-        conda install -c conda-forge git python-gitlab --yes
+
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+        conda install datasets debugpy gitpython --yes
+        conda install -c conda-forge python-gitlab --yes
 
         curl -fsSL https://rpm.nodesource.com/setup_current.x | bash
         dnf install nodejs -y
