@@ -1,12 +1,12 @@
 stages:
-#    - pre_commit
+    - pre_commit
     - build_images
     - build
     - test
     - deploy
 
 include:
-#  - local: 'helper_scripts/ci_jobs/lint-python.yml'
+  - local: 'helper_scripts/ci_jobs/lint-python.yml'
   - local: 'helper_scripts/ci_jobs/build-images.yml'
   - local: 'helper_scripts/ci_jobs/build-linux.yml'
   - local: 'helper_scripts/ci_jobs/build-windows.yml'
