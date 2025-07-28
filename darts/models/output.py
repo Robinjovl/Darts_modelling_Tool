@@ -8,12 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from darts.engines import (
-    index_vector,
-    timer_node,
-    value_vector,
-    well_control_iface,
-)
+from darts.engines import index_vector, timer_node, value_vector, well_control_iface
 from darts.physics.base.operators_base import PropertyOperators
 from darts.physics.blackoil import BlackOil
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH

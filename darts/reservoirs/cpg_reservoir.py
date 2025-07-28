@@ -9,18 +9,10 @@ from opmcpg._cpggrid import value_vector as value_vector_cpggrid
 from pyevtk.hl import pointsToVTK
 
 import darts
-from darts.discretizer import (
-    BoundaryCondition,
-    Discretizer,
-    Mesh,
-    elem_loc,
-)
+from darts.discretizer import BoundaryCondition, Discretizer, Mesh, elem_loc
 from darts.discretizer import index_vector
 from darts.discretizer import index_vector as index_vector_discr
-from darts.discretizer import (
-    load_single_float_keyword,
-    load_single_int_keyword,
-)
+from darts.discretizer import load_single_float_keyword, load_single_int_keyword
 from darts.discretizer import value_vector
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
@@ -36,6 +28,7 @@ except ImportError:
 import inspect
 import os
 import sys
+
 from numpy import int32
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))

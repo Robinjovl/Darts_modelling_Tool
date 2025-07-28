@@ -5,17 +5,9 @@ import meshio
 import numpy as np
 from scipy.linalg import null_space
 
-from darts.discretizer import (
-    BoundaryCondition,
-    Mesh,
-)
+from darts.discretizer import BoundaryCondition, Mesh
 from darts.discretizer import Stiffness as disc_stiffness
-from darts.discretizer import (
-    THMBoundaryCondition,
-    elem_loc,
-    index_vector,
-    matrix,
-)
+from darts.discretizer import THMBoundaryCondition, elem_loc, index_vector, matrix
 from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import (
     poro_mech_discretizer,
@@ -34,12 +26,7 @@ from darts.engines import (
     matrix,
 )
 from darts.engines import matrix33 as engine_matrix33
-from darts.engines import (
-    ms_well,
-    ms_well_vector,
-    value_vector,
-    vector_matrix,
-)
+from darts.engines import ms_well, ms_well_vector, value_vector, vector_matrix
 from darts.input.input_data import InputData
 
 

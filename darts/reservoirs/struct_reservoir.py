@@ -4,12 +4,7 @@ from typing import Union
 import numpy as np
 from scipy.interpolate import griddata
 
-from darts.engines import (
-    conn_mesh,
-    index_vector,
-    timer_node,
-    value_vector,
-)
+from darts.engines import conn_mesh, index_vector, timer_node, value_vector
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
 

@@ -273,13 +273,7 @@ class GeothermalPHFluidProps(FluidProps):
         self.phases = ['water', 'steam']
 
         from dartsflash.components import CompData
-        from dartsflash.libflash import (
-            AQEoS,
-            CubicEoS,
-            EoS,
-            FlashParams,
-            PHFlash,
-        )
+        from dartsflash.libflash import AQEoS, CubicEoS, EoS, FlashParams, PHFlash
 
         comp_data = CompData(components=self.components, setprops=True)
         self.Mw = comp_data.Mw
