@@ -1294,13 +1294,13 @@ class Output:
         for well in self.reservoir.wells:
             for perf in well.perforations:
                 tag = f'well_{well.name}_perf_{perf[0]}'
-                if rate_type.startswith('phases_'):
+                if rate_type.startswith('phase_'):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
                         arr = rates_perfs[:, perf_idx, phase_idx]
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'
                         ] = arr
-                elif rate_type.startswith('components_'):
+                elif rate_type.startswith('component_'):
                     for c_idx in range(pc.nc_fl):
                         arr = np.sum(
                             rates_perfs[:, perf_idx, c_idx :: pc.nc_fl], axis=1
@@ -1334,7 +1334,7 @@ class Output:
         perf_idx = 0
         for well in self.reservoir.wells:
             tag = f'well_{well.name}'
-            if rate_type.startswith('phases_'):
+            if rate_type.startswith('phase_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(
                         rates_perfs[:, perf_idx + j, phase_idx]
@@ -1344,7 +1344,7 @@ class Output:
                         f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_by_sum_perfs'
                     ] = total
                 perf_idx += len(well.perforations)
-            elif rate_type.startswith('components_'):
+            elif rate_type.startswith('component_'):
                 for c_idx in range(pc.nc_fl):
                     total = sum(
                         np.sum(rates_perfs[:, perf_idx + j, c_idx :: pc.nc_fl], axis=1)
@@ -1384,12 +1384,12 @@ class Output:
         pc = self.physics.property_containers[0]
         for well_idx, well in enumerate(self.reservoir.wells):
             tag = f'well_{well.name}'
-            if rate_type.startswith('phases_'):
+            if rate_type.startswith('phase_'):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_at_wh'
                     ] = wh_rates[:, well_idx, phase_idx]
-            elif rate_type.startswith('components_'):
+            elif rate_type.startswith('component_'):
                 for c_idx, c_name in enumerate(pc.components_name):
                     arr = np.sum(wh_rates[:, well_idx, c_idx :: pc.nc_fl], axis=1)
                     time_data_dict[
@@ -1491,7 +1491,7 @@ class Output:
                 raise Exception(
                     'Neither temperature nor enthalpy exists in the list of variables!'
                 )
-        elif not thermal and rate_type == "advective_heat_rate":
+        elif not thermal and rate_type == "advective_heat_rates":
             raise Exception(
                 'The model is isothermal, so advective heat rate cannot be calculated for it!'
             )
@@ -1584,64 +1584,17 @@ class Output:
 
         # Reshape arrays
         if rate_type in ['phase_molar_rates', 'phase_mass_rates', 'phase_volumetric_rates']:
-            # ops_reshaped = ops.reshape(num_ts, pc.nph, num_conn)
             ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
-            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
         elif rate_type in ['component_molar_rates', 'component_mass_rates']:
-            # ops_reshaped = ops.reshape(num_ts, pc.nc_fl * pc.nph, num_conn)
-            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
             ops_reshaped = ops.reshape(num_ts, num_conn, -1)
         elif rate_type == 'advective_heat_rates':
-            # ops_reshaped = ops.reshape(num_ts, pc.nph, num_conn)
             ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
-            # ops_ready = np.transpose(ops_reshaped, (0, 2, 1))
 
         trans_exp = trans[None, :, None]
         dp_exp = dp[:, :, None]
         rates = -ops_reshaped * trans_exp * dp_exp
 
         return rates
-
-    # %% Operator functions
-    def components_molar_rates_operators(self, state: np.ndarray, pc):
-        """
-        This function is used for calculating advective molar rates of components in each phase [kmole/day]
-
-        :param state: State of the fluid containing the primary variables
-        :type state: np.ndarray
-        :param pc: An instance of the class PropertyContainer
-        :type pc: PropertyContainer
-        """
-        pc.evaluate(state)
-        if pc.physics_type == 'geothermal_engine':
-            pc.x = [[1.0], [1.0]]
-        values = np.zeros(pc.nph * pc.nc_fl)
-        for j in pc.ph:
-            for i in range(pc.nc_fl):
-                values[pc.nc_fl * j + i] = (
-                    pc.x[j][i] * pc.dens_m[j] * pc.kr[j] / pc.mu[j]
-                )
-        return values
-
-    def components_mass_rates_operators(self, state: np.ndarray, pc):
-        """
-        This function is used for calculating advective mass rates of components in each phase [kg/day]
-
-        :param state: State of the fluid containing the primary variables
-        :type state: np.ndarray
-        :param pc: An instance of the class PropertyContainer
-        :type pc: PropertyContainer
-        """
-        pc.evaluate(state)
-        if pc.physics_type == 'geothermal_engine':
-            pc.x = [[1.0], [1.0]]
-        values = np.zeros(pc.nph * pc.nc_fl)
-        for j in pc.ph:
-            for i in range(pc.nc_fl):
-                values[pc.nc_fl * j + i] = (
-                    pc.x[j][i] * pc.dens_m[j] * pc.Mw[i] * pc.kr[j] / pc.mu[j]
-                )
-        return values
 
     # %% Auxiliary functions
     def find_conn_ids_for_perfs(
@@ -1738,6 +1691,8 @@ class Output:
                     subdir = os.path.join(well_dir, f'perf_{perf[0]}')
                     keys = self.create_perf_keys(rtype, w.name, perf[0])
                     for key, ylabel in keys:
+                        if key not in df.keys():
+                            continue
                         arr = df[key]
                         plt.figure()
                         plt.plot(time, arr, marker='o')
@@ -1749,6 +1704,8 @@ class Output:
                 # total and wellhead plots
                 total_keys = self.create_total_keys(rtype, w.name)
                 for key, ylabel in total_keys:
+                    if key not in df.keys():
+                        continue
                     plt.figure()
                     plt.plot(time, df[key], marker='o')
                     plt.xlabel('Time [day]')
@@ -1819,12 +1776,12 @@ class Output:
         tag = f'well_{well_name}_perf_{perf_idx}_'
         rate_type = rtype.split('_')[1]
         unit = self.unit_dict[rate_type]
-        if rtype.startswith('phases_'):
+        if rtype.startswith('phase_'):
             for phase_name in pc.phases_name:
                 key = f'{tag}{rate_type}_rate_{phase_name}'
                 ylabel = f'{phase_name} {rate_type} rate [{unit}]'
                 keys.append((key, ylabel))
-        elif rtype.startswith('components_'):
+        elif rtype.startswith('component_'):
             for component_name in pc.components_name:
                 key = f'{tag}{rate_type}_rate_{component_name}'
                 ylabel = f'{component_name} {rate_type} rate [{unit}]'
@@ -1851,7 +1808,7 @@ class Output:
         base = f'well_{well_name}_'
         rate_type = rtype.split('_')[1]
         unit = self.unit_dict[rate_type]
-        if rtype.startswith('phases_'):
+        if rtype.startswith('phase_'):
             for phase_name in pc.phases_name:
                 keys.extend(
                     [
@@ -1865,7 +1822,7 @@ class Output:
                         ),
                     ]
                 )
-        elif rtype.startswith('components_'):
+        elif rtype.startswith('component_'):
             for component_name in pc.components_name:
                 keys.extend(
                     [
