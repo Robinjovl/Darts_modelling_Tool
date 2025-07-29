@@ -9,8 +9,7 @@ import argparse
 import os
 import subprocess
 import sys
-from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 class Colors:
@@ -59,7 +58,8 @@ def run_command(cmd: List[str], description: str, verbose: bool = False) -> bool
         print(f"Running: {' '.join(cmd)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+        errors="replace",check=True)
         if verbose and result.stdout:
             print(result.stdout)
         print_success(f"{description} completed successfully")
@@ -82,10 +82,10 @@ def run_flake8_checks(darts_dir: str, verbose: bool) -> int:
     # First run: critical errors only
     cmd_critical = [
         "flake8", darts_dir, 
-        "--count", "--select=E9,F63,F7,F82", 
+        "--count", "--select=E9,F63,F7,F82",
         "--show-source", "--statistics"
     ]
-    
+
     if not run_command(cmd_critical, "flake8 critical checks", verbose):
         print_error("flake8 found critical errors!")
         errors += 1
@@ -97,7 +97,8 @@ def run_flake8_checks(darts_dir: str, verbose: bool) -> int:
         "flake8", darts_dir,
         "--count", "--exit-zero", 
         "--max-complexity=10", "--max-line-length=88", 
-        "--statistics"
+        "--statistics",
+        "--ignore=C901,F405,F403,E722,E731,E203,E501,W503"
     ]
     
     if not run_command(cmd_style, "flake8 style checks", verbose):
@@ -197,7 +198,7 @@ Examples:
     total_errors = 0
     
     # Run all checks
-    # total_errors += run_flake8_checks(args.dir, args.verbose)
+    total_errors += run_flake8_checks(args.dir, args.verbose)
     total_errors += run_black_checks(args.dir, args.fix, args.verbose)
     total_errors += run_isort_checks(args.dir, args.fix, args.verbose)
     

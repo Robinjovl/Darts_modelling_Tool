@@ -55,6 +55,7 @@ python helper_scripts/lint_python.py --verbose --fix
 # Check a specific directory
 python helper_scripts/lint_python.py --dir path/to/darts
 ```
+For running in PyCharm, set the working directory to open-darts root folder.
 
 **Advantages:**
 - Works on Linux, Windows, and macOS

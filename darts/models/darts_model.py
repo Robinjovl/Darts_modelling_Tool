@@ -1,10 +1,10 @@
 import os
-import pickle
 import warnings
+import h5py
+
 from math import fabs
 
 import numpy as np
-from scipy.interpolate import interp1d
 
 from darts.models.output import Output
 from darts.physics.base.physics_base import PhysicsBase
@@ -17,7 +17,6 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    index_vector,
     ms_well_vector,
     op_vector,
 )
@@ -25,7 +24,6 @@ from darts.engines import print_build_info as engines_pbi
 from darts.engines import (
     sim_params,
     timer_node,
-    value_vector,
 )
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -438,7 +436,7 @@ class DartsModel:
         if self.data_ts.linear_type is not None:
             self.params.linear_type = self.data_ts.linear_type
 
-    def run_simple(self, physics, data_ts, days):
+    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -527,7 +525,7 @@ class DartsModel:
         days: float = None,
         restart_dt: float = 0.0,
         save_well_data: bool = True,
-        save_well_data_after_run: bool = False,
+        save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
         verbose: bool = True,
     ):
@@ -550,6 +548,18 @@ class DartsModel:
         ), "self.output does not exist, please call m.set_output() after m.init()"
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
+
+        self.output.save_well_after_run = save_well_data_after_run
+
+        if save_well_data_after_run:
+            if not hasattr(self, "_well_output_configured"):
+                self.output.configure_output(kind="well")
+                self._well_output_configured = True
+            else:
+                pass
+
+            self.output.well_time_labels = []
+            self.output.well_data = []
 
         # get current engine time
         t = self.physics.engine.t
@@ -626,6 +636,13 @@ class DartsModel:
                 # save well data at every converged time step
                 if save_well_data and save_well_data_after_run is False:
                     self.output.save_data_to_h5(kind='well')
+                else:
+                    self.output.well_time_labels.append(self.physics.engine.t)
+                    X = np.array(self.physics.engine.X, copy=False)
+
+                    self.output.well_data.append(
+                        X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[self.output.id_well_data]
+                    )
 
             else:
                 dt /= data_ts.dt_mult
@@ -643,7 +660,13 @@ class DartsModel:
 
         # save well data after run
         if save_well_data and save_well_data_after_run is True:
-            self.output.save_data_to_h5(kind='well')
+            path = os.path.join(self.output_folder, self.well_filename)
+
+            self.output.timer.start()
+            self.output.timer.node['saving_well_data'].start()
+            self.output.save_specific_data(path, [self.output.well_time_labels, self.output.well_data])
+            self.output.timer.node['saving_well_data'].stop()
+            self.output.timer.stop()
 
         # save solution vector
         if save_reservoir_data:

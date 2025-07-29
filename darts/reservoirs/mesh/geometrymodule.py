@@ -12,8 +12,7 @@ import numpy as np
     Some definitions:
         - Nodes:    Vertices or points
         - Cells:    Control volumes
-        - Face:     Sides of the control volume
-        
+        - Face:     Sides of the control volume        
     Most of the calculations regarding subdividing control volumes into tetrahedrons is taken from this paper:
     https://www.researchgate.net/publication/221561839_How_to_Subdivide_Pyramids_Prisms_and_Hexahedra_into_Tetrahedra
 """

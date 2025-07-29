@@ -10,8 +10,6 @@ import xarray as xr
 
 from darts.engines import (
     index_vector,
-    ms_well_vector,
-    op_vector,
     timer_node,
     value_vector,
     well_control_iface,
@@ -171,15 +169,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
-                                ii
-                            ][
-                                jj
-                            ]
-                        )
+                        temp_dict[
+                            f"{name}_{self.physics.phases[j]}"
+                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                            rr
+                        ].phase_props[
+                            ii
+                        ][
+                            jj
+                        ]
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
@@ -236,15 +234,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
-                                ii
-                            ][
-                                jj
-                            ]
-                        )
+                        temp_dict[
+                            f"{name}_{self.physics.phases[j]}"
+                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                            rr
+                        ].phase_props[
+                            ii
+                        ][
+                            jj
+                        ]
 
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, thermal=False, props=temp_dict
@@ -656,36 +654,102 @@ class Output:
         else:
             self.output_configured = [kind]
 
-    def save_specific_data(self, filename):
+    def save_specific_data(self, filename, X_data=None):
         """
-        Function to write output to *.h5 file
+        Save simulation data to an HDF5 file.
 
-        :param filename: path to *.h5 filename to append data to
+        :param filename: Path to the HDF5 file.
         :type filename: str
+        :param X_data: Optional tuple containing (time array, data array). If None, current engine state is saved.
+        :type X_data: tuple or None
         """
-        X = np.array(
-            self.physics.engine.X, copy=False
-        )  # [:self.physics.n_vars*self.reservoir.n]
+        is_batch = X_data is not None
 
-        # Open the HDF5 file in append mode
         with h5py.File(filename, "a") as f:
-            # Append to time dataset under the dynamic group
             time_dataset = f["dynamic/time"]
-            time_dataset.resize((time_dataset.shape[0] + 1,))
-            time_dataset[-1] = self.physics.engine.t
-
+            x_dataset = f["dynamic/X"]
             cell_id = f["dynamic/cell_id"][:]
 
-            x_dataset = f["dynamic/X"]
+            if is_batch:
+                times, data_array = X_data
+                times = np.asarray(times)
+                data_array = np.asarray(data_array)
+                n_new = len(times)
+            else:
+                times = np.array([self.physics.engine.t])
+                X = np.asarray(self.physics.engine.X)
+                reshaped = X.reshape(
+                    (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+                )[cell_id]
+                data_array = np.expand_dims(
+                    reshaped, axis=0
+                )  # shape (1, n_cells, n_vars)
+                n_new = 1
+
+            # Resize datasets
+            start_idx = time_dataset.shape[0]
+            time_dataset.resize((start_idx + n_new,))
             x_dataset.resize(
-                (x_dataset.shape[0] + 1, x_dataset.shape[1], x_dataset.shape[2])
+                (start_idx + n_new, x_dataset.shape[1], x_dataset.shape[2])
             )
-            x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape(
-                (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-            )[cell_id]
+
+            # Write data
+            time_dataset[start_idx : start_idx + n_new] = times
+            x_dataset[start_idx : start_idx + n_new, :, :] = data_array
 
         if self.verbose:
-            print(f"Saving data to {filename} at time = {self.physics.engine.t}")
+            mode = "batch" if is_batch else "single"
+            print(
+                f"[{mode}] Saved {n_new} entry(ies) to {filename} at t={times if is_batch else times[0]}"
+            )
+
+    # def save_specific_data(self, filename, X_data = None):
+    #     """
+    #     Function to write output to *.h5 file
+    #
+    #     :param filename: path to *.h5 filename to append data to
+    #     :type filename: str
+    #     """
+    #
+    #     if X_data is None:
+    #         X = np.array(
+    #             self.physics.engine.X, copy=False
+    #         )
+    #         dim_expansion = 1
+    #     else:
+    #         well_time_labels_np = np.array(X_data[0])
+    #         well_data_np = np.array(X_data[1])
+    #         dim_expansion = len(X_data[0])
+    #
+    #     # Open the HDF5 file in append mode
+    #     with h5py.File(filename, "a") as f:
+    #         # Append to time dataset under the dynamic group
+    #         time_dataset = f["dynamic/time"]
+    #         og_length = time_dataset.shape[0]
+    #         time_dataset.resize((time_dataset.shape[0] + dim_expansion,))
+    #
+    #         if dim_expansion == 1:
+    #             time_dataset[-1] = self.physics.engine.t
+    #         else:
+    #             time_dataset[og_length:dim_expansion] = well_time_labels_np
+    #
+    #         cell_id = f["dynamic/cell_id"][:]
+    #
+    #         x_dataset = f["dynamic/X"]
+    #
+    #         x_dataset.resize(
+    #             (x_dataset.shape[0] + dim_expansion, x_dataset.shape[1], x_dataset.shape[2])
+    #         )
+    #
+    #         if dim_expansion == 1:
+    #             x_dataset[x_dataset.shape[0] - 1, :, :] = X.reshape(
+    #                 (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+    #             )[cell_id]
+    #         else:
+    #             x_dataset[og_length:dim_expansion, :, :] = well_data_np
+    #
+    #     if self.verbose:
+    #         print(f'Saving data to {filename} at time = {self.physics.engine.t}')
 
     def save_data_to_h5(self, kind):
         """
@@ -907,7 +971,6 @@ class Output:
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
                 for region, prop_itor in self.physics.property_itor.items():
-
                     block_idx = np.where(self.op_num == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
@@ -1170,9 +1233,12 @@ class Output:
         time = h5_well_data["dynamic"]["time"]
         time_data_dict = {"time": time}
 
-        perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans = (
-            self.get_connection_info()
-        )
+        (
+            perfs_conn_ids,
+            well_head_conn_ids,
+            geometric_WI,
+            well_head_conn_trans,
+        ) = self.get_connection_info()
 
         if types_of_well_rates is None:
             types_of_well_rates = [

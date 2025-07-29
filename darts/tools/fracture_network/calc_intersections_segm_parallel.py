@@ -1,9 +1,6 @@
 import multiprocessing as mp
 
-import numpy as np
-
 from .calc_intersections_segm import calc_intersections_segm
-from .merge_domain import merge_domain
 from .partition_domain import partition_domain
 
 

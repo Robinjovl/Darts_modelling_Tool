@@ -1,11 +1,10 @@
 import math
-import warnings
 
 import gmsh
 import numpy as np
 
 from darts.reservoirs.mesh.geometry.geometry import Geometry
-from darts.reservoirs.mesh.geometry.shapes import Curve, Point, Surface, Volume
+from darts.reservoirs.mesh.geometry.shapes import Curve, Point
 
 
 class Unstructured(Geometry):
