@@ -169,15 +169,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
-                        temp_dict[
-                            f"{name}_{self.physics.phases[j]}"
-                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                            rr
-                        ].phase_props[
-                            ii
-                        ][
-                            jj
-                        ]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
+                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                                rr
+                            ].phase_props[
+                                ii
+                            ][
+                                jj
+                            ]
+                        )
 
                 # Add molar phase fractions
                 for i in range(pc.x.shape[1]):
@@ -234,15 +234,15 @@ class Output:
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[
-                            f"{name}_{self.physics.phases[j]}"
-                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                            rr
-                        ].phase_props[
-                            ii
-                        ][
-                            jj
-                        ]
+                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
+                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
+                                rr
+                            ].phase_props[
+                                ii
+                            ][
+                                jj
+                            ]
+                        )
 
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, thermal=False, props=temp_dict
