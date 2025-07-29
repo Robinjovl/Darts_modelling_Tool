@@ -80,7 +80,7 @@ class Output:
         self.verbose = verbose
 
         self.master_timer = timer
-        self.timer = timer.node['output']
+        self.timer = timer.node["output"]
         self.timer.node["saving_reservoir_data"] = timer_node()
         self.timer.node["saving_well_data"] = timer_node()
         self.timer.node["vtk_output"] = timer_node()
@@ -95,7 +95,7 @@ class Output:
 
         self.precision = precision
         self.compression = compression
-        self.precision_map = {'d': np.float64, 's': np.float32}
+        self.precision_map = {"d": np.float64, "s": np.float32}
 
         self.properties = list(self.physics.property_containers[0].output_props.keys())
         if len(self.properties) < self.physics.n_ops:
@@ -104,22 +104,22 @@ class Output:
             self.n_ops = len(self.properties) + self.physics.n_vars
 
         if save_initial:
-            self.save_data_to_h5(kind='reservoir')
+            self.save_data_to_h5(kind="reservoir")
 
         if all_phase_props:
             self.set_phase_properties()
 
         self.unit_dictionary = {
-            'dens': '[kg/m3]',
-            'densm': '[kmol/m3]',
-            'sat': '[-]',
-            'mu': '[cP]',
-            'kr': '[-]',
-            'pc': '[Bar]',
-            'pressure': '[Bar]',
-            'enthalpy': '[kJ]',
-            'cond': '[kJ/m/day/K]',
-            'temperature': '[K]',
+            "dens": "[kg/m3]",
+            "densm": "[kmol/m3]",
+            "sat": "[-]",
+            "mu": "[cP]",
+            "kr": "[-]",
+            "pc": "[Bar]",
+            "pressure": "[Bar]",
+            "enthalpy": "[kJ]",
+            "cond": "[kJ/m/day/K]",
+            "temperature": "[K]",
         }
 
         self.set_units()
@@ -134,13 +134,13 @@ class Output:
             try:
                 self.variable_units[name] = self.unit_dictionary[name]
             except:
-                self.variable_units[name] = ''
+                self.variable_units[name] = ""
 
         for name in self.properties:
             try:
-                self.variable_units[name] = self.unit_dictionary[name.split('_')[0]]
+                self.variable_units[name] = self.unit_dictionary[name.split("_")[0]]
             except:
-                self.variable_units[name] = ''
+                self.variable_units[name] = ""
 
         return
 
@@ -151,14 +151,14 @@ class Output:
 
         if type(self.physics) is Compositional or type(self.physics) is BlackOil:
             phase_props_labels = [
-                'dens',
-                'densm',
-                'sat',
-                'mu',
-                'kr',
-                'pc',
-                'enthalpy',
-                'cond',
+                "dens",
+                "densm",
+                "sat",
+                "mu",
+                "kr",
+                "pc",
+                "enthalpy",
+                "cond",
             ]
             self.physics.property_itor = {}
 
@@ -200,11 +200,11 @@ class Output:
                     n_ops=self.physics.n_ops,
                     axes_min=self.physics.axes_min,
                     axes_max=self.physics.axes_max,
-                    platform='cpu',
-                    algorithm='multilinear',
-                    mode='adaptive',
-                    precision='d',
-                    timer_name='property %d interpolation' % region,
+                    platform="cpu",
+                    algorithm="multilinear",
+                    mode="adaptive",
+                    precision="d",
+                    timer_name="property %d interpolation" % region,
                     region=str(region),
                 )
 
@@ -214,13 +214,13 @@ class Output:
 
         elif type(self.physics) is Geothermal or type(self.physics) is GeothermalPH:
             phase_props_labels = [
-                'dens',
-                'densm',
-                'sat',
-                'mu',
-                'kr',
-                'pc',
-                'enthalpy',
+                "dens",
+                "densm",
+                "sat",
+                "mu",
+                "kr",
+                "pc",
+                "enthalpy",
             ]  # 'cond'
             self.physics.property_itor = {}
 
@@ -231,7 +231,7 @@ class Output:
                 temp_dict = {}
 
                 # add temperature
-                temp_dict['temperature'] = lambda: pc.temperature
+                temp_dict["temperature"] = lambda: pc.temperature
 
                 # Loop through each property label and phase name
                 for i, name in enumerate(phase_props_labels):
@@ -254,11 +254,11 @@ class Output:
                     n_ops=self.physics.property_operators[region].n_ops,
                     axes_min=self.physics.axes_min,
                     axes_max=self.physics.axes_max,
-                    platform='cpu',
-                    algorithm='multilinear',
-                    mode='adaptive',
-                    precision='d',
-                    timer_name='property %d interpolation' % region,
+                    platform="cpu",
+                    algorithm="multilinear",
+                    mode="adaptive",
+                    precision="d",
+                    timer_name="property %d interpolation" % region,
                     region=str(region),
                 )
 
@@ -308,11 +308,11 @@ class Output:
                 n_ops=self.physics.n_ops,
                 axes_min=self.physics.axes_min,
                 axes_max=self.physics.axes_max,
-                platform='cpu',
-                algorithm='multilinear',
-                mode='adaptive',
-                precision='d',
-                timer_name='property %d interpolation' % region,
+                platform="cpu",
+                algorithm="multilinear",
+                mode="adaptive",
+                precision="d",
+                timer_name="property %d interpolation" % region,
                 region=str(region),
             )
             self.properties = list(output_dictionary.keys())
@@ -336,7 +336,7 @@ class Output:
                 h5f.create_dataset(
                     key,
                     data=array,
-                    compression='gzip',
+                    compression="gzip",
                     compression_opts=compression_level,
                 )
         return 0
@@ -363,18 +363,18 @@ class Output:
         :param property_array: Dictionary with property names as keys and arrays (1D over cells) as values.
         """
 
-        with h5py.File(self.sol_filepath, 'a') as f:
-            time_vector = f['dynamic/time'][:]
+        with h5py.File(self.sol_filepath, "a") as f:
+            time_vector = f["dynamic/time"][:]
             if time in time_vector:
                 timestep = int(np.where(time_vector == time)[0][0])
 
-                if 'properties' not in f:
-                    f.create_group('properties')
+                if "properties" not in f:
+                    f.create_group("properties")
                 else:
                     pass
 
-                prop_group = f['properties']
-                max_ts = f['dynamic/time'].shape[0]
+                prop_group = f["properties"]
+                max_ts = f["dynamic/time"].shape[0]
 
                 for key, data in property_array.items():
                     data = np.asarray(data).reshape(-1)  # Ensure 1D array
@@ -389,7 +389,7 @@ class Output:
                                 len(data),
                             ),  # max shape none ensures that we can append as much data as possible
                             dtype=data.dtype,
-                            compression='gzip',
+                            compression="gzip",
                             compression_opts=2,
                         )
 
@@ -419,7 +419,7 @@ class Output:
         """
 
         self.timer.start()
-        self.timer.node['exporting_property_array'].start()
+        self.timer.node["exporting_property_array"].start()
 
         if filename is None:
             self.append_properties_to_reservoir(time_vector, property_array)
@@ -445,7 +445,7 @@ class Output:
                         compression_opts=compression_level,
                     )
 
-        self.timer.node['exporting_property_array'].stop()
+        self.timer.node["exporting_property_array"].stop()
         self.timer.stop()
 
         return
@@ -469,14 +469,14 @@ class Output:
                     if key != "time_vector":  # Skip time vector in property dictionary
                         property_array[key] = np.array(h5f[key])
         except:
-            with h5py.File(self.sol_filepath, 'r') as f:
-                if 'properties' not in f:
+            with h5py.File(self.sol_filepath, "r") as f:
+                if "properties" not in f:
                     raise KeyError(
                         "No 'properties' group found in the reservoir.h5 file."
                     )
 
-                time_vector = np.array(f['dynamic/time'][:])
-                prop_group = f['properties']
+                time_vector = np.array(f["dynamic/time"][:])
+                prop_group = f["properties"]
 
                 property_array = {
                     key: np.array(dset) for key, dset in prop_group.items()
@@ -484,27 +484,27 @@ class Output:
 
         return time_vector, property_array
 
-    def print_simulation_parameters(self, mode='table'):
+    def print_simulation_parameters(self, mode="table"):
         """
         Function that prints class variables into a .txt file
         """
-        filepath = os.path.join(self.output_folder, 'simulation_input_parameters.txt')
+        filepath = os.path.join(self.output_folder, "simulation_input_parameters.txt")
 
-        if mode == 'dump':
+        if mode == "dump":
             obj_list = [self.params, self.reservoir, self.physics]
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 for i, obj in enumerate(obj_list):
                     f.write(f"------- {i + 1}: {obj.__class__.__name__} -------\n")
                     for attr in dir(obj):
-                        if not attr.startswith('_'):
+                        if not attr.startswith("_"):
                             try:
                                 value = getattr(obj, attr)
                                 f.write(f"{attr}: {value}\n")
                             except Exception as e:
                                 f.write(f"{attr}: <error: {e}>\n")
-                    f.write('\n')  # Add a blank line between objects
+                    f.write("\n")  # Add a blank line between objects
         else:
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 f.write(
                     "-----------------------------PHYSICS------------------------\n"
                 )
@@ -562,19 +562,19 @@ class Output:
         :param add_static_data: flag to add static output
         """
 
-        with h5py.File(filename, 'w') as f:
+        with h5py.File(filename, "w") as f:
             # add static data group
             if add_static_data:
-                static_group = f.create_group('static')
+                static_group = f.create_group("static")
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
-                static_group.create_dataset('block_m', data=block_m)
-                static_group.create_dataset('block_p', data=block_p)
+                static_group.create_dataset("block_m", data=block_m)
+                static_group.create_dataset("block_p", data=block_p)
 
             # add dynamic data group
-            dynamic_group = f.create_group('dynamic')
+            dynamic_group = f.create_group("dynamic")
             dynamic_group.create_dataset(
-                'time',
+                "time",
                 shape=(0,),
                 maxshape=(None,),
                 dtype=self.precision_map[self.precision],
@@ -584,12 +584,12 @@ class Output:
             if self.reservoir.mesh.n_blocks > 0 and self.physics.n_vars > 0:
                 nb = cell_ids.size
                 cell_ids_dataset = dynamic_group.create_dataset(
-                    'cell_id', shape=(nb,), dtype=np.int32
+                    "cell_id", shape=(nb,), dtype=np.int32
                 )
                 cell_ids_dataset[:] = cell_ids
 
             dynamic_group.create_dataset(
-                'X',
+                "X",
                 shape=(0, nb, self.physics.n_vars),
                 maxshape=(None, nb, self.physics.n_vars),
                 dtype=self.precision_map[self.precision],
@@ -599,11 +599,11 @@ class Output:
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
             dynamic_group.create_dataset(
-                'variable_names', data=np.array(self.physics.vars, dtype=datatype)
+                "variable_names", data=np.array(self.physics.vars, dtype=datatype)
             )
 
             # write brief description
-            f.attrs['description'] = description
+            f.attrs["description"] = description
 
     def configure_output(self, kind: str):
         """
@@ -617,10 +617,10 @@ class Output:
 
         # Ensure the directory and subdirectory exist
         os.makedirs(self.output_folder, exist_ok=True)
-        os.makedirs(os.path.join(self.output_folder, 'figures'), exist_ok=True)
+        os.makedirs(os.path.join(self.output_folder, "figures"), exist_ok=True)
 
         # solution ouput
-        if kind == 'reservoir':
+        if kind == "reservoir":
             sol_output_path = os.path.join(self.output_folder, self.sol_filename)
             if os.path.exists(sol_output_path):  # and not restart:
                 os.remove(sol_output_path)
@@ -628,11 +628,11 @@ class Output:
                 filename=sol_output_path,
                 cell_ids=np.arange(self.reservoir.mesh.n_res_blocks),
                 add_static_data=False,
-                description='Reservoir data',
+                description="Reservoir data",
             )
 
         # Find relevant connections for well data
-        if kind == 'well':
+        if kind == "well":
             block_m = np.array(self.reservoir.mesh.block_m, copy=False)
             block_p = np.array(self.reservoir.mesh.block_p, copy=False)
             well_conn_ids = np.argwhere(block_p >= self.reservoir.mesh.n_res_blocks)[
@@ -648,10 +648,10 @@ class Output:
                 filename=well_output_path,
                 cell_ids=self.id_well_data,
                 add_static_data=True,
-                description='Well data',
+                description="Well data",
             )
 
-        if hasattr(self, 'output_configured'):
+        if hasattr(self, "output_configured"):
             self.output_configured.append(kind)
         else:
             self.output_configured = [kind]
@@ -685,7 +685,7 @@ class Output:
             )[cell_id]
 
         if self.verbose:
-            print(f'Saving data to {filename} at time = {self.physics.engine.t}')
+            print(f"Saving data to {filename} at time = {self.physics.engine.t}")
 
     def save_data_to_h5(self, kind):
         """
@@ -695,23 +695,23 @@ class Output:
         :type kind: str
         """
 
-        if not hasattr(self, 'output_configured') or kind not in self.output_configured:
+        if not hasattr(self, "output_configured") or kind not in self.output_configured:
             self.configure_output(kind=kind)
 
-        if kind == 'well':
+        if kind == "well":
             path = os.path.join(self.output_folder, self.well_filename)
             self.timer.start()
-            self.timer.node['saving_well_data'].start()
+            self.timer.node["saving_well_data"].start()
             self.save_specific_data(path)
-            self.timer.node['saving_well_data'].stop()
+            self.timer.node["saving_well_data"].stop()
             self.timer.stop()
 
-        elif kind == 'reservoir':
+        elif kind == "reservoir":
             path = os.path.join(self.output_folder, self.sol_filename)
             self.timer.start()
-            self.timer.node['saving_reservoir_data'].start()
+            self.timer.node["saving_reservoir_data"].start()
             self.save_specific_data(path)
-            self.timer.node['saving_reservoir_data'].stop()
+            self.timer.node["saving_reservoir_data"].stop()
             self.timer.stop()
 
         else:
@@ -740,15 +740,15 @@ class Output:
         """
 
         try:
-            with h5py.File(filename, 'r') as file:
+            with h5py.File(filename, "r") as file:
                 if timestep is None:
-                    cell_id = file['dynamic/cell_id'][:]
-                    var_names = file['dynamic/variable_names'][:]
-                    time = file['dynamic/time'][:]
+                    cell_id = file["dynamic/cell_id"][:]
+                    var_names = file["dynamic/variable_names"][:]
+                    time = file["dynamic/time"][:]
 
                     # memory check
                     dataset = file[
-                        'dynamic/X'
+                        "dynamic/X"
                     ]  # does not load data into memory since we are not slicing
                     convert2MB = 1e6
                     estimated_size_mb = (
@@ -759,7 +759,7 @@ class Output:
                             f"WARNING: Dataset 'X' is approximately {estimated_size_mb:.1f} MB. Loading it may impact memory performance."
                         )
 
-                    X = file['dynamic/X'][:]
+                    X = file["dynamic/X"][:]
 
                 else:
                     if not isinstance(timestep, int):
@@ -767,12 +767,12 @@ class Output:
                             f"Expected 'timestep' to be an int, but got {type(timestep).__name__}"
                         )
 
-                    cell_id = file['dynamic/cell_id'][:]
-                    var_names = file['dynamic/variable_names'][:]
+                    cell_id = file["dynamic/cell_id"][:]
+                    var_names = file["dynamic/variable_names"][:]
 
                     try:
-                        time = file['dynamic/time'][timestep].reshape(1)
-                        X = file['dynamic/X'][timestep].reshape(
+                        time = file["dynamic/time"][timestep].reshape(1)
+                        X = file["dynamic/X"][timestep].reshape(
                             1, len(cell_id), len(var_names)
                         )
 
@@ -947,7 +947,7 @@ class Output:
 
         # Set default output directory
         if output_directory is None:
-            output_directory = os.path.join(self.output_folder, 'vtk_files')
+            output_directory = os.path.join(self.output_folder, "vtk_files")
         os.makedirs(output_directory, exist_ok=True)
 
         if output_data is None:
@@ -1034,43 +1034,43 @@ class Output:
             data[prop] = array.reshape(array_shape)
 
         # Initialize coords and data_vars for Xarray Dataset
-        if type(self.reservoir).__name__ == 'StructReservoir':
+        if type(self.reservoir).__name__ == "StructReservoir":
             dx, dy, dz = (
-                self.reservoir.global_data['dx'],
-                self.reservoir.global_data['dy'],
-                self.reservoir.global_data['dz'],
+                self.reservoir.global_data["dx"],
+                self.reservoir.global_data["dy"],
+                self.reservoir.global_data["dz"],
             )
             x = np.cumsum(dx[:, 0, 0]) - dx[0, 0, 0] * 0.5
             y = np.cumsum(dy[0, :, 0]) - dy[0, 0, 0] * 0.5
             z = np.cumsum(dz[0, 0, :]) - dz[0, 0, 0] * 0.5
         else:
-            raise ValueError('Reservoir type is not supported.')
+            raise ValueError("Reservoir type is not supported.")
 
-        coords = {'time': time, 'z': z, 'y': y, 'x': x}
+        coords = {"time": time, "z": z, "y": y, "x": x}
         data_vars = {prop: (list(coords.keys()), data[prop]) for prop in props}
         dataset = xr.Dataset(data_vars=data_vars, coords=coords)
 
         # Attach units
-        dataset['time'].attrs['units'] = 'days'
-        dataset['x'].attrs['units'] = 'm'
-        dataset['y'].attrs['units'] = 'm'
-        dataset['z'].attrs['units'] = 'm'
+        dataset["time"].attrs["units"] = "days"
+        dataset["x"].attrs["units"] = "m"
+        dataset["y"].attrs["units"] = "m"
+        dataset["z"].attrs["units"] = "m"
         for var in data.keys():
             try:
                 # first_part = var.split('_')[0]
-                dataset[var].attrs['units'] = self.variable_units[var][1:-1]
+                dataset[var].attrs["units"] = self.variable_units[var][1:-1]
             except:
-                dataset[var].attrs['units'] = ''
+                dataset[var].attrs["units"] = ""
 
-        if self.precision == 'd':
-            encoding = {prop: {'dtype': 'float64'} for prop in data.keys()}
+        if self.precision == "d":
+            encoding = {prop: {"dtype": "float64"} for prop in data.keys()}
         else:
-            encoding = {prop: {'dtype': 'float32'} for prop in data.keys()}
+            encoding = {prop: {"dtype": "float32"} for prop in data.keys()}
 
         # Save to NetCDF with specified encoding
         dataset.to_netcdf(
-            os.path.join(self.output_folder, self.sol_filename[:-3] + '.nc'),
-            engine='netcdf4',
+            os.path.join(self.output_folder, self.sol_filename[:-3] + ".nc"),
+            engine="netcdf4",
             encoding=encoding,
         )
 
@@ -1099,12 +1099,12 @@ class Output:
                 "Reservoir class must be exactly of type StructReservoir."
             )
 
-        output_directory = os.path.join(self.output_folder, 'figures')
+        output_directory = os.path.join(self.output_folder, "figures")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
 
         assert isinstance(timestep, int) and timestep < len(
-            xarray_data['time']
+            xarray_data["time"]
         ), f"Timestep should be an integer less than {len(xarray_data['time'])}."
 
         var_names = list(xarray_data.data_vars)
@@ -1112,30 +1112,30 @@ class Output:
             plt.figure()
             if z is not None:
                 assert z < len(
-                    xarray_data['z']
-                ), 'z-level step should be less than %d' % len(xarray_data['z'])
+                    xarray_data["z"]
+                ), "z-level step should be less than %d" % len(xarray_data["z"])
                 xarray_data[var].isel(time=timestep, z=z).plot()
-                plt.savefig(output_directory + '/%s ts%d z%d.png' % (var, timestep, z))
+                plt.savefig(output_directory + "/%s ts%d z%d.png" % (var, timestep, z))
 
             elif y is not None:
                 assert y < len(
-                    xarray_data['y']
-                ), 'y-level step should be less than %d' % len(xarray_data['y'])
+                    xarray_data["y"]
+                ), "y-level step should be less than %d" % len(xarray_data["y"])
                 xarray_data[var].isel(time=timestep, y=y).plot()
-                plt.savefig(output_directory + '/%s ts%d y%d.png' % (var, timestep, y))
+                plt.savefig(output_directory + "/%s ts%d y%d.png" % (var, timestep, y))
 
             elif x is not None:
                 assert x < len(
-                    xarray_data['x']
-                ), 'x-level step should be less than %d' % len(xarray_data['x'])
+                    xarray_data["x"]
+                ), "x-level step should be less than %d" % len(xarray_data["x"])
                 xarray_data[var].isel(time=timestep, x=x).plot()
-                plt.savefig(output_directory + '/%s ts%d zx%d.png' % (var, timestep, z))
+                plt.savefig(output_directory + "/%s ts%d zx%d.png" % (var, timestep, z))
 
             else:
                 # model is a 1D reservoir
                 xarray_data[var].isel(time=timestep).plot()
-                plt.savefig(output_directory + '/%s ts%d.png' % (var, timestep))
-        plt.close('all')
+                plt.savefig(output_directory + "/%s ts%d.png" % (var, timestep))
+        plt.close("all")
 
     def store_well_time_data(
         self, types_of_well_rates: list = None, save_output_files: bool = False
@@ -1167,8 +1167,8 @@ class Output:
         h5_well_data = load_hdf5_to_dict(self.well_filepath)
         self.configure_physics()
 
-        time = h5_well_data['dynamic']['time']
-        time_data_dict = {'time': time}
+        time = h5_well_data["dynamic"]["time"]
+        time_data_dict = {"time": time}
 
         perfs_conn_ids, well_head_conn_ids, geometric_WI, well_head_conn_trans = (
             self.get_connection_info()
@@ -1189,8 +1189,12 @@ class Output:
         self.store_bhp_bht(h5_well_data, time_data_dict)
 
         for rate_type in types_of_well_rates:
-            if ((rate_type == "component_molar_rates" or rate_type == "component_mass_rates") and
-                    self.physics.property_containers[0].physics_type == "geothermal_engine"):
+            if (
+                rate_type == "component_molar_rates"
+                or rate_type == "component_mass_rates"
+            ) and self.physics.property_containers[
+                0
+            ].physics_type == "geothermal_engine":
                 continue
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_connections(
@@ -1218,11 +1222,11 @@ class Output:
         # Export time_data_dict
         if save_output_files:
             df = pd.DataFrame(time_data_dict)
-            df.to_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
+            df.to_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
             with pd.ExcelWriter(
-                os.path.join(self.output_folder, 'well_time_data.xlsx')
+                os.path.join(self.output_folder, "well_time_data.xlsx")
             ) as w:
-                df.to_excel(w, sheet_name='Sheet1')
+                df.to_excel(w, sheet_name="Sheet1")
 
         # End timer for store_well_time_data
         self.timer.node["output_well_time_data"].stop()
@@ -1237,11 +1241,11 @@ class Output:
         pc = self.physics.property_containers[0]
         pc.physics_type = "super_engine"
         physics_name = type(self.physics).__name__
-        if physics_name in ('Geothermal', 'GeothermalPH'):
+        if physics_name in ("Geothermal", "GeothermalPH"):
             pc.physics_type = "geothermal_engine"
             pc.phases_name = self.physics.phases[: pc.nph]
             pc.nc_fl = 1
-            pc.components_name = ['H2O']
+            pc.components_name = ["H2O"]
             self.physics.thermal = True
 
     def get_connection_info(self):
@@ -1293,14 +1297,14 @@ class Output:
         perf_idx = 0
         for well in self.reservoir.wells:
             for perf in well.perforations:
-                tag = f'well_{well.name}_perf_{perf[0]}'
-                if rate_type.startswith('phase_'):
+                tag = f"well_{well.name}_perf_{perf[0]}"
+                if rate_type.startswith("phase_"):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
                         arr = rates_perfs[:, perf_idx, phase_idx]
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'
                         ] = arr
-                elif rate_type.startswith('component_'):
+                elif rate_type.startswith("component_"):
                     for c_idx in range(pc.nc_fl):
                         arr = np.sum(
                             rates_perfs[:, perf_idx, c_idx :: pc.nc_fl], axis=1
@@ -1308,10 +1312,10 @@ class Output:
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'
                         ] = arr
-                elif rate_type.startswith('advective_heat_'):
+                elif rate_type.startswith("advective_heat_"):
                     for phase_idx, phase_name in enumerate(pc.phases_name):
                         arr = rates_perfs[:, perf_idx, phase_idx]
-                        time_data_dict[f'{tag}_advective_heat_rate_{phase_name}'] = arr
+                        time_data_dict[f"{tag}_advective_heat_rate_{phase_name}"] = arr
                 perf_idx += 1
 
     def store_well_rates_sums(
@@ -1333,8 +1337,8 @@ class Output:
         pc = self.physics.property_containers[0]
         perf_idx = 0
         for well in self.reservoir.wells:
-            tag = f'well_{well.name}'
-            if rate_type.startswith('phase_'):
+            tag = f"well_{well.name}"
+            if rate_type.startswith("phase_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(
                         rates_perfs[:, perf_idx + j, phase_idx]
@@ -1344,7 +1348,7 @@ class Output:
                         f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_by_sum_perfs'
                     ] = total
                 perf_idx += len(well.perforations)
-            elif rate_type.startswith('component_'):
+            elif rate_type.startswith("component_"):
                 for c_idx in range(pc.nc_fl):
                     total = sum(
                         np.sum(rates_perfs[:, perf_idx + j, c_idx :: pc.nc_fl], axis=1)
@@ -1354,14 +1358,14 @@ class Output:
                         f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}_by_sum_perfs'
                     ] = total
                 perf_idx += len(well.perforations)
-            elif rate_type.startswith('advective_heat_'):
+            elif rate_type.startswith("advective_heat_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     total = sum(
                         rates_perfs[:, perf_idx + j, phase_idx]
                         for j in range(len(well.perforations))
                     )
                     time_data_dict[
-                        f'{tag}_advective_heat_rate_{phase_name}_by_sum_perfs'
+                        f"{tag}_advective_heat_rate_{phase_name}_by_sum_perfs"
                     ] = total
                 perf_idx += len(well.perforations)
 
@@ -1383,21 +1387,21 @@ class Output:
         """
         pc = self.physics.property_containers[0]
         for well_idx, well in enumerate(self.reservoir.wells):
-            tag = f'well_{well.name}'
-            if rate_type.startswith('phase_'):
+            tag = f"well_{well.name}"
+            if rate_type.startswith("phase_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}_at_wh'
                     ] = wh_rates[:, well_idx, phase_idx]
-            elif rate_type.startswith('component_'):
+            elif rate_type.startswith("component_"):
                 for c_idx, c_name in enumerate(pc.components_name):
                     arr = np.sum(wh_rates[:, well_idx, c_idx :: pc.nc_fl], axis=1)
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{c_name}_at_wh'
                     ] = arr
-            elif rate_type.startswith('advective_heat_'):
+            elif rate_type.startswith("advective_heat_"):
                 for phase_idx, phase_name in enumerate(pc.phases_name):
-                    time_data_dict[f'{tag}_advective_heat_rate_{phase_name}_at_wh'] = (
+                    time_data_dict[f"{tag}_advective_heat_rate_{phase_name}_at_wh"] = (
                         wh_rates[:, well_idx, phase_idx]
                     )
 
@@ -1411,10 +1415,10 @@ class Output:
         :param time_data_dict: Dictionary in which well time series will be stored
         :type time_data_dict: dict
         """
-        nt = len(h5_well_data['dynamic']['time'])
-        cell_id = h5_well_data['dynamic']['cell_id']
-        variable_names = h5_well_data['dynamic']['variable_names']
-        X = h5_well_data['dynamic']['X']
+        nt = len(h5_well_data["dynamic"]["time"])
+        cell_id = h5_well_data["dynamic"]["cell_id"]
+        variable_names = h5_well_data["dynamic"]["variable_names"]
+        X = h5_well_data["dynamic"]["X"]
         pc = self.physics.property_containers[0]
 
         for well in self.reservoir.wells:
@@ -1423,21 +1427,21 @@ class Output:
             wellhead_cell_idx = self.find_values_in_an_array(
                 [well.well_head_idx], cell_id
             )
-            p_idx = variable_names.index('pressure')
+            p_idx = variable_names.index("pressure")
             for i in range(nt):
                 p = X[i, :, p_idx]
                 BHP[i] = p[wellhead_cell_idx]
                 if self.physics.thermal:
-                    if 'temperature' in variable_names:
-                        t_idx = variable_names.index('temperature')
+                    if "temperature" in variable_names:
+                        t_idx = variable_names.index("temperature")
                         BHT[i] = X[i, :, t_idx][wellhead_cell_idx]
                     else:
-                        h_idx = variable_names.index('enthalpy')
+                        h_idx = variable_names.index("enthalpy")
                         BHT[i] = pc.temperature_ev.evaluate(
                             [BHP[i], X[i, wellhead_cell_idx, h_idx]]
                         )
-            time_data_dict[f'well_{well.name}_BHP'] = BHP
-            time_data_dict[f'well_{well.name}_BHT'] = BHT
+            time_data_dict[f"well_{well.name}_BHP"] = BHP
+            time_data_dict[f"well_{well.name}_BHT"] = BHT
 
     def calc_rates_at_connections(
         self,
@@ -1463,40 +1467,38 @@ class Output:
         :type rate_type: str
         """
         # Evaluate position of block_m, block_p in stored data, for every connection
-        block_m = h5_well_data['static']['block_m']
-        block_p = h5_well_data['static']['block_p']
-        cell_id = h5_well_data['dynamic']['cell_id']
-        cell_m = self.find_values_in_an_array(
-            block_m[conn_ids], cell_id
-        )  # well cells
+        block_m = h5_well_data["static"]["block_m"]
+        block_p = h5_well_data["static"]["block_p"]
+        cell_id = h5_well_data["dynamic"]["cell_id"]
+        cell_m = self.find_values_in_an_array(block_m[conn_ids], cell_id)  # well cells
         cell_p = self.find_values_in_an_array(
             block_p[conn_ids], cell_id
         )  # reservoir cells
         num_conn = len(conn_ids)
         assert cell_m.size == num_conn and cell_p.size == num_conn
 
-        num_ts = h5_well_data['dynamic']['time'].size
+        num_ts = h5_well_data["dynamic"]["time"].size
 
         pc = self.physics.property_containers[0]
 
-        p_idx = h5_well_data['dynamic']['variable_names'].index('pressure')
+        p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
             if self.physics.state_spec == self.physics.StateSpecification.PT:
-                t_idx = h5_well_data['dynamic']['variable_names'].index(
-                    'temperature'
+                t_idx = h5_well_data["dynamic"]["variable_names"].index(
+                    "temperature"
                 )  # This does not work for geothermal engine
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 pass
             else:
                 raise Exception(
-                    'Neither temperature nor enthalpy exists in the list of variables!'
+                    "Neither temperature nor enthalpy exists in the list of variables!"
                 )
         elif not thermal and rate_type == "advective_heat_rates":
             raise Exception(
-                'The model is isothermal, so advective heat rate cannot be calculated for it!'
+                "The model is isothermal, so advective heat rate cannot be calculated for it!"
             )
 
-        p = h5_well_data['dynamic']['X'][:, :, p_idx]
+        p = h5_well_data["dynamic"]["X"][:, :, p_idx]
 
         dp = p[:, cell_p] - p[:, cell_m]
 
@@ -1505,37 +1507,66 @@ class Output:
         # This adds a new axis, turning a 1D array into a 2D column vector
         time_idx = np.arange(num_ts)[:, None]
 
-        states = h5_well_data['dynamic']['X'][time_idx, id_upwind]
+        states = h5_well_data["dynamic"]["X"][time_idx, id_upwind]
 
-        if self.precision == 's':
-            states = np.clip(states,
-                             self.physics.axes_min[None, None, :],
-                             self.physics.axes_max[None, None, :])
+        if self.precision == "s":
+            states = np.clip(
+                states,
+                self.physics.axes_min[None, None, :],
+                self.physics.axes_max[None, None, :],
+            )
 
         batch_size = num_ts * num_conn
         flat_states = states.reshape(batch_size, self.physics.n_vars)
 
         states_vec = value_vector(flat_states.ravel())
 
-        if rate_type in ["phase_molar_rates", "phase_mass_rates", "phase_volumetric_rates", "advective_heat_rates"]:
-            values = value_vector(np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops))
-            dvalues = value_vector(np.zeros((num_ts * num_conn * self.physics.well_ctrl_operators.n_ops) * self.physics.n_vars))
+        if rate_type in [
+            "phase_molar_rates",
+            "phase_mass_rates",
+            "phase_volumetric_rates",
+            "advective_heat_rates",
+        ]:
+            values = value_vector(
+                np.zeros(num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
+            )
+            dvalues = value_vector(
+                np.zeros(
+                    (num_ts * num_conn * self.physics.well_ctrl_operators.n_ops)
+                    * self.physics.n_vars
+                )
+            )
 
             block_idx = np.arange(num_ts * num_conn).astype(np.int32)
-            self.physics.well_ctrl_itor.evaluate_with_derivatives(states_vec, index_vector(block_idx), values, dvalues)
+            self.physics.well_ctrl_itor.evaluate_with_derivatives(
+                states_vec, index_vector(block_idx), values, dvalues
+            )
 
             # self.physics.well_ctrl_itor.evaluate(states_vec, values)
 
-            values_reshaped = np.asarray(values).reshape(batch_size, self.physics.well_ctrl_operators.n_ops)
+            values_reshaped = np.asarray(values).reshape(
+                batch_size, self.physics.well_ctrl_operators.n_ops
+            )
 
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops))
-            dvalues = value_vector(np.zeros((num_ts * num_conn * self.physics.reservoir_operators[0].n_ops) * self.physics.n_vars))
+            values = value_vector(
+                np.zeros(num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
+            )
+            dvalues = value_vector(
+                np.zeros(
+                    (num_ts * num_conn * self.physics.reservoir_operators[0].n_ops)
+                    * self.physics.n_vars
+                )
+            )
 
             block_idx = np.arange(num_ts * num_conn).astype(np.int32)
-            self.physics.acc_flux_itor[0].evaluate_with_derivatives(states_vec, index_vector(block_idx), values, dvalues)
+            self.physics.acc_flux_itor[0].evaluate_with_derivatives(
+                states_vec, index_vector(block_idx), values, dvalues
+            )
 
-            values_reshaped = np.asarray(values).reshape(batch_size, self.physics.reservoir_operators[0].n_ops)
+            values_reshaped = np.asarray(values).reshape(
+                batch_size, self.physics.reservoir_operators[0].n_ops
+            )
 
         else:
             raise Exception(
@@ -1544,50 +1575,67 @@ class Output:
 
         if rate_type == "phase_molar_rates":
             start = int(well_control_iface.MOLAR_RATE) * pc.nph
-            ops = values_reshaped[:, start:start + pc.nph]
+            ops = values_reshaped[:, start : start + pc.nph]
         elif rate_type == "phase_mass_rates":
             start = int(well_control_iface.MASS_RATE) * pc.nph
-            ops = values_reshaped[:, start:start + pc.nph]
+            ops = values_reshaped[:, start : start + pc.nph]
         elif rate_type == "phase_volumetric_rates":
             op_start = int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
-            ops = values_reshaped[:, op_start:op_start + pc.nph]
+            ops = values_reshaped[:, op_start : op_start + pc.nph]
         elif rate_type == "component_molar_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            ops = values_reshaped[:, op_start:op_start + pc.nc_fl * pc.nph]   # molar ops
+            ops = values_reshaped[
+                :, op_start : op_start + pc.nc_fl * pc.nph
+            ]  # molar ops
         elif rate_type == "component_mass_rates":
             op_start = self.physics.reservoir_operators[0].FLUX_OP
-            molar_ops = values_reshaped[:, op_start:op_start + pc.nc_fl * pc.nph]
-            mw = np.array(self.physics.property_containers[0].Mw[:pc.nc_fl])
+            molar_ops = values_reshaped[:, op_start : op_start + pc.nc_fl * pc.nph]
+            mw = np.array(self.physics.property_containers[0].Mw[: pc.nc_fl])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
         elif rate_type == "advective_heat_rates":
             op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-            ops = values_reshaped[:, op_start:op_start + pc.nph]
+            ops = values_reshaped[:, op_start : op_start + pc.nph]
 
             # Calc heat operators for the dead state (1 atm and 15 deg C)
             if self.physics.state_spec == self.physics.StateSpecification.PT:
                 flat_states[:, p_idx] = 1.01325  # Dead pressure (1 atm)
                 flat_states[:, t_idx] = 273.15 + 15  # Dead temperature (15 deg C)
                 states_vec_dead = value_vector(flat_states.ravel())
-                self.physics.well_ctrl_itor.evaluate_with_derivatives(states_vec_dead, index_vector(block_idx), values, dvalues)
+                self.physics.well_ctrl_itor.evaluate_with_derivatives(
+                    states_vec_dead, index_vector(block_idx), values, dvalues
+                )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values).reshape(batch_size, self.physics.well_ctrl_operators.n_ops)
-                ops_dead = values_reshaped_dead[:, op_start:op_start + pc.nph]
+                values_reshaped_dead = np.asarray(values).reshape(
+                    batch_size, self.physics.well_ctrl_operators.n_ops
+                )
+                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif self.physics.state_spec == self.physics.StateSpecification.PH:
                 # TODO This does not work properly if the super engine is of the PH type
-                enthalpy_w, dens_m_w, kr_w, miu_w = (-44582.229072, 55.457385, 1, 1.132781)  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
+                enthalpy_w, dens_m_w, kr_w, miu_w = (
+                    -44582.229072,
+                    55.457385,
+                    1,
+                    1.132781,
+                )  # Water properties under dead conditions (1 atm, 15 deg C, and zH2O = 1)
                 ops_dead_phase = enthalpy_w * dens_m_w * kr_w / miu_w
                 ops_dead = np.zeros(ops.shape)
-                ops_dead[ops != 0.] = ops_dead_phase   # If value is zero, no need to subtract ops_dead_phase from it
+                ops_dead[ops != 0.0] = (
+                    ops_dead_phase  # If value is zero, no need to subtract ops_dead_phase from it
+                )
 
             ops = ops - ops_dead
 
         # Reshape arrays
-        if rate_type in ['phase_molar_rates', 'phase_mass_rates', 'phase_volumetric_rates']:
+        if rate_type in [
+            "phase_molar_rates",
+            "phase_mass_rates",
+            "phase_volumetric_rates",
+        ]:
             ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
-        elif rate_type in ['component_molar_rates', 'component_mass_rates']:
+        elif rate_type in ["component_molar_rates", "component_mass_rates"]:
             ops_reshaped = ops.reshape(num_ts, num_conn, -1)
-        elif rate_type == 'advective_heat_rates':
+        elif rate_type == "advective_heat_rates":
             ops_reshaped = ops.reshape(num_ts, num_conn, pc.nph)
 
         trans_exp = trans[None, :, None]
@@ -1653,7 +1701,7 @@ class Output:
                                     "advective_heat_rates" for thermal scenarios
         :type types_of_well_rates: list
         """
-        main_dir = os.path.join(self.output_folder, 'figures/well_time_plots')
+        main_dir = os.path.join(self.output_folder, "figures/well_time_plots")
 
         # Reset_directory
         if os.path.exists(main_dir):
@@ -1662,8 +1710,8 @@ class Output:
 
         self.create_perf_dirs(main_dir)
 
-        df = pd.read_pickle(os.path.join(self.output_folder, 'well_time_data.pkl'))
-        time = df['time']
+        df = pd.read_pickle(os.path.join(self.output_folder, "well_time_data.pkl"))
+        time = df["time"]
 
         # Specify types of well rates that will be plotted if types_of_well_rates is not entered by the user
         if types_of_well_rates is None:
@@ -1678,28 +1726,28 @@ class Output:
                 types_of_well_rates.append("advective_heat_rates")
 
         self.unit_dict = {
-            'molar': 'kmol/day',
-            'mass': 'kg/day',
-            'volumetric': 'm^3/day',
-            'heat': 'kJ/day',
+            "molar": "kmol/day",
+            "mass": "kg/day",
+            "volumetric": "m^3/day",
+            "heat": "kJ/day",
         }
 
         for rtype in types_of_well_rates:
             for w in self.reservoir.wells:
-                well_dir = os.path.join(main_dir, f'well_{w.name}')
+                well_dir = os.path.join(main_dir, f"well_{w.name}")
                 for perf in w.perforations:
-                    subdir = os.path.join(well_dir, f'perf_{perf[0]}')
+                    subdir = os.path.join(well_dir, f"perf_{perf[0]}")
                     keys = self.create_perf_keys(rtype, w.name, perf[0])
                     for key, ylabel in keys:
                         if key not in df.keys():
                             continue
                         arr = df[key]
                         plt.figure()
-                        plt.plot(time, arr, marker='o')
-                        plt.xlabel('Time [day]')
+                        plt.plot(time, arr, marker="o")
+                        plt.xlabel("Time [day]")
                         plt.ylabel(ylabel)
                         plt.tight_layout()
-                        plt.savefig(os.path.join(subdir, f'{key}.png'))
+                        plt.savefig(os.path.join(subdir, f"{key}.png"))
                         plt.close()
                 # total and wellhead plots
                 total_keys = self.create_total_keys(rtype, w.name)
@@ -1707,37 +1755,37 @@ class Output:
                     if key not in df.keys():
                         continue
                     plt.figure()
-                    plt.plot(time, df[key], marker='o')
-                    plt.xlabel('Time [day]')
+                    plt.plot(time, df[key], marker="o")
+                    plt.xlabel("Time [day]")
                     plt.ylabel(ylabel)
                     plt.tight_layout()
-                    plt.savefig(os.path.join(well_dir, f'{key}.png'))
+                    plt.savefig(os.path.join(well_dir, f"{key}.png"))
                     plt.close()
 
         # BHP and BHT are plotted all the time
         for w in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f'well_{w.name}')
+            well_dir = os.path.join(main_dir, f"well_{w.name}")
 
-            BHP_key = f'well_{w.name}_BHP'
+            BHP_key = f"well_{w.name}_BHP"
             BHP = df[BHP_key]
 
             plt.figure()
-            plt.plot(time, BHP, marker='o')
-            plt.xlabel('Time [day]')
-            plt.ylabel('Bottom-hole pressure [bar]')
+            plt.plot(time, BHP, marker="o")
+            plt.xlabel("Time [day]")
+            plt.ylabel("Bottom-hole pressure [bar]")
             plt.tight_layout()
-            plt.savefig(os.path.join(well_dir, f'{BHP_key}.png'))
+            plt.savefig(os.path.join(well_dir, f"{BHP_key}.png"))
             plt.close()
 
-            BHT_key = f'well_{w.name}_BHT'
+            BHT_key = f"well_{w.name}_BHT"
             BHT = df[BHT_key]
 
             plt.figure()
-            plt.plot(time, BHT, marker='o')
-            plt.xlabel('Time [day]')
-            plt.ylabel('Bottom-hole temperature [K]')
+            plt.plot(time, BHT, marker="o")
+            plt.xlabel("Time [day]")
+            plt.ylabel("Bottom-hole temperature [K]")
             plt.tight_layout()
-            plt.savefig(os.path.join(well_dir, f'{BHT_key}.png'))
+            plt.savefig(os.path.join(well_dir, f"{BHT_key}.png"))
             plt.close()
 
         return df
@@ -1753,10 +1801,10 @@ class Output:
         :type main_dir: str
         """
         for well in self.reservoir.wells:
-            well_dir = os.path.join(main_dir, f'well_{well.name}')
+            well_dir = os.path.join(main_dir, f"well_{well.name}")
             os.makedirs(well_dir, exist_ok=True)
             for perf in well.perforations:
-                os.makedirs(os.path.join(well_dir, f'perf_{perf[0]}'), exist_ok=True)
+                os.makedirs(os.path.join(well_dir, f"perf_{perf[0]}"), exist_ok=True)
 
     def create_perf_keys(self, rtype: str, well_name: str, perf_idx: int):
         """
@@ -1773,23 +1821,23 @@ class Output:
         """
         pc = self.physics.property_containers[0]
         keys = []
-        tag = f'well_{well_name}_perf_{perf_idx}_'
-        rate_type = rtype.split('_')[1]
+        tag = f"well_{well_name}_perf_{perf_idx}_"
+        rate_type = rtype.split("_")[1]
         unit = self.unit_dict[rate_type]
-        if rtype.startswith('phase_'):
+        if rtype.startswith("phase_"):
             for phase_name in pc.phases_name:
-                key = f'{tag}{rate_type}_rate_{phase_name}'
-                ylabel = f'{phase_name} {rate_type} rate [{unit}]'
+                key = f"{tag}{rate_type}_rate_{phase_name}"
+                ylabel = f"{phase_name} {rate_type} rate [{unit}]"
                 keys.append((key, ylabel))
-        elif rtype.startswith('component_'):
+        elif rtype.startswith("component_"):
             for component_name in pc.components_name:
-                key = f'{tag}{rate_type}_rate_{component_name}'
-                ylabel = f'{component_name} {rate_type} rate [{unit}]'
+                key = f"{tag}{rate_type}_rate_{component_name}"
+                ylabel = f"{component_name} {rate_type} rate [{unit}]"
                 keys.append((key, ylabel))
-        elif rtype.startswith('advective_heat_'):
+        elif rtype.startswith("advective_heat_"):
             for phase_name in pc.phases_name:
-                key = f'{tag}advective_heat_rate_{phase_name}'
-                ylabel = f'{phase_name} advective {rate_type} rate [{unit}]'
+                key = f"{tag}advective_heat_rate_{phase_name}"
+                ylabel = f"{phase_name} advective {rate_type} rate [{unit}]"
                 keys.append((key, ylabel))
         return keys
 
@@ -1805,56 +1853,56 @@ class Output:
         """
         pc = self.physics.property_containers[0]
         keys = []
-        base = f'well_{well_name}_'
-        rate_type = rtype.split('_')[1]
+        base = f"well_{well_name}_"
+        rate_type = rtype.split("_")[1]
         unit = self.unit_dict[rate_type]
-        if rtype.startswith('phase_'):
+        if rtype.startswith("phase_"):
             for phase_name in pc.phases_name:
                 keys.extend(
                     [
                         (
-                            f'{base}{rate_type}_rate_{phase_name}_by_sum_perfs',
-                            f'{phase_name} {rate_type} rate [{unit}]',
+                            f"{base}{rate_type}_rate_{phase_name}_by_sum_perfs",
+                            f"{phase_name} {rate_type} rate [{unit}]",
                         ),
                         (
-                            f'{base}{rate_type}_rate_{phase_name}_at_wh',
-                            f'{phase_name} {rate_type} rate [{unit}]',
+                            f"{base}{rate_type}_rate_{phase_name}_at_wh",
+                            f"{phase_name} {rate_type} rate [{unit}]",
                         ),
                     ]
                 )
-        elif rtype.startswith('component_'):
+        elif rtype.startswith("component_"):
             for component_name in pc.components_name:
                 keys.extend(
                     [
                         (
-                            f'{base}{rate_type}_rate_{component_name}_by_sum_perfs',
-                            f'{component_name} {rate_type} rate [{unit}]',
+                            f"{base}{rate_type}_rate_{component_name}_by_sum_perfs",
+                            f"{component_name} {rate_type} rate [{unit}]",
                         ),
                         (
-                            f'{base}{rate_type}_rate_{component_name}_at_wh',
-                            f'{component_name} {rate_type} rate [{unit}]',
+                            f"{base}{rate_type}_rate_{component_name}_at_wh",
+                            f"{component_name} {rate_type} rate [{unit}]",
                         ),
                     ]
                 )
-        elif rtype.startswith('advective_heat_'):
+        elif rtype.startswith("advective_heat_"):
             for phase_name in pc.phases_name:
                 keys.extend(
                     [
                         (
-                            f'{base}advective_heat_rate_{phase_name}_by_sum_perfs',
-                            f'{phase_name} advective {rate_type} rate [{unit}]',
+                            f"{base}advective_heat_rate_{phase_name}_by_sum_perfs",
+                            f"{phase_name} advective {rate_type} rate [{unit}]",
                         ),
                         (
-                            f'{base}advective_heat_rate_{phase_name}_at_wh',
-                            f'{phase_name} advective {rate_type} rate [{unit}]',
+                            f"{base}advective_heat_rate_{phase_name}_at_wh",
+                            f"{phase_name} advective {rate_type} rate [{unit}]",
                         ),
                     ]
                 )
-        elif rtype in ('BHP', 'BHT'):
+        elif rtype in ("BHP", "BHT"):
             label = (
-                'Bottom-hole pressure [bar]'
-                if rtype == 'BHP'
-                else 'Bottom-hole temperature [K]'
+                "Bottom-hole pressure [bar]"
+                if rtype == "BHP"
+                else "Bottom-hole temperature [K]"
             )
-            keys.append((f'{base}{rtype}', label))
+            keys.append((f"{base}{rtype}", label))
         return keys
