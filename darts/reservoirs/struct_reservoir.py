@@ -139,7 +139,7 @@ class StructReservoir(ReservoirBase):
     def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None,
                         well_ID: float = 0.1524, well_index: float = None, well_indexD: float = None,
                         segment_direction: str = 'z_axis', skin: float = 0, multi_segment: bool = None,
-                        verbose: bool = False):
+                        with_peaceman_for_coupled_well_reservoir: bool = False, verbose: bool = False):
         """
         Function to add perforations to wells.
         """
@@ -154,8 +154,10 @@ class StructReservoir(ReservoirBase):
         elif well.ms_type == ms_well.MS_Type.DFM:
             assert well_seg_idx is not None, "If the well is of the DFM type, well_seg_idx must be specified!"
             assert multi_segment is None, "If the well is of the DFM type, multi_segment must not be specified!"
-            res_block_local, wi, wid = self.discretizer.calc_well_index(i, j, k, well_ID=well_ID,
-                                                                        segment_direction=segment_direction, skin=skin)
+            res_block_local, wi, wid = self.discretizer.calc_well_index_for_coupled_well_reservoir(i, j, k, well_ID=well_ID,
+                                                                                                   segment_direction=segment_direction,
+                                                                                                   with_peaceman=with_peaceman_for_coupled_well_reservoir,
+                                                                                                   skin=skin)
 
         if well_index is None:
             well_index = wi

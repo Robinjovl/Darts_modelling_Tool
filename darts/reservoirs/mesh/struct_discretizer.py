@@ -691,15 +691,15 @@ class StructDiscretizer:
 
     def calc_well_index(self, i, j, k, well_ID, segment_direction='z_axis', skin=0):
         """
-        Class method which construct the well index for each well segment/perforation
+        This method calculates the well index for each well segment/perforation
 
         :param i: "human" counting of x-location coordinate of perforation
         :param j: "human" counting of y-location coordinate of perforation
         :param k: "human" counting of z-location coordinate of perforation
         :param well_ID: Internal diameter of the wellbore
-        :param segment_direction: direction in which the segment perforates the reservoir block
+        :param segment_direction: direction of the segment inside the reservoir block
         :param skin: skin factor for pressure loss around well-bore due to formation damage
-        :return well_index: well-index of particular perforation
+        :return well_index: well-index of the perforation
         """
         assert (i > 0), "Perforation block coordinate should be positive"
         assert (j > 0), "Perforation block coordinate should be positive"
@@ -719,7 +719,7 @@ class StructDiscretizer:
         # check if target grid block is active
         if self.global_to_local[res_block] > -1:
 
-            # Store grid-dimensions of segmet and permeability:
+            # Store grid-dimensions of segment and permeability:
             if self.is_cpg:
                 dx, dy, dz = self.calc_cell_dimensions(i, j, k)
             else:
@@ -756,6 +756,74 @@ class StructDiscretizer:
 
                     conduction_rad = 0.28 * np.sqrt(dz ** 2 + dx ** 2)/2.
                     well_indexD = 2 * np.pi * dy / (np.log(conduction_rad / well_radius) + skin)
+
+            well_index = well_index * StructDiscretizer.darcy_constant
+
+        return self.global_to_local[res_block], well_index, well_indexD
+
+    def calc_well_index_for_coupled_well_reservoir(self, i, j, k, well_ID, segment_direction='z_axis',
+                                                   with_peaceman=False, skin=None):
+        """
+        This method calculates the perforation transmissibility for perforations in coupled well-reservoir models
+
+        :param i: "human" counting of x-location coordinate of perforation
+        :param j: "human" counting of y-location coordinate of perforation
+        :param k: "human" counting of z-location coordinate of perforation
+        :param segment_direction: Direction of the segment inside the reservoir block
+        :param with_peaceman: If True, the perforation transmissibility is calculated using the Peaceman model;
+        otherwise, the simple Darcy's law is used.
+        :param skin: Skin factor for pressure loss around well-bore due to formation damage. This can be specified only
+        when the Peaceman model is used (with_peaceman is True).
+        :return well_index: well-index of the perforation
+        """
+        assert (i > 0), "Perforation block coordinate should be positive"
+        assert (j > 0), "Perforation block coordinate should be positive"
+        assert (k > 0), "Perforation block coordinate should be positive"
+        assert (i <= self.nx), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (j <= self.ny), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (k <= self.nz), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        i -= 1
+        j -= 1
+        k -= 1
+
+        # compute reservoir block index
+        res_block = k * self.nx * self.ny + j * self.nx + i
+        well_index = 0
+        well_indexD = 0
+
+        # check if target grid block is active
+        if self.global_to_local[res_block] > -1:
+            # Store grid-dimensions of segment and permeability:
+            if not self.is_cpg:
+                dx = self.len_cell_xdir[i, j, k]
+                dy = self.len_cell_ydir[i, j, k]
+                dz = self.len_cell_zdir[i, j, k]
+            else:
+                raise Exception("Coupled well-reservoir model does not support CPG reservoirs!")
+            kx = self.perm_x_cell[i, j, k]
+            ky = self.perm_y_cell[i, j, k]
+            kz = self.perm_z_cell[i, j, k]
+
+            well_radius = well_ID / 2
+
+            if segment_direction == 'z_axis':
+                if with_peaceman:
+                    if kx * ky != 0:
+                        peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
+                                       ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
+                        well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
+
+                        conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2) / 2.
+                        well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
+                elif not with_peaceman:
+                    # assert dx == dy, "dx and dy of the reservoir block in which the perforation is located should be equal!"
+                    assert skin == 0, "Skin factor can be applied only when the Peaceman model is used!"
+                    geom_coef = 2 * np.pi * dz / np.log((dx / 2 + well_radius) / well_radius)
+                    trans = kx * geom_coef
+                    well_index = trans
+                    well_indexD = geom_coef
+            else:
+                raise Exception("Coupled well-reservoir model does not support non-z-axis segments!")
 
             well_index = well_index * StructDiscretizer.darcy_constant
 
