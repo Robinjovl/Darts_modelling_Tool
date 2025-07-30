@@ -43,6 +43,9 @@ class DataTS:
         self.line_search = False
         self.min_line_search_update = 1e-4
 
+        # For coupled well-reservoir model
+        self.coupled_well_res_norm_method = 1
+
     def print(self):
         print('Simulation parameters:')
         for k in self.__dict__.keys():
@@ -276,7 +279,8 @@ class DartsModel:
 
     def set_sim_params(self, first_ts: float = None, mult_ts: float = None, min_ts = 1e-15, max_ts: float = None, runtime: float = 1000,
                        tol_newton: float = None, tol_linear: float = None, it_newton: int = None, it_linear: int = None,
-                       newton_type=None, newton_params=None, line_search: bool=False):
+                       newton_type=None, newton_params=None, line_search: bool=False,
+                       coupled_well_res_norm_method: int = 1):
         """
         Function to set simulation parameters.
 
@@ -298,6 +302,8 @@ class DartsModel:
         :type it_linear: int
         :param newton_type:
         :param newton_params:
+        :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
+        :type coupled_well_res_norm_method: int
         """
         self.data_ts = DataTS(self.physics.n_vars)
 
@@ -319,6 +325,10 @@ class DartsModel:
         # Linear solver parameters. if None, default value will be used
         self.data_ts.linear_tol = tol_linear if tol_linear is not None else self.data_ts.linear_tol
         self.data_ts.linear_max_iter = it_linear if it_linear is not None else self.data_ts.linear_max_iter
+
+        assert coupled_well_res_norm_method in [1, 2], ("Method number for calculating the norm of coupled "
+                                                        "well-reservoir residuals must be either 1 or 2.")
+        self.data_ts.coupled_well_res_norm_method = coupled_well_res_norm_method
 
         self.runtime = runtime
 
@@ -559,7 +569,7 @@ class DartsModel:
                 self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
             elif self.physics.engine.has_DFM:   # TODO Function line_search is not updated for the coupled model.
                 # Method is either 1 or 2
-                self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_coupled_well_reservoir_residual(method=2)
+                self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_coupled_well_reservoir_residual(self.data_ts.coupled_well_res_norm_method)
 
             max_residual[i] = self.physics.engine.newton_residual_last_dt
             counter = 0
