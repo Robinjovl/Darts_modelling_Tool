@@ -14,26 +14,26 @@
 import numpy as np
 
 SupportKeyWords = [
-    'SPECGRID',  # Dimenion of the corner point grid
-    'DIMENS',  # Define the dimension of the cartesian grid
-    'TOPS',
-    'DX',
-    'DY',
-    'DZ',
-    'COORD',
-    'ZCORN',
-    'PORO',
-    'PERMX',
-    'PERMXY',
-    'PERMXZ',
-    'PERMYX',
-    'PERMY',
-    'PERMYZ',
-    'PERMZX',
-    'PERMZY',
-    'PERMZ',
-    'Temp',
-    'Pressure',
+    "SPECGRID",  # Dimenion of the corner point grid
+    "DIMENS",  # Define the dimension of the cartesian grid
+    "TOPS",
+    "DX",
+    "DY",
+    "DZ",
+    "COORD",
+    "ZCORN",
+    "PORO",
+    "PERMX",
+    "PERMXY",
+    "PERMXZ",
+    "PERMYX",
+    "PERMY",
+    "PERMYZ",
+    "PERMZX",
+    "PERMZY",
+    "PERMZ",
+    "Temp",
+    "Pressure",
 ]
 
 KeyWordsDatatypes = [  # Corrsponding data types
@@ -61,7 +61,7 @@ KeyWordsDatatypes = [  # Corrsponding data types
 
 
 class GRDECL_Parser:
-    def __init__(self, filename='', nx=0, ny=0, nz=0):
+    def __init__(self, filename="", nx=0, ny=0, nz=0):
         """Eclipse Input file(GRDECL) Parser
         Keywords Reference: file format:http://petrofaq.org/wiki/Eclipse_Input_Data
 
@@ -80,7 +80,7 @@ class GRDECL_Parser:
         self.NY = ny
         self.NZ = nz
         self.N = nx * ny * nz
-        self.GRID_type = 'NaN'
+        self.GRID_type = "NaN"
 
         # Cartesian gridblock data KeyWords
         self.TOPS = []
@@ -117,13 +117,13 @@ class GRDECL_Parser:
         """
         debug = 0
 
-        print('[Input] Reading ECLIPSE/PETREL file \"%s\" ....' % (self.fname))
+        print('[Input] Reading ECLIPSE/PETREL file "%s" ....' % (self.fname))
 
         # Read whole file into list
         f = open(self.fname)
         contents = f.read()
-        contents = RemoveCommentLines(contents, commenter='--')
-        contents_in_block = contents.strip().split('/')  # Sepeart input file by slash /
+        contents = RemoveCommentLines(contents, commenter="--")
+        contents_in_block = contents.strip().split("/")  # Sepeart input file by slash /
         contents_in_block = [
             x for x in contents_in_block if x
         ]  # Remove empty block at the end
@@ -132,18 +132,18 @@ class GRDECL_Parser:
         GoodFlag = 0
         for i, block in enumerate(contents_in_block):  # Keyword, Block-wise
             blockData_raw = block.strip().split()
-            Keyword = ''
+            Keyword = ""
             DataArray = []
             if len(blockData_raw) > 1:
-                if blockData_raw[0] == 'ECHO':  # This keyword may next to real keyword
+                if blockData_raw[0] == "ECHO":  # This keyword may next to real keyword
                     Keyword, DataArray = blockData_raw[1], blockData_raw[2:]
                 else:
                     Keyword, DataArray = blockData_raw[0], blockData_raw[1:]
 
             # Read Grid Dimension [SPECGRID] or [DIMENS]
-            if Keyword == 'DIMENS':
+            if Keyword == "DIMENS":
                 DataArray = np.array(DataArray[:3], dtype=int)
-                self.GRID_type = 'Cartesian'
+                self.GRID_type = "Cartesian"
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
@@ -151,13 +151,13 @@ class GRDECL_Parser:
                     % (self.NX, self.NY, self.NZ)
                 )
                 print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
-                print("     Reading Keyword %d [%s] " % (i + 1, Keyword), end='')
+                print("     NumOfKeywords=%s" % (NumKeywords))
+                print("     Reading Keyword %d [%s] " % (i + 1, Keyword), end="")
                 GoodFlag = 1
                 continue
-            elif Keyword == 'SPECGRID':
+            elif Keyword == "SPECGRID":
                 DataArray = np.array(DataArray[:3], dtype=int)
-                self.GRID_type = 'CornerPoint'
+                self.GRID_type = "CornerPoint"
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
@@ -165,24 +165,24 @@ class GRDECL_Parser:
                     % (self.NX, self.NY, self.NZ)
                 )
                 print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
-                print("     Reading Keywords [%s] " % (Keyword), end='')
+                print("     NumOfKeywords=%s" % (NumKeywords))
+                print("     Reading Keywords [%s] " % (Keyword), end="")
                 GoodFlag = 1
                 continue
 
-            if self.GRID_type == 'NaN':  # Skip unnecessary keywords
+            if self.GRID_type == "NaN":  # Skip unnecessary keywords
                 continue
 
             # Read Grid spatial information, x,y,z ordering
-            if Keyword == 'COORD':  # Pillar coords
+            if Keyword == "COORD":  # Pillar coords
                 assert len(DataArray) == 6 * (self.NX + 1) * (
                     self.NY + 1
-                ), '[Error] Incompatible COORD data size!'
+                ), "[Error] Incompatible COORD data size!"
                 self.COORD = np.array(DataArray, dtype=float)
-            elif Keyword == 'ZCORN':  # Depth coords
+            elif Keyword == "ZCORN":  # Depth coords
                 assert (
                     len(DataArray) == 8 * self.N
-                ), '[Error] Incompatible ZCORN data size!'
+                ), "[Error] Incompatible ZCORN data size!"
                 self.ZCORN = np.array(DataArray, dtype=float)
             # Read Grid Properties information
             else:
@@ -191,8 +191,8 @@ class GRDECL_Parser:
         f.close()
         assert (
             GoodFlag == 1
-        ), 'Can not find grid dimension info, [SPECGRID] or [DIMENS]!'
-        print('.....Done!')
+        ), "Can not find grid dimension info, [SPECGRID] or [DIMENS]!"
+        print(".....Done!")
 
     def LoadVar(self, Keyword, DataArray, DataSize):
         """Load varables into class
@@ -202,14 +202,14 @@ class GRDECL_Parser:
         Date: Sep. 2018
         """
         if Keyword in SupportKeyWords:  # KeyWords Check
-            assert len(DataArray) == DataSize, '\n     [Error] Incompatible data size!'
+            assert len(DataArray) == DataSize, "\n     [Error] Incompatible data size!"
             KeywordID = SupportKeyWords.index(Keyword)
-            print('     [%s] ' % (Keyword), end='')
+            print("     [%s] " % (Keyword), end="")
             self.SpatialDatas[Keyword] = np.array(
                 DataArray, dtype=KeyWordsDatatypes[KeywordID]
             )
         else:
-            print('\n     [Warnning] Unsupport keywords[%s]' % (Keyword))
+            print("\n     [Warnning] Unsupport keywords[%s]" % (Keyword))
 
     def read_IncludeFile(self, filename_include, NumData):
         """Read Include data file
@@ -226,7 +226,7 @@ class GRDECL_Parser:
         block_dataset = np.array(block_dataset, dtype=float)
         if len(block_dataset) != NumData:
             print(
-                'Data size %s is not equal to defined block dimension (NX*NY*NZ) %s'
+                "Data size %s is not equal to defined block dimension (NX*NY*NZ) %s"
                 % (len(block_dataset), NumData)
             )
         return block_dataset
@@ -310,7 +310,7 @@ class GRDECL_Parser:
         CellIds = self.getCornerPointCellIdx(i, j, k)
         return [self.ZCORN[i] for i in CellIds]
 
-    def getCellFaceZ(self, i, j, k, Face='X-,X+,Y-,Y+'):
+    def getCellFaceZ(self, i, j, k, Face="X-,X+,Y-,Y+"):
         """Get the Z coords for a cell
 
          6----7
@@ -464,7 +464,7 @@ class GRDECL_Parser:
         Date: Sep. 2018
         """
 
-        '''
+        """
         overlap_p02=overlap(Z_ijk[0],Z_ijk[2],Z_neigh[0],Z_neigh[2])
         overlap_p13=overlap(Z_ijk[1],Z_ijk[3],Z_neigh[1],Z_neigh[3])
 
@@ -485,7 +485,7 @@ class GRDECL_Parser:
             return 0.0
         else:#Partially connected
             return 0.5
-        '''
+        """
         # Simple method
         diffVec = np.array(Z_ijk) - np.array(Z_neigh)
         if sum(abs(diffVec)) > 0:
@@ -493,77 +493,77 @@ class GRDECL_Parser:
         else:
             return -1
 
-    def isBoundaryCell(self, Cell=[0, 0, 0], Dim='3D'):
-        '''Check the a given cell is boundary cell or not
+    def isBoundaryCell(self, Cell=[0, 0, 0], Dim="3D"):
+        """Check the a given cell is boundary cell or not
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
-        '''
+        """
         count = 0
         face = []
         # Boundary Point
         if Cell[0] == 0:
             count += 1
-            face.append('X-')
+            face.append("X-")
         if Cell[0] == self.NX - 1:
             count += 1
-            face.append('X+')
+            face.append("X+")
         if Cell[1] == 0:
             count += 1
-            face.append('Y-')
+            face.append("Y-")
         if Cell[1] == self.NY - 1:
             count += 1
-            face.append('Y+')
+            face.append("Y+")
 
         if Dim == "3D":
             if Cell[2] == 0:
                 count += 1
-                face.append('Z-')
+                face.append("Z-")
             if Cell[2] == self.NZ - 1:
                 count += 1
-                face.append('Z-')
+                face.append("Z-")
 
         return count, face
 
     def findCellFault(self, Cell=[0, 0, 0]):
-        '''Check the fault for 4 faces of a cell [X-,X+,Y-,Y+] 2D
+        """Check the fault for 4 faces of a cell [X-,X+,Y-,Y+] 2D
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
-        '''
+        """
         i, j, k = Cell
-        Faces = ['X-', 'X+', 'Y-', 'Y+']
+        Faces = ["X-", "X+", "Y-", "Y+"]
         Fault = [False, False, False, False]
 
         FaultMarker = -1
-        Z_ijk = self.getCellFaceZ(i, j, k, 'X-')
+        Z_ijk = self.getCellFaceZ(i, j, k, "X-")
         if i != 0:
-            Z_neigh = self.getCellFaceZ(i - 1, j, k, 'X+')
+            Z_neigh = self.getCellFaceZ(i - 1, j, k, "X+")
             FaultMarker = self.detectFaceFault(Z_ijk, Z_neigh)
             # print(Z_ijk,Z_neigh,FaultMarker)
         if FaultMarker != -1.0 or i == 0:  # This is a fault here
             Fault[0] = True
 
         FaultMarker = -1
-        Z_ijk = self.getCellFaceZ(i, j, k, 'X+')
+        Z_ijk = self.getCellFaceZ(i, j, k, "X+")
         if i != self.NX - 1:
-            Z_neigh = self.getCellFaceZ(i + 1, j, k, 'X-')
+            Z_neigh = self.getCellFaceZ(i + 1, j, k, "X-")
             FaultMarker = self.detectFaceFault(Z_ijk, Z_neigh)
         if FaultMarker != -1.0 or i == self.NX - 1:  # This is a fault here
             Fault[1] = True
 
         FaultMarker = -1
-        Z_ijk = self.getCellFaceZ(i, j, k, 'Y-')
+        Z_ijk = self.getCellFaceZ(i, j, k, "Y-")
         if j != 0:
-            Z_neigh = self.getCellFaceZ(i, j - 1, k, 'Y+')
+            Z_neigh = self.getCellFaceZ(i, j - 1, k, "Y+")
             FaultMarker = self.detectFaceFault(Z_ijk, Z_neigh)
         if FaultMarker != -1.0 or j == 0:  # This is a fault here
             Fault[2] = True
 
         FaultMarker = -1
-        Z_ijk = self.getCellFaceZ(i, j, k, 'Y+')
+        Z_ijk = self.getCellFaceZ(i, j, k, "Y+")
         if j != self.NY - 1:
-            Z_neigh = self.getCellFaceZ(i, j + 1, k, 'Y-')
+            Z_neigh = self.getCellFaceZ(i, j + 1, k, "Y-")
             FaultMarker = self.detectFaceFault(Z_ijk, Z_neigh)
             # print(Z_ijk,Z_neigh,FaultMarker)
         if FaultMarker != -1.0 or j == self.NY - 1:  # This is a fault here
@@ -579,16 +579,16 @@ class GRDECL_Parser:
 #############################################
 
 
-def RemoveCommentLines(data, commenter='--'):
+def RemoveCommentLines(data, commenter="--"):
     # Remove comment and empty lines
-    data_lines = data.strip().split('\n')
+    data_lines = data.strip().split("\n")
     newdata = []
     for line in data_lines:
-        if line.startswith('--') or not line.strip():
+        if line.startswith("--") or not line.strip():
             # skip comments and blank lines
             continue
         newdata.append(line)
-    return '\n'.join(newdata)
+    return "\n".join(newdata)
 
 
 def is_number(s):
@@ -609,7 +609,7 @@ def is_number(s):
         pass
 
     try:
-        num, val = s.split('*')
+        num, val = s.split("*")
         return 2
     except ValueError:
         pass

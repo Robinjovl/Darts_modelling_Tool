@@ -7,8 +7,8 @@ class DensityGas:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.dens_sc = get_table_keyword(self.pvt, 'DENSITY')[0][2]
-        self.table = get_table_keyword(self.pvt, 'PVDG')
+        self.dens_sc = get_table_keyword(self.pvt, "DENSITY")[0][2]
+        self.table = get_table_keyword(self.pvt, "PVDG")
 
     def evaluate(self, pres, pbub, xgo):
         pres_index = 0  # first column in the table - pressure
@@ -27,8 +27,8 @@ class DensityWat:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.dens_sc = get_table_keyword(self.pvt, 'DENSITY')[0][1]
-        self.table = get_table_keyword(self.pvt, 'PVTW')[0]
+        self.dens_sc = get_table_keyword(self.pvt, "DENSITY")[0][1]
+        self.table = get_table_keyword(self.pvt, "PVTW")[0]
 
     def evaluate(self, pres, pbub, xgo):
         X = self.table[2] * (pres - self.table[0])
@@ -41,7 +41,7 @@ class ViscGas:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.table = get_table_keyword(self.pvt, 'PVDG')
+        self.table = get_table_keyword(self.pvt, "PVDG")
 
     def evaluate(self, pres, pbub):
         pres_index = 0  # first column in the table - pressure
@@ -60,7 +60,7 @@ class ViscWat:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.table = get_table_keyword(self.pvt, 'PVTW')[0]
+        self.table = get_table_keyword(self.pvt, "PVTW")[0]
 
     def evaluate(self, pres, pbub):
         Y = -self.table[4] * (pres - self.table[0])
@@ -73,10 +73,10 @@ class flash_black_oil:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.dens = get_table_keyword(self.pvt, 'DENSITY')[0]
+        self.dens = get_table_keyword(self.pvt, "DENSITY")[0]
         self.oil_dens = self.dens[0]
         self.gas_dens = self.dens[2]
-        self.table = get_table_keyword(self.pvt, 'PVTO')
+        self.table = get_table_keyword(self.pvt, "PVTO")
         self.len_table = len(self.table)
 
     def bubble_point_pressure(self, pres, z):
@@ -147,8 +147,8 @@ class DensityOil:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.dens_sc = get_table_keyword(self.pvt, 'DENSITY')[0][0]
-        self.table = get_table_keyword(self.pvt, 'PVTO')
+        self.dens_sc = get_table_keyword(self.pvt, "DENSITY")[0][0]
+        self.table = get_table_keyword(self.pvt, "PVTO")
         self.len_table = len(self.table)
 
     def evaluate(self, pres, pbub, xgo):
@@ -198,7 +198,7 @@ class ViscOil:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.table = get_table_keyword(self.pvt, 'PVTO')
+        self.table = get_table_keyword(self.pvt, "PVTO")
         self.len_table = len(self.table)
 
     def evaluate(self, pres, pbub):
@@ -252,7 +252,7 @@ class WatRelPerm:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.SWOF = get_table_keyword(self.pvt, 'SWOF')
+        self.SWOF = get_table_keyword(self.pvt, "SWOF")
 
     def evaluate(self, gas_sat, wat_sat):
         wat_index = 0
@@ -271,7 +271,7 @@ class GasRelPerm:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.SGOF = get_table_keyword(self.pvt, 'SGOF')
+        self.SGOF = get_table_keyword(self.pvt, "SGOF")
 
     def evaluate(self, gas_sat, wat_sat):
         gas_index = 0
@@ -291,8 +291,8 @@ class OilRelPerm:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.SGOF = get_table_keyword(self.pvt, 'SGOF')
-        self.SWOF = get_table_keyword(self.pvt, 'SWOF')
+        self.SGOF = get_table_keyword(self.pvt, "SGOF")
+        self.SWOF = get_table_keyword(self.pvt, "SWOF")
 
     def Krog(self, gas_sat):
         gas_index = 0
@@ -361,7 +361,7 @@ class RockCompactionEvaluator:
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.rock_table = get_table_keyword(self.pvt, 'ROCK')
+        self.rock_table = get_table_keyword(self.pvt, "ROCK")
 
     def evaluate(self, state):
         pressure = state[0]
@@ -376,7 +376,7 @@ class CapillaryPressurePcow(property_evaluator_iface):
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.SWOF = get_table_keyword(self.pvt, 'SWOF')
+        self.SWOF = get_table_keyword(self.pvt, "SWOF")
 
     def evaluate(self, wat_sat):
         wat_index = 0
@@ -395,7 +395,7 @@ class CapillaryPressurePcgo(property_evaluator_iface):
     def __init__(self, pvt):
         super().__init__()
         self.pvt = pvt
-        self.SGOF = get_table_keyword(self.pvt, 'SGOF')
+        self.SGOF = get_table_keyword(self.pvt, "SGOF")
 
     def evaluate(self, gas_sat):
         gas_index = 0

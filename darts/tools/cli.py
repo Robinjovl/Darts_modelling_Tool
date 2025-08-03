@@ -31,12 +31,12 @@ def valid_path(string):
 
 
 def get_lib_var():
-    if sys.platform == 'linux':
-        return 'LD_LIBRARY_PATH'
-    elif sys.platform == 'darwin':
-        return 'DYLD_LIBRARY_PATH'
-    elif sys.platform.startswith('win'):
-        return 'PATH'
+    if sys.platform == "linux":
+        return "LD_LIBRARY_PATH"
+    elif sys.platform == "darwin":
+        return "DYLD_LIBRARY_PATH"
+    elif sys.platform.startswith("win"):
+        return "PATH"
     else:
         return None
 
@@ -49,10 +49,10 @@ def main():
     args_list = sys.argv.copy()
     # Show help if no arguments are passed (same as 'darts -h')
     if len(args_list) <= 1:
-        args_list.append('-h')
+        args_list.append("-h")
 
     # Handle multiprocessing spawn / resource_tracker callbacks
-    if args_list[1] in ('-c', '-m'):
+    if args_list[1] in ("-c", "-m"):
         lib_var = get_lib_var()
         if lib_var:
             os.environ[lib_var] = (

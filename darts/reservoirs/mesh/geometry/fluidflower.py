@@ -207,7 +207,7 @@ class FluidFlower(Shape):
         ]
 
         self.curves = [
-            Curve(1, curve_type='line', points=[196, 197]),
+            Curve(1, curve_type="line", points=[196, 197]),
         ]
 
         self.surfaces = [
@@ -567,12 +567,12 @@ class FluidFlower(Shape):
         super().plot_shape_2D()
 
         colours = [
-            'blue',
-            'mediumseagreen',
-            'lightskyblue',
-            'orchid',
-            'dodgerblue',
-            'darkcyan',
+            "blue",
+            "mediumseagreen",
+            "lightskyblue",
+            "orchid",
+            "dodgerblue",
+            "darkcyan",
         ]
 
         # Plot wells, sensors and boxes
@@ -586,12 +586,12 @@ class FluidFlower(Shape):
 
         ii = 0
         for i, well in enumerate(wells):
-            plt.scatter(well[0], well[2], c=colours[ii + i], label='I-' + str(i + 1))
+            plt.scatter(well[0], well[2], c=colours[ii + i], label="I-" + str(i + 1))
 
         ii = 2
         for i, sensor in enumerate(sensors):
             plt.scatter(
-                sensor[0], sensor[2], c=colours[ii + i], label='S-' + str(i + 1)
+                sensor[0], sensor[2], c=colours[ii + i], label="S-" + str(i + 1)
             )
 
         box_label = ["Box A", "Box B", "Box C"]
@@ -599,12 +599,12 @@ class FluidFlower(Shape):
         for i, box in enumerate(boxes):
             x = [box[0][0], box[0][0], box[0][1], box[0][1], box[0][0]]
             z = [box[2][0], box[2][1], box[2][1], box[2][0], box[2][0]]
-            plt.plot(x, z, c=colours[i], linestyle='--', alpha=0.7, label=box_label[i])
+            plt.plot(x, z, c=colours[i], linestyle="--", alpha=0.7, label=box_label[i])
 
         plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
 
         plt.tight_layout()
-        plt.savefig('fluidflower_base.pdf', format='pdf', dpi=1000)
+        plt.savefig("fluidflower_base.pdf", format="pdf", dpi=1000)
         plt.close()
 
         return

@@ -80,12 +80,12 @@ class Compositional(PhysicsBase):
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
         # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
-        variables = ['pressure'] + components[:-1]
+        variables = ["pressure"] + components[:-1]
         if self.thermal:
             variables += (
-                ['temperature']
+                ["temperature"]
                 if state_spec == PhysicsBase.StateSpecification.PT
-                else ['enthalpy']
+                else ["enthalpy"]
             )
 
         n_vars = len(variables)
@@ -131,7 +131,7 @@ class Compositional(PhysicsBase):
             cache=cache,
         )
 
-    def set_engine(self, discr_type: str = 'tpfa', platform: str = 'cpu'):
+    def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
         Function to set :class:`engine_super` object.
 
@@ -140,7 +140,7 @@ class Compositional(PhysicsBase):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        if discr_type == 'mpfa':
+        if discr_type == "mpfa":
             if self.thermal:
                 return eval(
                     "engine_super_mp_%s%d_%d_t" % (platform, self.nc, self.nph)
@@ -169,11 +169,17 @@ class Compositional(PhysicsBase):
 
         if not self.is_coupled_well_res_model:
             if self.thermal:
-                self.well_operators = ReservoirOperators(self.property_containers[self.regions[0]], self.thermal)
+                self.well_operators = ReservoirOperators(
+                    self.property_containers[self.regions[0]], self.thermal
+                )
             else:
-                self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+                self.well_operators = WellOperators(
+                    self.property_containers[self.regions[0]], self.thermal
+                )
         elif self.is_coupled_well_res_model:
-            self.well_operators = WellOperators(self.property_containers[self.regions[0]], self.thermal)
+            self.well_operators = WellOperators(
+                self.property_containers[self.regions[0]], self.thermal
+            )
 
         self.well_ctrl_operators = WellControlOperators(
             self.property_containers[self.regions[0]], self.thermal
@@ -210,8 +216,8 @@ class Compositional(PhysicsBase):
             ]
         ), "Initial state for must be specified for all primary variables"
         assert not self.thermal or (
-            'temperature' in input_distribution.keys()
-            or 'enthalpy' in input_distribution.keys()
+            "temperature" in input_distribution.keys()
+            or "enthalpy" in input_distribution.keys()
         ), "Temperature or enthalpy must be specified for thermal models"
         input_depth = (
             input_depth
@@ -240,17 +246,17 @@ class Compositional(PhysicsBase):
                 # If temperature has been provided, interpolate pressure and temperature to compute enthalpies
                 p_itor = interp1d(
                     input_depth,
-                    input_distribution['pressure'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["pressure"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 pressure = p_itor(depths)
 
                 t_itor = interp1d(
                     input_depth,
-                    input_distribution['temperature'],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    input_distribution["temperature"],
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 temperature = t_itor(depths)
 
@@ -258,8 +264,8 @@ class Compositional(PhysicsBase):
                     interp1d(
                         input_depth,
                         input_distribution[comp],
-                        kind='linear',
-                        fill_value='extrapolate',
+                        kind="linear",
+                        fill_value="extrapolate",
                     )
                     for comp in self.components[:-1]
                 ]
@@ -282,8 +288,8 @@ class Compositional(PhysicsBase):
                 itor = interp1d(
                     input_depth,
                     input_distribution[variable],
-                    kind='linear',
-                    fill_value='extrapolate',
+                    kind="linear",
+                    fill_value="extrapolate",
                 )
                 values = itor(depths)
 
@@ -303,7 +309,7 @@ class Compositional(PhysicsBase):
         for variable, values in input_distribution.items():
             if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
                 warnings.warn(
-                    'Initial condition for variable {} has different length, resizing {} to {}'.format(
+                    "Initial condition for variable {} has different length, resizing {} to {}".format(
                         variable, len(values), mesh.n_res_blocks
                     ),
                     stacklevel=2,
@@ -317,19 +323,19 @@ class Compositional(PhysicsBase):
 
         # set initial pressure
         np.asarray(mesh.initial_state)[0 :: self.n_vars] = input_distribution[
-            'pressure'
+            "pressure"
         ]
 
         # if thermal, set initial temperature or enthalpy
         if self.thermal:
             if self.state_spec == PhysicsBase.StateSpecification.PT:
                 np.asarray(mesh.initial_state)[(self.n_vars - 1) :: self.n_vars] = (
-                    input_distribution['temperature']
+                    input_distribution["temperature"]
                 )
             else:
                 # interpolate pressure and temperature to compute enthalpies
                 enthalpy = np.empty(mesh.n_res_blocks)
-                if not np.isscalar(input_distribution['pressure']):
+                if not np.isscalar(input_distribution["pressure"]):
                     # Pressure specified as an array
                     for j in range(mesh.n_res_blocks):
                         composition = [
@@ -343,13 +349,13 @@ class Compositional(PhysicsBase):
                             ].components_name[:-1]
                         ]
                         temp = (
-                            input_distribution['temperature'][j]
-                            if not np.isscalar(input_distribution['temperature'])
-                            else input_distribution['temperature']
+                            input_distribution["temperature"][j]
+                            if not np.isscalar(input_distribution["temperature"])
+                            else input_distribution["temperature"]
                         )
 
                         state = np.array(
-                            [input_distribution['pressure'][j]] + composition + [temp]
+                            [input_distribution["pressure"][j]] + composition + [temp]
                         )
                         enthalpy[j] = self.property_containers[
                             0
@@ -362,9 +368,9 @@ class Compositional(PhysicsBase):
                         ]
                     ]
                     state = value_vector(
-                        [input_distribution['pressure']]
+                        [input_distribution["pressure"]]
                         + composition
-                        + [input_distribution['temperature']]
+                        + [input_distribution["temperature"]]
                     )  # enthalpy is dummy variable
                     enth = self.property_containers[0].compute_total_enthalpy(state)
                     enthalpy[:] = enth

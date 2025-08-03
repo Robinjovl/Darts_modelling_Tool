@@ -10,8 +10,8 @@ def get_rates(rates_filename):
     e = 5 * list(c.dtype.names)
     for i in range(0, len(e)):
         d[i + 2] = e[i] + d[i + 2]
-    d[-3] = 'P1WBHP'
-    d[-1] = 'P1BPR'
+    d[-3] = "P1WBHP"
+    d[-1] = "P1BPR"
     a.dtype.names = tuple(d)
     data = pd.DataFrame(a)
     return data

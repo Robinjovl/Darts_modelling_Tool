@@ -151,7 +151,7 @@ class MapMesh:
         """
         Function to translate mesh to structured mesh of certain x-y-z
         """
-        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
         points = np.stack((X, Y, Z), axis=-1).reshape(len(x) * len(y) * len(z), 3)
         tree = KDTree(self.centroids)
         _, closest_indices = tree.query(points)

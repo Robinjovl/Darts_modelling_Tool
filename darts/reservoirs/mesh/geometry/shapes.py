@@ -50,7 +50,7 @@ class MeshProperties:
     xlen: float = 0.0
     ylen: float = 0.0
     zlen: float = 0.0
-    orientation: str = 'xy'
+    orientation: str = "xy"
     radii: list = field(default_factory=list)
     hole: bool = False
     extrude: bool = False
@@ -102,7 +102,7 @@ class Shape:
                     if curve_points not in curves and reverse not in curves:
                         curve_idx = len(curves) + 1
                         curves.append(curve_points)
-                        curve_type = 'line'
+                        curve_type = "line"
                         self.curves.append(Curve(curve_idx, curve_type, curve_points))
                         surface_curves.append(curve_idx)
                     else:
@@ -120,10 +120,10 @@ class Shape:
         self, center: list, radius: float, orientation: str, angle: float
     ):
         point = np.copy(center)
-        if orientation == 'xy':
+        if orientation == "xy":
             point[0] += np.round(radius * np.sin(angle), 5)
             point[1] += np.round(radius * np.cos(angle), 5)
-        elif orientation == 'xz':
+        elif orientation == "xz":
             point[0] += np.round(radius * np.sin(angle), 5)
             point[2] += np.round(radius * np.cos(angle), 5)
         else:  # 'yz'
@@ -144,7 +144,7 @@ class Shape:
         plt.figure(dpi=400, figsize=(10, 5))
 
         for point in self.points:
-            plt.scatter(point.xyz[0], point.xyz[2], c='k', s=0.5)
+            plt.scatter(point.xyz[0], point.xyz[2], c="k", s=0.5)
 
         for curve in self.curves:
             idx1 = curve.points[0] - 1
@@ -156,7 +156,7 @@ class Shape:
             x = [p1[0], p2[0]]
             z = [p1[2], p2[2]]
 
-            plt.plot(x, z, c='k', linewidth=1)
+            plt.plot(x, z, c="k", linewidth=1)
 
         # Find limits
         xmin, xmax = self.points[0].xyz[0], self.points[0].xyz[0]
@@ -174,7 +174,7 @@ class Shape:
             elif zi > zmax:
                 zmax = zi
 
-        plt.axis('scaled')
+        plt.axis("scaled")
         plt.xlim([xmin, xmax])
         plt.ylim([zmin, zmax])
         plt.xlabel("x [m]")
@@ -191,7 +191,7 @@ class Square(Shape):
         xlen: float = 0.0,
         ylen: float = 0.0,
         zlen: float = 0.0,
-        orientation: str = 'xy',
+        orientation: str = "xy",
         radii: list = None,
         hole: bool = False,
     ):
@@ -199,7 +199,7 @@ class Square(Shape):
         assert len(lc) > num_radii, "List of lc is of insufficient length"
         self.lc = lc
 
-        if orientation == 'xy':
+        if orientation == "xy":
             xmin, xmax = (
                 center[0] - xlen * 0.5,
                 center[0] + xlen * 0.5,
@@ -215,7 +215,7 @@ class Square(Shape):
                 Point(4, [xmax, ymax, center[2]]),
                 Point(5, [xmin, ymax, center[2]]),
             ]
-        elif orientation == 'xz':
+        elif orientation == "xz":
             xmin, xmax = (
                 center[0] - xlen * 0.5,
                 center[0] + xlen * 0.5,
@@ -249,10 +249,10 @@ class Square(Shape):
             ]
 
         self.curves = [
-            Curve(1, curve_type='line', points=[5, 2]),
-            Curve(2, curve_type='line', points=[2, 3]),
-            Curve(3, curve_type='line', points=[3, 4]),
-            Curve(4, curve_type='line', points=[4, 5]),
+            Curve(1, curve_type="line", points=[5, 2]),
+            Curve(2, curve_type="line", points=[2, 3]),
+            Curve(3, curve_type="line", points=[3, 4]),
+            Curve(4, curve_type="line", points=[4, 5]),
         ]
         self.surfaces = [Surface(1, points=[2, 3, 4, 5, 2], curves=[1, 2, 3, 4])]
 
@@ -286,9 +286,9 @@ class Square(Shape):
             c0 = len(self.curves)
             c1, c2, c3 = c0 + 1, c0 + 2, c0 + 3
             self.curves += [
-                Curve(c1, curve_type='circle', points=[p1, 1, p2]),
-                Curve(c2, curve_type='circle', points=[p2, 1, p3]),
-                Curve(c3, curve_type='circle', points=[p3, 1, p1]),
+                Curve(c1, curve_type="circle", points=[p1, 1, p2]),
+                Curve(c2, curve_type="circle", points=[p2, 1, p3]),
+                Curve(c3, curve_type="circle", points=[p3, 1, p1]),
             ]
 
             s0 = len(self.surfaces)
@@ -303,7 +303,7 @@ class Square(Shape):
 
             c3 = len(self.curves)
             c1, c2 = c3 - 2, c3 - 1
-            self.physical_curves['inner'] = [c1, c2, c3]
+            self.physical_curves["inner"] = [c1, c2, c3]
 
 
 class Circle(Shape):
@@ -312,7 +312,7 @@ class Circle(Shape):
         center: list,
         lc: list,
         radii: list,
-        orientation: str = 'xy',
+        orientation: str = "xy",
         angle=360.0,
         hole: bool = False,
     ):
@@ -320,9 +320,9 @@ class Circle(Shape):
         assert len(lc) >= len(radii), "List of lc is of insufficient length"
         self.lc = lc
 
-        self.physical_curves['outer'] = []
+        self.physical_curves["outer"] = []
         if hole:
-            self.physical_curves['inner'] = []
+            self.physical_curves["inner"] = []
 
         if angle == 360.0:  # need 3 curved lines
             self.points = [Point(1, center)]
@@ -357,9 +357,9 @@ class Circle(Shape):
                 c0 = len(self.curves)
                 c1, c2, c3 = c0 + 1, c0 + 2, c0 + 3
                 self.curves += [
-                    Curve(c1, curve_type='circle', points=[p1, 1, p2]),
-                    Curve(c2, curve_type='circle', points=[p2, 1, p3]),
-                    Curve(c3, curve_type='circle', points=[p3, 1, p1]),
+                    Curve(c1, curve_type="circle", points=[p1, 1, p2]),
+                    Curve(c2, curve_type="circle", points=[p2, 1, p3]),
+                    Curve(c3, curve_type="circle", points=[p3, 1, p1]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -368,7 +368,7 @@ class Circle(Shape):
                 ]
 
                 if i == 0:
-                    self.physical_curves['outer'] += [c1, c2, c3]
+                    self.physical_curves["outer"] += [c1, c2, c3]
                 else:
                     self.surfaces[i - 1].holes = [s0 + 1]
                     if i == len(radii) - 1 and hole:
@@ -379,7 +379,7 @@ class Circle(Shape):
             if hole:
                 c3 = len(self.curves)
                 c1, c2 = c3 - 2, c3 - 1
-                self.physical_curves['inner'] += [c1, c2, c3]
+                self.physical_curves["inner"] += [c1, c2, c3]
 
         elif angle >= 180.0:  # need 2 curved lines
             self.points = [Point(1, center)]
@@ -415,10 +415,10 @@ class Circle(Shape):
                 c0 = len(self.curves)
                 c1, c2, c3, c4, c6, c7 = c0 + 1, c0 + 2, c0 + 3, c0 + 4, c0 + 6, c0 + 7
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[p4, p1]),
-                    Curve(c2, curve_type='circle', points=[p1, 1, p2]),
-                    Curve(c3, curve_type='circle', points=[p2, 1, p3]),
-                    Curve(c4, curve_type='line', points=[p3, p6]),
+                    Curve(c1, curve_type="line", points=[p4, p1]),
+                    Curve(c2, curve_type="circle", points=[p1, 1, p2]),
+                    Curve(c3, curve_type="circle", points=[p2, 1, p3]),
+                    Curve(c4, curve_type="line", points=[p3, p6]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -431,7 +431,7 @@ class Circle(Shape):
                 ]
 
                 if i == 0:
-                    self.physical_curves['outer'] += [c2, c3]
+                    self.physical_curves["outer"] += [c2, c3]
 
             # Add innermost surface
             ii = len(radii) - 1
@@ -464,14 +464,14 @@ class Circle(Shape):
             c0 = len(self.curves)
             c1, c2, c3, c4 = c0 + 1, c0 + 2, c0 + 3, c0 + 4
             self.curves += [
-                Curve(c2, curve_type='circle', points=[p1, 1, p2]),
-                Curve(c3, curve_type='circle', points=[p2, 1, p3]),
+                Curve(c2, curve_type="circle", points=[p1, 1, p2]),
+                Curve(c3, curve_type="circle", points=[p2, 1, p3]),
             ]
 
             if len(radii) == 1 or not hole:
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[1, p1]),
-                    Curve(c4, curve_type='line', points=[p3, 1]),
+                    Curve(c1, curve_type="line", points=[1, p1]),
+                    Curve(c4, curve_type="line", points=[p3, 1]),
                 ]
                 s0 = len(self.surfaces)
                 self.surfaces += [
@@ -480,7 +480,7 @@ class Circle(Shape):
                     )
                 ]
             else:
-                self.physical_curves['inner'] += [c2, c3]
+                self.physical_curves["inner"] += [c2, c3]
 
         else:  # need only 1 curved line
             self.points = [Point(1, center)]
@@ -509,9 +509,9 @@ class Circle(Shape):
                 c0 = len(self.curves)
                 c1, c2, c3, c5 = c0 + 1, c0 + 2, c0 + 3, c0 + 5
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[p3, p1]),
-                    Curve(c2, curve_type='circle', points=[p1, 1, p2]),
-                    Curve(c3, curve_type='line', points=[p2, p4]),
+                    Curve(c1, curve_type="line", points=[p3, p1]),
+                    Curve(c2, curve_type="circle", points=[p1, 1, p2]),
+                    Curve(c3, curve_type="line", points=[p2, p4]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -522,7 +522,7 @@ class Circle(Shape):
                 ]
 
                 if i == 0:
-                    self.physical_curves['outer'] += [c2]
+                    self.physical_curves["outer"] += [c2]
 
             # Add innermost surface
             ii = len(radii) - 1
@@ -547,19 +547,19 @@ class Circle(Shape):
 
             c0 = len(self.curves)
             c1, c2, c3 = c0 + 1, c0 + 2, c0 + 3
-            self.curves += [Curve(c2, curve_type='circle', points=[p1, 1, p2])]
+            self.curves += [Curve(c2, curve_type="circle", points=[p1, 1, p2])]
 
             if len(radii) == 1 or not hole:
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[1, p1]),
-                    Curve(c3, curve_type='line', points=[p2, 1]),
+                    Curve(c1, curve_type="line", points=[1, p1]),
+                    Curve(c3, curve_type="line", points=[p2, 1]),
                 ]
                 s0 = len(self.surfaces)
                 self.surfaces += [
                     Surface(s0 + 1, points=[p0, p1, p2, p0], curves=[c1, c2, c3])
                 ]
             else:
-                self.physical_curves['inner'] += [c2]
+                self.physical_curves["inner"] += [c2]
 
 
 class Cylinder(Shape):
@@ -569,7 +569,7 @@ class Cylinder(Shape):
         lc: list,
         radii: list,
         length: float,
-        orientation: str = 'xy',
+        orientation: str = "xy",
         angle=360.0,
         hole: bool = False,
     ):
@@ -578,24 +578,24 @@ class Cylinder(Shape):
         assert len(lc) >= len(radii), "List of lc is of insufficient length"
         self.lc = lc
 
-        self.physical_surfaces['top'] = []
-        self.physical_surfaces['bottom'] = []
-        self.physical_surfaces['outer'] = []
+        self.physical_surfaces["top"] = []
+        self.physical_surfaces["bottom"] = []
+        self.physical_surfaces["outer"] = []
         if hole:
-            self.physical_surfaces['inner'] = []
+            self.physical_surfaces["inner"] = []
 
         center = np.array(center)
         L = np.array([0.0, 0.0, 0.0])
-        if orientation == 'xy':
+        if orientation == "xy":
             L[2] = length
-        elif orientation == 'xz':
+        elif orientation == "xz":
             L[1] = length
         else:
             L[0] = length
 
         if angle == 360.0:  # need 3 curved surfaces
             self.points = [Point(1, center), Point(2, center + L)]
-            self.curves = [Curve(1, 'line', points=[1, 2])]
+            self.curves = [Curve(1, "line", points=[1, 2])]
 
             # Start from outermost surface
             for i, radius in enumerate(radii):
@@ -624,15 +624,15 @@ class Cylinder(Shape):
                 c1, c2, c3, c4, c5, c6 = c0 + 1, c0 + 2, c0 + 3, c0 + 4, c0 + 5, c0 + 6
                 c7, c8, c9 = c0 + 7, c0 + 8, c0 + 9
                 self.curves += [
-                    Curve(c1, curve_type='circle', points=[p1, 1, p2]),
-                    Curve(c2, 'circle', points=[p2, 1, p3]),
-                    Curve(c3, 'circle', points=[p3, 1, p1]),
-                    Curve(c4, 'circle', points=[p4, 2, p5]),
-                    Curve(c5, 'circle', points=[p5, 2, p6]),
-                    Curve(c6, 'circle', points=[p6, 2, p4]),
-                    Curve(c7, 'line', [p1, p4]),
-                    Curve(c8, 'line', [p2, p5]),
-                    Curve(c9, 'line', [p3, p6]),
+                    Curve(c1, curve_type="circle", points=[p1, 1, p2]),
+                    Curve(c2, "circle", points=[p2, 1, p3]),
+                    Curve(c3, "circle", points=[p3, 1, p1]),
+                    Curve(c4, "circle", points=[p4, 2, p5]),
+                    Curve(c5, "circle", points=[p5, 2, p6]),
+                    Curve(c6, "circle", points=[p6, 2, p4]),
+                    Curve(c7, "line", [p1, p4]),
+                    Curve(c8, "line", [p2, p5]),
+                    Curve(c9, "line", [p3, p6]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -675,12 +675,12 @@ class Cylinder(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
 
-                self.physical_surfaces['top'] += [s1]
-                self.physical_surfaces['bottom'] += [s2]
+                self.physical_surfaces["top"] += [s1]
+                self.physical_surfaces["bottom"] += [s2]
                 if i == 0:
-                    self.physical_surfaces['outer'] += [s3, s4, s5]
+                    self.physical_surfaces["outer"] += [s3, s4, s5]
                 elif i == len(radii) - 1 and hole:
-                    self.physical_surfaces['inner'] += [s3, s4, s5]
+                    self.physical_surfaces["inner"] += [s3, s4, s5]
 
             if len(radii) > 1 and hole:
                 self.surfaces[s0].active = False
@@ -689,7 +689,7 @@ class Cylinder(Shape):
 
         elif angle >= 180.0:  # need 2 curved surfaces
             self.points = [Point(1, center), Point(2, center + L)]
-            self.curves = [Curve(1, 'line', points=[1, 2])]
+            self.curves = [Curve(1, "line", points=[1, 2])]
 
             # Start from outermost surface
             for i, radius in enumerate(radii[:-1]):
@@ -735,17 +735,17 @@ class Cylinder(Shape):
                     c0 + 22,
                 )
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[p7, p1]),
-                    Curve(c2, 'circle', [p1, 1, p2]),
-                    Curve(c3, 'circle', [p2, 1, p3]),
-                    Curve(c4, 'line', [p3, p9]),
-                    Curve(c5, 'line', [p10, p4]),
-                    Curve(c6, 'circle', [p4, 2, p5]),
-                    Curve(c7, 'circle', [p5, 2, p6]),
-                    Curve(c8, 'line', [p6, p12]),
-                    Curve(c9, 'line', [p1, p4]),
-                    Curve(c10, 'line', [p2, p5]),
-                    Curve(c11, 'line', [p3, p6]),
+                    Curve(c1, curve_type="line", points=[p7, p1]),
+                    Curve(c2, "circle", [p1, 1, p2]),
+                    Curve(c3, "circle", [p2, 1, p3]),
+                    Curve(c4, "line", [p3, p9]),
+                    Curve(c5, "line", [p10, p4]),
+                    Curve(c6, "circle", [p4, 2, p5]),
+                    Curve(c7, "circle", [p5, 2, p6]),
+                    Curve(c8, "line", [p6, p12]),
+                    Curve(c9, "line", [p1, p4]),
+                    Curve(c10, "line", [p2, p5]),
+                    Curve(c11, "line", [p3, p6]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -783,10 +783,10 @@ class Cylinder(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
 
-                self.physical_surfaces['top'] += [s1]
-                self.physical_surfaces['bottom'] += [s2]
+                self.physical_surfaces["top"] += [s1]
+                self.physical_surfaces["bottom"] += [s2]
                 if i == 0:
-                    self.physical_surfaces['outer'] += [s4, s5]
+                    self.physical_surfaces["outer"] += [s4, s5]
 
             # Add innermost surface
             i = len(radii) - 1
@@ -815,13 +815,13 @@ class Cylinder(Shape):
             c1, c2, c3, c4, c5, c6 = c0 + 1, c0 + 2, c0 + 3, c0 + 4, c0 + 5, c0 + 6
             c7, c8, c9, c10, c11 = c0 + 7, c0 + 8, c0 + 9, c0 + 10, c0 + 11
             self.curves += [
-                Curve(c2, 'circle', [p1, 1, p2]),
-                Curve(c3, 'circle', [p2, 1, p3]),
-                Curve(c6, 'circle', [p4, 2, p5]),
-                Curve(c7, 'circle', [p5, 2, p6]),
-                Curve(c9, 'line', [p1, p4]),
-                Curve(c10, 'line', [p2, p5]),
-                Curve(c11, 'line', [p3, p6]),
+                Curve(c2, "circle", [p1, 1, p2]),
+                Curve(c3, "circle", [p2, 1, p3]),
+                Curve(c6, "circle", [p4, 2, p5]),
+                Curve(c7, "circle", [p5, 2, p6]),
+                Curve(c9, "line", [p1, p4]),
+                Curve(c10, "line", [p2, p5]),
+                Curve(c11, "line", [p3, p6]),
             ]
 
             s0 = len(self.surfaces)
@@ -837,10 +837,10 @@ class Cylinder(Shape):
 
             if len(radii) == 1 or not hole:
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[1, p1]),
-                    Curve(c4, 'line', [p3, 1]),
-                    Curve(c5, 'line', [2, p4]),
-                    Curve(c8, 'line', [p6, 2]),
+                    Curve(c1, curve_type="line", points=[1, p1]),
+                    Curve(c4, "line", [p3, 1]),
+                    Curve(c5, "line", [2, p4]),
+                    Curve(c8, "line", [p6, 2]),
                 ]
 
                 self.surfaces += [
@@ -853,11 +853,11 @@ class Cylinder(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
             else:
-                self.physical_surfaces['inner'] += [s4, s5]
+                self.physical_surfaces["inner"] += [s4, s5]
 
         else:  # angle < 180 need 1 curved surface
             self.points = [Point(1, center), Point(2, center + L)]
-            self.curves = [Curve(1, 'line', points=[1, 2])]
+            self.curves = [Curve(1, "line", points=[1, 2])]
 
             # Start from outermost surface
             for i, radius in enumerate(radii[:-1]):
@@ -891,14 +891,14 @@ class Cylinder(Shape):
                 )
                 c10, c13, c15, c16 = c0 + 10, c0 + 13, c0 + 15, c0 + 16
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[p5, p1]),
-                    Curve(c2, 'circle', [p1, 1, p2]),
-                    Curve(c3, 'line', [p2, p6]),
-                    Curve(c4, 'line', [p7, p3]),
-                    Curve(c5, 'circle', [p3, 2, p4]),
-                    Curve(c6, 'line', [p4, p8]),
-                    Curve(c7, 'line', [p1, p3]),
-                    Curve(c8, 'line', [p2, p4]),
+                    Curve(c1, curve_type="line", points=[p5, p1]),
+                    Curve(c2, "circle", [p1, 1, p2]),
+                    Curve(c3, "line", [p2, p6]),
+                    Curve(c4, "line", [p7, p3]),
+                    Curve(c5, "circle", [p3, 2, p4]),
+                    Curve(c6, "line", [p4, p8]),
+                    Curve(c7, "line", [p1, p3]),
+                    Curve(c8, "line", [p2, p4]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -926,10 +926,10 @@ class Cylinder(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
 
-                self.physical_surfaces['top'] += [s1]
-                self.physical_surfaces['bottom'] += [s2]
+                self.physical_surfaces["top"] += [s1]
+                self.physical_surfaces["bottom"] += [s2]
                 if i == 0:
-                    self.physical_surfaces['outer'] += [s4]
+                    self.physical_surfaces["outer"] += [s4]
 
             # Add innermost surface
             i = len(radii) - 1
@@ -961,10 +961,10 @@ class Cylinder(Shape):
                 c0 + 8,
             )
             self.curves += [
-                Curve(c2, 'circle', [p1, 1, p2]),
-                Curve(c5, 'circle', [p3, 2, p4]),
-                Curve(c7, 'line', [p1, p3]),
-                Curve(c8, 'line', [p2, p4]),
+                Curve(c2, "circle", [p1, 1, p2]),
+                Curve(c5, "circle", [p3, 2, p4]),
+                Curve(c7, "line", [p1, p3]),
+                Curve(c8, "line", [p2, p4]),
             ]
 
             s0 = len(self.surfaces)
@@ -977,10 +977,10 @@ class Cylinder(Shape):
 
             if len(radii) == 1 or not hole:
                 self.curves += [
-                    Curve(c1, curve_type='line', points=[1, p1]),
-                    Curve(c3, 'line', [p2, 1]),
-                    Curve(c4, 'line', [2, p3]),
-                    Curve(c6, 'line', [p4, 2]),
+                    Curve(c1, curve_type="line", points=[1, p1]),
+                    Curve(c3, "line", [p2, 1]),
+                    Curve(c4, "line", [2, p3]),
+                    Curve(c6, "line", [p4, 2]),
                 ]
 
                 self.surfaces += [
@@ -993,7 +993,7 @@ class Cylinder(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
             else:
-                self.physical_surfaces['inner'] += [s4]
+                self.physical_surfaces["inner"] += [s4]
 
 
 class Box(Shape):
@@ -1004,7 +1004,7 @@ class Box(Shape):
         xlen: float,
         ylen: float,
         zlen: float,
-        orientation: str = 'xy',
+        orientation: str = "xy",
         radii: list = None,
         hole: bool = False,
     ):
@@ -1036,18 +1036,18 @@ class Box(Shape):
             Point(8, [xmin, ymax, zmax]),
         ]
         self.curves = [
-            Curve(1, curve_type='line', points=[1, 2]),
-            Curve(2, curve_type='line', points=[2, 3]),
-            Curve(3, curve_type='line', points=[3, 4]),
-            Curve(4, curve_type='line', points=[4, 1]),
-            Curve(5, curve_type='line', points=[5, 6]),
-            Curve(6, curve_type='line', points=[6, 7]),
-            Curve(7, curve_type='line', points=[7, 8]),
-            Curve(8, curve_type='line', points=[8, 5]),
-            Curve(9, curve_type='line', points=[1, 5]),
-            Curve(10, curve_type='line', points=[2, 6]),
-            Curve(11, curve_type='line', points=[3, 7]),
-            Curve(12, curve_type='line', points=[4, 8]),
+            Curve(1, curve_type="line", points=[1, 2]),
+            Curve(2, curve_type="line", points=[2, 3]),
+            Curve(3, curve_type="line", points=[3, 4]),
+            Curve(4, curve_type="line", points=[4, 1]),
+            Curve(5, curve_type="line", points=[5, 6]),
+            Curve(6, curve_type="line", points=[6, 7]),
+            Curve(7, curve_type="line", points=[7, 8]),
+            Curve(8, curve_type="line", points=[8, 5]),
+            Curve(9, curve_type="line", points=[1, 5]),
+            Curve(10, curve_type="line", points=[2, 6]),
+            Curve(11, curve_type="line", points=[3, 7]),
+            Curve(12, curve_type="line", points=[4, 8]),
         ]
         self.surfaces = [
             Surface(1, points=[1, 2, 3, 4, 1], curves=[1, 2, 3, 4]),  # xy_min
@@ -1058,12 +1058,12 @@ class Box(Shape):
             Surface(6, points=[2, 3, 7, 6, 2], curves=[2, 11, -6, -10]),  # yz_plus
         ]
 
-        self.physical_surfaces['xy_min'] = [1]
-        self.physical_surfaces['xy_plus'] = [2]
-        self.physical_surfaces['xz_min'] = [3]
-        self.physical_surfaces['xz_plus'] = [4]
-        self.physical_surfaces['yz_min'] = [5]
-        self.physical_surfaces['yz_plus'] = [6]
+        self.physical_surfaces["xy_min"] = [1]
+        self.physical_surfaces["xy_plus"] = [2]
+        self.physical_surfaces["xz_min"] = [3]
+        self.physical_surfaces["xz_plus"] = [4]
+        self.physical_surfaces["yz_min"] = [5]
+        self.physical_surfaces["yz_plus"] = [6]
 
         surface_idxs = [surface.idx for surface in self.surfaces]
         self.volumes = [Volume(1, surface_idxs)]
@@ -1083,9 +1083,9 @@ class Box(Shape):
                 p0 = len(self.points)
                 p1, p2, p3, p4, p5, p6 = p0 + 1, p0 + 2, p0 + 3, p0 + 4, p0 + 5, p0 + 6
 
-                P1 = self.calc_radial_points(point1, radius, 'xy', math.radians(0))
-                P2 = self.calc_radial_points(point1, radius, 'xy', math.radians(120))
-                P3 = self.calc_radial_points(point1, radius, 'xy', math.radians(240))
+                P1 = self.calc_radial_points(point1, radius, "xy", math.radians(0))
+                P2 = self.calc_radial_points(point1, radius, "xy", math.radians(120))
+                P3 = self.calc_radial_points(point1, radius, "xy", math.radians(240))
 
                 self.points += [
                     Point(p1, P1, lc=i + 1),
@@ -1100,15 +1100,15 @@ class Box(Shape):
                 c1, c2, c3, c4, c5, c6 = c0 + 1, c0 + 2, c0 + 3, c0 + 4, c0 + 5, c0 + 6
                 c7, c8, c9 = c0 + 7, c0 + 8, c0 + 9
                 self.curves += [
-                    Curve(c1, curve_type='circle', points=[p1, 9, p2]),
-                    Curve(c2, 'circle', points=[p2, 9, p3]),
-                    Curve(c3, 'circle', points=[p3, 9, p1]),
-                    Curve(c4, 'circle', points=[p4, 10, p5]),
-                    Curve(c5, 'circle', points=[p5, 10, p6]),
-                    Curve(c6, 'circle', points=[p6, 10, p4]),
-                    Curve(c7, 'line', [p1, p4]),
-                    Curve(c8, 'line', [p2, p5]),
-                    Curve(c9, 'line', [p3, p6]),
+                    Curve(c1, curve_type="circle", points=[p1, 9, p2]),
+                    Curve(c2, "circle", points=[p2, 9, p3]),
+                    Curve(c3, "circle", points=[p3, 9, p1]),
+                    Curve(c4, "circle", points=[p4, 10, p5]),
+                    Curve(c5, "circle", points=[p5, 10, p6]),
+                    Curve(c6, "circle", points=[p6, 10, p4]),
+                    Curve(c7, "line", [p1, p4]),
+                    Curve(c8, "line", [p2, p5]),
+                    Curve(c9, "line", [p3, p6]),
                 ]
 
                 s0 = len(self.surfaces)
@@ -1156,10 +1156,10 @@ class Box(Shape):
                 v0 = len(self.volumes)
                 self.volumes += [Volume(v0 + 1, surface_idxs)]
 
-                self.physical_surfaces[orientation + '_min'] += [s1]
-                self.physical_surfaces[orientation + '_plus'] += [s2]
+                self.physical_surfaces[orientation + "_min"] += [s1]
+                self.physical_surfaces[orientation + "_plus"] += [s2]
                 if i == len(radii) - 1 and hole:
-                    self.physical_surfaces['inner'] = [s3, s4, s5]
+                    self.physical_surfaces["inner"] = [s3, s4, s5]
 
             if len(radii) > 1 and hole:
                 self.surfaces[s0].active = False

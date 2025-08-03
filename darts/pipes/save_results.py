@@ -3,6 +3,7 @@ import pandas as pd
 
 from darts.models.darts_model import DartsModel
 
+
 def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     """
     Stores the primary variables and phase properties of well segments in a pickle file
@@ -15,7 +16,7 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     property_container = coupled_model.physics.property_containers[0]
 
     num_perfs = len(coupled_model.reservoir.wells[0].perforations)
-    num_segments = len(h5_well_data["dynamic"]["X"][0,:,0]) - num_perfs
+    num_segments = len(h5_well_data["dynamic"]["X"][0, :, 0]) - num_perfs
 
     p = np.zeros(num_segments)
     z = np.zeros((num_segments, property_container.nc))
@@ -53,11 +54,11 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
     iter_counter = 0
     flag = 1
 
-    time = h5_well_data['dynamic']['time']
+    time = h5_well_data["dynamic"]["time"]
     time_step_sizes = np.diff(np.insert(time, 0, 0))
     for i, dt in enumerate(time_step_sizes):
         for j in range(num_segments):
-            state = h5_well_data["dynamic"]["X"][i,j + num_perfs,:]
+            state = h5_well_data["dynamic"]["X"][i, j + num_perfs, :]
             p[j] = state[0]
 
             # Evaluate temperature for when the primary vars are PH and evaluate phase props
@@ -71,15 +72,21 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
                 z_full = state[1:-1]
                 z_full = np.append(z_full, 1 - sum(state[1:-1]))
                 z[j, :] = z_full
-                if coupled_model.physics.state_spec == coupled_model.physics.StateSpecification.PT:
+                if (
+                    coupled_model.physics.state_spec
+                    == coupled_model.physics.StateSpecification.PT
+                ):
                     T[j] = state[-1]
-                elif coupled_model.physics.state_spec == coupled_model.physics.StateSpecification.PH:
+                elif (
+                    coupled_model.physics.state_spec
+                    == coupled_model.physics.StateSpecification.PH
+                ):
                     T[j] = property_container.temperature
 
             # xG[j,:] = property_container.x[1,:]
-            xG[j,:] = property_container.x[0,:]
+            xG[j, :] = property_container.x[0, :]
             if property_container.nph == 2:
-                xL[j,:] = property_container.x[1,:]
+                xL[j, :] = property_container.x[1, :]
             elif property_container.nph == 3:
                 # xL_a[j, :] = property_container.x[0, :]
                 xL_a[j, :] = property_container.x[1, :]
@@ -111,14 +118,17 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
 
         # Save phase velocities
         if i == 0:
-            initial_conditions = next(iter(coupled_model.wells.values())).initial_conditions.initial_conditions_vector
+            initial_conditions = next(
+                iter(coupled_model.wells.values())
+            ).initial_conditions.initial_conditions_vector
             Xn_ms_well = initial_conditions
-            X_ms_well = h5_well_data["dynamic"]["X"][i,num_perfs:,:].flatten()
-        else:
-            Xn_ms_well = h5_well_data["dynamic"]["X"][i-1, num_perfs:, :].flatten()
             X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
-        phase_velocities = next(iter(coupled_model.wells.values())).evaluate_phase_velocities(Xn_ms_well, X_ms_well,
-                                                                                              dt, iter_counter, flag)
+        else:
+            Xn_ms_well = h5_well_data["dynamic"]["X"][i - 1, num_perfs:, :].flatten()
+            X_ms_well = h5_well_data["dynamic"]["X"][i, num_perfs:, :].flatten()
+        phase_velocities = next(
+            iter(coupled_model.wells.values())
+        ).evaluate_phase_velocities(Xn_ms_well, X_ms_well, dt, iter_counter, flag)
         # phase_velocities = np.zeros((num_segments - 1) * 2)
         mid = int(len(phase_velocities) / 2)
         vG = phase_velocities[:mid]
@@ -128,22 +138,90 @@ def save_segments_primary_vars_and_phase_props(h5_well_data, coupled_model):
         vL = np.append(vL, np.nan)
 
         if property_container.nph == 2:
-            ts_primary_vars_and_phases_props = [p.copy(), z.copy(), T.copy(), xG.copy(), xL.copy(),
-                                                sG.copy(), sL.copy(), rhoG.copy(), rhoL.copy(),
-                                                miuG.copy(), miuL.copy(), vG.copy(), vL.copy()]
-            data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
-                                                             columns=["Pressure", "Overall mole fractions",
-                                                                      "Temperature", "xG", "xL", "sG", "sL",
-                                                                      "rhoG", "rhoL", "miuG", "miuL", "vG", "vL"])])
+            ts_primary_vars_and_phases_props = [
+                p.copy(),
+                z.copy(),
+                T.copy(),
+                xG.copy(),
+                xL.copy(),
+                sG.copy(),
+                sL.copy(),
+                rhoG.copy(),
+                rhoL.copy(),
+                miuG.copy(),
+                miuL.copy(),
+                vG.copy(),
+                vL.copy(),
+            ]
+            data_frame = pd.concat(
+                [
+                    data_frame,
+                    pd.DataFrame(
+                        list(zip(*ts_primary_vars_and_phases_props)),
+                        columns=[
+                            "Pressure",
+                            "Overall mole fractions",
+                            "Temperature",
+                            "xG",
+                            "xL",
+                            "sG",
+                            "sL",
+                            "rhoG",
+                            "rhoL",
+                            "miuG",
+                            "miuL",
+                            "vG",
+                            "vL",
+                        ],
+                    ),
+                ]
+            )
         elif property_container.nph == 3:
-            ts_primary_vars_and_phases_props = [p.copy(), z.copy(), T.copy(), xG.copy(), xL_a.copy(), xL_b.copy(),
-                                                sG.copy(), sL_a.copy(), sL_b.copy(), rhoG.copy(), rhoL_a.copy(),
-                                                rhoL_b.copy(), miuG.copy(), miuL_a.copy(), miuL_b.copy(), vG.copy(),
-                                                vL.copy()]
-            data_frame = pd.concat([data_frame, pd.DataFrame(list(zip(*ts_primary_vars_and_phases_props)),
-                                                             columns=["Pressure", "Overall mole fractions",
-                                                                      "Temperature", "xG", "xL_a", "xL_a", "sG",
-                                                                      "sL_a", "sL_b", "rhoG", "rhoL_a", "rhoL_b",
-                                                                      "miuG", "miuL_a", "miuL_b", "vG", "vL"])])
+            ts_primary_vars_and_phases_props = [
+                p.copy(),
+                z.copy(),
+                T.copy(),
+                xG.copy(),
+                xL_a.copy(),
+                xL_b.copy(),
+                sG.copy(),
+                sL_a.copy(),
+                sL_b.copy(),
+                rhoG.copy(),
+                rhoL_a.copy(),
+                rhoL_b.copy(),
+                miuG.copy(),
+                miuL_a.copy(),
+                miuL_b.copy(),
+                vG.copy(),
+                vL.copy(),
+            ]
+            data_frame = pd.concat(
+                [
+                    data_frame,
+                    pd.DataFrame(
+                        list(zip(*ts_primary_vars_and_phases_props)),
+                        columns=[
+                            "Pressure",
+                            "Overall mole fractions",
+                            "Temperature",
+                            "xG",
+                            "xL_a",
+                            "xL_a",
+                            "sG",
+                            "sL_a",
+                            "sL_b",
+                            "rhoG",
+                            "rhoL_a",
+                            "rhoL_b",
+                            "miuG",
+                            "miuL_a",
+                            "miuL_b",
+                            "vG",
+                            "vL",
+                        ],
+                    ),
+                ]
+            )
 
     data_frame.to_pickle("output/stored_primary_vars_and_phase_props.pkl")

@@ -19,7 +19,7 @@ from darts.tools.GRDECL_FaultProcess import *
 from darts.tools.GRDECL_Parser import *
 
 warnings.simplefilter(
-    action='ignore', category=FutureWarning
+    action="ignore", category=FutureWarning
 )  # Supress some Future Warnning due to outdated library
 
 try:
@@ -40,7 +40,7 @@ except ImportError:
 
 
 class GeologyModel:
-    def __init__(self, filename=''):
+    def __init__(self, filename=""):
         """Eclipse Input file(GRDECL) Visulazation and Analysis
         Keywords Reference: file format:http://petrofaq.org/wiki/Eclipse_Input_Data
 
@@ -60,7 +60,7 @@ class GeologyModel:
 
         self.VTK_Grids = vtk.vtkUnstructuredGrid()
 
-        if self.fname != '':
+        if self.fname != "":
             self.GRDECL_Data = GRDECL_Parser(self.fname)
 
     def readGRDECL(self, filename):
@@ -70,9 +70,9 @@ class GeologyModel:
 
     def GRDECL2VTK(self, actnum):
         # * Convert corner point grid/cartesian grid into VTK unstructure grid
-        print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data....')
+        print("[Geometry] Converting GRDECL to Paraview Hexahedron mesh data....")
         NX, NY, NZ = self.GRDECL_Data.NX, self.GRDECL_Data.NY, self.GRDECL_Data.NZ
-        if self.GRDECL_Data.GRID_type == 'CornerPoint':
+        if self.GRDECL_Data.GRID_type == "CornerPoint":
 
             # 1.Collect Points from the raw CornerPoint data [ZCORN]&[COORD]
             # X,Y has to be interpolated from [ZCORN]
@@ -124,18 +124,18 @@ class GeologyModel:
             for keyword, data in self.GRDECL_Data.SpatialDatas.items():
                 self.AppendScalarData(keyword, data)
 
-            print('.....Done!')
+            print(".....Done!")
 
     # solution loading
-    ''' function to read solution file somewhere
-    self.AppendScalarData(name, data)'''
+    """ function to read solution file somewhere
+    self.AppendScalarData(name, data)"""
     # def LoadSolution(self, filename='', keyword="Temp"):
     #    data = np.genfromtxt('Temp.txt', skip_header=True, skip_footer=True).flatten()
     #   self.AppendScalarData(keyword, data)
     #  print('...load solution')
 
     def decomposeModel(self):
-        '''#* Identify and extract boundary/falut faces
+        """#* Identify and extract boundary/falut faces
 
         Fault-based model decomposition,subdividing the geology model along fault face
         **Currently, fault only happens on X,Y plane. No fault in Z direction
@@ -149,7 +149,7 @@ class GeologyModel:
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
-        '''
+        """
 
         if self.FaultProcessor is None:
             # 1. Find the fault line and split the domain
@@ -175,7 +175,7 @@ class GeologyModel:
             DomainMarker2D = np.where(flag == 0, DomainMarker2D, flag)
 
         DomainMarker3D = np.tile(DomainMarker2D, self.GRDECL_Data.NZ)
-        self.AppendScalarData('SubVolumeIDs', DomainMarker3D)
+        self.AppendScalarData("SubVolumeIDs", DomainMarker3D)
 
         DomainMarker2D = np.zeros(self.GRDECL_Data.NY * self.GRDECL_Data.NX)
         RandomColor = 10 * np.random.rand(len(self.FaultProcessor.SplitPolygons))
@@ -187,17 +187,17 @@ class GeologyModel:
             DomainMarker2D = np.where(flag == 0, DomainMarker2D, flag)
 
         DomainMarker3D = np.tile(DomainMarker2D, self.GRDECL_Data.NZ)
-        self.AppendScalarData('SubVolumes', DomainMarker3D)
+        self.AppendScalarData("SubVolumes", DomainMarker3D)
 
     def AppendScalarData(self, name, numpy_array):
         # * Append scalar cell data (numpy array) into vtk object
-        data = ns.numpy_to_vtk(numpy_array.ravel(order='F'), deep=True)
+        data = ns.numpy_to_vtk(numpy_array.ravel(order="F"), deep=True)
         data.SetName(str(name))
         data.SetNumberOfComponents(1)
         self.VTK_Grids.GetCellData().AddArray(data)
 
     def Write2VTU(self, vtk_file_name):
-        vtk_file_name = vtk_file_name + '.vtu'
+        vtk_file_name = vtk_file_name + ".vtu"
         xmlWriter = vtk.vtkXMLUnstructuredGridWriter()
         xmlWriter.SetFileName(vtk_file_name)
         xmlWriter.SetInputData(self.VTK_Grids)

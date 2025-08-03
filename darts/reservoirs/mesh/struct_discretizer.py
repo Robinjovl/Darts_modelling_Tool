@@ -43,12 +43,12 @@ class StructDiscretizer:
         self.nx = nx
         self.ny = ny
         self.nz = nz
-        dx, dy, dz = global_data['dx'], global_data['dy'], global_data['dz']
-        start_z = global_data['start_z']
+        dx, dy, dz = global_data["dx"], global_data["dy"], global_data["dz"]
+        start_z = global_data["start_z"]
         permx, permy, permz = (
-            global_data['permx'],
-            global_data['permy'],
-            global_data['permz'],
+            global_data["permx"],
+            global_data["permy"],
+            global_data["permz"],
         )
         self.nodes_tot = nx * ny * nz
         self.arr_shape = (nx, ny, nz)
@@ -57,7 +57,7 @@ class StructDiscretizer:
 
         self.is_cpg = is_cpg
         if self.is_cpg:
-            print("Calculating CPG grid...", end='', flush=True)
+            print("Calculating CPG grid...", end="", flush=True)
             # self.vectorized_cpg(coord, zcorn)
             plain_points_num = (nx + 1) * (ny + 1)
             cells_num = nx * ny * nz
@@ -65,9 +65,9 @@ class StructDiscretizer:
             assert coord.size == 6 * plain_points_num
             zcorn = zcorn.reshape((2 * nz, 2 * ny, 2 * nx))
             dtype = [
-                ('center', np.float64, (3,)),
-                ('faces', np.float64, (6, 2, 3)),
-                ('area', np.float64, (6,)),
+                ("center", np.float64, (3,)),
+                ("faces", np.float64, (6, 2, 3)),
+                ("area", np.float64, (6,)),
             ]
             self.volume = np.zeros(shape=self.arr_shape)
             self.cell_data = np.empty(shape=self.arr_shape, dtype=dtype)
@@ -173,87 +173,87 @@ class StructDiscretizer:
                             np.array([a1, a2, a3, a4, a5, a6]),
                         )
             self.len_cell_xminus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 0, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 0, 1],
                 axis=3,
             )
             self.len_cell_xplus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 1, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 1, 1],
                 axis=3,
             )
             self.len_cell_yminus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 2, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 2, 1],
                 axis=3,
             )
             self.len_cell_yplus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 3, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 3, 1],
                 axis=3,
             )
             self.len_cell_zminus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 4, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 4, 1],
                 axis=3,
             )
             self.len_cell_zplus = np.linalg.norm(
-                self.cell_data['center'] - self.cell_data['faces'][:, :, :, 5, 1],
+                self.cell_data["center"] - self.cell_data["faces"][:, :, :, 5, 1],
                 axis=3,
             )
             self.dist_cell_x = np.linalg.norm(
-                self.cell_data[1:, :, :]['center']
-                - self.cell_data[:-1, :, :]['center'],
+                self.cell_data[1:, :, :]["center"]
+                - self.cell_data[:-1, :, :]["center"],
                 axis=3,
             )
             self.dist_cell_y = np.linalg.norm(
-                self.cell_data[:, 1:, :]['center']
-                - self.cell_data[:, :-1, :]['center'],
+                self.cell_data[:, 1:, :]["center"]
+                - self.cell_data[:, :-1, :]["center"],
                 axis=3,
             )
             self.dist_cell_z = np.linalg.norm(
-                self.cell_data[:, :, 1:]['center']
-                - self.cell_data[:, :, :-1]['center'],
+                self.cell_data[:, :, 1:]["center"]
+                - self.cell_data[:, :, :-1]["center"],
                 axis=3,
             )
-            self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
-            self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
-            self.perm_z_cell = self.convert_to_3d_array(permz, 'permz')
+            self.perm_x_cell = self.convert_to_3d_array(permx, "permx")
+            self.perm_y_cell = self.convert_to_3d_array(permy, "permy")
+            self.perm_z_cell = self.convert_to_3d_array(permz, "permz")
             self.perm_xminus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 0, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 0, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 0, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 0, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 0, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 0, 0, 2] ** 2
             )
             self.perm_xplus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 1, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 1, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 1, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 1, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 1, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 1, 0, 2] ** 2
             )
             self.perm_yminus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 2, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 2, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 2, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 2, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 2, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 2, 0, 2] ** 2
             )
             self.perm_yplus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 3, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 3, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 3, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 3, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 3, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 3, 0, 2] ** 2
             )
             self.perm_zminus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 4, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 4, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 4, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 4, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 4, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 4, 0, 2] ** 2
             )
             self.perm_zplus = (
-                self.perm_x_cell * self.cell_data['faces'][:, :, :, 5, 0, 0] ** 2
-                + self.perm_y_cell * self.cell_data['faces'][:, :, :, 5, 0, 1] ** 2
-                + self.perm_z_cell * self.cell_data['faces'][:, :, :, 5, 0, 2] ** 2
+                self.perm_x_cell * self.cell_data["faces"][:, :, :, 5, 0, 0] ** 2
+                + self.perm_y_cell * self.cell_data["faces"][:, :, :, 5, 0, 1] ** 2
+                + self.perm_z_cell * self.cell_data["faces"][:, :, :, 5, 0, 2] ** 2
             )
 
-            self.centroids_all_cells = self.cell_data[:, :, :]['center']
+            self.centroids_all_cells = self.cell_data[:, :, :]["center"]
 
             print(" done.")
 
         # If scalar dx, dy, and dz are specified: Store constant control volume dimensions
         else:
-            self.len_cell_xdir = self.convert_to_3d_array(dx, 'dx')
-            self.len_cell_ydir = self.convert_to_3d_array(dy, 'dy')
-            self.len_cell_zdir = self.convert_to_3d_array(dz, 'dz')
+            self.len_cell_xdir = self.convert_to_3d_array(dx, "dx")
+            self.len_cell_ydir = self.convert_to_3d_array(dy, "dy")
+            self.len_cell_zdir = self.convert_to_3d_array(dz, "dz")
             self.volume = self.len_cell_xdir * self.len_cell_ydir * self.len_cell_zdir
 
             self.centroids_all_cells = np.zeros(
@@ -290,12 +290,12 @@ class StructDiscretizer:
                 ) * 0.5
 
             self.centroids_all_cells = np.reshape(
-                self.centroids_all_cells, (self.nx * self.ny * self.nz, 3), order='F'
+                self.centroids_all_cells, (self.nx * self.ny * self.nz, 3), order="F"
             )
 
-        self.perm_x_cell = self.convert_to_3d_array(permx, 'permx')
-        self.perm_y_cell = self.convert_to_3d_array(permy, 'permy')
-        self.perm_z_cell = self.convert_to_3d_array(permz, 'permz')
+        self.perm_x_cell = self.convert_to_3d_array(permx, "permx")
+        self.perm_y_cell = self.convert_to_3d_array(permy, "permy")
+        self.perm_z_cell = self.convert_to_3d_array(permz, "permz")
 
         # Initialize mapping arrays assuming all cells are active
         if np.isscalar(global_to_local):
@@ -433,7 +433,7 @@ class StructDiscretizer:
         :return: flat volume array (Ntot x 1)
         """
         # return flat array (order='F' refers to Fortran like ordering of nodes, first index changing fastest, etc.)
-        return np.reshape(self.volume, self.nodes_tot, order='F')
+        return np.reshape(self.volume, self.nodes_tot, order="F")
 
     def convert_to_3d_array(self, data, data_name: str):
         """
@@ -455,7 +455,7 @@ class StructDiscretizer:
                     data.size,
                     self.nodes_tot,
                 )
-                data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
+                data = np.reshape(data, (self.nx, self.ny, self.nz), order="F")
             else:
                 assert (
                     data.shape == self.arr_shape
@@ -486,7 +486,7 @@ class StructDiscretizer:
                     self.arr_shape,
                 )
 
-                data = np.reshape(data, self.nodes_tot, order='F')
+                data = np.reshape(data, self.nodes_tot, order="F")
             elif data.ndim == 1:
                 assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
                     data_name,
@@ -514,7 +514,7 @@ class StructDiscretizer:
         perm_z_int = np.zeros(self.arr_shape)
 
         # Calculate interface permeability array with harmonic average of permeability in x, y and z directions:
-        old_settings = np.seterr(divide='ignore', invalid='ignore')
+        old_settings = np.seterr(divide="ignore", invalid="ignore")
         perm_x_int[:-1, :, :] = (
             self.len_cell_xdir[:-1, :, :] + self.len_cell_xdir[1:, :, :]
         ) / (
@@ -561,20 +561,20 @@ class StructDiscretizer:
 
         geom_coef = np.concatenate(
             (
-                np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
-                np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
-                np.reshape(geom_coef_zdir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_xdir, (self.nodes_tot), order="F"),
+                np.reshape(geom_coef_ydir, (self.nodes_tot), order="F"),
+                np.reshape(geom_coef_zdir, (self.nodes_tot), order="F"),
             )
         )
 
         trans_xdir = np.reshape(
-            perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F'
+            perm_x_int * geom_coef_xdir, (self.nodes_tot), order="F"
         )
         trans_ydir = np.reshape(
-            perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F'
+            perm_y_int * geom_coef_ydir, (self.nodes_tot), order="F"
         )
         trans_zdir = np.reshape(
-            perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F'
+            perm_z_int * geom_coef_zdir, (self.nodes_tot), order="F"
         )
 
         # Construct connection list:
@@ -749,7 +749,7 @@ class StructDiscretizer:
         perm_z_int = np.zeros(self.arr_shape)
 
         # Calculate interface permeability array with harmonic average of permeability in x, y and z directions:
-        old_settings = np.seterr(divide='ignore', invalid='ignore')
+        old_settings = np.seterr(divide="ignore", invalid="ignore")
 
         perm_x_int[:-1, :, :] = (
             self.len_cell_xplus[:-1, :, :] + self.len_cell_xminus[1:, :, :]
@@ -778,34 +778,34 @@ class StructDiscretizer:
         # Note, that for the last index for corresponding direction, geom_coef remains to be zero,
         # indicating that connection leads outside the reservoir and needs to be excluded
         geom_coef_xdir[:-1, :, :] = (
-            self.cell_data['area'][:-1, :, :, 1] / self.dist_cell_x
+            self.cell_data["area"][:-1, :, :, 1] / self.dist_cell_x
         )
         geom_coef_xdir[:-1, :, :][self.dist_cell_x == 0] = 0.0
         geom_coef_ydir[:, :-1, :] = (
-            self.cell_data['area'][:, :-1, :, 3] / self.dist_cell_y
+            self.cell_data["area"][:, :-1, :, 3] / self.dist_cell_y
         )
         geom_coef_ydir[:, :-1, :][self.dist_cell_y == 0] = 0.0
         geom_coef_zdir[:, :, :-1] = (
-            self.cell_data['area'][:, :, :-1, 5] / self.dist_cell_z
+            self.cell_data["area"][:, :, :-1, 5] / self.dist_cell_z
         )
         geom_coef_zdir[:, :, :-1][self.dist_cell_z == 0] = 0.0
 
         geom_coef = np.concatenate(
             (
-                np.reshape(geom_coef_xdir, (self.nodes_tot), order='F'),
-                np.reshape(geom_coef_ydir, (self.nodes_tot), order='F'),
-                np.reshape(geom_coef_zdir, (self.nodes_tot), order='F'),
+                np.reshape(geom_coef_xdir, (self.nodes_tot), order="F"),
+                np.reshape(geom_coef_ydir, (self.nodes_tot), order="F"),
+                np.reshape(geom_coef_zdir, (self.nodes_tot), order="F"),
             )
         )
 
         trans_xdir = np.reshape(
-            perm_x_int * geom_coef_xdir, (self.nodes_tot), order='F'
+            perm_x_int * geom_coef_xdir, (self.nodes_tot), order="F"
         )
         trans_ydir = np.reshape(
-            perm_y_int * geom_coef_ydir, (self.nodes_tot), order='F'
+            perm_y_int * geom_coef_ydir, (self.nodes_tot), order="F"
         )
         trans_zdir = np.reshape(
-            perm_z_int * geom_coef_zdir, (self.nodes_tot), order='F'
+            perm_z_int * geom_coef_zdir, (self.nodes_tot), order="F"
         )
 
         # Construct connection list:
@@ -856,33 +856,33 @@ class StructDiscretizer:
         dz0 = np.zeros(2)
         if i != 0:
             dx0[0] = np.fabs(
-                self.cell_data['center'][i, j, k, 0]
-                - self.cell_data['center'][i - 1, j, k, 0]
+                self.cell_data["center"][i, j, k, 0]
+                - self.cell_data["center"][i - 1, j, k, 0]
             )
         if i != self.arr_shape[0] - 1:
             dx0[1] = np.fabs(
-                self.cell_data['center'][i, j, k, 0]
-                - self.cell_data['center'][i + 1, j, k, 0]
+                self.cell_data["center"][i, j, k, 0]
+                - self.cell_data["center"][i + 1, j, k, 0]
             )
         if j != 0:
             dy0[0] = np.fabs(
-                self.cell_data['center'][i, j, k, 1]
-                - self.cell_data['center'][i, j - 1, k, 1]
+                self.cell_data["center"][i, j, k, 1]
+                - self.cell_data["center"][i, j - 1, k, 1]
             )
         if j != self.arr_shape[1] - 1:
             dy0[1] = np.fabs(
-                self.cell_data['center'][i, j, k, 1]
-                - self.cell_data['center'][i, j + 1, k, 1]
+                self.cell_data["center"][i, j, k, 1]
+                - self.cell_data["center"][i, j + 1, k, 1]
             )
         if k != 0:
             dz0[0] = np.fabs(
-                self.cell_data['center'][i, j, k, 2]
-                - self.cell_data['center'][i, j, k - 1, 2]
+                self.cell_data["center"][i, j, k, 2]
+                - self.cell_data["center"][i, j, k - 1, 2]
             )
         if k != self.arr_shape[2] - 1:
             dz0[1] = np.fabs(
-                self.cell_data['center'][i, j, k, 2]
-                - self.cell_data['center'][i, j, k + 1, 2]
+                self.cell_data["center"][i, j, k, 2]
+                - self.cell_data["center"][i, j, k + 1, 2]
             )
 
         dx = np.sum(dx0) / np.count_nonzero(dx0) if np.count_nonzero(dx0) > 0 else 0.0
@@ -893,8 +893,8 @@ class StructDiscretizer:
     def apply_actnum_filter(
         self, actnum, cell_m, cell_p, tran, tran_thermal, arrays: list
     ):
-        old_settings = np.seterr(divide='ignore', invalid='ignore')
-        actnum = self.convert_to_flat_array(actnum, 'actnum')
+        old_settings = np.seterr(divide="ignore", invalid="ignore")
+        actnum = self.convert_to_flat_array(actnum, "actnum")
         num_inactive_due_actnum = actnum[actnum == 0].size
         num_inactive_due_volume = actnum[
             (self.calc_volumes() == 0) * (actnum > 0)
@@ -976,12 +976,14 @@ class StructDiscretizer:
         # Apply actnum filter, if any, and global_to_local indexing to arrays
         arrays_local = []
         for i, a in enumerate(arrays):
-            a = self.convert_to_flat_array(a, 'Unknown')
+            a = self.convert_to_flat_array(a, "Unknown")
             arrays_local.append(a[self.local_to_global])
         np.seterr(**old_settings)
         return cell_m_local, cell_p_local, tran_local, tran_thermal_local, arrays_local
 
-    def calc_well_index(self, i, j, k, well_ID=0.3048, segment_direction='z_axis', skin=0):
+    def calc_well_index(
+        self, i, j, k, well_ID=0.3048, segment_direction="z_axis", skin=0
+    ):
         """
         This method calculates the well index for each well segment/perforation
 
@@ -1030,7 +1032,7 @@ class StructDiscretizer:
 
             well_radius = well_ID / 2
 
-            if segment_direction == 'z_axis':
+            if segment_direction == "z_axis":
                 if kx * ky != 0:
                     peaceman_rad = (
                         0.28
@@ -1049,7 +1051,7 @@ class StructDiscretizer:
                     well_indexD = (
                         2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
                     )
-            elif segment_direction == 'x_axis':
+            elif segment_direction == "x_axis":
                 if kz * ky != 0:
                     peaceman_rad = (
                         0.28
@@ -1068,7 +1070,7 @@ class StructDiscretizer:
                     well_indexD = (
                         2 * np.pi * dx / (np.log(conduction_rad / well_radius) + skin)
                     )
-            elif segment_direction == 'y_axis':
+            elif segment_direction == "y_axis":
                 if kx * kz != 0:
                     peaceman_rad = (
                         0.28
@@ -1092,8 +1094,16 @@ class StructDiscretizer:
 
         return self.global_to_local[res_block], well_index, well_indexD
 
-    def calc_well_index_for_coupled_well_reservoir(self, i, j, k, well_ID, segment_direction='z_axis',
-                                                   with_peaceman=False, skin=None):
+    def calc_well_index_for_coupled_well_reservoir(
+        self,
+        i,
+        j,
+        k,
+        well_ID,
+        segment_direction="z_axis",
+        with_peaceman=False,
+        skin=None,
+    ):
         """
         This method calculates the perforation transmissibility for perforations in coupled well-reservoir models
 
@@ -1107,12 +1117,18 @@ class StructDiscretizer:
         when the Peaceman model is used (with_peaceman is True).
         :return well_index: well-index of the perforation
         """
-        assert (i > 0), "Perforation block coordinate should be positive"
-        assert (j > 0), "Perforation block coordinate should be positive"
-        assert (k > 0), "Perforation block coordinate should be positive"
-        assert (i <= self.nx), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (j <= self.ny), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (k <= self.nz), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i > 0, "Perforation block coordinate should be positive"
+        assert j > 0, "Perforation block coordinate should be positive"
+        assert k > 0, "Perforation block coordinate should be positive"
+        assert (
+            i <= self.nx
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (
+            j <= self.ny
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert (
+            k <= self.nz
+        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
         i -= 1
         j -= 1
         k -= 1
@@ -1130,31 +1146,55 @@ class StructDiscretizer:
                 dy = self.len_cell_ydir[i, j, k]
                 dz = self.len_cell_zdir[i, j, k]
             else:
-                raise Exception("Coupled well-reservoir model does not support CPG reservoirs!")
+                raise Exception(
+                    "Coupled well-reservoir model does not support CPG reservoirs!"
+                )
             kx = self.perm_x_cell[i, j, k]
             ky = self.perm_y_cell[i, j, k]
             kz = self.perm_z_cell[i, j, k]
 
             well_radius = well_ID / 2
 
-            if segment_direction == 'z_axis':
+            if segment_direction == "z_axis":
                 if with_peaceman:
                     if kx * ky != 0:
-                        peaceman_rad = 0.28 * np.sqrt(np.sqrt(ky / kx) * dx ** 2 + np.sqrt(kx / ky) * dy ** 2) / \
-                                       ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
-                        well_index = 2 * np.pi * dz * np.sqrt(kx * ky) / (np.log(peaceman_rad / well_radius) + skin)
+                        peaceman_rad = (
+                            0.28
+                            * np.sqrt(
+                                np.sqrt(ky / kx) * dx**2 + np.sqrt(kx / ky) * dy**2
+                            )
+                            / ((ky / kx) ** (1 / 4) + (kx / ky) ** (1 / 4))
+                        )
+                        well_index = (
+                            2
+                            * np.pi
+                            * dz
+                            * np.sqrt(kx * ky)
+                            / (np.log(peaceman_rad / well_radius) + skin)
+                        )
 
-                        conduction_rad = 0.28 * np.sqrt(dx ** 2 + dy ** 2) / 2.
-                        well_indexD = 2 * np.pi * dz / (np.log(conduction_rad / well_radius) + skin)
+                        conduction_rad = 0.28 * np.sqrt(dx**2 + dy**2) / 2.0
+                        well_indexD = (
+                            2
+                            * np.pi
+                            * dz
+                            / (np.log(conduction_rad / well_radius) + skin)
+                        )
                 elif not with_peaceman:
                     # assert dx == dy, "dx and dy of the reservoir block in which the perforation is located should be equal!"
-                    assert skin == 0, "Skin factor can be applied only when the Peaceman model is used!"
-                    geom_coef = 2 * np.pi * dz / np.log((dx / 2 + well_radius) / well_radius)
+                    assert (
+                        skin == 0
+                    ), "Skin factor can be applied only when the Peaceman model is used!"
+                    geom_coef = (
+                        2 * np.pi * dz / np.log((dx / 2 + well_radius) / well_radius)
+                    )
                     trans = kx * geom_coef
                     well_index = trans
                     well_indexD = geom_coef
             else:
-                raise Exception("Coupled well-reservoir model does not support non-z-axis segments!")
+                raise Exception(
+                    "Coupled well-reservoir model does not support non-z-axis segments!"
+                )
 
             well_index = well_index * StructDiscretizer.darcy_constant
 
@@ -1171,10 +1211,10 @@ class StructDiscretizer:
         :param filename: name of the desired file
         :return:
         """
-        with open(filename, 'w') as f:
-            f.write('TPFACONNS\n')
-            f.write('%d\n' % cell_m.size)
+        with open(filename, "w") as f:
+            f.write("TPFACONNS\n")
+            f.write("%d\n" % cell_m.size)
             for i, m in enumerate(cell_m):
-                f.write('%d\t%d\t%.15f\n' % (m, cell_p[i], conn[i]))
-            f.write('/' % cell_m.size)
+                f.write("%d\t%d\t%.15f\n" % (m, cell_p[i], conn[i]))
+            f.write("/" % cell_m.size)
         return 0

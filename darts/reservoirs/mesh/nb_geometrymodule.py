@@ -20,15 +20,15 @@ from numba.typed import Dict
 
 kv_ty = (int32, int32[:])
 spec = [
-    ('volume', float64),
-    ('depth', float64),
-    ('centroid', float64[:]),
-    ('nodes_to_cell', int32[:]),
-    ('coord_nodes_to_cell', float64[:, :]),
-    ('geometry_type', types.unicode_type),
-    ('nodes_to_faces', types.DictType(*kv_ty)),
-    ('permeability', float64[:]),
-    ('prop_id', int32),
+    ("volume", float64),
+    ("depth", float64),
+    ("centroid", float64[:]),
+    ("nodes_to_cell", int32[:]),
+    ("coord_nodes_to_cell", float64[:, :]),
+    ("geometry_type", types.unicode_type),
+    ("nodes_to_faces", types.DictType(*kv_ty)),
+    ("permeability", float64[:]),
+    ("prop_id", int32),
 ]
 
 

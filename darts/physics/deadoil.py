@@ -60,20 +60,20 @@ class DeadOil2PFluidProps(FluidProps):  # , idata: InputData):
     def __init__(self):
         super().__init__()
         self.components = ["Zo", "Zw"]
-        self.phases = ['oil', 'water']
+        self.phases = ["oil", "water"]
         self.Mw = np.ones(len(self.components))
 
         self.density = dict(
             [
-                ('water', DensityBasic(compr=1e-5, dens0=1014)),
-                ('oil', DensityBasic(compr=5e-3, dens0=700)),
+                ("water", DensityBasic(compr=1e-5, dens0=1014)),
+                ("oil", DensityBasic(compr=5e-3, dens0=700)),
             ]
         )
-        self.viscosity = dict([('water', ConstFunc(0.89)), ('oil', ConstFunc(1))])
+        self.viscosity = dict([("water", ConstFunc(0.89)), ("oil", ConstFunc(1))])
         self.rel_perm = dict(
             [
-                ('water', PhaseRelPerm("water", 0.1, 0.1)),
-                ('oil', PhaseRelPerm("oil", 0.1, 0.1)),
+                ("water", PhaseRelPerm("water", 0.1, 0.1)),
+                ("oil", PhaseRelPerm("oil", 0.1, 0.1)),
             ]
         )
 
@@ -87,10 +87,10 @@ class DeadOil3PFluidProps(FluidProps):
 
         self.density = dict(
             [
-                ('gas', DensityBasic(compr=1e-3, dens0=200)),
-                ('oil', DensityBasic(compr=1e-5, dens0=600)),
+                ("gas", DensityBasic(compr=1e-3, dens0=200)),
+                ("oil", DensityBasic(compr=1e-5, dens0=600)),
                 (
-                    'water',
+                    "water",
                     DensityBrineCO2(
                         self.components, compr=1e-5, dens0=1000, co2_mult=0
                     ),
@@ -99,16 +99,16 @@ class DeadOil3PFluidProps(FluidProps):
         )
         self.viscosity = dict(
             [
-                ('gas', ConstFunc(0.05)),
-                ('oil', ConstFunc(0.5)),
-                ('water', ConstFunc(0.5)),
+                ("gas", ConstFunc(0.05)),
+                ("oil", ConstFunc(0.5)),
+                ("water", ConstFunc(0.5)),
             ]
         )
         self.rel_perm = dict(
             [
-                ('gas', PhaseRelPerm("gas")),
-                ('oil', PhaseRelPerm("oil")),
-                ('water', PhaseRelPerm("water")),
+                ("gas", PhaseRelPerm("gas")),
+                ("oil", PhaseRelPerm("oil")),
+                ("water", PhaseRelPerm("water")),
             ]
         )
 

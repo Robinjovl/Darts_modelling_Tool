@@ -21,7 +21,7 @@ def gen_cpg_grid(
     start_y: float = 0,
     start_z: float = 2000,
 ):
-    '''
+    """
     Generate a regular grid in corner point geometry format (COORD, ZCORN) and optionally output it to the file
     :param nx: number of reservoir blocks in the x-direction
     :param ny: number of reservoir blocks in the y-direction
@@ -39,7 +39,7 @@ def gen_cpg_grid(
     :param start_x: mesh lower bound coordinate by X [m]
     :param start_y: mesh lower bound coordinate by Y [m]
     :param start_z: mesh lower bound coordinate by Z (the depth of the top layer) [m]
-    '''
+    """
     if np.isscalar(dx):
         dx_array = np.zeros(nx) + dx
     else:
@@ -108,36 +108,36 @@ def gen_cpg_grid(
 
     # write to file
     if gridname is not None:
-        specgrid_ = [nx, ny, nz2, '1', 'F']
-        keys = ['SPECGRID', 'COORD', 'ZCORN', 'ACTNUM']
+        specgrid_ = [nx, ny, nz2, "1", "F"]
+        keys = ["SPECGRID", "COORD", "ZCORN", "ACTNUM"]
         data = [specgrid_, coord, zcorn, actnum]
         save_few_keywords(gridname, keys, data)
 
         data = []
         keys = []
         for arr, arr_name in [
-            (poro_arr, 'PORO'),
-            (permx_arr, 'PERMX'),
-            (permy_arr, 'PERMY'),
-            (permz_arr, 'PERMZ'),
+            (poro_arr, "PORO"),
+            (permx_arr, "PERMX"),
+            (permy_arr, "PERMY"),
+            (permz_arr, "PERMZ"),
         ]:
             data.append(arr)
             keys.append(arr_name)
         save_few_keywords(propname, keys, data)
 
     arrays = {}
-    arrays['SPECGRID'] = specgrid
-    arrays['COORD'] = coord
-    arrays['ZCORN'] = zcorn
-    arrays['ACTNUM'] = actnum
-    arrays['PORO'] = poro_arr
-    arrays['PERMX'] = permx_arr
-    arrays['PERMY'] = permy_arr
-    arrays['PERMZ'] = permz_arr
+    arrays["SPECGRID"] = specgrid
+    arrays["COORD"] = coord
+    arrays["ZCORN"] = zcorn
+    arrays["ACTNUM"] = actnum
+    arrays["PORO"] = poro_arr
+    arrays["PERMX"] = permx_arr
+    arrays["PERMY"] = permy_arr
+    arrays["PERMZ"] = permz_arr
     return arrays
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     nx = 200
     ny = 200
     nz = 100
@@ -152,6 +152,6 @@ if __name__ == '__main__':
         permy=10,
         permz=10,
         poro=0.2,
-        gridname='grid.grdecl',
-        propname='reservoir.in',
+        gridname="grid.grdecl",
+        propname="reservoir.in",
     )

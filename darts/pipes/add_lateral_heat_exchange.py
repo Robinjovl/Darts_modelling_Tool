@@ -2,10 +2,19 @@ from darts.pipes.define_pipe_geometry import PipeGeometry
 
 import numpy as np
 
+
 class SemiAnalyticalWellLateralHeatTransfer:
-    def __init__(self, pipe_name: str, pipe_geometry: PipeGeometry, earth_thermal_props: dict, outermost_layer_OD: float,
-                 Ui: float = None, well_layers_props: dict = None, time_function_name: str = "Chiu&Thakur",
-                 verbose: bool = False):
+    def __init__(
+        self,
+        pipe_name: str,
+        pipe_geometry: PipeGeometry,
+        earth_thermal_props: dict,
+        outermost_layer_OD: float,
+        Ui: float = None,
+        well_layers_props: dict = None,
+        time_function_name: str = "Chiu&Thakur",
+        verbose: bool = False,
+    ):
         """
         This class defines lateral heat transfer between the wellbore the geometry of which is entered as the first
         input argument of the constructor and the surrounding rock/soil using a semi-analytical lateral heat
@@ -34,8 +43,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
         :param verbose: Whether to display extra info about SemiAnalyticalWellLateralHeatTransfer
         :type verbose: boolean
         """
-        assert pipe_geometry.pipe_name == pipe_name, \
-            "The names of the pipes in PipeGeometry and SemiAnalyticalWellLateralHeatTransfer are not identical!"
+        assert (
+            pipe_geometry.pipe_name == pipe_name
+        ), "The names of the pipes in PipeGeometry and SemiAnalyticalWellLateralHeatTransfer are not identical!"
         self.well_name = pipe_name
 
         T_earth = earth_thermal_props["T"]
@@ -78,7 +88,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
         self.q_lateral_heat = []
 
         if verbose:
-            print(f"** SemiAnalyticalWellLateralHeatTransfer for the well {pipe_name} is added!")
+            print(
+                f"** SemiAnalyticalWellLateralHeatTransfer for the well {pipe_name} is added!"
+            )
 
     def evaluate(self, T_segments, simulation_timer):
         """
@@ -92,32 +104,65 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # it could be a casing, a cement sheath, etc.
         if self.time_function_name == "Ramey":
             # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
-            f_t = 1 / (- np.log((self.outermost_layer_OD/2) / (2 * np.sqrt(self.alpha * simulation_timer))) - 0.29)
+            f_t = 1 / (
+                -np.log(
+                    (self.outermost_layer_OD / 2)
+                    / (2 * np.sqrt(self.alpha * simulation_timer))
+                )
+                - 0.29
+            )
         elif self.time_function_name == "Chiu&Thakur":
             # Chiu and Thakur time function: Provides a reasonable approximation of transient wellbore-formation heat
             # exchange while avoiding the early time discontinuity that results from using Ramey’s time function.
-            f_t = 0.982 * np.log(1 + 1.81 * np.sqrt(self.alpha * simulation_timer) / (self.outermost_layer_OD))
+            f_t = 0.982 * np.log(
+                1
+                + 1.81
+                * np.sqrt(self.alpha * simulation_timer)
+                / (self.outermost_layer_OD)
+            )
         else:
-            raise TypeError("Unrecognized time function name " + self.time_function_name)
+            raise TypeError(
+                "Unrecognized time function name " + self.time_function_name
+            )
 
         # Lateral heat rate evaluation
         if self.Ui is not None:
             # For constant overall heat transfer coefficient
             # I should see if U is based on ID or OD of the pipe. I think it's based on ID.
-            self.q_lateral_heat = (2 * np.pi * self.tubing_IR * self.segments_lengths) * self.Ui * (self.T_earth - T_segments) / f_t
+            self.q_lateral_heat = (
+                (2 * np.pi * self.tubing_IR * self.segments_lengths)
+                * self.Ui
+                * (self.T_earth - T_segments)
+                / f_t
+            )
         elif self.well_layers_props is not None:
             # Calculate the overall heat transfer coefficient using Willhite's formula
             U_to = "Willhite's formula"
             r_to = "tubing_outside_radius"
-            self.q_lateral_heat = (2 * np.pi * self.K_earth * self.segments_lengths * (self.T_earth - T_segments)
-                                   / (f_t + self.K_earth / (r_to * U_to)))
+            self.q_lateral_heat = (
+                2
+                * np.pi
+                * self.K_earth
+                * self.segments_lengths
+                * (self.T_earth - T_segments)
+                / (f_t + self.K_earth / (r_to * U_to))
+            )
 
-        return self.q_lateral_heat * 24 * 60 * 60 / 1000   # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
+        return (
+            self.q_lateral_heat * 24 * 60 * 60 / 1000
+        )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
 
 
 class NumericalWellLateralHeatTransfer:
-    def __init__(self, pipe_name: str, pipe_geometry: PipeGeometry, pipe_wall_cells_idx: np.ndarray,
-                 pipe_wall_thickness: float, pipe_wall_cond: float, verbose: bool = False):
+    def __init__(
+        self,
+        pipe_name: str,
+        pipe_geometry: PipeGeometry,
+        pipe_wall_cells_idx: np.ndarray,
+        pipe_wall_thickness: float,
+        pipe_wall_cond: float,
+        verbose: bool = False,
+    ):
         """
         This class defines lateral heat transfer between the wellbore the geometry of which is entered as the first
         input argument of the constructor and the surrounding pipe (and beyond) using a numerical lateral heat
@@ -139,31 +184,47 @@ class NumericalWellLateralHeatTransfer:
         :param verbose: Whether to display extra info about NumericalWellLateralHeatTransfer
         :type verbose: boolean
         """
-        assert pipe_geometry.pipe_name == pipe_name, \
-            "The names of the pipes in PipeGeometry and NumericalWellLateralHeatTransfer are not identical!"
+        assert (
+            pipe_geometry.pipe_name == pipe_name
+        ), "The names of the pipes in PipeGeometry and NumericalWellLateralHeatTransfer are not identical!"
         self.well_name = pipe_name
 
-        assert isinstance(pipe_wall_cells_idx, np.ndarray), "pipe_wall_cells_idx must be a numpy array!"
+        assert isinstance(
+            pipe_wall_cells_idx, np.ndarray
+        ), "pipe_wall_cells_idx must be a numpy array!"
         self.pipe_wall_cells_idx = pipe_wall_cells_idx
 
         # Thermal transmissibility simply equals geom_coef = A / L
-        assert isinstance(pipe_geometry.pipe_IR, float), "Pipe radius must be a float; otherwise, it's not supported!"
+        assert isinstance(
+            pipe_geometry.pipe_IR, float
+        ), "Pipe radius must be a float; otherwise, it's not supported!"
         pipe_perimeter = 2 * np.pi * pipe_geometry.pipe_IR
         A = pipe_perimeter * pipe_geometry.segments_lengths[:-1]
-        assert isinstance(pipe_wall_thickness, float), "Pipe wall thickness must be a float; otherwise, it's not supported!"
+        assert isinstance(
+            pipe_wall_thickness, float
+        ), "Pipe wall thickness must be a float; otherwise, it's not supported!"
         L = (pipe_geometry.pipe_ID + pipe_wall_thickness) / 2
         geom_coef = A / L
         self.tran_thermal = geom_coef
 
-        assert isinstance(pipe_wall_cond, float), "Pipe wall conductivity must be a float; otherwise, it's not supported!"
+        assert isinstance(
+            pipe_wall_cond, float
+        ), "Pipe wall conductivity must be a float; otherwise, it's not supported!"
         self.pipe_wall_cond = pipe_wall_cond
 
         self.q_lateral_heat = []
 
         if verbose:
-            print(f"** NumericalWellLateralHeatTransfer for the well {pipe_name} is added!")
+            print(
+                f"** NumericalWellLateralHeatTransfer for the well {pipe_name} is added!"
+            )
 
-    def evaluate(self, T_segments: np.ndarray, T_pipe_wall_cells: np.ndarray, well_fluid_conductivity):
+    def evaluate(
+        self,
+        T_segments: np.ndarray,
+        T_pipe_wall_cells: np.ndarray,
+        well_fluid_conductivity,
+    ):
         # Implemented similar to rock heat conduction in the super engine
         t_diff = T_pipe_wall_cells - T_segments
         gamma_t_i = self.tran_thermal * well_fluid_conductivity

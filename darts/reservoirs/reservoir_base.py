@@ -40,7 +40,7 @@ class ReservoirBase:
         It calls discretize() to generate mesh object and adds the wells with perforations to the mesh.
         """
         if not hasattr(
-            self, 'mesh'
+            self, "mesh"
         ):  # to avoid double execution when call init_reservoir explicitly in model and DARTSModel.init()
             self.mesh = self.discretize(verbose)
         return
@@ -84,7 +84,13 @@ class ReservoirBase:
         """
         pass
 
-    def add_well(self, well_name: str, ms_well_type: ms_well.MS_Type, well_ID: float = 0.15, well_geometry: PipeGeometry = None) -> None:
+    def add_well(
+        self,
+        well_name: str,
+        ms_well_type: ms_well.MS_Type,
+        well_ID: float = 0.15,
+        well_geometry: PipeGeometry = None,
+    ) -> None:
         """
         Function to add :class:`ms_well` object to list of wells and generate list of perforations
 
@@ -105,25 +111,43 @@ class ReservoirBase:
         well.ms_type = ms_well_type
 
         if well.ms_type == ms_well.MS_Type.EPM:
-            assert well_geometry is None, "For EPM, well_geometry must not be specified!"
+            assert (
+                well_geometry is None
+            ), "For EPM, well_geometry must not be specified!"
             # First put only area here, to be multiplied by segment length later. segment_volume is the volume of
             # the segment in front of the reservoir cell which is perforated.
-            well.segment_volume = pi / 4 * well_ID ** 2
+            well.segment_volume = pi / 4 * well_ID**2
             # will be updated in add_perforation
             well.well_head_depth = 0
             well.well_body_depth = 0
             well.segment_depth_increment = 0
 
         elif well.ms_type == ms_well.MS_Type.DFM:
-            assert well_geometry is not None, "For DFM, well_geometry must be specified!"
+            assert (
+                well_geometry is not None
+            ), "For DFM, well_geometry must be specified!"
             # segments_volumes are the volumes of all the segments of the wellbore from the wellhead segment to
             # the lowermost perforated or non-perforated segment.
             well.segments_volumes = value_vector(well_geometry.segments_volumes)
             well.well_transmissibility = well_geometry.pipe_internal_A
             well.segments_depths = value_vector(well_geometry.TVD_segments)
-            segments_specific_potential_energy = 9.80665 * 1e-3 * (well_geometry.pipe_length - well_geometry.z - well_geometry.z[0]) * np.cos(well_geometry.inclination_angle_radian)
+            segments_specific_potential_energy = (
+                9.80665
+                * 1e-3
+                * (well_geometry.pipe_length - well_geometry.z - well_geometry.z[0])
+                * np.cos(well_geometry.inclination_angle_radian)
+            )
             well.segments_spe = value_vector(segments_specific_potential_energy)
-            connections_specific_potential_energy = 9.80665 * 1e-3 * (well_geometry.pipe_length - well_geometry.z_interfaces - well_geometry.z[0]) * np.cos(well_geometry.inclination_angle_radian)
+            connections_specific_potential_energy = (
+                9.80665
+                * 1e-3
+                * (
+                    well_geometry.pipe_length
+                    - well_geometry.z_interfaces
+                    - well_geometry.z[0]
+                )
+                * np.cos(well_geometry.inclination_angle_radian)
+            )
             well.conns_spe = value_vector(connections_specific_potential_energy)
             well.num_segments = well_geometry.num_segments
 
@@ -132,10 +156,19 @@ class ReservoirBase:
         return
 
     @abc.abstractmethod
-    def add_perforation(self, well_name: str, res_cell_idx: Union[int, tuple], well_seg_idx: int = None,
-                        well_ID: float = 0.3048, well_index: float = None, well_indexD: float = None,
-                        segment_direction: str = 'z_axis', skin: float = 0, multi_segment: bool = False,
-                        verbose: bool = False):
+    def add_perforation(
+        self,
+        well_name: str,
+        res_cell_idx: Union[int, tuple],
+        well_seg_idx: int = None,
+        well_ID: float = 0.3048,
+        well_index: float = None,
+        well_indexD: float = None,
+        segment_direction: str = "z_axis",
+        skin: float = 0,
+        multi_segment: bool = False,
+        verbose: bool = False,
+    ):
         """
         Function to add perforations to well objects.
 
@@ -195,7 +228,7 @@ class ReservoirBase:
         # connect perforations of wells (for example, for closed loop geothermal)
         # dictionary: key is a pair of 2 well names; value is a list of well perforation indices to connect
         # example {(well_1.name, well_2.name): [(w1_perf_1, w2_perf_1),(w1_perf_2, w2_perf_2)]}
-        if hasattr(self, 'connected_well_segments'):
+        if hasattr(self, "connected_well_segments"):
             for well_pair in self.connected_well_segments.keys():
                 well_1 = self.get_well(well_pair[0])
                 well_2 = self.get_well(well_pair[1])
@@ -217,11 +250,11 @@ class ReservoirBase:
         fig=None,
         figsize: tuple = None,
         axs_shape: tuple = None,
-        aspect_ratio: str = 'equal',
+        aspect_ratio: str = "equal",
         logx: bool = False,
         plot_zeros: bool = True,
-        cmap: str = 'jet',
-        colorbar_loc: str = 'right',
+        cmap: str = "jet",
+        colorbar_loc: str = "right",
     ):
         """
         Method for plotting output using matplotlib library.

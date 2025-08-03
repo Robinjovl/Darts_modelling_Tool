@@ -127,11 +127,11 @@ class PhysicsBase:
 
     def init_physics(
         self,
-        discr_type: str = 'tpfa',
-        platform: str = 'cpu',
-        itor_type: str = 'multilinear',
-        itor_mode: str = 'adaptive',
-        itor_precision: str = 'd',
+        discr_type: str = "tpfa",
+        platform: str = "cpu",
+        itor_type: str = "multilinear",
+        itor_mode: str = "adaptive",
+        itor_precision: str = "d",
         verbose: bool = False,
         is_barycentric: bool = False,
     ):
@@ -196,7 +196,7 @@ class PhysicsBase:
 
     @abc.abstractmethod
     def set_engine(
-        self, discr_type: str = 'tpfa', platform: str = 'cpu'
+        self, discr_type: str = "tpfa", platform: str = "cpu"
     ) -> engine_base:
         """
         Function to set :class:`engine` object.
@@ -213,10 +213,10 @@ class PhysicsBase:
 
     def set_interpolators(
         self,
-        platform='cpu',
-        itor_type='multilinear',
-        itor_mode='adaptive',
-        itor_precision='d',
+        platform="cpu",
+        itor_type="multilinear",
+        itor_mode="adaptive",
+        itor_precision="d",
         is_barycentric: bool = False,
     ):
         """
@@ -247,7 +247,7 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='reservoir %d interpolation' % region,
+                timer_name="reservoir %d interpolation" % region,
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
@@ -261,7 +261,7 @@ class PhysicsBase:
                 algorithm=itor_type,
                 mode=itor_mode,
                 precision=itor_precision,
-                timer_name='property %d interpolation' % region,
+                timer_name="property %d interpolation" % region,
                 region=str(region),
             )
 
@@ -270,12 +270,12 @@ class PhysicsBase:
             n_ops=self.n_ops,
             axes_min=self.axes_min,
             axes_max=self.axes_max,
-            timer_name='well interpolation',
+            timer_name="well interpolation",
             platform=platform,
             algorithm=itor_type,
             mode=itor_mode,
             precision=itor_precision,
-            region='-1',
+            region="-1",
         )
 
         self.well_ctrl_itor = self.create_interpolator(
@@ -283,7 +283,7 @@ class PhysicsBase:
             n_ops=self.well_ctrl_operators.n_ops,
             axes_min=self.axes_min,
             axes_max=self.axes_max,
-            timer_name='well controls interpolation',
+            timer_name="well controls interpolation",
             platform=platform,
             algorithm=itor_type,
             mode=itor_mode,
@@ -294,7 +294,7 @@ class PhysicsBase:
             n_ops=self.well_init_operators.n_ops,
             axes_min=value_vector(self.PT_axes_min),
             axes_max=value_vector(self.PT_axes_max),
-            timer_name='well initialization',
+            timer_name="well initialization",
             platform=platform,
             algorithm=itor_type,
             mode=itor_mode,
@@ -511,11 +511,11 @@ class PhysicsBase:
         axes_max: value_vector,
         timer_name: str,
         n_ops: int,
-        algorithm: str = 'multilinear',
-        mode: str = 'adaptive',
-        platform: str = 'cpu',
-        precision: str = 'd',
-        region: str = '',
+        algorithm: str = "multilinear",
+        mode: str = "adaptive",
+        platform: str = "cpu",
+        precision: str = "d",
+        region: str = "",
         is_barycentric: bool = False,
     ):
         """
@@ -581,7 +581,7 @@ class PhysicsBase:
         cache_loaded = 0
         # try to create itor with 32-bit index type first (kinda a bit faster)
         try:
-            if algorithm == 'linear':
+            if algorithm == "linear":
                 itor = eval(itor_name)(
                     evaluator, self.n_axes_points, axes_min, axes_max, is_barycentric
                 )
@@ -596,11 +596,11 @@ class PhysicsBase:
                 np.prod(np.array(self.n_axes_points), dtype=np.float64)
                 < np.iinfo(np.int64).max
             ):
-                itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
+                itor_name = itor_name.replace("interpolator_i", "interpolator_l")
             else:
-                itor_name = itor_name.replace('interpolator_i', 'interpolator_ll')
+                itor_name = itor_name.replace("interpolator_i", "interpolator_ll")
             try:
-                if algorithm == 'linear':
+                if algorithm == "linear":
                     itor = eval(itor_name)(
                         evaluator,
                         self.n_axes_points,
@@ -646,9 +646,9 @@ class PhysicsBase:
             itor_cache_signature_hash = str(
                 hashlib.md5(itor_cache_signature.encode()).hexdigest()
             )
-            itor_cache_filename = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
+            itor_cache_filename = "obl_point_data_" + itor_cache_signature_hash + ".pkl"
 
-            if hasattr(self, 'cache_dir'):
+            if hasattr(self, "cache_dir"):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
             # if cache file exists, read it
             if os.path.exists(itor_cache_filename):
@@ -656,13 +656,13 @@ class PhysicsBase:
                     print(
                         "Reading cached point data for ",
                         type(itor).__name__,
-                        'from',
+                        "from",
                         itor_cache_filename,
                     )
                     itor.point_data = pickle.load(fp)
                     print(len(itor.point_data.keys()), "points loaded")
                     cache_loaded = 1
-            if mode == 'adaptive':
+            if mode == "adaptive":
                 # for adaptive itors, delay obl data save moment, because
                 # during simulations new points will be evaluated.
                 # on model destruction (or interpreter exit), itor point data will be written to disk
@@ -671,7 +671,7 @@ class PhysicsBase:
         itor.init()
         # for static itors, save the cache immediately after init, if it has not been already loaded
         # otherwise, there is no point to save the same data over and over
-        if self.cache and mode == 'static' and not cache_loaded:
+        if self.cache and mode == "static" and not cache_loaded:
             with open(itor_cache_filename, "wb") as fp:
                 print("Writing point data for ", type(itor).__name__)
                 pickle.dump(itor.point_data, fp, protocol=4)
@@ -717,13 +717,13 @@ class PhysicsBase:
         self.cache = False
         for itor, fname in self.created_itors:
             filename = fname
-            if hasattr(self, 'cache_dir'):
+            if hasattr(self, "cache_dir"):
                 if (
                     os.path.basename(fname) == fname
                 ):  # could already have a folder in fname
                     filename = os.path.join(self.cache_dir, fname)
             with open(filename, "wb") as fp:
-                print("Writing point data for ", type(itor).__name__, 'to', filename)
+                print("Writing point data for ", type(itor).__name__, "to", filename)
                 pickle.dump(itor.point_data, fp, protocol=4)
 
     def body_path_start(self, output_folder):
@@ -735,11 +735,11 @@ class PhysicsBase:
         if not os.path.exists(output_folder):
             os.mkdir(output_folder)
 
-        with open(os.path.join(output_folder, 'body_path.txt'), "w") as fp:
+        with open(os.path.join(output_folder, "body_path.txt"), "w") as fp:
             self.processed_body_idxs = set()
             for id in range(self.n_vars):
                 fp.write(
-                    '%d %lf %lf %s\n'
+                    "%d %lf %lf %s\n"
                     % (
                         self.n_axes_points[id],
                         self.axes_min[id],
@@ -747,7 +747,7 @@ class PhysicsBase:
                         self.vars[id],
                     )
                 )
-            fp.write('Body Index Data\n')
+            fp.write("Body Index Data\n")
 
     def body_path_add_bodys(self, output_folder, time):
         """
@@ -756,13 +756,13 @@ class PhysicsBase:
         :param output_folder: folder to write output to
         :param time: current time
         """
-        with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
-            fp.write('T=%lf\n' % time)
+        with open(os.path.join(output_folder, "body_path.txt"), "a") as fp:
+            fp.write("T=%lf\n" % time)
             itor = self.acc_flux_itor[0]
             all_idxs = set(itor.get_hypercube_indexes())
             new_idxs = all_idxs - self.processed_body_idxs
             for i in new_idxs:
-                fp.write('%d\n' % i)
+                fp.write("%d\n" % i)
             self.processed_body_idxs = all_idxs
 
     def __del__(self):

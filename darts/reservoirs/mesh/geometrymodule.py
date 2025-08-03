@@ -664,7 +664,7 @@ class Cylinder(ControlVolume):
             self.wedge_coords
         ):  # divide into wedges of side faces and center nodes
             nodes_to_cell = [0, 1, 2, 3, 4, 5]
-            wedge = Wedge(nodes_to_cell, wedge_coords, 'wedge', permeability=1)
+            wedge = Wedge(nodes_to_cell, wedge_coords, "wedge", permeability=1)
             wedge.calculate_volume()
             self.volume += wedge.volume
         # print("volume", self.volume)

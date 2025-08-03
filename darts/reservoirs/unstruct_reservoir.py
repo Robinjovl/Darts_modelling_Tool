@@ -30,11 +30,11 @@ class UnstructReservoir(ReservoirBase):
     """
 
     physical_tags = {
-        'matrix': [],
-        'fracture': [],
-        'boundary': [],
-        'fracture_boundary': [],
-        'output': [],
+        "matrix": [],
+        "fracture": [],
+        "boundary": [],
+        "fracture_boundary": [],
+        "output": [],
     }
 
     def __init__(
@@ -136,18 +136,18 @@ class UnstructReservoir(ReservoirBase):
         boundary_data = (
             dict()
         )  # Dictionary containing boundary condition data (coordinate and value of boundary):
-        boundary_data['first_boundary_dir'] = (
-            'X'  # Indicates the boundary is located at constant X (in this case!)
+        boundary_data["first_boundary_dir"] = (
+            "X"  # Indicates the boundary is located at constant X (in this case!)
         )
         # Constant X-coordinate value at which the boundary is located (used to be 3.40885):
-        boundary_data['first_boundary_val'] = np.min(
+        boundary_data["first_boundary_val"] = np.min(
             self.discretizer.mesh_data.points[:, 0]
         )
 
         # Same as above but for the second boundary condition!
-        boundary_data['second_boundary_dir'] = 'X'
+        boundary_data["second_boundary_dir"] = "X"
         # Constant X-coordinate value at which the boundary is located (used to be 13.0014):
-        boundary_data['second_boundary_val'] = np.max(
+        boundary_data["second_boundary_val"] = np.max(
             self.discretizer.mesh_data.points[:, 0]
         )
 
@@ -170,9 +170,19 @@ class UnstructReservoir(ReservoirBase):
         )
         return
 
-    def add_perforation(self, well_name: str, res_cell_idx: int, well_seg_idx: int = None, well_ID: float = 0.3048,
-                        well_index: float = None, well_indexD: float = None, segment_direction: str = 'z_axis',
-                        skin: float = 0, multi_segment: bool = False, verbose: bool = False):
+    def add_perforation(
+        self,
+        well_name: str,
+        res_cell_idx: int,
+        well_seg_idx: int = None,
+        well_ID: float = 0.3048,
+        well_index: float = None,
+        well_indexD: float = None,
+        segment_direction: str = "z_axis",
+        skin: float = 0,
+        multi_segment: bool = False,
+        verbose: bool = False,
+    ):
         """
         Function to add perforations to wells.
 
@@ -184,18 +194,24 @@ class UnstructReservoir(ReservoirBase):
         # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
         perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
         if res_cell_idx in perf_indices:
-            print('There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!')
+            print(
+                "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
+            )
             exit()
 
         #  update well depth
-        perf_indices = np.append(perf_indices, res_cell_idx).astype(int)  # add current cell to previous perforation list
-        # set well depth to the top perforation depth 
+        perf_indices = np.append(perf_indices, res_cell_idx).astype(
+            int
+        )  # add current cell to previous perforation list
+        # set well depth to the top perforation depth
         well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
         well.well_body_depth = well.well_head_depth
 
         if well_index is None or well_indexD is None:
             # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(res_cell_idx, well_ID, skin)
+            wi, wid = self.discretizer.calc_equivalent_well_index(
+                res_cell_idx, well_ID, skin
+            )
             well_index = wi if well_index is None else well_index
             well_indexD = wid if well_indexD is None else well_indexD
 
@@ -208,11 +224,15 @@ class UnstructReservoir(ReservoirBase):
         else:
             well_block = 0
 
-        well.perforations = well.perforations + [(well_block, res_cell_idx, well_index, well_indexD)]
+        well.perforations = well.perforations + [
+            (well_block, res_cell_idx, well_index, well_indexD)
+        ]
 
         if verbose:
-            print('Added perforation for well %s to block %d with WI=%f, WID=%f' % (well.name, res_cell_idx,
-                                                                                    well_index, well_indexD))
+            print(
+                "Added perforation for well %s to block %d with WI=%f, WID=%f"
+                % (well.name, res_cell_idx, well_index, well_indexD)
+            )
         return
 
     def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
@@ -252,30 +272,30 @@ class UnstructReservoir(ReservoirBase):
         if export_grid_data:
             mesh_geom_dtype = np.float32
             matrix_props = {
-                'poro': self.poro,
-                'permx': self.permx,
-                'permy': self.permy,
-                'permz': self.permz,
-                'hcap': self.hcap,
-                'rcond': self.rcond,
-                'op_num': self.op_num,
+                "poro": self.poro,
+                "permx": self.permx,
+                "permy": self.permy,
+                "permz": self.permz,
+                "hcap": self.hcap,
+                "rcond": self.rcond,
+                "op_num": self.op_num,
             }
             # order of values in volume_all_cells: FRACTURE MATRIX
-            matrix_props['volume'] = np.array(self.mesh.volume, copy=False)
+            matrix_props["volume"] = np.array(self.mesh.volume, copy=False)
             # order of values in depth_all_cells: FRACTURE MATRIX BOUNDARY
-            matrix_props['depth'] = np.array(self.mesh.depth, copy=False)
-            matrix_props['center_x'] = self.discretizer.centroid_all_cells[:, 0]
-            matrix_props['center_y'] = self.discretizer.centroid_all_cells[:, 1]
-            matrix_props['center_z'] = self.discretizer.centroid_all_cells[:, 2]
-            frac_props = {'frac_aper': self.frac_aper}
+            matrix_props["depth"] = np.array(self.mesh.depth, copy=False)
+            matrix_props["center_x"] = self.discretizer.centroid_all_cells[:, 0]
+            matrix_props["center_y"] = self.discretizer.centroid_all_cells[:, 1]
+            matrix_props["center_z"] = self.discretizer.centroid_all_cells[:, 2]
+            frac_props = {"frac_aper": self.frac_aper}
 
             # Create empty lists for each geometry type - {**{}} operator merges dictionaries
             output_nodes = (
-                self.discretizer.vtk_output_nodes_to_cells['matrix']
+                self.discretizer.vtk_output_nodes_to_cells["matrix"]
                 if not self.discretizer.frac_cells_tot
                 else {
-                    **self.discretizer.vtk_output_nodes_to_cells['fracture'],
-                    **self.discretizer.vtk_output_nodes_to_cells['matrix'],
+                    **self.discretizer.vtk_output_nodes_to_cells["fracture"],
+                    **self.discretizer.vtk_output_nodes_to_cells["matrix"],
                 }
             )
             output_idxs = self.discretizer.vtk_output_cell_idxs
@@ -292,11 +312,11 @@ class UnstructReservoir(ReservoirBase):
                 ith_geometry = 0
 
                 # Fill fracture cells with zeros
-                for geometry, cell_idxs in output_idxs['fracture'].items():
+                for geometry, cell_idxs in output_idxs["fracture"].items():
                     cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
                     ith_geometry += 1
                 # Fill matrix cells with data
-                for geometry, cell_idxs in output_idxs['matrix'].items():
+                for geometry, cell_idxs in output_idxs["matrix"].items():
                     if np.isscalar(data):
                         if type(data) is int:
                             cell_data[prop][ith_geometry] += (
@@ -316,7 +336,7 @@ class UnstructReservoir(ReservoirBase):
                     ith_geometry = 0
 
                     # Fill fracture cells with data
-                    for geometry, cell_idxs in output_idxs['fracture'].items():
+                    for geometry, cell_idxs in output_idxs["fracture"].items():
                         if np.isscalar(data):
                             if type(data) is int:
                                 cell_data[prop][ith_geometry] += (
@@ -331,24 +351,24 @@ class UnstructReservoir(ReservoirBase):
                             cell_data[prop][ith_geometry] += data[cell_idxs].tolist()
                         ith_geometry += 1
                     # Fill matrix cells with zeros
-                    for geometry, cell_idxs in output_idxs['matrix'].items():
+                    for geometry, cell_idxs in output_idxs["matrix"].items():
                         cell_data[prop][ith_geometry] += [0.0] * len(cell_idxs)
                         ith_geometry += 1
 
             # Distinguish fracture cells from matrix cells
-            cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
+            cell_data["matrix_cell_bool"] = [[] for geometry in geometries]
             ith_geometry = 0
             for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                'fracture'
+                "fracture"
             ].items():
-                cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(
+                cell_data["matrix_cell_bool"][ith_geometry] += np.zeros(
                     len(cell_idxs)
                 ).tolist()  # fill fracture cells with zeros
                 ith_geometry += 1
             for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-                'matrix'
+                "matrix"
             ].items():
-                cell_data['matrix_cell_bool'][ith_geometry] += np.ones(
+                cell_data["matrix_cell_bool"][ith_geometry] += np.ones(
                     len(cell_idxs)
                 ).tolist()  # fill matrix cells with ones
                 ith_geometry += 1
@@ -360,7 +380,7 @@ class UnstructReservoir(ReservoirBase):
                 cell_data=cell_data,
             )
 
-            print('Writing mesh data to VTK file')
+            print("Writing mesh data to VTK file")
             meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
 
     def output_to_vtk(
@@ -394,19 +414,19 @@ class UnstructReservoir(ReservoirBase):
 
         # Create empty lists for each geometry type - {**{}} operator merges dictionaries
         output_nodes = (
-            self.discretizer.vtk_output_nodes_to_cells['matrix']
+            self.discretizer.vtk_output_nodes_to_cells["matrix"]
             if not self.discretizer.frac_cells_tot
             else {
-                **self.discretizer.vtk_output_nodes_to_cells['fracture'],
-                **self.discretizer.vtk_output_nodes_to_cells['matrix'],
+                **self.discretizer.vtk_output_nodes_to_cells["fracture"],
+                **self.discretizer.vtk_output_nodes_to_cells["matrix"],
             }
         )
         output_idxs = (
-            self.discretizer.vtk_output_cell_idxs['matrix']
+            self.discretizer.vtk_output_cell_idxs["matrix"]
             if not self.discretizer.frac_cells_tot
             else {
-                **self.discretizer.vtk_output_cell_idxs['fracture'],
-                **self.discretizer.vtk_output_cell_idxs['matrix'],
+                **self.discretizer.vtk_output_cell_idxs["fracture"],
+                **self.discretizer.vtk_output_cell_idxs["matrix"],
             }
         )
         geometries = output_nodes.keys()
@@ -416,24 +436,24 @@ class UnstructReservoir(ReservoirBase):
         }
 
         # Distinguish fracture cells from matrix cells
-        cell_data['matrix_cell_bool'] = [[] for geometry in geometries]
+        cell_data["matrix_cell_bool"] = [[] for geometry in geometries]
         ith_geometry = 0
         for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-            'fracture'
+            "fracture"
         ].items():
-            cell_data['matrix_cell_bool'][ith_geometry] += np.zeros(
+            cell_data["matrix_cell_bool"][ith_geometry] += np.zeros(
                 len(cell_idxs)
             ).tolist()  # fill fracture cells with zeros
             ith_geometry += 1
         for geometry, cell_idxs in self.discretizer.vtk_output_cell_idxs[
-            'matrix'
+            "matrix"
         ].items():
-            cell_data['matrix_cell_bool'][ith_geometry] += np.ones(
+            cell_data["matrix_cell_bool"][ith_geometry] += np.ones(
                 len(cell_idxs)
             ).tolist()  # fill matrix cells with ones
             ith_geometry += 1
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtu"
+        vtk_file_name = output_directory + "/solution_ts{}".format(ith_step) + ".vtu"
 
         # Loop over output properties
         for i, prop in enumerate(prop_names):
@@ -449,11 +469,11 @@ class UnstructReservoir(ReservoirBase):
             cell_data=cell_data,
         )
 
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        print("Writing data to VTK file for {:d}-th reporting step".format(ith_step))
         meshio.write(vtk_file_name, mesh)
 
         self.vtk_filenames_and_times[vtk_file_name] = t
-        vtk_group = VtkGroup(os.path.join(output_directory, 'solution'))
+        vtk_group = VtkGroup(os.path.join(output_directory, "solution"))
         for fname, t in self.vtk_filenames_and_times.items():
             vtk_group.addFile(fname, t)
         vtk_group.save()

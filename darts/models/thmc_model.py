@@ -30,7 +30,7 @@ class THMCModel(DartsModel):
             nt = 1
         if nt != 1:
             print(
-                'Geomechanical model does not support OpenMP yet. Please run with OMP_NUM_THREADS=1 or use darts.engines.set_num_threads(1).'
+                "Geomechanical model does not support OpenMP yet. Please run with OMP_NUM_THREADS=1 or use darts.engines.set_num_threads(1)."
             )
             exit()
 
@@ -40,8 +40,8 @@ class THMCModel(DartsModel):
         self.set_reservoir()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
-        if hasattr(self, 'idata'):
-            if self.idata.type_mech == 'thermoporoelasticity':
+        if hasattr(self, "idata"):
+            if self.idata.type_mech == "thermoporoelasticity":
                 self.reservoir.T_VAR = self.physics.engine.T_VAR
         self.set_solver_params()
         self.timer.node["initialization"].stop()
@@ -55,7 +55,7 @@ class THMCModel(DartsModel):
         self.reservoir.eps_vol_ref[:] = self.physics.engine.eps_vol[:]
         self.physics.engine.t = 0.0
 
-        if self.discretizer_name == 'pm_discretizer':
+        if self.discretizer_name == "pm_discretizer":
             self.physics.engine.contact_solver = (
                 contact_solver.RETURN_MAPPING
             )  # local_iterations # flux_from_previous_iteration # return_mapping
@@ -66,7 +66,7 @@ class THMCModel(DartsModel):
     def set_reservoir(self, timer):
         self.reservoir = UnstructReservoirMech(
             timer=timer,
-            thermoporoelasticity=self.idata.type_mech == 'thermal',
+            thermoporoelasticity=self.idata.type_mech == "thermal",
             fluid_vars=self.physics.vars,
         )
 
@@ -80,7 +80,7 @@ class THMCModel(DartsModel):
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         self.params.max_i_newton = 10
 
-        if self.discretizer_name == 'mech_discretizer':
+        if self.discretizer_name == "mech_discretizer":
             self.params.tolerance_linear = (
                 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             )
@@ -88,7 +88,7 @@ class THMCModel(DartsModel):
                 sim_params.cpu_superlu
             )  # cpu_gmres_fs_cpr # cpu_superlu
             self.params.max_i_linear = 5000
-        elif self.discretizer_name == 'pm_discretizer':
+        elif self.discretizer_name == "pm_discretizer":
             ls1 = linear_solver_params()
             ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
             ls1.tolerance_linear = 1.0e-12
@@ -100,11 +100,11 @@ class THMCModel(DartsModel):
 
     def set_physics(self):
         # Create property containers:
-        components = ['H2O']
-        phases = ['wat']
+        components = ["H2O"]
+        phases = ["wat"]
         Mw = [self.idata.fluid.Mw]
 
-        if self.idata.type_hydr == 'thermal':
+        if self.idata.type_hydr == "thermal":
             property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
@@ -125,7 +125,7 @@ class THMCModel(DartsModel):
         property_container.density_ev = dict(
             [
                 (
-                    'wat',
+                    "wat",
                     DensityBasic(
                         compr=self.idata.fluid.compressibility,
                         dens0=self.idata.fluid.density,
@@ -134,22 +134,22 @@ class THMCModel(DartsModel):
             ]
         )
         property_container.viscosity_ev = dict(
-            [('wat', ConstFunc(self.idata.fluid.viscosity))]
+            [("wat", ConstFunc(self.idata.fluid.viscosity))]
         )
 
-        property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
+        property_container.rel_perm_ev = dict([("wat", ConstFunc(1.0))])
         # rock compressibility is treated inside engine
         property_container.rock_compr_ev = ConstFunc(1.0)
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
         # create physics
-        if self.idata.type_mech == 'thermoporoelasticity':
+        if self.idata.type_mech == "thermoporoelasticity":
             property_container.enthalpy_ev = dict(
-                [('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))]
+                [("wat", EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))]
             )
             property_container.rock_energy_ev = EnthalpyBasic(
                 hcap=1.0, tref=0.0
             )  # TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.conductivity_ev = dict([("wat", ConstFunc(1.0))])
 
             thermal = True
             state_spec = (
@@ -192,11 +192,11 @@ class THMCModel(DartsModel):
             )
         self.physics.add_property_region(property_container)
 
-        self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
+        self.physics.init_physics(discr_type=self.discretizer_name, platform="cpu")
         return
 
     def init(self):
-        if self.discretizer_name == 'pm_discretizer':
+        if self.discretizer_name == "pm_discretizer":
             self.reservoir.mech_operators = mech_operators()
             self.reservoir.mech_operators.init(
                 self.reservoir.mesh,
@@ -233,11 +233,11 @@ class THMCModel(DartsModel):
         # super().init()  # init base model and engine
 
         # link engine with discretizer
-        if self.discretizer_name == 'mech_discretizer':
+        if self.discretizer_name == "mech_discretizer":
             self.physics.engine.set_discretizer(self.reservoir.discr)
             self.physics.engine.gravity = self.reservoir.discr.grav_vec.values
-        elif self.discretizer_name == 'pm_discretizer' and hasattr(
-            self.reservoir, 'contacts'
+        elif self.discretizer_name == "pm_discretizer" and hasattr(
+            self.reservoir, "contacts"
         ):
             for contact in self.reservoir.contacts:
                 contact.N_VARS = self.physics.engine.N_VARS
@@ -281,7 +281,7 @@ class THMCModel(DartsModel):
             )
 
     def set_initial_conditions(self):
-        input_distribution = {'pressure': self.reservoir.p_init}
+        input_distribution = {"pressure": self.reservoir.p_init}
         input_distribution.update(
             {
                 comp: self.reservoir.z_init[i]
@@ -289,7 +289,7 @@ class THMCModel(DartsModel):
             }
         )
         if self.reservoir.thermoporoelasticity:
-            input_distribution['temperature'] = self.reservoir.t_init
+            input_distribution["temperature"] = self.reservoir.t_init
 
         self.physics.set_initial_conditions_from_array(
             self.reservoir.mesh,
@@ -316,34 +316,34 @@ class THMCModel(DartsModel):
         Function to get the needed performance data
         """
         perf_data = dict()
-        perf_data['solution'] = np.copy(self.physics.engine.X)
-        perf_data['variables'] = ['ux', 'uy', 'uz', 'p']
-        perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
+        perf_data["solution"] = np.copy(self.physics.engine.X)
+        perf_data["variables"] = ["ux", "uy", "uz", "p"]
+        perf_data["reservoir blocks"] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
-            perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = (
+            perf_data["OBL resolution"] = list(self.physics.n_axes_points)
+            perf_data["operators"] = self.physics.n_ops
+            perf_data["timesteps"] = self.physics.engine.stat.n_timesteps_total
+            perf_data["wasted timesteps"] = self.physics.engine.stat.n_timesteps_wasted
+            perf_data["newton iterations"] = self.physics.engine.stat.n_newton_total
+            perf_data["wasted newton iterations"] = (
                 self.physics.engine.stat.n_newton_wasted
             )
-            perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
-            perf_data['wasted linear iterations'] = (
+            perf_data["linear iterations"] = self.physics.engine.stat.n_linear_total
+            perf_data["wasted linear iterations"] = (
                 self.physics.engine.stat.n_linear_wasted
             )
 
-            sim = self.timer.node['simulation']
-            jac = sim.node['jacobian assembly']
-            perf_data['simulation time'] = sim.get_timer()
-            perf_data['linearization time'] = jac.get_timer()
-            perf_data['linear solver time'] = (
-                sim.node['linear solver solve'].get_timer()
-                + sim.node['linear solver setup'].get_timer()
+            sim = self.timer.node["simulation"]
+            jac = sim.node["jacobian assembly"]
+            perf_data["simulation time"] = sim.get_timer()
+            perf_data["linearization time"] = jac.get_timer()
+            perf_data["linear solver time"] = (
+                sim.node["linear solver solve"].get_timer()
+                + sim.node["linear solver setup"].get_timer()
             )
-            interp = jac.node['interpolation']
-            perf_data['interpolation incl. generation time'] = interp.get_timer()
+            interp = jac.node["interpolation"]
+            perf_data["interpolation incl. generation time"] = interp.get_timer()
 
         return perf_data
 
@@ -359,7 +359,7 @@ class THMCModel(DartsModel):
         with open(file_name, "wb") as fp:
             pickle.dump(data, fp, 4)
 
-    def load_performance_data(self, file_name=''):
+    def load_performance_data(self, file_name=""):
         import os
         import pickle
 
@@ -371,7 +371,7 @@ class THMCModel(DartsModel):
             with open(file_name, "rb") as fp:
                 return pickle.load(fp)
         else:
-            print('PKL FILE', file_name, 'does not exist. Skipping.')
+            print("PKL FILE", file_name, "does not exist. Skipping.")
         return 0
 
     # it doesn't use model object, put inside the class just for the convenience of import
@@ -384,23 +384,23 @@ class THMCModel(DartsModel):
         diff_max_normalized_tol=1e-4,
         rel_diff_tol=1,
         plot=False,
-        png_suffix='',
+        png_suffix="",
     ):
         fail = 0
         # the difference lower than eps will not be accounted
-        eps_sol = {'p': 1e-5, 'ux': 1e-5, 'uy': 1e-5, 'uz': 1e-5}
+        eps_sol = {"p": 1e-5, "ux": 1e-5, "uy": 1e-5, "uz": 1e-5}
         get_eps = lambda var_name: (
             eps_sol[var_name] if var_name in eps_sol.keys() else 0.0
         )
         # data = self.get_performance_data()
-        nb = ref_data['reservoir blocks']
-        vars = cur_data['variables']
+        nb = ref_data["reservoir blocks"]
+        vars = cur_data["variables"]
         nv = len(vars)
         # Check final solution - data[0]
         # Check every variable separately
         for v in range(nv):
-            sol_et = ref_data['solution'][v : nb * nv : nv]
-            sol_cur = cur_data['solution'][v : nb * nv : nv]
+            sol_et = ref_data["solution"][v : nb * nv : nv]
+            sol_cur = cur_data["solution"][v : nb * nv : nv]
             sol_range = np.max(sol_et) - np.min(sol_et) + 1.0e-12
             # replace small values in solution with eps to avoid difference in normalized diff
             sol_et[np.fabs(sol_et) < get_eps(vars[v])] = 0.0
@@ -415,7 +415,7 @@ class THMCModel(DartsModel):
             ):
                 fail += 1
                 print(
-                    '#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E'
+                    "#%d solution check failed for variable %d %s (range %.2E): max(abs(diff))/range %.2E (tol %.2E), max(abs(diff)) = %.2E"
                     % (
                         fail,
                         v,
@@ -431,30 +431,30 @@ class THMCModel(DartsModel):
                 from matplotlib import pyplot as plt
 
                 fig, (ax1, ax2) = plt.subplots(2, sharex=True)
-                ax1.plot(sol_et, 'r', label='ref')
-                ax1.plot(sol_cur, 'b--', label='cur')
+                ax1.plot(sol_et, "r", label="ref")
+                ax1.plot(sol_cur, "b--", label="cur")
                 ax1.set_title(vars[v])
                 ax1.legend()
-                ax2.plot(diff, 'b')
-                ax2.set_title('diff')
-                plt.savefig(vars[v] + '_' + png_suffix + '.png', dpi=500)
+                ax2.plot(diff, "b")
+                ax2.set_title("diff")
+                plt.savefig(vars[v] + "_" + png_suffix + ".png", dpi=500)
                 plt.clf()
                 plt.close()
 
         for key, value in sorted(cur_data.items()):
-            if key == 'solution' or type(value) != int:
+            if key == "solution" or type(value) != int:
                 continue
             reference = ref_data[key]
 
             if reference == 0:
                 if value != 0:
-                    print('#%d parameter %s is %d (was 0)' % (fail, key, value))
+                    print("#%d parameter %s is %d (was 0)" % (fail, key, value))
                     fail += 1
             else:
                 rel_diff = (value - ref_data[key]) / reference * 100
                 if abs(rel_diff) > rel_diff_tol:
                     print(
-                        '#%d parameter %s is %d (was %d, %+.2f%%)'
+                        "#%d parameter %s is %d (was %d, %+.2f%%)"
                         % (fail, key, value, reference, rel_diff)
                     )
                     fail += 1

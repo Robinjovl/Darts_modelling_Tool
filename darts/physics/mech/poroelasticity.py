@@ -37,7 +37,7 @@ class Poroelasticity(Compositional):
         max_t: float = None,
         state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
         cache: bool = False,
-        discretizer: str = 'mech_discretizer',
+        discretizer: str = "mech_discretizer",
         axes_min=None,
         axes_max=None,
         n_axes_points=None,
@@ -96,7 +96,7 @@ class Poroelasticity(Compositional):
         self.n_dim = 3
         self.discretizer_name = discretizer
 
-        if self.discretizer_name == 'mech_discretizer':
+        if self.discretizer_name == "mech_discretizer":
             # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
             # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*enthalpy*/ + 2 /*temperature and pressure*/ + 1 /*rock density*/
             # = NE * (2 * nph + 2) + 4 * nph + 4
@@ -105,7 +105,7 @@ class Poroelasticity(Compositional):
             self.n_ops = 2 * self.n_vars
             assert not self.thermal
 
-    def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):
+    def set_engine(self, discretizer: str = "mech_discretizer", platform: str = "cpu"):
         """
         Function to set :class:`engine_super` object.
 
@@ -115,7 +115,7 @@ class Poroelasticity(Compositional):
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
         """
-        if discretizer == 'mech_discretizer':
+        if discretizer == "mech_discretizer":
             if self.thermal:
                 return eval(
                     "engine_super_elastic_%s%d_%d_t" % (platform, self.nc, self.nph)

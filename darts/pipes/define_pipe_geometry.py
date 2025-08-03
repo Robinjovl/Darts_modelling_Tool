@@ -4,9 +4,17 @@ import numpy
 
 from darts.pipes.units import *
 
+
 class PipeGeometry:
-    def __init__(self, pipe_name: str, segments_lengths, pipe_ID: float, inclination_angle=0,
-                 wall_roughness: float = 5e-5*meter(), verbose: bool = False):
+    def __init__(
+        self,
+        pipe_name: str,
+        segments_lengths,
+        pipe_ID: float,
+        inclination_angle=0,
+        wall_roughness: float = 5e-5 * meter(),
+        verbose: bool = False,
+    ):
         """
         Class constructor to define the geometry of a pipe
         Assumptions:
@@ -33,23 +41,29 @@ class PipeGeometry:
         elif isinstance(segments_lengths, np.ndarray):
             self.segments_lengths = segments_lengths
         else:
-            raise TypeError(f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!")
+            raise TypeError(
+                f"segments_lengths of the pipe {pipe_name} is neither a list nor a numpy array!"
+            )
 
         if isinstance(inclination_angle, list):
             self.inclination_angle = np.array(inclination_angle)
         elif isinstance(inclination_angle, (float, numpy.ndarray)):
             self.inclination_angle = inclination_angle
         else:
-            raise TypeError(f"inclination_angle of the pipe {pipe_name} is neither a list nor a numpy array nor a float!")
+            raise TypeError(
+                f"inclination_angle of the pipe {pipe_name} is neither a list nor a numpy array nor a float!"
+            )
 
-        self.inclination_angle_degree = inclination_angle   # 0 for a vertical pipe, 90 for a horizontal pipe for now
+        self.inclination_angle_degree = (
+            inclination_angle  # 0 for a vertical pipe, 90 for a horizontal pipe for now
+        )
         self.pipe_ID = pipe_ID
         self.wall_roughness = wall_roughness
 
         # Calculate additional geometry properties
         self.pipe_length = sum(segments_lengths)
         self.pipe_IR = self.pipe_ID / 2
-        self.pipe_internal_A = math.pi * self.pipe_IR ** 2
+        self.pipe_internal_A = math.pi * self.pipe_IR**2
         self.perimeter = 2 * math.pi * self.pipe_IR
         self.segments_volumes = self.pipe_internal_A * self.segments_lengths
         self.inclination_angle_radian = np.radians(self.inclination_angle_degree)
@@ -60,7 +74,7 @@ class PipeGeometry:
         z = []
         current_z = 0
         for length in self.segments_lengths:
-            centroid = current_z + length/2
+            centroid = current_z + length / 2
             z.append(centroid)
             # Move to the starting point of the next segment
             current_z += length
@@ -69,14 +83,18 @@ class PipeGeometry:
         self.z_m = self.z[0:-1:1]
         self.z_p = self.z[1::1]
 
-        self.D = self.z_p - self.z_m   # Distances between the centroids of neighboring interfaces
+        self.D = (
+            self.z_p - self.z_m
+        )  # Distances between the centroids of neighboring interfaces
 
         # Duplicate the first and last values of the array, which will be used for exterfaces
         self.D = np.insert(self.D, 0, self.D[0])
         self.D = np.append(self.D, self.D[-1])
 
         # Get interfaces positions
-        self.z_interfaces = np.cumsum(self.segments_lengths)[:-1]   # [:-1] removes the last exterface position
+        self.z_interfaces = np.cumsum(self.segments_lengths)[
+            :-1
+        ]  # [:-1] removes the last exterface position
 
         # Get segments centroids and interfaces positions together
         self.z_seg_interfaces = np.zeros(self.num_segments + self.num_interfaces)
@@ -85,7 +103,9 @@ class PipeGeometry:
 
         if isinstance(self.inclination_angle_radian, float):
             self.TVD_segments = self.z * np.cos(self.inclination_angle_radian)
-            self.TVD_interfaces = self.z_interfaces * np.cos(self.inclination_angle_radian)
+            self.TVD_interfaces = self.z_interfaces * np.cos(
+                self.inclination_angle_radian
+            )
         elif isinstance(self.inclination_angle_radian, numpy.ndarray):
             # This condition is satisfied when class PETREL_PipeGeometry is used where we could have multiple
             # inclination angles and these variables are evaluated in the constructor of that class.
@@ -96,15 +116,24 @@ class PipeGeometry:
         self.TVD_seg_interfaces[1::2] = self.TVD_interfaces
 
         if verbose:
-            print("** Geometry of the pipe \"%s\" is defined!" % self.pipe_name)
+            print('** Geometry of the pipe "%s" is defined!' % self.pipe_name)
+
 
 class PETREL_PipeGeometry(PipeGeometry):
     """
     This class is used to get the geometry of the well from a PETREL well trajectory file. The number of segments
     of the well is specified by the user and the lengths of all the segments are considered equal.
     """
-    def __init__(self, pipe_name: str, well_traj_file_name: str, num_segments: int, pipe_ID: float,
-                 wall_roughness: float = 5e-5*meter(), verbose: bool = False):
+
+    def __init__(
+        self,
+        pipe_name: str,
+        well_traj_file_name: str,
+        num_segments: int,
+        pipe_ID: float,
+        wall_roughness: float = 5e-5 * meter(),
+        verbose: bool = False,
+    ):
         """
         :param pipe_name: Name of the pipe
         :type pipe_name: str
@@ -119,7 +148,7 @@ class PETREL_PipeGeometry(PipeGeometry):
         :param verbose: Whether to display extra info about PipeGeometry
         :type verbose: boolean
         """
-        df = pd.read_csv(well_traj_file_name, sep=r'\s+', comment="#")
+        df = pd.read_csv(well_traj_file_name, sep=r"\s+", comment="#")
 
         # Get min and max MDs
         min_MD = df["MD"].min()
@@ -150,7 +179,7 @@ class PETREL_PipeGeometry(PipeGeometry):
             dz = end_point["Z"] - start_point["Z"]
 
             # Inclination angle calculation
-            vector_magnitude = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
+            vector_magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
             cos_theta = dz / vector_magnitude if vector_magnitude != 0 else np.nan
             theta_rad = np.arccos(np.clip(cos_theta, -1.0, 1.0))  # avoid domain errors
             theta_deg = np.degrees(theta_rad)
@@ -158,10 +187,14 @@ class PETREL_PipeGeometry(PipeGeometry):
             inclination_angles_deg.append(theta_deg)
 
         inclination_angles_deg = np.array(inclination_angles_deg)
-        conn_inclination_angles_deg = (inclination_angles_deg[:-1] + inclination_angles_deg[1:]) / 2
+        conn_inclination_angles_deg = (
+            inclination_angles_deg[:-1] + inclination_angles_deg[1:]
+        ) / 2
 
         # Segments vertical lengths
-        vertical_lengths_segments = segments_length * np.cos(np.radians(inclination_angles_deg))
+        vertical_lengths_segments = segments_length * np.cos(
+            np.radians(inclination_angles_deg)
+        )
 
         # TVD at each interface: cumulative sum starting from the top
         TVD_faces = np.zeros(num_segments + 1)
@@ -172,14 +205,25 @@ class PETREL_PipeGeometry(PipeGeometry):
         self.TVD_segments = 0.5 * (TVD_faces[:-1] + TVD_faces[1:])
 
         # Create the result DataFrame. This is not used in any part of the code.
-        self.segments_info = pd.DataFrame({
-                 "Segment": range(1, num_segments + 1),
-                 "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
-                 "End_MD": [min_MD + (i + 1) * segments_length for i in range(num_segments)],
-                 "Inclination_Degrees": inclination_angles_deg
-        })
+        self.segments_info = pd.DataFrame(
+            {
+                "Segment": range(1, num_segments + 1),
+                "Start_MD": [min_MD + i * segments_length for i in range(num_segments)],
+                "End_MD": [
+                    min_MD + (i + 1) * segments_length for i in range(num_segments)
+                ],
+                "Inclination_Degrees": inclination_angles_deg,
+            }
+        )
 
-        super().__init__(pipe_name, segments_lengths, pipe_ID, conn_inclination_angles_deg, wall_roughness, verbose)
+        super().__init__(
+            pipe_name,
+            segments_lengths,
+            pipe_ID,
+            conn_inclination_angles_deg,
+            wall_roughness,
+            verbose,
+        )
 
     def _interpolate_point(self, df, target_MD):
         lower = df[df["MD"] <= target_MD].tail(1)
@@ -192,9 +236,13 @@ class PETREL_PipeGeometry(PipeGeometry):
             return lower.iloc[0]  # Exact match
 
         # Linear interpolation
-        frac = (target_MD - lower["MD"].values[0]) / (upper["MD"].values[0] - lower["MD"].values[0])
+        frac = (target_MD - lower["MD"].values[0]) / (
+            upper["MD"].values[0] - lower["MD"].values[0]
+        )
         interpolated = {}
         for col in ["X", "Y", "Z"]:
-            interpolated[col] = lower[col].values[0] + frac * (upper[col].values[0] - lower[col].values[0])
+            interpolated[col] = lower[col].values[0] + frac * (
+                upper[col].values[0] - lower[col].values[0]
+            )
         interpolated["MD"] = target_MD
         return pd.Series(interpolated)

@@ -1,7 +1,7 @@
 import h5py
 
 
-def load_hdf5_to_dict(filename, path='/', decode_strings: list = ['variable_names']):
+def load_hdf5_to_dict(filename, path="/", decode_strings: list = ["variable_names"]):
     """
     Recursively loads HDF5 file contents into a nested dictionary.
     :param hdf5_file: HDF5 file object or filename.
@@ -10,7 +10,7 @@ def load_hdf5_to_dict(filename, path='/', decode_strings: list = ['variable_name
     """
     # Open the file if a filename is provided
     if isinstance(filename, str):
-        with h5py.File(filename, 'r') as f:
+        with h5py.File(filename, "r") as f:
             return load_hdf5_to_dict(f)
 
     result = {}
@@ -19,10 +19,10 @@ def load_hdf5_to_dict(filename, path='/', decode_strings: list = ['variable_name
         if isinstance(item, h5py.Dataset):
             # Load the entire dataset into the dictionary
             if key in decode_strings:
-                result[key] = [x.decode('utf-8') for x in item]
+                result[key] = [x.decode("utf-8") for x in item]
             else:
                 result[key] = item[:]
         elif isinstance(item, h5py.Group):
             # Recursively load the group
-            result[key] = load_hdf5_to_dict(filename, path + key + '/')
+            result[key] = load_hdf5_to_dict(filename, path + key + "/")
     return result

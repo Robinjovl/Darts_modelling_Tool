@@ -36,7 +36,7 @@ class OptModuleSettings:
         self.eps = 1e-7
         self.nonlinear_grad_time = 0
         self.result_list = []
-        self.task_id = ''
+        self.task_id = ""
         # self.fval_temp = 10000
         self.regularization = False
         self.re_parameterized_PCA = False
@@ -109,14 +109,14 @@ class OptModuleSettings:
 
         self.opt_phase_rate = True
         self.scale_function_value = 1e-10
-        self.modifier = ''
+        self.modifier = ""
         self.x_idx = []
 
         self.forward_temp_result = 0
         self.previous_forward_result = 0
         self.heuristic_rate_control = False
 
-        self.job_id = ''
+        self.job_id = ""
         self.objfunval = 100000000
         self.objfun_all = []
         self.fval_list = []
@@ -128,7 +128,7 @@ class OptModuleSettings:
         self.threshold = []
         self.binary_array = []
         self.save_error = False
-        self.label = ''
+        self.label = ""
 
         # MPFA
         self.n_fm = 0
@@ -140,11 +140,11 @@ class OptModuleSettings:
     # ---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
     # -----------------------------------------------------------------------------------------------------------------------
     def set_modifier_and_du_dT_and_x_idx(self, modifier, x_idx: List[int]):
-        '''
+        """
         The settings of modifier, x_idx, and col_idx
         :param modifier: model modifier
         :param x_idx: list of the index of the control variables: [0, n_T_res, n_T_res + n_WI]
-        '''
+        """
         # self.du_dT = du_dT
         self.x_idx = x_idx
         self.col_idx_original = []
@@ -174,12 +174,12 @@ class OptModuleSettings:
         self.modifier = modifier
 
     def make_opt_step_adjoint_method(self, x: np.array, *args) -> float:
-        '''
+        """
         Objective function definition
         :param x: model control variables
         :param *args: extra argument. This is usually kept empty
         :return: objective function value
-        '''
+        """
         # print(args[0])
         self.x_temp = x
 
@@ -234,41 +234,41 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs.
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = "terminated_run_%d" % self.terminated_runs
 
-                with open(log_fname + '.x', 'w') as log:
-                    log.write('Problem occurred with: \n')
+                with open(log_fname + ".x", "w") as log:
+                    log.write("Problem occurred with: \n")
                     log.write(np.array_str(x))
 
                 np.save(log_fname, x)
 
-                redirect_darts_output(log_fname + '.log')
+                redirect_darts_output(log_fname + ".log")
                 self.terminated_runs += 1
                 self.modifier.set_x_by_du_dT(self, x)
                 self.reset()
                 self.physics.engine.clear_previous_adjoint_assembly()
                 self.run()
-                redirect_darts_output('')
+                redirect_darts_output("")
 
         self.opt_step_time += time.time()
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
+            "\r Run %d: %f s/forward_obj"
             % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
-            end='',
+            end="",
             flush=True,
         )
 
         return obj
 
     def make_opt_step_adjoint_method_PCA(self, x: np.array, *args) -> float:
-        '''
+        """
         Objective function defintion for dimension reduction using PCA
         :param x: model control variables in reduced-dimension space
         :param *args: extra argument. This is usually kept empty
         :return: objective function value
-        '''
+        """
         self.x_temp = x
 
         # convert the control variables from the reduced-dimension space to the original space
@@ -318,41 +318,41 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = "terminated_run_%d" % self.terminated_runs
 
-                with open(log_fname + '.x', 'w') as log:
-                    log.write('Problem occurred with: \n')
+                with open(log_fname + ".x", "w") as log:
+                    log.write("Problem occurred with: \n")
                     log.write(np.array_str(u))
 
                 np.save(log_fname, u)
 
-                redirect_darts_output(log_fname + '.log')
+                redirect_darts_output(log_fname + ".log")
                 self.terminated_runs += 1
                 self.modifier.set_x_by_du_dT(self, u)
                 self.reset()
                 self.physics.engine.clear_previous_adjoint_assembly()
                 self.run()
-                redirect_darts_output('')
+                redirect_darts_output("")
 
         self.opt_step_time += time.time()
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
+            "\r Run %d: %f s/forward_obj"
             % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
-            end='',
+            end="",
             flush=True,
         )
 
         return obj
 
     def make_opt_single_step(self, x: np.array, *args) -> float:
-        '''
+        """
         Objective function defintion for a single forward simulation run. This is for re-scaling the misfit terms using different weights
         :param x: model control variables
         :param *args: extra argument. This is usually kept empty
         :return: objective function value
-        '''
+        """
         # print(args[0])
         self.x_temp = x
 
@@ -392,37 +392,37 @@ class OptModuleSettings:
         # 5. If simulation has not finished, rerun it to save the logs
         if self.save_unfinished_runs:
             if obj == 1000:
-                log_fname = 'terminated_run_%d' % self.terminated_runs
+                log_fname = "terminated_run_%d" % self.terminated_runs
 
-                with open(log_fname + '.x', 'w') as log:
-                    log.write('Problem occurred with: \n')
+                with open(log_fname + ".x", "w") as log:
+                    log.write("Problem occurred with: \n")
                     log.write(np.array_str(x))
 
                 np.save(log_fname, x)
 
-                redirect_darts_output(log_fname + '.log')
+                redirect_darts_output(log_fname + ".log")
                 self.terminated_runs += 1
                 self.modifier.set_x_by_du_dT(self, x)
                 self.reset()
                 self.run()
-                redirect_darts_output('')
+                redirect_darts_output("")
 
         self.opt_step_time += time.time()
         self.n_opt_steps += 1
 
         print(
-            '\r Run %d: %f s/forward_obj'
+            "\r Run %d: %f s/forward_obj"
             % (self.n_opt_steps, self.opt_step_time / self.n_opt_steps),
-            end='',
+            end="",
             flush=True,
         )
 
         return obj
 
     def input_data_assembly(self):
-        '''
+        """
         Assemblying of the input observation data
-        '''
+        """
         # replace these data with your field data if they are available
 
         self.inj_water_rate = pd.read_pickle(
@@ -433,17 +433,17 @@ class OptModuleSettings:
         )
         # self.inj_water_rate = self.previous_forward_result
         # self.prod_oil_rate = self.previous_forward_result
-        time_arr = np.array(self.inj_water_rate['time'])
+        time_arr = np.array(self.inj_water_rate["time"])
         time_arr = np.concatenate(([0], time_arr))
         self.time_step_arr = time_arr[1:] - time_arr[0:-1]
 
     def make_single_forward_simulation(self, x: np.array, *args) -> int:
-        '''
+        """
         The preparation of the last time results for generating heuristic rate control
         :param x: model control variables
         :param *args: extra argument. This is usually kept empty
         :return: 0
-        '''
+        """
         # print(args[0])
         self.x_temp = x
 
@@ -483,8 +483,8 @@ class OptModuleSettings:
         # though we will soon convert these rate information to BHP information
         for ts in range(0, len(self.prod_oil_rate)):
             for w in self.reservoir.wells:
-                if 'I' in w.name:
-                    col = w.name + ' : water rate (m3/day)'
+                if "I" in w.name:
+                    col = w.name + " : water rate (m3/day)"
                     if type(w.control) == rate_inj_well_control:
                         c = w.control
                     else:
@@ -494,7 +494,7 @@ class OptModuleSettings:
                     else:
                         c.target_rate = 0
                 else:
-                    col = w.name + ' : oil rate (m3/day)'
+                    col = w.name + " : oil rate (m3/day)"
                     if type(w.control) == rate_prod_well_control:
                         c = w.control
                     else:
@@ -511,8 +511,8 @@ class OptModuleSettings:
         self.n_forward_temp += 1
 
         print(
-            ', %f s/forward_temp' % (self.forward_temp_time / self.n_forward_temp),
-            end='',
+            ", %f s/forward_temp" % (self.forward_temp_time / self.n_forward_temp),
+            end="",
             flush=True,
         )
 
@@ -530,9 +530,9 @@ class OptModuleSettings:
         opt_comp_rate: str,
         opt_phase_rate: str,
     ):
-        '''
+        """
         Legacy code for the settings of the history matcing. This will be deprecated.
-        '''
+        """
         self.prod_well_name = well_name
         self.component_index = component_index
         self.phase_index = phase_index
@@ -550,16 +550,16 @@ class OptModuleSettings:
         self.physics.engine.optimize_phase_rate = opt_phase_rate
 
     def set_optimization_scale_parameter(self, scale_fun_val: float):
-        '''
+        """
         Legacy code for the settings of some scaling factors. This will be deprecated.
-        '''
+        """
         self.scale_function_value = scale_fun_val
         self.physics.engine.scale_function_value = scale_fun_val
 
     def activate_opt_options(self):
-        '''
+        """
         The activation of some history matching settings, including well names, phase names, customized operators, scaling factors, etc.
-        '''
+        """
         self.physics.engine.objfun_prod_phase_rate = self.objfun_prod_phase_rate
         self.physics.engine.prod_well_name = self.prod_well_name
         self.physics.engine.prod_phase_name = self.prod_phase_name
@@ -611,39 +611,39 @@ class OptModuleSettings:
                 self.col_idx[n_T_res + i] = col_idx_well[j]
 
     def set_objfun(self, objfun):
-        '''
+        """
         The settings of the function name of objective function
         :param objfun: function name of objective function
-        '''
+        """
         self.objfun = objfun
 
     def set_observation_data_report(self, data: pd.DataFrame):
-        '''
+        """
         The settings of the measurement time (report time) point array "t_Q" for generating Dirac function
         :param data: observation data
-        '''
+        """
         assert type(data) == pd.core.frame.DataFrame
-        self.observation_data_report = data.set_index('time', drop=False)
-        self.observation_last_date_report = data['time'][len(data['time']) - 1]
-        self.t_Q = self.observation_data_report['time']
+        self.observation_data_report = data.set_index("time", drop=False)
+        self.observation_last_date_report = data["time"][len(data["time"]) - 1]
+        self.t_Q = self.observation_data_report["time"]
 
     def set_observation_data(self, data: pd.DataFrame):
-        '''
+        """
         The settings of the simulation time point array "t_sim" for generating Dirac function
         :param data: observation data based on simulation time steps
-        '''
+        """
         # verify pandas format
         assert type(data) == pd.core.frame.DataFrame
-        self.observation_data = data.set_index('time', drop=False)
-        self.observation_last_date = data['time'][len(data['time']) - 1]
+        self.observation_data = data.set_index("time", drop=False)
+        self.observation_last_date = data["time"][len(data["time"]) - 1]
 
     def observation_data_assembly(self):
-        '''
+        """
         The assembly of the observation data for further use
         The observation data here can be synthetic data from high-resolution model
         or if you have field data, input your data as "self.observation_data"
         replace these code below with your field data, e.g. phase rate, BHP, saturation, etc.
-        '''
+        """
         # ------------------------------------------------------------------------
         # ----------------------observation data assembly-------------------------
         # ------------------------------------------------------------------------
@@ -695,7 +695,7 @@ class OptModuleSettings:
                             )
                             < -1
                         ):
-                            print('The added Gaussian noise changes the sign of rate!')
+                            print("The added Gaussian noise changes the sign of rate!")
 
                         prod_rate_value = np.array(rate_serie.values)
                         if self.prod_rate_measurement_error != 0:
@@ -761,7 +761,7 @@ class OptModuleSettings:
                         np.min(self.inj_rate_measurement_error * gaussian_noise_list[p])
                         < -1
                     ):
-                        print('The added Gaussian noise changes the sign of rate!')
+                        print("The added Gaussian noise changes the sign of rate!")
 
                     inj_rate_value = np.array(rate_serie.values)
                     if self.inj_rate_measurement_error != 0:
@@ -805,7 +805,7 @@ class OptModuleSettings:
                 gaussian_noise_list = np.random.randn(BHP_serie.size)
 
                 if np.min(self.BHP_measurement_error * gaussian_noise_list) < -1:
-                    print('The added Gaussian noise changes the sign of BHP!')
+                    print("The added Gaussian noise changes the sign of BHP!")
 
                 BHP_value = np.array(BHP_serie.values)
                 if self.BHP_measurement_error != 0:
@@ -846,7 +846,7 @@ class OptModuleSettings:
 
                 if np.min(self.well_tempr_measurement_error * gaussian_noise_list) < -1:
                     print(
-                        'The added Gaussian noise changes the sign of well temperature!'
+                        "The added Gaussian noise changes the sign of well temperature!"
                     )
 
                 well_tempr_value = np.array(well_tempr_serie.values)
@@ -979,7 +979,7 @@ class OptModuleSettings:
 
                 if np.min(self.well_tempr_measurement_error * gaussian_noise_list) < -1:
                     print(
-                        'The added Gaussian noise changes the sign of well temperature!'
+                        "The added Gaussian noise changes the sign of well temperature!"
                     )
 
                 well_tempr_value = np.array(well_tempr_serie.values)
@@ -1009,8 +1009,8 @@ class OptModuleSettings:
                 self.well_tempr_cov_mat_inv.append(1 / np.array(std_dev_list))
 
         # dirac measurement funtion-----------------
-        if np.size(self.observation_data['time']) == np.size(
-            self.observation_data_report['time']
+        if np.size(self.observation_data["time"]) == np.size(
+            self.observation_data_report["time"]
         ):  # report
             if self.objfun_prod_phase_rate:
                 self.obs_Q = np.array(self.Q_list_temp)
@@ -1048,7 +1048,7 @@ class OptModuleSettings:
                 self.obs_saturation = 0
 
         else:  # sim
-            t_sim = self.observation_data['time']
+            t_sim = self.observation_data["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in self.t_Q:
@@ -1059,42 +1059,42 @@ class OptModuleSettings:
 
             if self.objfun_prod_phase_rate:
                 self.obs_Q = np.array(self.Q_list_temp)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_Q = 0
 
             if self.objfun_inj_phase_rate:
                 self.obs_Q_inj = np.array(self.Q_inj_list_temp)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_Q_inj = 0
 
             if self.objfun_BHP:
                 self.obs_BHP = np.array(self.BHP_list_temp)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_BHP = 0
 
             if self.objfun_well_tempr:
                 self.obs_well_tempr = np.array(self.well_tempr_list_temp)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_well_tempr = 0
 
             if self.objfun_temperature:
                 self.obs_TEMPERATURE = np.array(self.temperature_list)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_TEMPERATURE = 0
 
             if self.objfun_customized_op:
                 self.obs_CUSTOMIZED_OP = np.array(self.customized_op_list)[
-                    :, self.dirac_vec.astype('bool')
+                    :, self.dirac_vec.astype("bool")
                 ]
             else:
                 self.obs_CUSTOMIZED_OP = 0
@@ -1251,11 +1251,11 @@ class OptModuleSettings:
         # self.physics.engine.cov_mat_inv = value_vector(self.cov_mat_inv_diagnal)
 
     def objfun_assembly(self) -> float:
-        '''
+        """
         The assembly of the objective function
         The observation data is assembled by `self.observation_data_assembly()`
         This function is first getting the model response, and then compute the objective function value
-        '''
+        """
 
         # only need to prepare observation data once
         if self.prepare_obs_data:
@@ -1265,9 +1265,9 @@ class OptModuleSettings:
         # get the model response
         response = pd.DataFrame.from_dict(self.physics.engine.time_data)
         try:
-            t_sim = response['time']
+            t_sim = response["time"]
         except KeyError:
-            print('Forward simulation failed!')
+            print("Forward simulation failed!")
             sys.exit()
 
         self.dirac_vec = np.zeros(np.size(t_sim))
@@ -1302,7 +1302,7 @@ class OptModuleSettings:
                             -response.get(rate_string).values
                             * self.phase_relative_density[p]
                         )
-                        if phase == 'oil':
+                        if phase == "oil":
                             q_w_o = -response.get(rate_string).values
 
                 q_separate.append(rate_list)
@@ -1343,7 +1343,7 @@ class OptModuleSettings:
                     * np.array(self.prod_weights[:, :, idx_obs_ts]) ** 0.5
                 )
 
-            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             q_Q_temp = []
             for q_Q_well in q_Q_clean:
@@ -1351,7 +1351,7 @@ class OptModuleSettings:
                 q_Q_temp.append(q_Q_well * q_Q_well)
             self.fval += np.sum(q_Q_temp)
             # self.fval += np.sum(q_Q_clean ** 2)
-            self.objfun_dict['prod_phase_rate'] = np.sum(q_Q_temp)
+            self.objfun_dict["prod_phase_rate"] = np.sum(q_Q_temp)
             self.objfun_list.append(np.sum(q_Q_temp))
 
         # add injection phase rate data in objective function----------------------------
@@ -1403,7 +1403,7 @@ class OptModuleSettings:
                 )
 
             q_Q_inj_clean = np.array(q_Q_inj)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             q_Q_inj_temp = []
@@ -1412,7 +1412,7 @@ class OptModuleSettings:
                 q_Q_inj_temp.append(q_Q_inj_well * q_Q_inj_well)
             self.fval += np.sum(q_Q_inj_temp)
             # self.fval += np.sum(q_Q_inj_clean ** 2)
-            self.objfun_dict['inj_phase_rate'] = np.sum(q_Q_inj_temp)
+            self.objfun_dict["inj_phase_rate"] = np.sum(q_Q_inj_temp)
             self.objfun_list.append(np.sum(q_Q_inj_temp))
 
         # add BHP data in objective function---------------------------------------------
@@ -1455,7 +1455,7 @@ class OptModuleSettings:
                 )
 
             bhp_BHP_clean = np.array(bhp_BHP)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             bhp_BHP_temp = []
@@ -1464,7 +1464,7 @@ class OptModuleSettings:
                 bhp_BHP_temp.append(bhp_BHP_well * bhp_BHP_well)
             self.fval += np.sum(bhp_BHP_temp)
             # self.fval += np.sum(bhp_BHP_clean ** 2)
-            self.objfun_dict['BHP'] = np.sum(bhp_BHP_temp)
+            self.objfun_dict["BHP"] = np.sum(bhp_BHP_temp)
             self.objfun_list.append(np.sum(bhp_BHP_temp))
 
         # add well temperature in objective function---------------------------------------------
@@ -1506,13 +1506,13 @@ class OptModuleSettings:
                     * np.array(self.well_tempr_weights[:, idx_obs_ts]) ** 0.5
                 )
 
-            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             wt_WT_temp = []
             for wt_WT_well in wt_WT_clean:
                 wt_WT_temp.append(wt_WT_well * wt_WT_well)
             self.fval += np.sum(wt_WT_temp)
-            self.objfun_dict['well_tempr'] = np.sum(wt_WT_temp)
+            self.objfun_dict["well_tempr"] = np.sum(wt_WT_temp)
             self.objfun_list.append(np.sum(wt_WT_temp))
 
         # add temperature data in objective function---------------------------------------------
@@ -1554,7 +1554,7 @@ class OptModuleSettings:
                 )
 
             tempr_TEMPR_clean = np.array(tempr_TEMPR)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             tempr_TEMPR_temp = []
@@ -1562,7 +1562,7 @@ class OptModuleSettings:
                 tempr_TEMPR_temp.append(tempr_TEMPR_t * tempr_TEMPR_t)
             self.fval += np.sum(tempr_TEMPR_temp)
             # self.fval += np.sum(tempr_TEMPR_clean ** 2)
-            self.objfun_dict['tempr_distr'] = np.sum(tempr_TEMPR_temp)
+            self.objfun_dict["tempr_distr"] = np.sum(tempr_TEMPR_temp)
             self.objfun_list.append(np.sum(tempr_TEMPR_temp))
 
         # add customized operator data in objective function---------------------------------------------
@@ -1605,7 +1605,7 @@ class OptModuleSettings:
                     )
 
                 op_OP_clean = np.array(op_OP)[
-                    np.flipud(self.dirac_vec).astype('bool'), :
+                    np.flipud(self.dirac_vec).astype("bool"), :
                 ].T
 
                 op_OP_temp = []
@@ -1613,7 +1613,7 @@ class OptModuleSettings:
                     op_OP_temp.append(op_OP_t * op_OP_t)
                 self.fval += np.sum(op_OP_temp)
                 # self.fval += np.sum(tempr_TEMPR_clean ** 2)
-                self.objfun_dict['customized_op'] = np.sum(op_OP_temp)
+                self.objfun_dict["customized_op"] = np.sum(op_OP_temp)
                 self.objfun_list.append(np.sum(op_OP_temp))
 
             else:
@@ -1684,7 +1684,7 @@ class OptModuleSettings:
                     )
 
                 op_OP_clean = np.array(op_OP)[
-                    np.flipud(self.dirac_vec).astype('bool'), :
+                    np.flipud(self.dirac_vec).astype("bool"), :
                 ].T
 
                 op_OP_temp = []
@@ -1692,11 +1692,11 @@ class OptModuleSettings:
                     op_OP_temp.append(op_OP_t * op_OP_t * hinge_coeff[:, idx_b])
                 self.fval += np.sum(op_OP_temp)
                 # self.fval += np.sum(tempr_TEMPR_clean ** 2)
-                self.objfun_dict['customized_op'] = np.sum(op_OP_temp)
+                self.objfun_dict["customized_op"] = np.sum(op_OP_temp)
                 self.objfun_list.append(np.sum(op_OP_temp))
                 if self.save_error:
                     np.save(
-                        '%s_%s.npy' % (self.label, self.job_id), np.array(op_OP_temp)
+                        "%s_%s.npy" % (self.label, self.job_id), np.array(op_OP_temp)
                     )
 
         # add saturation data in objective function---------------------------------------------
@@ -1777,7 +1777,7 @@ class OptModuleSettings:
                     * np.array(self.well_tempr_weights[:, idx_obs_ts]) ** 0.5
                 )
 
-            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             wt_WT_temp = []
             for wt_WT_well in wt_WT_clean:
@@ -1799,8 +1799,8 @@ class OptModuleSettings:
                 ksi_diff = self.ksi - self.ksi_ref * self.norm_ksi
                 R = self.alpha * ksi_diff.dot(ksi_diff.transpose())
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % R)
+                print("misfit: %s" % self.fval_temp)
+                print("R: %s" % R)
                 self.fval_temp = self.fval_temp + R
             else:
                 u = (
@@ -1826,8 +1826,8 @@ class OptModuleSettings:
                     )
                 # self.fval_temp = self.fval_temp + R[0][0]
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % abs(float(R)))
+                print("misfit: %s" % self.fval_temp)
+                print("R: %s" % abs(float(R)))
                 self.fval_temp = self.fval_temp + abs(float(R))
 
         if (
@@ -1839,19 +1839,19 @@ class OptModuleSettings:
             self.x_diff = np.array([u]) - np.array([self.x_ref])
             R = self.alpha * np.sum((self.x_diff**2) * self.Cm_inv_diagonal)
 
-            print('misfit: %s' % self.fval_temp)
-            print('R: %s' % R)
+            print("misfit: %s" % self.fval_temp)
+            print("R: %s" % R)
             self.fval_temp = self.fval_temp + R
 
-        print(' fval: %s' % self.fval_temp)
+        print(" fval: %s" % self.fval_temp)
         return self.fval_temp
 
     def fval_nonlinear_FDM(self, x_eps: np.array) -> float:
-        '''
+        """
         The preparation of the model response based on Finite Diffirence Method (FDM)
         :param x_esp: the control variables with perturbation epsilon when computing numerical gradient based on FDM
         :return: objective function value
-        '''
+        """
 
         # print("start calculate the objective function values")
         # calculate the gradient of nonlinear modifiers using finite difference method
@@ -1872,11 +1872,11 @@ class OptModuleSettings:
         self.result_list.append(result)
 
     def grad_adjoint_method_all(self, x: np.array) -> np.array:
-        '''
+        """
         The preparation of the adjoint gradient for transmissibility and well index
         :param x: control variables
         :return: the adjoint gradient for transmissibility and well index
-        '''
+        """
         # --------------------------gradients for transmissibility and well index--------------------------------------
         self.ad_grad_time -= time.time()
 
@@ -1906,8 +1906,8 @@ class OptModuleSettings:
         self.ad_grad_time += time.time()
         self.n_grad_calc += 1
         print(
-            ', %f s/lin_adj' % (self.ad_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/lin_adj" % (self.ad_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -1928,8 +1928,8 @@ class OptModuleSettings:
 
         self.nonlinear_grad_time += time.time()
         print(
-            ', %f s/nlin_num' % (self.nonlinear_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/nlin_num" % (self.nonlinear_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -1973,7 +1973,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = "%s_Optimized_parameters_best.pkl" % self.job_id
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2000,11 +2000,11 @@ class OptModuleSettings:
         return GRAD
 
     def grad_adjoint_method_mpfa_all(self, x: np.array) -> np.array:
-        '''
+        """
         The preparation of the adjoint gradient for transmissibility and well index
         :param x: control variables
         :return: the adjoint gradient for transmissibility and well index
-        '''
+        """
         # --------------------------gradients for transmissibility and well index--------------------------------------
         self.ad_grad_time -= time.time()
 
@@ -2034,8 +2034,8 @@ class OptModuleSettings:
         self.ad_grad_time += time.time()
         self.n_grad_calc += 1
         print(
-            ', %f s/lin_adj' % (self.ad_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/lin_adj" % (self.ad_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -2056,8 +2056,8 @@ class OptModuleSettings:
 
         self.nonlinear_grad_time += time.time()
         print(
-            ', %f s/nlin_num' % (self.nonlinear_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/nlin_num" % (self.nonlinear_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -2101,7 +2101,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = "%s_Optimized_parameters_best.pkl" % self.job_id
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2128,11 +2128,11 @@ class OptModuleSettings:
         return GRAD
 
     def grad_adjoint_method_all_PCA(self, x: np.array) -> np.array:
-        '''
+        """
         The preparation of the adjoint gradient for transmissibility and well index in reduced-dimension space using PCA
         :param x: control variables in reduced-dimension space
         :return: the adjoint gradient for transmissibility and well index in reduced-dimension space
-        '''
+        """
         # --------------------------gradients for transmissibility and well index----------------
         self.ad_grad_time -= time.time()
 
@@ -2172,8 +2172,8 @@ class OptModuleSettings:
         self.ad_grad_time += time.time()
         self.n_grad_calc += 1
         print(
-            ', %f s/lin_adj' % (self.ad_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/lin_adj" % (self.ad_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -2194,8 +2194,8 @@ class OptModuleSettings:
 
         self.nonlinear_grad_time += time.time()
         print(
-            ', %f s/nlin_num' % (self.nonlinear_grad_time / self.n_grad_calc),
-            end='',
+            ", %f s/nlin_num" % (self.nonlinear_grad_time / self.n_grad_calc),
+            end="",
             flush=True,
         )
 
@@ -2218,7 +2218,7 @@ class OptModuleSettings:
         self.fval_list.append(self.fval_temp)
         self.misfit_watch_list.append(self.misfit_value)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = "%s_Optimized_parameters_best.pkl" % self.job_id
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2256,7 +2256,7 @@ class OptModuleSettings:
         truth_OP=0,
         opt_op=0,
     ):
-        '''
+        """
         The calculation of the error between the history matching results and the true data considering noise covariance matrix and the weights.
         It is suggested to carefully review and customize this function for your specific purpose instead of directly using this function
         :param truth_df: time_data_report of true data
@@ -2267,7 +2267,7 @@ class OptModuleSettings:
         :param opt_tempr: oprimized time-elapse temperature data that corresponds to the report time steps (i.e. observation time steps)
         :param truth_OP: true time-elapse customized operature data that corresponds to the report time steps (i.e. observation time steps)
         :param opt_op: optimized time-elapse customized operature data that corresponds to the report time steps (i.e. observation time steps)
-        '''
+        """
         # production phase rate data ----------------------------------------------------------------------------------
         prod_clean_training = 0
         PROD_L2_training = 0
@@ -2355,8 +2355,8 @@ class OptModuleSettings:
             for pw in range(train_lenght, np.size(Q_separate, -1)):
                 prod_weights[:, :, pw] = self.prod_weights[:, :, -1]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -2394,7 +2394,7 @@ class OptModuleSettings:
                     * np.array(prod_weights)[:, :, idx_obs_ts] ** 0.5
                 )
 
-            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             prod_clean_training = np.sum(q_Q_clean[:, :, 0:train_lenght] ** 2)
             PROD_L2_training = np.sum(
@@ -2430,10 +2430,10 @@ class OptModuleSettings:
             err_forcast_prod = prod_clean_forcast / PROD_L2_forcast * 100
             err_overall_prod = prod_clean_overall / PROD_L2_overall * 100
 
-            print('\n')
-            print('Production Phase---Relative Error Training: ', err_training_prod)
-            print('Production Phase---Relative Error Forecast: ', err_forcast_prod)
-            print('Production Phase---Relative Error Overall: ', err_overall_prod)
+            print("\n")
+            print("Production Phase---Relative Error Training: ", err_training_prod)
+            print("Production Phase---Relative Error Forecast: ", err_forcast_prod)
+            print("Production Phase---Relative Error Overall: ", err_overall_prod)
 
         # injection phase rate data ----------------------------------------------------------------------------------
         inj_clean_training = 0
@@ -2509,8 +2509,8 @@ class OptModuleSettings:
             for iw in range(train_lenght, np.size(Q_inj_separate, -1)):
                 inj_weights[:, :, iw] = self.inj_weights[:, :, -1]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -2549,7 +2549,7 @@ class OptModuleSettings:
                 )
 
             q_Q_inj_clean = np.array(q_Q_inj)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             inj_clean_training = np.sum(q_Q_inj_clean[:, :, 0:train_lenght] ** 2)
@@ -2586,10 +2586,10 @@ class OptModuleSettings:
             err_forcast_inj = inj_clean_forcast / INJ_L2_forcast * 100
             err_overall_inj = inj_clean_overall / INJ_L2_overall * 100
 
-            print('\n')
-            print('Injction Phase---Relative Error Training: ', err_training_inj)
-            print('Injction Phase---Relative Error Forecast: ', err_forcast_inj)
-            print('Injction Phase---Relative Error Overall: ', err_overall_inj)
+            print("\n")
+            print("Injction Phase---Relative Error Training: ", err_training_inj)
+            print("Injction Phase---Relative Error Forecast: ", err_forcast_inj)
+            print("Injction Phase---Relative Error Overall: ", err_overall_inj)
 
         # BHP data --------------------------------------------------------------------------------------------------
         bhp_clean_training = 0
@@ -2645,8 +2645,8 @@ class OptModuleSettings:
             for bw in range(train_lenght, np.size(BHP_separate, -1)):
                 BHP_weights[:, bw] = self.BHP_weights[:, -1]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df_BT['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df_BT["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -2684,7 +2684,7 @@ class OptModuleSettings:
                 )
 
             bhp_BHP_clean = np.array(bhp_BHP)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             bhp_clean_training = sq_norm(bhp_BHP_clean[:, 0:train_lenght])
@@ -2718,10 +2718,10 @@ class OptModuleSettings:
             err_forcast_BHP = bhp_clean_forcast / BHP_L2_forcast * 100
             err_overall_BHP = bhp_clean_overall / BHP_L2_overall * 100
 
-            print('\n')
-            print('BHP---Relative Error Training: ', err_training_BHP)
-            print('BHP---Relative Error Forecast: ', err_forcast_BHP)
-            print('BHP---Relative Error Overall: ', err_overall_BHP)
+            print("\n")
+            print("BHP---Relative Error Training: ", err_training_BHP)
+            print("BHP---Relative Error Forecast: ", err_forcast_BHP)
+            print("BHP---Relative Error Overall: ", err_overall_BHP)
 
         # well temperature data ---------------------------------------------------------------------------------------
         wt_clean_training = 0
@@ -2777,8 +2777,8 @@ class OptModuleSettings:
             for wtw in range(train_lenght, np.size(WT_separate, -1)):
                 WT_weights[:, wtw] = self.well_tempr_weights[:, -1]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df_BT['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df_BT["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -2815,7 +2815,7 @@ class OptModuleSettings:
                     * np.array(WT_weights)[:, idx_obs_ts] ** 0.5
                 )
 
-            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             wt_clean_training = sq_norm(wt_WT_clean[:, 0:train_lenght])
             WT_L2_training = sq_norm(
@@ -2848,10 +2848,10 @@ class OptModuleSettings:
             err_forcast_well_temper = wt_clean_forcast / WT_L2_forcast * 100
             err_overall_well_temper = wt_clean_overall / WT_L2_overall * 100
 
-            print('\n')
-            print('well_temper---Relative Error Training: ', err_training_well_temper)
-            print('well_temper---Relative Error Forecast: ', err_forcast_well_temper)
-            print('well_temper---Relative Error Overall: ', err_overall_well_temper)
+            print("\n")
+            print("well_temper---Relative Error Training: ", err_training_well_temper)
+            print("well_temper---Relative Error Forecast: ", err_forcast_well_temper)
+            print("well_temper---Relative Error Overall: ", err_overall_well_temper)
 
         # temperature data --------------------------------------------------------------------------------------------
         temperature_clean_training = 0
@@ -2893,8 +2893,8 @@ class OptModuleSettings:
             for tw in range(train_lenght, np.size(temperature_weights, 0)):
                 temperature_weights[tw, :] = self.temperature_weights[-1, :]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -2932,7 +2932,7 @@ class OptModuleSettings:
                 )
 
             tempr_TEMPR_clean = np.array(tempr_TEMPR)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             temperature_clean_training = sq_norm(tempr_TEMPR_clean[0:train_lenght, :])
@@ -2967,10 +2967,10 @@ class OptModuleSettings:
             )
             err_forcast_tempr = temperature_clean_forcast / TEMPERATURE_L2_forcast * 100
             err_overall_tempr = temperature_clean_overall / TEMPERATURE_L2_overall * 100
-            print('\n')
-            print('Temperature---Relative Error Training: ', err_training_tempr)
-            print('Temperature---Relative Error Forecast: ', err_forcast_tempr)
-            print('Temperature---Relative Error Overall: ', err_overall_tempr)
+            print("\n")
+            print("Temperature---Relative Error Training: ", err_training_tempr)
+            print("Temperature---Relative Error Forecast: ", err_forcast_tempr)
+            print("Temperature---Relative Error Overall: ", err_overall_tempr)
 
         # customized operator data --------------------------------------------------------------------------------------------
         customized_op_clean_training = 0
@@ -3012,8 +3012,8 @@ class OptModuleSettings:
             for tw in range(train_lenght, np.size(customized_op_weights, 0)):
                 customized_op_weights[tw, :] = self.customized_op_weights[-1, :]
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3050,7 +3050,7 @@ class OptModuleSettings:
                     * customized_op_weights[idx_obs_ts, :] ** 0.5
                 )
 
-            op_OP_clean = np.array(op_OP)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            op_OP_clean = np.array(op_OP)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             customized_op_clean_training = sq_norm(op_OP_clean[0:train_lenght, :])
             CUSTOMIZED_OP_L2_training = sq_norm(
@@ -3088,10 +3088,10 @@ class OptModuleSettings:
             err_overall_op = (
                 customized_op_clean_overall / CUSTOMIZED_OP_L2_overall * 100
             )
-            print('\n')
-            print('Temperature---Relative Error Training: ', err_training_op)
-            print('Temperature---Relative Error Forecast: ', err_forcast_op)
-            print('Temperature---Relative Error Overall: ', err_overall_op)
+            print("\n")
+            print("Temperature---Relative Error Training: ", err_training_op)
+            print("Temperature---Relative Error Forecast: ", err_forcast_op)
+            print("Temperature---Relative Error Overall: ", err_overall_op)
 
         # all data including prod, inj, BHP, well_tempr, tempr, etc.--------------------------------------------------
         err_training_total = (
@@ -3153,10 +3153,10 @@ class OptModuleSettings:
             )
             * 100
         )
-        print('\n')
-        print('Total---Relative Error Training: ', err_training_total)
-        print('Total---Relative Error Forecast: ', err_forcast_total)
-        print('Total---Relative Error Overall: ', err_overall_total)
+        print("\n")
+        print("Total---Relative Error Training: ", err_training_total)
+        print("Total---Relative Error Forecast: ", err_forcast_total)
+        print("Total---Relative Error Overall: ", err_overall_total)
 
     def calculate_error_without_noise_weight(
         self,
@@ -3169,7 +3169,7 @@ class OptModuleSettings:
         truth_OP=0,
         opt_op=0,
     ):
-        '''
+        """
         The calculation of the error between the history matching results and the true data without considering noise covariance matrix and the weights
         It is suggested to carefully review and customize this function for your specific purpose instead of directly using this function
         :param truth_df: time_data_report of true data
@@ -3180,7 +3180,7 @@ class OptModuleSettings:
         :param opt_tempr: oprimized time-elapse temperature data that corresponds to the report time steps (i.e. observation time steps)
         :param truth_OP: true time-elapse customized operature data that corresponds to the report time steps (i.e. observation time steps)
         :param opt_op: optimized time-elapse customized operature data that corresponds to the report time steps (i.e. observation time steps)
-        '''
+        """
         # production phase rate data ----------------------------------------------------------------------------------
         prod_clean_training = 0
         PROD_L2_training = 0
@@ -3225,8 +3225,8 @@ class OptModuleSettings:
             q_separate = np.array(q_separate)
             Q_separate = np.array(Q_separate)
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3260,7 +3260,7 @@ class OptModuleSettings:
                     * self.dirac_vec[idx_sim_ts]
                 )
 
-            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            q_Q_clean = np.array(q_Q)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             prod_clean_training = np.sum(q_Q_clean[:, :, 0:train_lenght] ** 2)
             PROD_L2_training = np.sum((np.array(Q_separate)[:, :, 0:train_lenght]) ** 2)
@@ -3275,10 +3275,10 @@ class OptModuleSettings:
             err_forcast_prod = prod_clean_forcast / PROD_L2_forcast * 100
             err_overall_prod = prod_clean_overall / PROD_L2_overall * 100
 
-            print('\n')
-            print('Production Phase---Relative Error Training: ', err_training_prod)
-            print('Production Phase---Relative Error Forecast: ', err_forcast_prod)
-            print('Production Phase---Relative Error Overall: ', err_overall_prod)
+            print("\n")
+            print("Production Phase---Relative Error Training: ", err_training_prod)
+            print("Production Phase---Relative Error Forecast: ", err_forcast_prod)
+            print("Production Phase---Relative Error Overall: ", err_overall_prod)
 
         # injection phase rate data ----------------------------------------------------------------------------------
         inj_clean_training = 0
@@ -3313,8 +3313,8 @@ class OptModuleSettings:
             q_inj_separate = np.array(q_inj_separate)
             Q_inj_separate = np.array(Q_inj_separate)
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3349,7 +3349,7 @@ class OptModuleSettings:
                 )
 
             q_Q_inj_clean = np.array(q_Q_inj)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             inj_clean_training = np.sum(q_Q_inj_clean[:, :, 0:train_lenght] ** 2)
@@ -3369,10 +3369,10 @@ class OptModuleSettings:
             err_forcast_inj = inj_clean_forcast / INJ_L2_forcast * 100
             err_overall_inj = inj_clean_overall / INJ_L2_overall * 100
 
-            print('\n')
-            print('Injction Phase---Relative Error Training: ', err_training_inj)
-            print('Injction Phase---Relative Error Forecast: ', err_forcast_inj)
-            print('Injction Phase---Relative Error Overall: ', err_overall_inj)
+            print("\n")
+            print("Injction Phase---Relative Error Training: ", err_training_inj)
+            print("Injction Phase---Relative Error Forecast: ", err_forcast_inj)
+            print("Injction Phase---Relative Error Overall: ", err_overall_inj)
 
         # BHP data --------------------------------------------------------------------------------------------------
         bhp_clean_training = 0
@@ -3396,8 +3396,8 @@ class OptModuleSettings:
             bhp_separate = np.array(bhp_separate)
             BHP_separate = np.array(BHP_separate)
 
-            t_sim = opt_df['time']
-            t_Q = truth_df_BT['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df_BT["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3431,7 +3431,7 @@ class OptModuleSettings:
                 )
 
             bhp_BHP_clean = np.array(bhp_BHP)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             bhp_clean_training = sq_norm(bhp_BHP_clean[:, 0:train_lenght])
@@ -3447,10 +3447,10 @@ class OptModuleSettings:
             err_forcast_BHP = bhp_clean_forcast / BHP_L2_forcast * 100
             err_overall_BHP = bhp_clean_overall / BHP_L2_overall * 100
 
-            print('\n')
-            print('BHP---Relative Error Training: ', err_training_BHP)
-            print('BHP---Relative Error Forecast: ', err_forcast_BHP)
-            print('BHP---Relative Error Overall: ', err_overall_BHP)
+            print("\n")
+            print("BHP---Relative Error Training: ", err_training_BHP)
+            print("BHP---Relative Error Forecast: ", err_forcast_BHP)
+            print("BHP---Relative Error Overall: ", err_overall_BHP)
 
         # well temperature --------------------------------------------------------------------------------------------
         wt_clean_training = 0
@@ -3474,8 +3474,8 @@ class OptModuleSettings:
             wt_separate = np.array(wt_separate)
             WT_separate = np.array(WT_separate)
 
-            t_sim = opt_df['time']
-            t_Q = truth_df_BT['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df_BT["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3508,7 +3508,7 @@ class OptModuleSettings:
                     * self.dirac_vec[idx_sim_ts]
                 )
 
-            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             wt_clean_training = sq_norm(wt_WT_clean[:, 0:train_lenght])
             WT_L2_training = sq_norm((np.array(WT_separate)[:, 0:train_lenght]))
@@ -3523,10 +3523,10 @@ class OptModuleSettings:
             err_forcast_well_tempr = wt_clean_forcast / WT_L2_forcast * 100
             err_overall_well_tempr = wt_clean_overall / WT_L2_overall * 100
 
-            print('\n')
-            print('well_tempr---Relative Error Training: ', err_training_well_tempr)
-            print('well_tempr---Relative Error Forecast: ', err_forcast_well_tempr)
-            print('well_tempr---Relative Error Overall: ', err_overall_well_tempr)
+            print("\n")
+            print("well_tempr---Relative Error Training: ", err_training_well_tempr)
+            print("well_tempr---Relative Error Forecast: ", err_forcast_well_tempr)
+            print("well_tempr---Relative Error Overall: ", err_overall_well_tempr)
 
         # temperature data --------------------------------------------------------------------------------------------
         temperature_clean_training = 0
@@ -3540,8 +3540,8 @@ class OptModuleSettings:
             temperature_separate = opt_tempr
             TEMPERATURE_separate = truth_TEMPR
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3575,7 +3575,7 @@ class OptModuleSettings:
                 )
 
             tempr_TEMPR_clean = np.array(tempr_TEMPR)[
-                np.flipud(self.dirac_vec).astype('bool'), :
+                np.flipud(self.dirac_vec).astype("bool"), :
             ].T
 
             temperature_clean_training = sq_norm(tempr_TEMPR_clean[0:train_lenght, :])
@@ -3596,10 +3596,10 @@ class OptModuleSettings:
             )
             err_forcast_tempr = temperature_clean_forcast / TEMPERATURE_L2_forcast * 100
             err_overall_tempr = temperature_clean_overall / TEMPERATURE_L2_overall * 100
-            print('\n')
-            print('Temperature---Relative Error Training: ', err_training_tempr)
-            print('Temperature---Relative Error Forecast: ', err_forcast_tempr)
-            print('Temperature---Relative Error Overall: ', err_overall_tempr)
+            print("\n")
+            print("Temperature---Relative Error Training: ", err_training_tempr)
+            print("Temperature---Relative Error Forecast: ", err_forcast_tempr)
+            print("Temperature---Relative Error Overall: ", err_overall_tempr)
 
         # all data including prod, inj, BHP, well_tempr, tempr, etc.--------------------------------------------------
         err_training_total = (
@@ -3655,10 +3655,10 @@ class OptModuleSettings:
             )
             * 100
         )
-        print('\n')
-        print('Total---Relative Error Training: ', err_training_total)
-        print('Total---Relative Error Forecast: ', err_forcast_total)
-        print('Total---Relative Error Overall: ', err_overall_total)
+        print("\n")
+        print("Total---Relative Error Training: ", err_training_total)
+        print("Total---Relative Error Forecast: ", err_forcast_total)
+        print("Total---Relative Error Overall: ", err_overall_total)
 
         # customized operator data --------------------------------------------------------------------------------------------
         customized_op_clean_training = 0
@@ -3672,8 +3672,8 @@ class OptModuleSettings:
             customized_op_separate = opt_op
             CUSTOMIZED_OP_separate = truth_OP
 
-            t_sim = opt_df['time']
-            t_Q = truth_df['time']
+            t_sim = opt_df["time"]
+            t_Q = truth_df["time"]
             self.dirac_vec = np.zeros(np.size(t_sim))
             for i, ts in enumerate(t_sim):
                 for tr in t_Q:
@@ -3706,7 +3706,7 @@ class OptModuleSettings:
                     * self.dirac_vec[idx_sim_ts]
                 )
 
-            op_OP_clean = np.array(op_OP)[np.flipud(self.dirac_vec).astype('bool'), :].T
+            op_OP_clean = np.array(op_OP)[np.flipud(self.dirac_vec).astype("bool"), :].T
 
             customized_op_clean_training = sq_norm(op_OP_clean[0:train_lenght, :])
             CUSTOMIZED_OP_L2_training = sq_norm(
@@ -3730,10 +3730,10 @@ class OptModuleSettings:
             err_overall_op = (
                 customized_op_clean_overall / CUSTOMIZED_OP_L2_overall * 100
             )
-            print('\n')
-            print('Temperature---Relative Error Training: ', err_training_op)
-            print('Temperature---Relative Error Forecast: ', err_forcast_op)
-            print('Temperature---Relative Error Overall: ', err_overall_op)
+            print("\n")
+            print("Temperature---Relative Error Training: ", err_training_op)
+            print("Temperature---Relative Error Forecast: ", err_forcast_op)
+            print("Temperature---Relative Error Overall: ", err_overall_op)
 
         # all data including prod, inj, BHP, well_tempr, tempr, etc.--------------------------------------------------
         err_training_total = (
@@ -3795,17 +3795,17 @@ class OptModuleSettings:
             )
             * 100
         )
-        print('\n')
-        print('Total---Relative Error Training: ', err_training_total)
-        print('Total---Relative Error Forecast: ', err_forcast_total)
-        print('Total---Relative Error Overall: ', err_overall_total)
+        print("\n")
+        print("Total---Relative Error Training: ", err_training_total)
+        print("Total---Relative Error Forecast: ", err_forcast_total)
+        print("Total---Relative Error Overall: ", err_overall_total)
 
 
 class model_modifier_aggregator:
-    '''
+    """
     The class of modifier definition
     This class includes the functions of modifier initialization, getting the initial guess, setting the updated modifers, etc.
-    '''
+    """
 
     def __init__(self):
         # list with modifiers
@@ -3821,11 +3821,11 @@ class model_modifier_aggregator:
         self.modifiers.append(modifier)
 
     def get_x0(self, model) -> np.array:
-        '''
+        """
         The function of getting the initial guess of the modifier
         :param model: DARTS reservoir model
         :return: initial guess of the modifer
-        '''
+        """
         x0 = np.zeros(0)
         for m in self.modifiers:
             x0 = np.append(x0, m.get_x0(model))
@@ -3856,11 +3856,11 @@ class model_modifier_aggregator:
         return bounds
 
     def get_bounds(self, model) -> List[tuple]:
-        '''
+        """
         The function of getting the bound of the modifier
         :param model: DARTS reservoir model
         :return: bound of the modifer
-        '''
+        """
         bounds = []
         for m in self.modifiers:
             bounds.extend(m.get_bounds(model))
@@ -3873,38 +3873,38 @@ class model_modifier_aggregator:
         return x
 
     def set_x(self, model, x: np.array):
-        '''
+        """
         The function of setting the updated modifier
         :param model: DARTS reservoir model
         :param x: updated control variables
-        '''
+        """
         self.x = x
         for i, m in enumerate(self.modifiers):
             m.set_x(model, x[self.mod_x_idx[i] : self.mod_x_idx[i + 1]])
 
-    def load_restart_data(self, model, filename='restart_mm_agg.pkl'):
+    def load_restart_data(self, model, filename="restart_mm_agg.pkl"):
         if osp.exists(filename):
             with open(filename, "rb") as fp:
                 [self.x, self.mod_x_idx] = pickle.load(fp)
                 self.set_x(model, self.x)
 
-    def save_restart_data(self, filename='restart_mm_agg.pkl'):
+    def save_restart_data(self, filename="restart_mm_agg.pkl"):
         with open(filename, "wb") as fp:
             pickle.dump([self.x, self.mod_x_idx], fp, pickle.HIGHEST_PROTOCOL)
 
-    def save_opt_model_params(self, filename='optimized_model_params.pkl'):
+    def save_opt_model_params(self, filename="optimized_model_params.pkl"):
         with open(filename, "wb") as fp:
             pickle.dump(
                 [self.x, self.mod_x_idx, self.modifiers], fp, pickle.HIGHEST_PROTOCOL
             )
 
     def set_grad(self, grad_original: np.array, x_idx: List[int]) -> np.array:
-        '''
+        """
         The function of setting the gradients
         :param grad_original: original gradient array
         :param x_idx: list of the index of the control variables, including linear gradients (e.g. transmissibility and well index) and nonlinear gradients
         :return: gradients
-        '''
+        """
         grad = np.zeros(0)
 
         for i, m in enumerate(self.modifiers):
@@ -3922,11 +3922,11 @@ class model_modifier_aggregator:
         return grad
 
     def set_x_by_du_dT(self, model, x: np.array):
-        '''
+        """
         The function of setting the updated modifier by correct index
         :param model: DARTS reservoir model
         :param x: updated control variables
-        '''
+        """
         self.x = x
         if type(self.modifiers[0]) == flux_multiplier_modifier:  # for MPFA
             x_linear = x[: self.mod_x_idx[1]]
@@ -3957,7 +3957,7 @@ class model_modifier_aggregator:
                 else:  # nonlinear modifiers
                     m.set_x(model, x[self.mod_x_idx[i] : self.mod_x_idx[i + 1]])
 
-    def load_restart_data_by_du_dT(self, model, filename='restart_mm_agg.pkl'):
+    def load_restart_data_by_du_dT(self, model, filename="restart_mm_agg.pkl"):
         if osp.exists(filename):
             with open(filename, "rb") as fp:
                 [self.x, self.mod_x_idx] = pickle.load(fp)[0:2]
@@ -3973,21 +3973,21 @@ class model_modifier_aggregator:
 
 
 class transmissibility_modifier:
-    '''
+    """
     The class of transmissibility modifier
     This class includes the functions of modifier initialization, getting the initial guess, setting the updated modifers, etc.
-    '''
+    """
 
     def __init__(self):
         # self.norms = 1000
         self.norms = 50000
 
     def get_x0(self, model) -> np.array:
-        '''
+        """
         The function of getting the initial guess of transmissibility modifier
         :param model: DARTS reservoir model
         :return: initial guess of transmissibility modifier
-        '''
+        """
         t = value_vector([])
         t_D = value_vector([])
 
@@ -3997,11 +3997,11 @@ class transmissibility_modifier:
         return np.array(t) / self.norms
 
     def get_bounds(self, model, mult=10) -> List[tuple]:
-        '''
+        """
         The function of getting the bound of transmissibility modifier
         :param model: DARTS reservoir model
         :return: bound of transmissibility modifer
-        '''
+        """
         bound = list()
         for i in range(0, len(self.t)):
             bound += [(0.00002, self.t[i] * mult / self.norms)]
@@ -4011,39 +4011,39 @@ class transmissibility_modifier:
         return bound
 
     def set_x(self, model, x: np.array):
-        '''
+        """
         The function of setting the updated transmissibility
         :param model: DARTS reservoir model
         :param x: updated transmissibility
-        '''
+        """
         tran = x * self.norms
         tranD = tran
         model.reservoir.mesh.set_res_tran(value_vector(tran), value_vector(tranD))
 
     def set_grad(self, grad_original: np.array) -> np.array:
-        '''
+        """
         The function of setting the gradients of transmissibility
         :param grad_original: original gradient array
         :return: gradients of transmissibility
-        '''
+        """
         return grad_original * self.norms
 
 
 class flux_multiplier_modifier:
-    '''
+    """
     The class of flux multiplier modifier
     This class includes the functions of modifier initialization, getting the initial guess, setting the updated modifers, etc.
-    '''
+    """
 
     def __init__(self):
         self.norms = 1
 
     def get_x0(self, model) -> np.array:
-        '''
+        """
         The function of getting the initial guess of flux multiplier modifier
         :param model: DARTS reservoir model
         :return: initial guess of flux multiplier modifier
-        '''
+        """
         n_fm = model.get_n_flux_multiplier()
 
         # n_well_index = 0
@@ -4057,11 +4057,11 @@ class flux_multiplier_modifier:
         return self.fm / self.norms
 
     def get_bounds(self, model, mult=10) -> List[tuple]:
-        '''
+        """
         The function of getting the bound of flux multiplier modifier
         :param model: DARTS reservoir model
         :return: bound of flux multiplier modifer
-        '''
+        """
         bound = list()
         for i in range(0, len(self.fm)):
             bound += [(0.00002, self.fm[i] * mult / self.norms)]
@@ -4070,11 +4070,11 @@ class flux_multiplier_modifier:
         return bound
 
     def set_x(self, model, x: np.array):
-        '''
+        """
         The function of setting the updated flux multiplier
         :param model: DARTS reservoir model
         :param x: updated flux multiplier
-        '''
+        """
         fm = x * self.norms
 
         # always keep the fm between well head and well body equals to 1
@@ -4084,19 +4084,19 @@ class flux_multiplier_modifier:
         model.physics.engine.flux_multiplier = value_vector(fm_full)
 
     def set_grad(self, grad_original: np.array) -> np.array:
-        '''
+        """
         The function of setting the gradients of flux multiplier
         :param grad_original: original gradient array
         :return: gradients of flux multiplier
-        '''
+        """
         return grad_original * self.norms
 
 
 class transmissibility_fracture_modifier:
-    '''
+    """
     The legacy code of Mark Khait
     The class of facture transmissibility modifier
-    '''
+    """
 
     def __init__(self, nr_frac_frac_con):
         self.norms = 5000000
@@ -4129,21 +4129,21 @@ class transmissibility_fracture_modifier:
 
 
 class well_index_modifier:
-    '''
+    """
     The class of well index modifier
     This class includes the functions of modifier initialization, getting the initial guess, setting the updated modifers, etc.
-    '''
+    """
 
     def __init__(self):
         # self.norms = 100
         self.norms = 1000
 
     def get_x0(self, model) -> np.array:
-        '''
+        """
         The function of getting the initial guess of well index modifier
         :param model: DARTS reservoir model
         :return: initial guess of well index modifier
-        '''
+        """
         well_index = value_vector([])
         model.reservoir.mesh.get_wells_tran(well_index)
         self.wi = well_index
@@ -4151,11 +4151,11 @@ class well_index_modifier:
         return np.array(well_index) / self.norms
 
     def get_bounds(self, model, mult=10) -> List[tuple]:
-        '''
+        """
         The function of getting the bound of well index modifier
         :param model: DARTS reservoir model
         :return: bound of well index modifer
-        '''
+        """
         bound = list()
         # for i in range(0, len(self.wi)):
         #     bound += [(0.00002, self.wi[i] * mult / self.norms)]
@@ -4164,20 +4164,20 @@ class well_index_modifier:
         return bound
 
     def set_x(self, model, x: np.array):
-        '''
+        """
         The function of setting the updated well index
         :param model: DARTS reservoir model
         :param x: updated well index
-        '''
+        """
         well_index = x * self.norms
         model.reservoir.mesh.set_wells_tran(value_vector(well_index))
 
     def set_grad(self, grad_original: np.array) -> np.array:
-        '''
+        """
         The function of setting the gradients of well index
         :param grad_original: original gradient array
         :return: gradients of well index
-        '''
+        """
         return grad_original * self.norms
 
 
