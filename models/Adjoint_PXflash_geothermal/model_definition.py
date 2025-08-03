@@ -98,8 +98,8 @@ class Model(CICDModel, OptModuleSettings):
 
             flash_params.T_min = 250.
             flash_params.T_max = 575.
-            flash_params.phflash_Htol = 1e-3
-            flash_params.phflash_Ttol = 1e-8
+            flash_params.pxflash_Ftol = 1e-6
+            flash_params.pxflash_Ttol = 1e-8
 
             # Define PropertyContainer
             from darts.physics.super.property_container import PropertyContainer

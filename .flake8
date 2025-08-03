@@ -1,0 +1,53 @@
+[flake8]
+# Match Black's line length
+max-line-length = 88
+
+# Warn if code complexity exceeds 10
+max-complexity = 10
+
+# Skip these directories/files entirely
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .env,
+    build,
+    dist,
+    *.egg-info,
+    .eggs,
+    .tox,
+    .pytest_cache,
+    .mypy_cache,
+    htmlcov,
+    .DS_Store,
+    *.so,
+    *.pyc,
+    *.pyo,
+    *.pyd,
+    .Python,
+    .coverage,
+    .coverage.*,
+    .cache,
+    nosetests.xml,
+    coverage.xml,
+    *.cover,
+    *.log,
+    .hypothesis
+# Ignored error codes:
+# E203: whitespace before ':'
+# E501: line too long (handled by black)
+# W503: line break before binary operator
+# W504: line break after binary operator
+
+# Ignore rules covered by Black or otherwise unwanted
+ignore = 
+    E203,
+    E501,
+    W503,
+    W504
+
+# Allow unused imports in __init__.py (for package exports)
+per-file-ignores =
+    __init__.py:F401 

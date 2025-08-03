@@ -1,12 +1,20 @@
 import numpy as np
-from darts.engines import value_vector, index_vector
-from darts.physics.base.physics_base import PhysicsBase
+
+from darts.engines import index_vector, value_vector
 from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.physics_base import PhysicsBase
 
 
 class Initialize:
-    def __init__(self, physics, algorithm: str = 'multilinear', mode: str = 'adaptive', is_barycentric: bool = False,
-                 aq_idx: int = None, h2o_idx: int = None):
+    def __init__(
+        self,
+        physics,
+        algorithm: str = 'multilinear',
+        mode: str = 'adaptive',
+        is_barycentric: bool = False,
+        aq_idx: int = None,
+        h2o_idx: int = None,
+    ):
         """
         Constructor for Initialize class. It solves the equilibrated vertical distribution in the PT-domain
 
@@ -22,34 +30,63 @@ class Initialize:
         self.thermal = physics.thermal
 
         # Index of pressure, temperature and components
-        self.vars = ['pressure'] + self.physics.components[:-1] + (['temperature'] if self.thermal else [])
+        self.vars = (
+            ['pressure']
+            + self.physics.components[:-1]
+            + (['temperature'] if self.thermal else [])
+        )
         self.var_idxs = {var: i for i, var in enumerate(self.vars)}
 
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
         self.props = {}
         self.props.update({'rhoT': lambda: np.sum(pc.sat * pc.dens)})
-        self.props.update({'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)})
-        self.props.update({'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
-                           for i in range(pc.nc_fl) for j, ph in enumerate(physics.phases[:pc.np_fl])})
+        self.props.update(
+            {'sat' + ph: lambda j=j: pc.sat[j] for j, ph in enumerate(physics.phases)}
+        )
+        self.props.update(
+            {
+                'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
+                for i in range(pc.nc_fl)
+                for j, ph in enumerate(physics.phases[: pc.np_fl])
+            }
+        )
         if aq_idx is not None:
-            self.props.update({'m' + str(i): lambda i=i: 55.509 * pc.x[aq_idx, i] / pc.x[aq_idx, h2o_idx] for i in range(pc.nc_fl)})
-        self.props.update({'dX' + str(k): lambda k=k: pc.dX[k] for k, kr in enumerate(pc.kinetic_rate_ev)})
+            self.props.update(
+                {
+                    'm'
+                    + str(i): lambda i=i: 55.509
+                    * pc.x[aq_idx, i]
+                    / pc.x[aq_idx, h2o_idx]
+                    for i in range(pc.nc_fl)
+                }
+            )
+        self.props.update(
+            {
+                'dX' + str(k): lambda k=k: pc.dX[k]
+                for k, kr in enumerate(pc.kinetic_rate_ev)
+            }
+        )
 
         self.props_idxs = {prop: i for i, prop in enumerate(self.props.keys())}
         self.primary_specs = {}
         self.secondary_specs = {}
 
         # If PH-formulation, evaluate_PT method must be called in the evaluate() during Initialize
-        pc.evaluate_PT_bool = (physics.state_spec > PhysicsBase.StateSpecification.PT)
+        pc.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
 
         # Create PropertyOperators and interpolators
         self.etor = PropertyOperators(pc, self.thermal, self.props)
-        self.itor = physics.create_interpolator(evaluator=self.etor, n_ops=physics.n_ops,
-                                                axes_min=value_vector(self.physics.PT_axes_min),
-                                                axes_max=value_vector(self.physics.PT_axes_max),
-                                                timer_name='initialization itor',
-                                                algorithm=algorithm, mode=mode, is_barycentric=is_barycentric)
+        self.itor = physics.create_interpolator(
+            evaluator=self.etor,
+            n_ops=physics.n_ops,
+            axes_min=value_vector(self.physics.PT_axes_min),
+            axes_max=value_vector(self.physics.PT_axes_max),
+            timer_name='initialization itor',
+            algorithm=algorithm,
+            mode=mode,
+            is_barycentric=is_barycentric,
+        )
 
     def evaluate(self, Xi: list):
         """
@@ -66,12 +103,23 @@ class Initialize:
         values = value_vector(np.zeros(self.physics.n_ops))
         derivs = value_vector(np.zeros(self.physics.n_ops * self.nv))
 
-        self.itor.evaluate_with_derivatives(value_vector(Xi), state_idxs, values, derivs)
+        self.itor.evaluate_with_derivatives(
+            value_vector(Xi), state_idxs, values, derivs
+        )
 
         return values, derivs
 
-    def solve(self, depth_bottom: float, depth_top: float, depth_known: float, boundary_state: dict,
-              primary_specs: dict = None, secondary_specs: dict = None, nb: int = 100, dTdh: float = 0.03):
+    def solve(
+        self,
+        depth_bottom: float,
+        depth_top: float,
+        depth_known: float,
+        boundary_state: dict,
+        primary_specs: dict = None,
+        secondary_specs: dict = None,
+        nb: int = 100,
+        dTdh: float = 0.03,
+    ):
         """
         Solve for all depths
 
@@ -90,11 +138,15 @@ class Initialize:
         # If only one block has been specified, return the boundary state
         if nb == 1:
             self.depths = np.array([depth_known])
-            return np.array([boundary_state[variable] for variable in self.var_idxs.keys()])
+            return np.array(
+                [boundary_state[variable] for variable in self.var_idxs.keys()]
+            )
 
         # Else, check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
-        assert depth_top <= depth_known <= depth_bottom, "Known depth is not in range [bottom, top]"
+        assert (
+            depth_top <= depth_known <= depth_bottom
+        ), "Known depth is not in range [bottom, top]"
         self.depths = np.linspace(start=depth_top, stop=depth_bottom, num=nb)
         bc_idx = (np.fabs(self.depths - depth_known)).argmin()
         self.depths[bc_idx] = depth_known
@@ -102,22 +154,51 @@ class Initialize:
         # Set primary and secondary specifications
         if primary_specs:
             for spec, values in primary_specs.items():
-                self.primary_specs[spec] = values if isinstance(values, (list, np.ndarray)) else np.ones(nb) * values
-                assert len(self.primary_specs[spec]) == nb, "Length of " + spec + " not compatible"
+                self.primary_specs[spec] = (
+                    values
+                    if isinstance(values, (list, np.ndarray))
+                    else np.ones(nb) * values
+                )
+                assert len(self.primary_specs[spec]) == nb, (
+                    "Length of " + spec + " not compatible"
+                )
         if secondary_specs:
             for spec, values in secondary_specs.items():
-                self.secondary_specs[spec] = values if isinstance(values, (list, np.ndarray)) else np.ones(nb) * values
-                assert len(self.secondary_specs[spec]) == nb, "Length of " + spec + " not compatible"
+                self.secondary_specs[spec] = (
+                    values
+                    if isinstance(values, (list, np.ndarray))
+                    else np.ones(nb) * values
+                )
+                assert len(self.secondary_specs[spec]) == nb, (
+                    "Length of " + spec + " not compatible"
+                )
         for i in range(nb):
-            assert int(np.sum([not np.isnan(np.float64(spec[i])) for spec in self.primary_specs.values()]) +
-                       np.sum([not np.isnan(np.float64(spec[i])) for spec in self.secondary_specs.values()])
-                       ) == self.nv - 1 - self.thermal, \
-                "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
-                    i, self.nv - 1 - self.thermal)
+            assert (
+                int(
+                    np.sum(
+                        [
+                            not np.isnan(np.float64(spec[i]))
+                            for spec in self.primary_specs.values()
+                        ]
+                    )
+                    + np.sum(
+                        [
+                            not np.isnan(np.float64(spec[i]))
+                            for spec in self.secondary_specs.values()
+                        ]
+                    )
+                )
+                == self.nv - 1 - self.thermal
+            ), "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
+                i, self.nv - 1 - self.thermal
+            )
 
         # Define thermal gradient
         if self.thermal:
-            self.T = lambda i: boundary_state['temperature'] + (self.depths[i] - self.depths[bc_idx]) * dTdh
+            self.T = (
+                lambda i: boundary_state['temperature']
+                + (self.depths[i] - self.depths[bc_idx]) * dTdh
+            )
 
         # Set state in known cell
         X = np.zeros((nb, self.nv))
@@ -136,7 +217,13 @@ class Initialize:
 
         return X.flatten()
 
-    def solve_state(self, Xi: list, primary_specs: dict = None, secondary_specs: dict = None, max_iter: int = 100):
+    def solve_state(
+        self,
+        Xi: list,
+        primary_specs: dict = None,
+        secondary_specs: dict = None,
+        max_iter: int = 100,
+    ):
         """
         Solve for all depths
 
@@ -148,11 +235,33 @@ class Initialize:
         :type secondary_specs: dict
         :param max_iter: Maximum number of iterations
         """
-        assert int(np.sum([not np.isnan(np.float64(spec)) for spec in primary_specs.values()]) +
-                   np.sum([not np.isnan(np.float64(spec)) for spec in secondary_specs.values()])) == self.nv, \
-            "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
-                int(np.sum([not np.isnan(np.float64(spec)) for spec in primary_specs.values()])
-                    + np.sum([not np.isnan(np.float64(spec)) for spec in secondary_specs.values()])), self.nv)
+        assert (
+            int(
+                np.sum(
+                    [not np.isnan(np.float64(spec)) for spec in primary_specs.values()]
+                )
+                + np.sum(
+                    [
+                        not np.isnan(np.float64(spec))
+                        for spec in secondary_specs.values()
+                    ]
+                )
+            )
+            == self.nv
+        ), "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
+            int(
+                np.sum(
+                    [not np.isnan(np.float64(spec)) for spec in primary_specs.values()]
+                )
+                + np.sum(
+                    [
+                        not np.isnan(np.float64(spec))
+                        for spec in secondary_specs.values()
+                    ]
+                )
+            ),
+            self.nv,
+        )
 
         for it in range(max_iter):
             res = np.zeros(self.nv)
@@ -167,8 +276,8 @@ class Initialize:
                     Xi[var_idx] = spec
 
                     res[j1] = Xi[var_idx] - spec
-                    Jac[j1, :] = 0.
-                    Jac[j1, var_idx] = 1.
+                    Jac[j1, :] = 0.0
+                    Jac[j1, var_idx] = 1.0
                     j1 += 1
 
             # Specification of secondary variables
@@ -193,7 +302,9 @@ class Initialize:
         print("MAX ITER REACHED FOR INITIALIZATION", Xi)
         return Xi
 
-    def solve_cell(self, X: np.ndarray, cell_idx: int, downward: bool = True, max_iter: int = 100):
+    def solve_cell(
+        self, X: np.ndarray, cell_idx: int, downward: bool = True, max_iter: int = 100
+    ):
         """
         Solve for specific depth
 
@@ -230,7 +341,7 @@ class Initialize:
             # Pressure equation
             mgh = (values1[rhoT_idx] + values0[rhoT_idx]) * (gh1 - gh0) / 2
             res[0] = X[known_idx, 0] + mgh - X[cell_idx, 0]
-            Jac[0, 0] -= 1.
+            Jac[0, 0] -= 1.0
             for j in range(n_vars):
                 Jac[0, j] += derivs1[rhoT_idx * self.nv + j] * (gh1 - gh0) / 2
 
@@ -243,8 +354,8 @@ class Initialize:
 
                     res_idx = j1 + 1
                     res[res_idx] = X[cell_idx, var_idx] - spec[cell_idx]
-                    Jac[res_idx, :] = 0.
-                    Jac[res_idx, var_idx] = 1.
+                    Jac[res_idx, :] = 0.0
+                    Jac[res_idx, var_idx] = 1.0
                     j1 += 1
 
             # Specification of secondary variables

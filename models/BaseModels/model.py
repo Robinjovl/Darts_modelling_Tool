@@ -38,7 +38,17 @@ class Model(DartsModel):
             self.init_state = [200, 1.0 - 3 * zero, zero, zero]
             self.inj_comp = [0.1, 0.2, 0.5 - zero]
             dt_max = 3
-
+        elif physics == 'CO2':
+            components = ["CO2"]
+            self.set_vl_physics(components, n_points)
+            self.init_state = [200, 350]
+            self.inj_temp = 300
+            self.inj_comp = []
+        elif physics == 'iapws':
+            self.set_iapws_physics(n_points)
+            self.init_state = [200, 350]
+            self.inj_temp = 300
+            self.inj_comp = []
 
         self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max, tol_newton=1e-2)
 
@@ -190,8 +200,93 @@ class Model(DartsModel):
 
         return
 
+    def set_vl_physics(self, components, n_points):
+        from darts.physics.super.physics import Compositional
+        from dartsflash.mixtures import DARTSFlash, CompData, EoS, VL
+
+        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        from darts.physics.properties.viscosity import Fenghour1998
+        """Physical properties"""
+        # Create property containers:
+        phases = ['V', 'L']
+        nc = len(components)
+        zero = 1e-12
+
+        comp_data = CompData(components=components, setprops=True)
+
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, min_z=zero)
+
+        """ properties correlations """
+        pt = False
+        flash_ev = VL(comp_data)
+        flash_ev.set_vl_eos("PR")
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
+        property_container.flash_ev = flash_ev
+        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX))])
+        property_container.viscosity_ev = dict([('V', Fenghour1998()),
+                                                ('L', Fenghour1998())])
+        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
+                                               ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
+        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
+                                               ('L', PhaseRelPerm("oil", swc=0.2))])
+        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
+                                                   ('L', ConstFunc(180.)), ])
+
+
+        """ Activate physics """
+        state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=zero / 10, max_z=1 - zero / 10,
+                                     min_t=273.15, max_t=473.15)
+        self.physics.add_property_region(property_container)
+        return
+
+    def set_iapws_physics(self, n_points):
+        from darts.physics.super.physics import Compositional
+        from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+
+        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        from darts.physics.properties.viscosity import Fenghour1998
+        """Physical properties"""
+        # Create property containers:
+        components = ["H2O"]
+        phases = ['V', 'L']
+        nc = len(components)
+        zero = 1e-12
+
+        comp_data = CompData(components=components, setprops=True)
+
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
+                                               min_z=zero)
+
+        """ properties correlations """
+        pt = True
+        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
+        property_container.flash_ev = flash_ev
+        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
+        property_container.viscosity_ev = dict([('V', Fenghour1998()),
+                                                ('L', Fenghour1998())])
+        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX)),
+                                               ('L', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN))])
+        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
+                                               ('L', PhaseRelPerm("oil", swc=0.2))])
+        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
+                                                   ('L', ConstFunc(180.)), ])
+
+
+        """ Activate physics """
+        state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
+        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=zero / 10, max_z=1 - zero / 10,
+                                     min_t=273.15, max_t=473.15)
+        self.physics.add_property_region(property_container)
+        return
+
     def set_initial_conditions(self):
-        if self.physics_name == 'geo':
+        if self.physics_name == 'geo' or self.physics_name == 'CO2' or self.physics_name == 'iapws':
             input_distribution = {'pressure': self.init_state[0],
                                   'temperature': self.init_state[1]
                                   }

@@ -1,8 +1,7 @@
-from darts.input.input_data import InputData, FluidProps
+from darts.input.input_data import FluidProps, InputData
+from darts.physics.properties.black_oil import *
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-
-from darts.physics.properties.black_oil import *
 
 
 class BlackOilBase(Compositional):
@@ -18,15 +17,33 @@ class BlackOilBase(Compositional):
 
 class BlackOil(Compositional):
     def __init__(self, idata: InputData, timer, thermal):
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        super().__init__(components=idata.fluid.components, phases=idata.fluid.phases, timer=timer,
-                         n_points=idata.obl.n_points, min_p=idata.obl.min_p, max_p=idata.obl.max_p,
-                         min_z=idata.obl.min_z, max_z=idata.obl.max_z, min_t=idata.obl.min_t, max_t=idata.obl.max_t,
-                         state_spec=state_spec)
+        state_spec = (
+            Compositional.StateSpecification.PT
+            if thermal
+            else Compositional.StateSpecification.P
+        )
+        super().__init__(
+            components=idata.fluid.components,
+            phases=idata.fluid.phases,
+            timer=timer,
+            n_points=idata.obl.n_points,
+            min_p=idata.obl.min_p,
+            max_p=idata.obl.max_p,
+            min_z=idata.obl.min_z,
+            max_z=idata.obl.max_z,
+            min_t=idata.obl.min_t,
+            max_t=idata.obl.max_t,
+            state_spec=state_spec,
+        )
 
-        temperature = None if thermal else 1.
-        property_container = BlackOilProperties(phases_name=idata.fluid.phases, components_name=idata.fluid.components,
-                                                Mw=idata.fluid.Mw, min_z=idata.obl.min_z, temperature=temperature)
+        temperature = None if thermal else 1.0
+        property_container = BlackOilProperties(
+            phases_name=idata.fluid.phases,
+            components_name=idata.fluid.components,
+            Mw=idata.fluid.Mw,
+            min_z=idata.obl.min_z,
+            temperature=temperature,
+        )
 
         property_container.flash_ev = idata.fluid.flash_ev
         property_container.density_ev = idata.fluid.density
@@ -48,23 +65,39 @@ class BlackOilFluidProps(FluidProps):
 
         self.pvt = pvt
         self.flash_ev = flash_black_oil(pvt)
-        self.density = dict([('gas', DensityGas(pvt)),
-                             ('oil', DensityOil(pvt)),
-                             ('water', DensityWat(pvt))])
-        self.viscosity = dict([('gas', ViscGas(pvt)),
-                               ('oil', ViscOil(pvt)),
-                               ('water', ViscWat(pvt))])
-        self.rel_perm = dict([('gas', GasRelPerm(pvt)),
-                              ('oil', OilRelPerm(pvt)),
-                              ('water', WatRelPerm(pvt))])
-        self.capillary_pressure = dict([('pcow', CapillaryPressurePcow(pvt)),
-                                        ('pcgo', CapillaryPressurePcgo(pvt))])
+        self.density = dict(
+            [
+                ('gas', DensityGas(pvt)),
+                ('oil', DensityOil(pvt)),
+                ('water', DensityWat(pvt)),
+            ]
+        )
+        self.viscosity = dict(
+            [('gas', ViscGas(pvt)), ('oil', ViscOil(pvt)), ('water', ViscWat(pvt))]
+        )
+        self.rel_perm = dict(
+            [
+                ('gas', GasRelPerm(pvt)),
+                ('oil', OilRelPerm(pvt)),
+                ('water', WatRelPerm(pvt)),
+            ]
+        )
+        self.capillary_pressure = dict(
+            [('pcow', CapillaryPressurePcow(pvt)), ('pcgo', CapillaryPressurePcgo(pvt))]
+        )
 
 
 class BlackOilProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z: float = 1e-11, temperature: float = None):
+    def __init__(
+        self,
+        phases_name,
+        components_name,
+        Mw,
+        min_z: float = 1e-11,
+        temperature: float = None,
+    ):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.0)
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]
@@ -106,9 +139,13 @@ class BlackOilProperties(PropertyContainer):
             # molar weight of mixture
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, pbub, xgo)  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
+                pressure, pbub, xgo
+            )  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, pbub)  # output in [cp]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
+                pressure, pbub
+            )  # output in [cp]
 
         self.nu[2] = zc[2]
         # two phase undersaturated condition
@@ -122,7 +159,9 @@ class BlackOilProperties(PropertyContainer):
         self.compute_saturation(self.ph)
 
         for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[0], self.sat[2])
+            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(
+                self.sat[0], self.sat[2]
+            )
 
         pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
         pcgo = self.capillary_pressure_ev['pcgo'].evaluate(self.sat[0])

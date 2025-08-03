@@ -102,7 +102,7 @@ def analyze_log(log_path):
 
     return summary_list, total_errors
 
-def run_valgrind_for_model(model):
+def run_valgrind_for_model(model, timeout=1800):
     # model path
     model_path = os.path.join('models', model)
     if not os.path.isdir(model_path):
@@ -118,7 +118,7 @@ def run_valgrind_for_model(model):
     # Build the inline Python snippet to invoke run_model_direct
     py_snippet = (
         'import sys, os; '
-        'from helper_scripts.valgrind_profile import run_model; '
+        'from helper_scripts.valgrind_check import run_model; '
         f'model_path = os.path.join("models", "{model}"); '
         'os.chdir(model_path); '
         f'sys.exit(0 if run_model(model="{model}") else 1)'
@@ -160,8 +160,7 @@ def run_valgrind_for_model(model):
     
     with open(prog_out, 'w') as out_f, open(prog_err, 'w') as err_f:
         try:
-            proc = subprocess.run(cmd, stdout=out_f, stderr=err_f, env=env, timeout=1800)
-            # proc = subprocess.run(cmd, shell=True, env=env, timeout=1800)
+            proc = subprocess.run(cmd, stdout=out_f, stderr=err_f, env=env, timeout=timeout)
         except subprocess.TimeoutExpired:
             print(f'ERROR: timeout profiling model {model}')
             return True # failed

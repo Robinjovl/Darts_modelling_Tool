@@ -1,7 +1,8 @@
-import numpy as np
-from darts.engines import value_vector
 import os.path as osp
-import re
+
+import numpy as np
+
+from darts.engines import value_vector
 
 
 def get_table_keyword(file_name, keyword):
@@ -30,8 +31,11 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
     if cache:
         # if caching is enabled and cache file is already created, read from it
         import os
+
         if os.path.isfile(cache_filename):
-            print("Reading %s from %s..." % (keyword, cache_filename), end='', flush=True)
+            print(
+                "Reading %s from %s..." % (keyword, cache_filename), end='', flush=True
+            )
             a = np.fromfile(cache_filename)
             print(" %d values have been read." % len(a))
             return a
@@ -54,7 +58,11 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                 if first_word == keyword:
                     # requested keyword is now detected
                     read_data_mode = 1
-                    print("Reading %s from %s..." % (keyword, osp.abspath(file_name)), end='', flush=True)
+                    print(
+                        "Reading %s from %s..." % (keyword, osp.abspath(file_name)),
+                        end='',
+                        flush=True,
+                    )
                     continue
                 if s_line == 'INCLUDE':
                     path = osp.abspath(osp.dirname(file_name))
@@ -86,7 +94,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                             # in PETREL the trailing slash can be on the same line with numbers
                             # Skip the message if that is the case
                             if s1[x] != '/':
-                                print("\n''", s1[x],  "'' is not a float, skipping...\n")
+                                print("\n''", s1[x], "'' is not a float, skipping...\n")
                             continue
                         b = np.append(b, value)
             else:
@@ -98,7 +106,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                 def_len *= 2
                 a.resize(def_len, refcheck=False)
             # copy data from b to a
-            a[pos:pos + b.size] = b
+            a[pos : pos + b.size] = b
             pos += b.size
 
             # break when slash found
@@ -106,7 +114,6 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                 break
     # shrink the array to actual read length
     a.resize(pos, refcheck=False)
-
 
     if cache:
         # if caching is enabled, save to cache file
@@ -117,13 +124,15 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
 
     return a
 
+
 def save_few_keywords(fname, keys, data):
     f = open(fname, 'w')
     for id in range(len(keys)):
         f.write(keys[id])
         for i, val in enumerate(data[id]):
-            if i % 6 == 0: f.write('\n')
-            if type(val) != float:
+            if i % 6 == 0:
+                f.write('\n')
+            if not isinstance(val, float):
                 f.write(str(val))
             else:
                 f.write("%12.10f" % val)

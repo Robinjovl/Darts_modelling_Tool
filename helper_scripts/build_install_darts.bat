@@ -7,4 +7,4 @@ FOR /F "delims=" %%i IN ('python -c "import sys;print(str(sys.version_info.major
     SET "pyver=%%i"
 )
 
-python -m pip install --upgrade --no-deps --force-reinstall dist/open_darts-1.3.1-cp%pyver%-cp%pyver%-win_amd64.whl
+python -m pip install --upgrade --no-deps --force-reinstall dist/open_darts-1.3.2-cp%pyver%-cp%pyver%-win_amd64.whl

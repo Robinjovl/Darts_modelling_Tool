@@ -479,31 +479,6 @@ class Model(DartsModel):
             self.physics.engine.X[target_cell] = T_spec_top
         return
 
-    def my_output_to_vtk(self, property_array, timesteps, ith_step: int = None, output_directory: str = None, ):
-        self.timer.start(); self.timer.node["vtk_output"].start()
-
-        # Set default output directory
-        if output_directory is None:
-            output_directory = os.path.join(self.output_folder, 'vtk_files')
-        os.makedirs(output_directory, exist_ok=True)
-
-        # units to prop names
-        prop_names = {}
-        for i, name in enumerate(property_array.keys()):
-            prop_names[name] = name
-            
-        for t, time in enumerate(timesteps):
-            data = np.zeros((len(property_array), self.reservoir.mesh.n_res_blocks))
-            for i, name in enumerate(property_array.keys()):
-                data[i, :] = property_array[name][t]
-
-            if ith_step is None:
-                self.reservoir.output_to_vtk(t, time, output_directory, prop_names, data)
-            else:
-                self.reservoir.output_to_vtk(ith_step, time, output_directory, prop_names, data)
-
-        self.timer.node["vtk_output"].stop(); self.timer.stop()
-
     def run(self, days: float = None, restart_dt: float = 0., save_well_data: bool = True, save_well_data_after_run: bool = False,
             save_reservoir_data: bool = True, verbose: bool = True):
 
