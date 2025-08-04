@@ -1,8 +1,9 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import shutil
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel

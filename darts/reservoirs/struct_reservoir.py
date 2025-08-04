@@ -7,9 +7,9 @@ from scipy.interpolate import griddata
 from darts.engines import (
     conn_mesh,
     index_vector,
+    ms_well,
     timer_node,
     value_vector,
-    ms_well,
 )
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase

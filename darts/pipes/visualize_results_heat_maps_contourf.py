@@ -1,10 +1,11 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import shutil
-from matplotlib.ticker import MultipleLocator
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib.colors import BoundaryNorm
+from matplotlib.ticker import MultipleLocator
 
 from darts.models.darts_model import DartsModel
 

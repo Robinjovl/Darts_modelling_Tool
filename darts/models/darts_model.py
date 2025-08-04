@@ -15,23 +15,22 @@ except ImportError:
 
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
-    ms_well_vector,
-    op_vector,
-    value_vector,
     index_vector,
     ms_well,
+    ms_well_vector,
+    op_vector,
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.engines import (
     sim_params,
     timer_node,
+    value_vector,
+)
+from darts.pipes.add_lateral_heat_exchange import (
+    NumericalWellLateralHeatTransfer,
+    SemiAnalyticalWellLateralHeatTransfer,
 )
 from darts.print_build_info import print_build_info as package_pbi
-
-from darts.pipes.add_lateral_heat_exchange import (
-    SemiAnalyticalWellLateralHeatTransfer,
-    NumericalWellLateralHeatTransfer,
-)
 
 
 class DataTS:

@@ -18,8 +18,8 @@ from typing import Union
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import (
-    SingleAmbientTemperature,
     LinearAmbientTemperature,
+    SingleAmbientTemperature,
 )
 from darts.pipes.units import *
 

@@ -1,6 +1,6 @@
-from darts.pipes.define_pipe_geometry import PipeGeometry
-
 import numpy as np
+
+from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
 class SemiAnalyticalWellLateralHeatTransfer:
