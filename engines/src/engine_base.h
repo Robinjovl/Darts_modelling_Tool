@@ -916,7 +916,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	RHS.resize(n_vars * mesh->n_blocks);
 	dX.resize(n_vars * mesh->n_blocks);
 	sg_max.resize(mesh->n_blocks);
-	std::fill(sg_max.begin(), sg_max.end(), (int)1);
+	//std::fill(sg_max.begin(), sg_max.end(), (int)1);
 
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;
