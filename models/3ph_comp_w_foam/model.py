@@ -7,6 +7,7 @@ from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from properties import GasFoamRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
@@ -23,7 +24,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
                             it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
 
         self.timer.node["initialization"].stop()
@@ -45,33 +46,34 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         zero = 1e-8
-        components = ['CO2', 'C1', 'H2S', 'H2O']
+        components = ['CO2', 'C10', 'H2O']
         phases = ['gas', 'oil', 'wat']
         nc = len(components)
         Mw = [44.01, 16.04, 34.081, 18.015]
 
-        self.inj_composition = [1.0 - 2 * zero, zero, zero]
-        self.ini_stream = [0.1, 0.2, 0.6 - zero]
+        self.inj_composition = [1.0 - 2 * zero, zero]
+        self.ini_stream = [0.1, 0.6 - zero]
 
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=zero/10)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc-1, [4, 2, 1e-2], zero)
-        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
-                                              ('oil', DensityBasic(compr=1e-5, dens0=600)),
-                                              ('wat', DensityBrineCO2(components, compr=1e-5, dens0=1000, co2_mult=0))])
-        property_container.viscosity_ev = dict([('gas', ConstFunc(0.05)),
-                                                ('oil', ConstFunc(0.5)),
-                                                ('wat', ConstFunc(0.5))])
-        property_container.rel_perm_ev = dict([('gas', PhaseRelPerm("gas")),
-                                               ('oil', PhaseRelPerm("oil")),
-                                               ('wat', PhaseRelPerm("wat"))])
+        property_container.flash_ev = ConstantK(nc-1, [1e10, 1e-10], zero)
+        property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=733)),
+                                              ('oil', DensityBasic(compr=1e-5, dens0=800)),
+                                              ('wat', DensityBrineCO2(components, compr=1e-6, dens0=980))])
+        property_container.viscosity_ev = dict([('gas', ConstFunc(0.2611)),
+                                                ('oil', ConstFunc(0.9)),
+                                                ('wat', ConstFunc(0.511))])
+        pfoam = np.array([100, 0.35, 1000])
+        property_container.rel_perm_ev = dict([('gas', GasFoamRelPerm("gas", pfoam, swc=0.2, sgr=0.2, n=1.3, kre=0.94)),
+                                               ('oil', PhaseRelPerm("oil", swc=0.2, sgr=0.2, n=1.3, kre=0.94)),
+                                               ('wat', PhaseRelPerm("wat", swc=0.2, sgr=0.2, n=4.2, kre=0.2))])
 
         """ Activate physics """
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=zero/10, max_z=1-zero/10)
+                                     n_points=1000, min_p=1, max_p=1000, min_z=zero/10, max_z=1-zero/10)
         self.physics.add_property_region(property_container)
 
         return
@@ -80,7 +82,6 @@ class Model(CICDModel):
         input_distribution = {self.physics.vars[0]: 50.,
                               self.physics.vars[1]: self.ini_stream[0],
                               self.physics.vars[2]: self.ini_stream[1],
-                              self.physics.vars[3]: self.ini_stream[2],
                               }
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)

@@ -57,7 +57,7 @@ if __name__ == '__main__':
     n.set_output()
 
     if True:
-        n.run(100)
+        n.run(4000)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run(300, restart_dt=1e-3)
         n.print_timers()
@@ -84,25 +84,26 @@ if __name__ == '__main__':
         nb = n.reservoir.mesh.n_res_blocks
 
         plt.figure(num=1, figsize=(12, 8), dpi=100)
-        for i in range(nc if nc < 3 else 3):
-            plt.subplot(330 + (i + 1))
+        for i in range(3):
+            plt.subplot(310 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
         plt.savefig('out.png')
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')
 
-
-#z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
-
-# rho_aq = n.property_container.density_ev['wat'].evaluate(P, z_co2)
-# Sg = np.zeros(n.reservoir.nb)
+# nb = n.reservoir.mesh.n_res_blocks
+# P = Xn[0:nb*nc:nc]
+# z_co2 = Xn[1:nb*nc:nc]
 #
-# for i in range (n.reservoir.nb):
+# rho_aq = n.physics.property_containers[0].density_ev['wat'].evaluate(P, z_co2)
+# Sg = np.zeros(nb)
+#
+# for i in range (nb):
 #     x_list = Xn[i*nc:(i+1)*nc]
 #     state = value_vector(x_list)
 #     Sg[i] = n.properties(state)
-
+#
 # """ start plots """
 # plt.figure(num=1, figsize=(12, 8), dpi=100)
 # """ sg and x """
@@ -116,7 +117,7 @@ if __name__ == '__main__':
 # plt.plot(P)
 # #plt.imshow(np.reshape(P, (220, 60)).T)
 # plt.title('Pressure', y=1)
-
+#
 # """ sg and x """
 # plt.subplot(223)
 # plt.plot(P)
@@ -125,8 +126,8 @@ if __name__ == '__main__':
 # plt.subplot(224)
 # plt.plot(T)
 # plt.title('Gas saturation', y=1)
-
-
+#
+#
 # time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
 # from darts.tools.plot_darts import *
 # writer = pd.ExcelWriter('time_data.xlsx')
@@ -134,7 +135,7 @@ if __name__ == '__main__':
 #
 #
 # plt.show()
-
+#
 # from darts.tools.plot_darts import *
 # time_data1 = pd.DataFrame.from_dict(n.physics.engine.time_data)
 # for i, w in enumerate(n.reservoir.wells):
