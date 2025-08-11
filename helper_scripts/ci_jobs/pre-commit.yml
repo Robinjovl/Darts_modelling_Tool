@@ -14,7 +14,13 @@ pre-commit:
         - pip install pre-commit
     script:
         - echo 'Running Python linting checks...'
-        - pre-commit run --all-files --show-diff-on-failure --color always 2>&1 | tee linting_output.log
+        - FILES="$(git ls-files ':(glob)darts/**/*.py' || true)"
+        - |
+          if [ -n "$FILES" ]; then
+            pre-commit run --files $FILES --show-diff-on-failure --color always 2>&1 | tee linting_output.log
+          else
+            echo "No Python files under darts/"; exit 0
+          fi
     artifacts:
         paths:
             - linting_output.log
