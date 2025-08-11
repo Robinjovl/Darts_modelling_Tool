@@ -1,0 +1,24 @@
+# .pre-commit-config.yaml
+ci:
+  autoupdate_schedule: quarterly
+
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.8
+    hooks:
+      - id: ruff-check
+        args: [--fix, --show-fixes]
+        files: ^(darts|tests)/.*\.py$
+      - id: ruff-format
+        files: ^(darts|tests)/.*\.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: mixed-line-ending
