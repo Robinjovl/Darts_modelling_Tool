@@ -8,7 +8,9 @@ from darts.reservoirs.mesh.geometry.wells import *
 
 
 class Geometry:
-    def __init__(self, dim, axs=[0, 1, 2]):
+    def __init__(self, dim, axs=None):
+        if axs is None:
+            axs = [0, 1, 2]
         self.dim = dim
         self.axs = axs
 
@@ -65,7 +67,7 @@ class Geometry:
             self.lc += shape.lc
 
             # Check if Points are already in self.points; if not, add point. Map index
-            for i, point in enumerate(shape.points):
+            for _i, point in enumerate(shape.points):
                 if point.xyz in self.points_list:
                     point_idx = self.points_list.index(point.xyz) + 1
                     points_map[point.idx] = point_idx
@@ -81,7 +83,7 @@ class Geometry:
                     points_map[point.idx] = len(self.points_list)
 
             # Check if Curves are already in self.curves; if not, add curve. Map index
-            for i, curve in enumerate(shape.curves):
+            for _i, curve in enumerate(shape.curves):
                 new_curve = []
                 for j, point in enumerate(curve.points):
                     point_idx_from_map = points_map[point]
@@ -108,7 +110,7 @@ class Geometry:
                     curves_map[curve.idx] = len(self.curves_list)
 
             # Check if Surfaces are already in self.surfaces; if not, add surface. Map index
-            for i, surface in enumerate(shape.surfaces):
+            for _i, surface in enumerate(shape.surfaces):
                 # Find curve idxs from curves_map
                 curves = []
                 for curve_idx in surface.curves:
@@ -164,7 +166,7 @@ class Geometry:
                         self.holes.append(surface_idx_from_map)
 
             # Check if Volumes are already in self.volumes; if not, add volume. Map index
-            for i, volume in enumerate(shape.volumes):
+            for _i, volume in enumerate(shape.volumes):
                 # Find curve idxs from curves_map
                 surfaces = []
                 for surface_idx in volume.surfaces:
@@ -266,5 +268,5 @@ class Geometry:
 
             if (intersections % 2) != 0:
                 return [s + 1]
-        warnings.warn("Didn't find surface for point", point)
+        warnings.warn("Didn't find surface for point", point, stacklevel=2)
         return []

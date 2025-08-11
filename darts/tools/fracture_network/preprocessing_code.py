@@ -200,7 +200,7 @@ def frac_preprocessing(
     my_graph = Graph(matrix_perm=matrix_perm)
     my_graph.add_multiple_edges(act_frac_sys_cln)
     my_graph.apertures[
-        np.where(my_graph.active_edges[: my_graph.get_num_edges()] == True)[0]
+        np.where(my_graph.active_edges[: my_graph.get_num_edges()])[0]
     ] = apertures_cln
     print('DONE constructing graph\n')
 
@@ -219,9 +219,7 @@ def frac_preprocessing(
         )
     print(f'DONE main cleaning loop for l_f={char_len}\n')
 
-    active_edges = np.where(my_graph.active_edges[: my_graph.get_num_edges()] == True)[
-        0
-    ]
+    active_edges = np.where(my_graph.active_edges[: my_graph.get_num_edges()])[0]
     num_act_frac = len(active_edges)
     act_frac_sys_cln = np.zeros((num_act_frac, 4))
     act_frac_sys_cln[:, 0] = my_graph.vertices[
@@ -236,7 +234,7 @@ def frac_preprocessing(
     act_frac_sys_cln[:, 3] = my_graph.vertices[
         my_graph.edge_to_vertex[my_graph.active_edges, 1], 1
     ]
-    order_segms_after_cleaning = order_cleaning_segms[active_edges]
+    order_cleaning_segms[active_edges]
     apertures_cln = my_graph.apertures[active_edges]
 
     # --------------------------------------------------------------------------

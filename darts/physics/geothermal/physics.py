@@ -165,7 +165,7 @@ class Geothermal(PhysicsBase):
         input_depth = (
             input_depth if not np.isscalar(input_depth) else np.array([input_depth])
         )
-        for key, input_values in input_distribution.values():
+        for _key, input_values in input_distribution.values():
             input_values = (
                 input_values
                 if not np.isscalar(input_values)

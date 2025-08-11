@@ -874,7 +874,7 @@ class Output:
         }
 
         # Loop over available timesteps
-        for k, t in enumerate(timesteps):
+        for k, _t in enumerate(timesteps):
             # Extract primary properties from X vector
             for var_name, var_idx in primary_prop_idxs.items():
                 if engine is False:
@@ -1100,7 +1100,7 @@ class Output:
         )
 
         var_names = list(xarray_data.data_vars)
-        for i, var in enumerate(var_names):
+        for _i, var in enumerate(var_names):
             plt.figure()
             if z is not None:
                 assert z < len(xarray_data['z']), (

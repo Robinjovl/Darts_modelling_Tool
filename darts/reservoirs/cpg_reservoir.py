@@ -28,7 +28,7 @@ try:
     from vtk import vtkCellArray, vtkHexahedron, vtkPoints
     from vtk.util.numpy_support import numpy_to_vtk
 except ImportError:
-    warnings.warn("No vtk module loaded.")
+    warnings.warn("No vtk module loaded.", stacklevel=2)
 
 import inspect
 import os
@@ -696,7 +696,7 @@ class CPG_Reservoir(ReservoirBase):
             mesh_filename = output_directory + '/mesh'
 
             if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(
+                gridToVTK(
                     mesh_filename,
                     self.vtk_x,
                     self.vtk_y,
@@ -705,14 +705,14 @@ class CPG_Reservoir(ReservoirBase):
                 )
             else:
                 g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
-                for key, value in cell_data.items():
+                for key, _value in cell_data.items():
                     if cell_data[key].size == g_to_l.size:
                         a = cell_data[key][g_to_l >= 0]
                     else:
                         a = cell_data[key]
                     self.vtkobj.AppendScalarData(key, a)
 
-                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
                     for key, data in self.global_data.items():
                         self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
@@ -753,7 +753,7 @@ class CPG_Reservoir(ReservoirBase):
                 vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data
             )
         else:
-            for key, value in cell_data.items():
+            for key, _value in cell_data.items():
                 g_to_l = np.array(self.discr_mesh.global_to_local, copy=False)
                 if cell_data[key].size == g_to_l.size:
                     a = cell_data[key][g_to_l >= 0]
@@ -833,16 +833,13 @@ class CPG_Reservoir(ReservoirBase):
     def apply_fault_mult(self, faultfile, cell_m, cell_p, mpfa_tran, ids):
         # Faults
 
-        keep_reading = True
-        prev_fault_name = ''
-
         with open(faultfile) as f:
             while True:
                 buff = f.readline()
                 strline = buff.split()
                 if len(strline) == 0 or '/' == strline[0]:
                     break
-                fault_name = strline[0]
+                strline[0]
                 # multiply tran
                 i1 = int(strline[1])
                 j1 = int(strline[2])
@@ -1252,7 +1249,7 @@ def make_burden_layers(
 
     nx = property_dictionary['SPECGRID'][0]
     ny = property_dictionary['SPECGRID'][1]
-    for i in range(0, number_of_burden_layers):
+    for _i in range(0, number_of_burden_layers):
         # for each burden layer, zcorn has 4 * nx * ny number of values
         property_dictionary['ZCORN'] = np.concatenate(
             [

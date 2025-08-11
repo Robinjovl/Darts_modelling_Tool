@@ -352,9 +352,8 @@ class StructReservoir(ReservoirBase):
                         data_array[i, :, :] = data[i]
                     data = data_array
                 else:
-                    assert data.size == self.n, "size is %s instead of %s" % (
-                        data.size,
-                        self.n,
+                    assert data.size == self.n, (
+                        f"size is {data.size} instead of {self.n}"
                     )
                 data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
             else:
@@ -362,10 +361,7 @@ class StructReservoir(ReservoirBase):
                     self.nx,
                     self.ny,
                     self.nz,
-                ), "shape is %s instead of %s" % (
-                    data.shape,
-                    (self.nx, self.ny, self.nz),
-                )
+                ), f"shape is {data.shape} instead of {(self.nx, self.ny, self.nz)}"
         return data
 
     def get_cell_cpg_widths(self):
@@ -387,7 +383,7 @@ class StructReservoir(ReservoirBase):
         return dx, dy, dz
 
     def get_cell_cpg_widths_new(self):
-        assert self.discretizer.is_cpg == True
+        assert self.discretizer.is_cpg
         dx = self.discretizer.convert_to_flat_array(
             np.fabs(
                 self.discretizer.cell_data['faces'][:, :, :, 1, 1]
@@ -527,10 +523,10 @@ class StructReservoir(ReservoirBase):
                 divider = make_axes_locatable(axs[j])
                 if colorbar_loc == 'right':
                     cax = divider.append_axes('right', size='5%', pad=0.05)
-                    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+                    fig.colorbar(im, cax=cax, orientation='vertical')
                 else:
                     cax = divider.append_axes('bottom', size='15%', pad=0.3)
-                    cbar = fig.colorbar(im, cax=cax, orientation='horizontal')
+                    fig.colorbar(im, cax=cax, orientation='horizontal')
                 # cbar.set_ticks(np.linspace(lims[j][0], lims[j][1], 6))
                 # cbar.set_ticklabels(["{:.1f}".format(xx) for xx in np.linspace(lims[j][0], lims[j][1], 6)])
             plt.tight_layout()
@@ -596,7 +592,7 @@ class StructReservoir(ReservoirBase):
             mesh_filename = output_directory + '/mesh'
 
             if self.vtk_grid_type == 0:
-                vtk_file_name = gridToVTK(
+                gridToVTK(
                     mesh_filename,
                     self.vtk_x,
                     self.vtk_y,
@@ -604,12 +600,12 @@ class StructReservoir(ReservoirBase):
                     cellData=cell_data,
                 )
             else:
-                for key, value in cell_data.items():
+                for key, _value in cell_data.items():
                     self.vtkobj.AppendScalarData(
                         key, cell_data[key][self.global_data['actnum'] == 1]
                     )
 
-                vtk_file_name = self.vtkobj.Write2VTU(mesh_filename)
+                self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
                     for key, data in self.global_data.items():
                         self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
@@ -662,7 +658,7 @@ class StructReservoir(ReservoirBase):
                 vtk_file_name, self.vtk_x, self.vtk_y, self.vtk_z, cellData=cell_data
             )
         else:
-            for key, value in cell_data.items():
+            for key, _value in cell_data.items():
                 self.vtkobj.AppendScalarData(
                     key, cell_data[key][self.global_data['actnum'] == 1]
                 )
@@ -718,11 +714,11 @@ class StructReservoir(ReservoirBase):
                 # slice array over third dimension
                 for k in range(array_3d.shape[2]):
                     array = array_3d[:, :, k]
-                    if array[np.isnan(array) == False].size > 3:
+                    if array[not np.isnan(array)].size > 3:
                         # stage 1 - fill in interior data using cubic interpolation
                         array = interpolate_slice(xx, yy, array, 'cubic')
 
-                    if array[np.isnan(array) == False].size > 0:
+                    if array[not np.isnan(array)].size > 0:
                         # stage 2 - fill exterior data using nearest
                         array_3d[:, :, k] = interpolate_slice(xx, yy, array, 'nearest')
                     else:

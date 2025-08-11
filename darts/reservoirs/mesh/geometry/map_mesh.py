@@ -60,7 +60,7 @@ def _translate_curvature(centroids):
 @jit(nopython=True)
 def _find_connections(cells_idxs, conn_0, conn_1):
     connections = []
-    for i, cell in enumerate(cells_idxs):
+    for _i, cell in enumerate(cells_idxs):
         conn = []
         for j, cell_0 in enumerate(conn_0):
             cell_1 = conn_1[j]
@@ -80,7 +80,7 @@ def _find_cells_in_polygon(centroids, points, segments, polygon):
     cells_idxs = []
 
     for ith_cell, centroid in enumerate(centroids):
-        X, Y, Z = centroid[0], centroid[1], centroid[2]
+        X, _Y, Z = centroid[0], centroid[1], centroid[2]
 
         intersections = 0
         for s in polygon:

@@ -115,9 +115,8 @@ class GRDECL_Parser:
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2017
         """
-        debug = 0
 
-        print('[Input] Reading ECLIPSE/PETREL file "%s" ....' % (self.fname))
+        print(f'[Input] Reading ECLIPSE/PETREL file "{self.fname}" ....')
 
         # Read whole file into list
         f = open(self.fname)
@@ -147,11 +146,10 @@ class GRDECL_Parser:
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
-                    "     Grid Dimension(NX,NY,NZ): (%s x %s x %s)"
-                    % (self.NX, self.NY, self.NZ)
+                    f"     Grid Dimension(NX,NY,NZ): ({self.NX} x {self.NY} x {self.NZ})"
                 )
-                print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
+                print(f"     NumOfGrids={self.N}")
+                print(f'     NumOfKeywords={NumKeywords}')
                 print("     Reading Keyword %d [%s] " % (i + 1, Keyword), end='')
                 GoodFlag = 1
                 continue
@@ -161,12 +159,11 @@ class GRDECL_Parser:
                 self.NX, self.NY, self.NZ = DataArray[0], DataArray[1], DataArray[2]
                 self.N = self.NX * self.NY * self.NZ
                 print(
-                    "     Grid Dimension(NX,NY,NZ): (%s x %s x %s)"
-                    % (self.NX, self.NY, self.NZ)
+                    f"     Grid Dimension(NX,NY,NZ): ({self.NX} x {self.NY} x {self.NZ})"
                 )
-                print("     NumOfGrids=%s" % (self.N))
-                print('     NumOfKeywords=%s' % (NumKeywords))
-                print("     Reading Keywords [%s] " % (Keyword), end='')
+                print(f"     NumOfGrids={self.N}")
+                print(f'     NumOfKeywords={NumKeywords}')
+                print(f"     Reading Keywords [{Keyword}] ", end='')
                 GoodFlag = 1
                 continue
 
@@ -204,12 +201,12 @@ class GRDECL_Parser:
         if Keyword in SupportKeyWords:  # KeyWords Check
             assert len(DataArray) == DataSize, '\n     [Error] Incompatible data size!'
             KeywordID = SupportKeyWords.index(Keyword)
-            print('     [%s] ' % (Keyword), end='')
+            print(f'     [{Keyword}] ', end='')
             self.SpatialDatas[Keyword] = np.array(
                 DataArray, dtype=KeyWordsDatatypes[KeywordID]
             )
         else:
-            print('\n     [Warnning] Unsupport keywords[%s]' % (Keyword))
+            print(f'\n     [Warnning] Unsupport keywords[{Keyword}]')
 
     def read_IncludeFile(self, filename_include, NumData):
         """Read Include data file
@@ -226,8 +223,7 @@ class GRDECL_Parser:
         block_dataset = np.array(block_dataset, dtype=float)
         if len(block_dataset) != NumData:
             print(
-                'Data size %s is not equal to defined block dimension (NX*NY*NZ) %s'
-                % (len(block_dataset), NumData)
+                f'Data size {len(block_dataset)} is not equal to defined block dimension (NX*NY*NZ) {NumData}'
             )
         return block_dataset
 
@@ -498,12 +494,14 @@ class GRDECL_Parser:
         else:
             return -1
 
-    def isBoundaryCell(self, Cell=[0, 0, 0], Dim='3D'):
+    def isBoundaryCell(self, Cell=None, Dim='3D'):
         '''Check the a given cell is boundary cell or not
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
         '''
+        if Cell is None:
+            Cell = [0, 0, 0]
         count = 0
         face = []
         # Boundary Point
@@ -530,14 +528,15 @@ class GRDECL_Parser:
 
         return count, face
 
-    def findCellFault(self, Cell=[0, 0, 0]):
+    def findCellFault(self, Cell=None):
         '''Check the fault for 4 faces of a cell [X-,X+,Y-,Y+] 2D
 
         Author:Bin Wang(binwang.0213@gmail.com)
         Date: Sep. 2018
         '''
+        if Cell is None:
+            Cell = [0, 0, 0]
         i, j, k = Cell
-        Faces = ['X-', 'X+', 'Y-', 'Y+']
         Fault = [False, False, False, False]
 
         FaultMarker = -1

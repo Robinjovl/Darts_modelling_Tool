@@ -99,7 +99,7 @@ class StructDiscretizer:
                     )
                     zero_ids = np.argwhere(z_bot - z_top == 0)[:, 0]
                     for k in range(nz):
-                        id = i + nx * (j + k * ny)
+                        i + nx * (j + k * ny)
                         z_cur = np.concatenate(
                             (
                                 zcorn[2 * k, 2 * j, 2 * i : 2 * i + 2],
@@ -334,7 +334,7 @@ class StructDiscretizer:
         xp_ym = i2d + 1 + j2d * (self.nx + 1)
         xm_yp = i2d + (j2d + 1) * (self.nx + 1)
         xp_yp = i2d + 1 + (j2d + 1) * (self.nx + 1)
-        v2d = np.swapaxes(
+        np.swapaxes(
             np.array([coord[xm_ym], coord[xp_ym], coord[xm_yp], coord[xp_yp]]), 0, 1
         )
         z_top = np.array(
@@ -353,8 +353,8 @@ class StructDiscretizer:
                 zcorn[-1, 2 * j2d + 1, 2 * i2d + 1],
             ]
         ).T
-        zero_ids = np.argwhere(z_bot - z_top == 0)
-        z_cur = np.array(
+        np.argwhere(z_bot - z_top == 0)
+        np.array(
             [
                 zcorn[2 * k, 2 * j, 2 * i],
                 zcorn[2 * k, 2 * j, 2 * i + 1],
@@ -450,20 +450,13 @@ class StructDiscretizer:
                 data = data * np.ones(self.arr_shape)
         else:
             if data.ndim == 1:
-                assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name,
-                    data.size,
-                    self.nodes_tot,
+                assert data.size == self.nodes_tot, (
+                    f"size of {data_name} is {data.size} instead of {self.nodes_tot}"
                 )
                 data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
             else:
                 assert data.shape == self.arr_shape, (
-                    "shape of %s is %s instead of %s"
-                    % (
-                        data_name,
-                        data.shape,
-                        self.arr_shape,
-                    )
+                    f"shape of {data_name} is {data.shape} instead of {self.arr_shape}"
                 )
         return data
 
@@ -480,20 +473,13 @@ class StructDiscretizer:
         else:
             if data.ndim == 3:
                 assert data.shape == self.arr_shape, (
-                    "shape of %s is %s instead of %s"
-                    % (
-                        data_name,
-                        data.shape,
-                        self.arr_shape,
-                    )
+                    f"shape of {data_name} is {data.shape} instead of {self.arr_shape}"
                 )
 
                 data = np.reshape(data, self.nodes_tot, order='F')
             elif data.ndim == 1:
-                assert data.size == self.nodes_tot, "size of %s is %s instead of %s" % (
-                    data_name,
-                    data.size,
-                    self.nodes_tot,
+                assert data.size == self.nodes_tot, (
+                    f"size of {data_name} is {data.size} instead of {self.nodes_tot}"
                 )
         return data
 
@@ -930,10 +916,10 @@ class StructDiscretizer:
             act_t += tran_thermal > self.min_tran_tranD
             print(
                 "Inactive connections due to transmissibility: ",
-                act_t[act_t == False].size,
+                act_t[not act_t].size,
             )
             act_conn = act_m * act_p * act_t
-            print("Inactive connections total: ", act_conn[act_conn == False].size)
+            print("Inactive connections total: ", act_conn[not act_conn].size)
 
             # now figure which local cells (including inactive) do not participate in active connections...
             m = set(cell_m[act_conn])
@@ -977,7 +963,7 @@ class StructDiscretizer:
 
         # Apply actnum filter, if any, and global_to_local indexing to arrays
         arrays_local = []
-        for i, a in enumerate(arrays):
+        for _i, a in enumerate(arrays):
             a = self.convert_to_flat_array(a, 'Unknown')
             arrays_local.append(a[self.local_to_global])
         np.seterr(**old_settings)
@@ -1109,5 +1095,5 @@ class StructDiscretizer:
             f.write('%d\n' % cell_m.size)
             for i, m in enumerate(cell_m):
                 f.write('%d\t%d\t%.15f\n' % (m, cell_p[i], conn[i]))
-            f.write('/' % cell_m.size)
+            f.write('/')
         return 0

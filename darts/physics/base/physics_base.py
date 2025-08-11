@@ -334,7 +334,7 @@ class PhysicsBase:
                 + str(i - etor.op_names[op_type_idx][0])
             )
             operator_array[op_name] = values_numpy[i :: self.n_ops]
-            operator_array[op_name][physical_points == False] = np.nan
+            operator_array[op_name][not physical_points] = np.nan
 
         return operator_array
 
@@ -757,7 +757,7 @@ class PhysicsBase:
         :param time: current time
         """
         with open(os.path.join(output_folder, 'body_path.txt'), "a") as fp:
-            fp.write('T=%lf\n' % time)
+            fp.write(f'T={time:f}\n')
             itor = self.acc_flux_itor[0]
             all_idxs = set(itor.get_hypercube_indexes())
             new_idxs = all_idxs - self.processed_body_idxs

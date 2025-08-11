@@ -155,7 +155,7 @@ class OptModuleSettings:
         # `self.col_idx` will be passed into C++ `col_dT_du`
         self.perforation_idx = []
         for i, w in enumerate(self.reservoir.wells):
-            for p, per in enumerate(w.perforations):
+            for _p, per in enumerate(w.perforations):
                 self.perforation_idx.append(per[1])
 
         self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
@@ -453,7 +453,7 @@ class OptModuleSettings:
         # self.modifier.set_x(self, x)
 
         # self.set_boundary_conditions()
-        for i, w in enumerate(self.reservoir.wells):
+        for _i, w in enumerate(self.reservoir.wells):
             if "I" in w.name:
                 w.control = self.physics.new_rate_water_inj(
                     0
@@ -594,7 +594,7 @@ class OptModuleSettings:
 
             self.perforation_idx = []
             for i, w in enumerate(self.reservoir.wells):
-                for p, per in enumerate(w.perforations):
+                for _p, per in enumerate(w.perforations):
                     self.perforation_idx.append(per[1])
 
             self.sort_perforation_idx = np.zeros(np.size(self.perforation_idx))
@@ -668,7 +668,7 @@ class OptModuleSettings:
             # Q_w_o_total = []
             self.prod_cov_mat_inv = []
 
-            for n, well in enumerate(self.prod_well_name):
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     gaussian_noise_list = []
@@ -739,7 +739,7 @@ class OptModuleSettings:
             self.Q_inj_list_temp = []
             self.inj_cov_mat_inv = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 # phase rate
                 gaussian_noise_list = []
                 rate_list = []
@@ -796,7 +796,7 @@ class OptModuleSettings:
             self.BHP_list_temp = []
             self.BHP_cov_mat_inv = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 std_dev_list = []
                 BHP_string = well + " : BHP (bar)"
                 BHP_serie = self.BHP_report_data.get(BHP_string)
@@ -836,7 +836,7 @@ class OptModuleSettings:
             self.well_tempr_list_temp = []
             self.well_tempr_cov_mat_inv = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 std_dev_list = []
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_serie = self.well_tempr_report_data.get(well_tempr_string)
@@ -967,7 +967,7 @@ class OptModuleSettings:
             self.well_tempr_list_temp = []
             self.well_tempr_cov_mat_inv = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 std_dev_list = []
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_serie = self.well_tempr_report_data.get(well_tempr_string)
@@ -1281,9 +1281,7 @@ class OptModuleSettings:
         if self.objfun_prod_phase_rate:
             q_separate = []
 
-            for n, well in enumerate(self.prod_well_name):
-                q_w_o = 0
-
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     rate_list = []
@@ -1298,7 +1296,7 @@ class OptModuleSettings:
                             * self.phase_relative_density[p]
                         )
                         if phase == 'oil':
-                            q_w_o = -response.get(rate_string).values
+                            -response.get(rate_string).values
 
                 q_separate.append(rate_list)
 
@@ -1353,7 +1351,7 @@ class OptModuleSettings:
         if self.objfun_inj_phase_rate:
             q_inj_separate = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 # phase rate
                 rate_list = []
                 # for i in range(self.physics.n_phases):
@@ -1414,7 +1412,7 @@ class OptModuleSettings:
         if self.objfun_BHP:
             bhp_separate = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 BHP_string = well + " : BHP (bar)"
                 bhp_separate.append(response.get(BHP_string).values)
 
@@ -1466,7 +1464,7 @@ class OptModuleSettings:
         if self.objfun_well_tempr:
             well_tempr_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_separate.append(response.get(well_tempr_string).values)
 
@@ -1690,9 +1688,7 @@ class OptModuleSettings:
                 self.objfun_dict['customized_op'] = np.sum(op_OP_temp)
                 self.objfun_list.append(np.sum(op_OP_temp))
                 if self.save_error:
-                    np.save(
-                        '%s_%s.npy' % (self.label, self.job_id), np.array(op_OP_temp)
-                    )
+                    np.save(f'{self.label}_{self.job_id}.npy', np.array(op_OP_temp))
 
         # add saturation data in objective function---------------------------------------------
         if self.objfun_saturation:
@@ -1735,7 +1731,7 @@ class OptModuleSettings:
 
             well_tempr_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 well_tempr_separate.append(response.get(well_tempr_string).values)
 
@@ -1792,8 +1788,8 @@ class OptModuleSettings:
                 ksi_diff = self.ksi - self.ksi_ref * self.norm_ksi
                 R = self.alpha * ksi_diff.dot(ksi_diff.transpose())
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % R)
+                print(f'misfit: {self.fval_temp}')
+                print(f'R: {R}')
                 self.fval_temp = self.fval_temp + R
             else:
                 u = (
@@ -1808,7 +1804,7 @@ class OptModuleSettings:
                             R
                             + np.sum(
                                 self.x_diff
-                                * np.load(self.Cv_path + "/%s_Cv.npy" % idx_Cv)
+                                * np.load(self.Cv_path + f"/{idx_Cv}_Cv.npy")
                             )
                             * self.x_diff[idx_Cv]
                         )
@@ -1819,8 +1815,8 @@ class OptModuleSettings:
                     )
                 # self.fval_temp = self.fval_temp + R[0][0]
 
-                print('misfit: %s' % self.fval_temp)
-                print('R: %s' % abs(float(R)))
+                print(f'misfit: {self.fval_temp}')
+                print(f'R: {abs(float(R))}')
                 self.fval_temp = self.fval_temp + abs(float(R))
 
         if (
@@ -1832,11 +1828,11 @@ class OptModuleSettings:
             self.x_diff = np.array([u]) - np.array([self.x_ref])
             R = self.alpha * np.sum((self.x_diff**2) * self.Cm_inv_diagonal)
 
-            print('misfit: %s' % self.fval_temp)
-            print('R: %s' % R)
+            print(f'misfit: {self.fval_temp}')
+            print(f'R: {R}')
             self.fval_temp = self.fval_temp + R
 
-        print(' fval: %s' % self.fval_temp)
+        print(f' fval: {self.fval_temp}')
         return self.fval_temp
 
     def fval_nonlinear_FDM(self, x_eps: np.array) -> float:
@@ -1933,9 +1929,7 @@ class OptModuleSettings:
                 if self.read_Cm_inv_vector:
                     R_vector[idx] = (
                         2
-                        * np.sum(
-                            self.x_diff * np.load(self.Cv_path + "/%s_Cv.npy" % idx)
-                        )
+                        * np.sum(self.x_diff * np.load(self.Cv_path + f"/{idx}_Cv.npy"))
                         * self.modifier.modifiers[0].norms
                     )
                 else:
@@ -1964,7 +1958,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2059,9 +2053,7 @@ class OptModuleSettings:
                 if self.read_Cm_inv_vector:
                     R_vector[idx] = (
                         2
-                        * np.sum(
-                            self.x_diff * np.load(self.Cv_path + "/%s_Cv.npy" % idx)
-                        )
+                        * np.sum(self.x_diff * np.load(self.Cv_path + f"/{idx}_Cv.npy"))
                         * self.modifier.modifiers[0].norms
                     )
                 else:
@@ -2090,7 +2082,7 @@ class OptModuleSettings:
         # save the best optimized result and some history matching logs
         self.fval_list.append(self.fval_temp)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -2205,7 +2197,7 @@ class OptModuleSettings:
         self.fval_list.append(self.fval_temp)
         self.misfit_watch_list.append(self.misfit_value)
         if self.fval_temp < self.objfunval:
-            filename = '%s_Optimized_parameters_best.pkl' % self.job_id
+            filename = f'{self.job_id}_Optimized_parameters_best.pkl'
             with open(filename, "wb") as fp:
                 # pickle.dump([self.x_temp, self.modifier.mod_x_idx, self.modifier], fp, pickle.HIGHEST_PROTOCOL)
                 pickle.dump(
@@ -3158,7 +3150,7 @@ class OptModuleSettings:
             q_separate = []
             Q_separate = []
 
-            for n, well in enumerate(self.prod_well_name):
+            for _n, well in enumerate(self.prod_well_name):
                 # phase rate
                 if self.opt_phase_rate:
                     rate_list = []
@@ -3254,7 +3246,7 @@ class OptModuleSettings:
             q_inj_separate = []
             Q_inj_separate = []
 
-            for n, well in enumerate(self.inj_well_name):
+            for _n, well in enumerate(self.inj_well_name):
                 rate_list_inj_q = []
                 rate_list_inj_Q = []
 
@@ -3348,7 +3340,7 @@ class OptModuleSettings:
             bhp_separate = []
             BHP_separate = []
 
-            for n, well in enumerate(self.BHP_well_name):
+            for _n, well in enumerate(self.BHP_well_name):
                 BHP_string = well + " : BHP (bar)"
                 bhp_serie = opt_df.get(BHP_string)
                 BHP_serie = truth_df_BT.get(BHP_string)
@@ -3426,7 +3418,7 @@ class OptModuleSettings:
             wt_separate = []
             WT_separate = []
 
-            for n, well in enumerate(self.well_tempr_name):
+            for _n, well in enumerate(self.well_tempr_name):
                 well_tempr_string = well + " : temperature (K)"
                 wt_serie = opt_df.get(well_tempr_string)
                 WT_serie = truth_df_BT.get(well_tempr_string)
@@ -3829,7 +3821,7 @@ class model_modifier_aggregator:
 
     def get_x(self, model) -> np.array:
         x = np.array([])
-        for i, m in enumerate(self.modifiers):
+        for _i, m in enumerate(self.modifiers):
             x = np.append(x, m.get_x(model))
         return x
 
