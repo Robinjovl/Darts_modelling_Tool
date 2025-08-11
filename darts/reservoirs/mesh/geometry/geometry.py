@@ -195,7 +195,6 @@ class Geometry:
         return
 
     def add_boundary(self, shape: Shape):
-
         return
 
     def add_well(self, well: Well):
@@ -225,7 +224,6 @@ class Geometry:
         return
 
     def add_fractures(self):
-
         return
 
     def find_surface(self, point):

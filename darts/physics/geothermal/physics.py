@@ -1,5 +1,4 @@
 import warnings
-from typing import Union
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -146,7 +145,7 @@ class Geothermal(PhysicsBase):
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
+        input_depth: list | np.ndarray,
         global_to_local=None,
     ):
         """
@@ -233,9 +232,7 @@ class Geothermal(PhysicsBase):
         for variable, values in input_distribution.items():
             if not np.isscalar(values) and not len(values) == mesh.n_res_blocks:
                 warnings.warn(
-                    'Initial condition for variable {} has different length, resizing {} to {}'.format(
-                        variable, len(values), mesh.n_res_blocks
-                    ),
+                    f'Initial condition for variable {variable} has different length, resizing {len(values)} to {mesh.n_res_blocks}',
                     stacklevel=2,
                 )
                 input_distribution[variable] = np.resize(

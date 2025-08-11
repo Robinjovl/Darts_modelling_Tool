@@ -1,6 +1,5 @@
 import time
 import warnings
-from typing import Union
 
 import numpy as np
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
@@ -14,14 +13,12 @@ from darts.discretizer import (
     Discretizer,
     Mesh,
     elem_loc,
-)
-from darts.discretizer import index_vector
-from darts.discretizer import index_vector as index_vector_discr
-from darts.discretizer import (
+    index_vector,
     load_single_float_keyword,
     load_single_int_keyword,
+    value_vector,
 )
-from darts.discretizer import value_vector
+from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
@@ -325,15 +322,15 @@ class CPG_Reservoir(ReservoirBase):
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
         assert k > 0, "Perforation block coordinate should be positive"
-        assert (
-            i <= self.nx
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            j <= self.ny
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            k <= self.nz
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i <= self.nx, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert j <= self.ny, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert k <= self.nz, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
         i -= 1
         j -= 1
         k -= 1
@@ -359,9 +356,9 @@ class CPG_Reservoir(ReservoirBase):
             kz = self.permz[res_block] + eps
 
             if segment_direction == 'z_axis':
-                assert (
-                    well_diam < dx and well_diam < dy
-                ), f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dx and well_diam < dy, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                )
 
                 peaceman_rad = (
                     0.28
@@ -382,9 +379,9 @@ class CPG_Reservoir(ReservoirBase):
                 if kx == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'x_axis':
-                assert (
-                    well_diam < dz and well_diam < dy
-                ), f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dz and well_diam < dy, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dz} dy={dy}, cell({i + 1},{j + 1},{k + 1})'
+                )
                 peaceman_rad = (
                     0.28
                     * np.sqrt(np.sqrt(ky / kz) * dz**2 + np.sqrt(kz / ky) * dy**2)
@@ -404,9 +401,9 @@ class CPG_Reservoir(ReservoirBase):
                 if kz == 0 or ky == 0:
                     well_index = 0.0
             elif segment_direction == 'y_axis':
-                assert (
-                    well_diam < dx and well_diam < dz
-                ), f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i+1},{j+1},{k+1})'
+                assert well_diam < dx and well_diam < dz, (
+                    f'well diameter {well_diam} should be less than the cell size dx={dx} dy={dz}, cell({i + 1},{j + 1},{k + 1})'
+                )
                 peaceman_rad = (
                     0.28
                     * np.sqrt(np.sqrt(kz / kx) * dx**2 + np.sqrt(kx / kz) * dz**2)
@@ -529,7 +526,7 @@ class CPG_Reservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        cell_index: Union[int, tuple],
+        cell_index: int | tuple,
         well_radius: float = 0.1524,
         well_index: float = None,
         well_indexD: float = 0.0,
@@ -569,12 +566,12 @@ class CPG_Reservoir(ReservoirBase):
                 )
             return
 
-        assert (
-            well_index >= 0
-        ), f'Well {well_name} index = {well_index} is non-positive! Check the data.'
-        assert (
-            well_indexD >= 0
-        ), f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        assert well_index >= 0, (
+            f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        )
+        assert well_indexD >= 0, (
+            f'Well {well_name} index = {well_index} is non-positive! Check the data.'
+        )
 
         # set well segment index (well block) equal to index of perforation layer
         if multi_segment:
@@ -654,7 +651,7 @@ class CPG_Reservoir(ReservoirBase):
             # row_vals = ''#str(coefs)
             for i in range(cells.size):
                 if np.abs(coefs[i]) > 1.0e-10:
-                    row += str(cells[i]) + '\t' + str('{:.2e}'.format(coefs[i])) + '\t'
+                    row += str(cells[i]) + '\t' + str(f'{coefs[i]:.2e}') + '\t'
                     # row_cells += str(cells[i]) + '\t'
                     # row_vals += str('{:.2e}'.format(coefs[i])) + '\t'
             f.write(row + '\n')  # + row_cells + '\n' + row_vals + '\n')
@@ -738,7 +735,7 @@ class CPG_Reservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}'
 
         cell_data = {}
         for i, prop in enumerate(prop_names):
@@ -782,7 +779,6 @@ class CPG_Reservoir(ReservoirBase):
         vtk_group.save()
 
     def generate_cpg_vtk_grid(self):
-
         from darts.tools import GRDECL2VTK
 
         self.vtkobj = GRDECL2VTK.GeologyModel()
@@ -1036,9 +1032,9 @@ class CPG_Reservoir(ReservoirBase):
         '''
         # make 1D, also convert the type to be able to convert to value_vector_discr
         # store to self to save in vtk
-        assert (
-            self.reservoir.permx.size == permx.flatten().size
-        ), f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        assert self.reservoir.permx.size == permx.flatten().size, (
+            f'Grid and perm shapes are not consistent: {self.reservoir.permx.size}, {permx.size}'
+        )
         self.reservoir.permx = np.array(permx, dtype=np.float64).flatten()
         self.reservoir.permy = np.array(permy, dtype=np.float64).flatten()
         self.reservoir.permz = np.array(permz, dtype=np.float64).flatten()

@@ -17,20 +17,17 @@ from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
     ms_well_vector,
     op_vector,
-)
-from darts.engines import print_build_info as engines_pbi
-from darts.engines import (
     sim_params,
     timer_node,
 )
+from darts.engines import print_build_info as engines_pbi
 from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-
     def __init__(self, n_vars):
-        self.eta = 1e20 * np.ones(
-            n_vars
+        self.eta = (
+            1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
         # dX = Xn - X . Eta has a size of number of DOFs per cell. It set to a large value by default, so doesn't affect the timestep choice
 
@@ -231,7 +228,7 @@ class DartsModel:
         self.physics.engine.t = time_res[0]
 
         # save initial conditions to *.h5 file
-        print(fr'Restarting model from {reservoir_filename} at day {time_res[0]}.')
+        print(rf'Restarting model from {reservoir_filename} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
@@ -541,9 +538,9 @@ class DartsModel:
         :param save_solution_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_solution_data: bool
         """
-        assert hasattr(
-            self, 'output'
-        ), "self.output does not exist, please call m.set_output() after m.init()"
+        assert hasattr(self, 'output'), (
+            "self.output does not exist, please call m.set_output() after m.init()"
+        )
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
 

@@ -117,7 +117,7 @@ class GRDECL_Parser:
         """
         debug = 0
 
-        print('[Input] Reading ECLIPSE/PETREL file \"%s\" ....' % (self.fname))
+        print('[Input] Reading ECLIPSE/PETREL file "%s" ....' % (self.fname))
 
         # Read whole file into list
         f = open(self.fname)
@@ -175,23 +175,23 @@ class GRDECL_Parser:
 
             # Read Grid spatial information, x,y,z ordering
             if Keyword == 'COORD':  # Pillar coords
-                assert len(DataArray) == 6 * (self.NX + 1) * (
-                    self.NY + 1
-                ), '[Error] Incompatible COORD data size!'
+                assert len(DataArray) == 6 * (self.NX + 1) * (self.NY + 1), (
+                    '[Error] Incompatible COORD data size!'
+                )
                 self.COORD = np.array(DataArray, dtype=float)
             elif Keyword == 'ZCORN':  # Depth coords
-                assert (
-                    len(DataArray) == 8 * self.N
-                ), '[Error] Incompatible ZCORN data size!'
+                assert len(DataArray) == 8 * self.N, (
+                    '[Error] Incompatible ZCORN data size!'
+                )
                 self.ZCORN = np.array(DataArray, dtype=float)
             # Read Grid Properties information
             else:
                 self.LoadVar(Keyword, DataArray, DataSize=self.N)
 
         f.close()
-        assert (
-            GoodFlag == 1
-        ), 'Can not find grid dimension info, [SPECGRID] or [DIMENS]!'
+        assert GoodFlag == 1, (
+            'Can not find grid dimension info, [SPECGRID] or [DIMENS]!'
+        )
         print('.....Done!')
 
     def LoadVar(self, Keyword, DataArray, DataSize):
@@ -287,8 +287,9 @@ class GRDECL_Parser:
         """
         nx, ny = self.NX + 1, self.NY + 1
         pil0_id, pil1_id = getIJK(i, j, 0, nx, ny, 0), getIJK(i + 1, j, 0, nx, ny, 0)
-        pil2_id, pil3_id = getIJK(i, j + 1, 0, nx, ny, 0), getIJK(
-            i + 1, j + 1, 0, nx, ny, 0
+        pil2_id, pil3_id = (
+            getIJK(i, j + 1, 0, nx, ny, 0),
+            getIJK(i + 1, j + 1, 0, nx, ny, 0),
         )
 
         return [
@@ -400,18 +401,22 @@ class GRDECL_Parser:
         """
         nx, ny, nz = 2 * self.NX, 2 * self.NY, 2 * self.NZ
 
-        p1_id, p2_id = getIJK(2 * i, 2 * j, 2 * k, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j, 2 * k, nx, ny, nz
+        p1_id, p2_id = (
+            getIJK(2 * i, 2 * j, 2 * k, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j, 2 * k, nx, ny, nz),
         )
-        p3_id, p4_id = getIJK(2 * i, 2 * j + 1, 2 * k, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j + 1, 2 * k, nx, ny, nz
+        p3_id, p4_id = (
+            getIJK(2 * i, 2 * j + 1, 2 * k, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j + 1, 2 * k, nx, ny, nz),
         )
 
-        p5_id, p6_id = getIJK(2 * i, 2 * j, 2 * k + 1, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j, 2 * k + 1, nx, ny, nz
+        p5_id, p6_id = (
+            getIJK(2 * i, 2 * j, 2 * k + 1, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j, 2 * k + 1, nx, ny, nz),
         )
-        p7_id, p8_id = getIJK(2 * i, 2 * j + 1, 2 * k + 1, nx, ny, nz), getIJK(
-            2 * i + 1, 2 * j + 1, 2 * k + 1, nx, ny, nz
+        p7_id, p8_id = (
+            getIJK(2 * i, 2 * j + 1, 2 * k + 1, nx, ny, nz),
+            getIJK(2 * i + 1, 2 * j + 1, 2 * k + 1, nx, ny, nz),
         )
 
         # print(p1_id,p2_id,p3_id,p4_id)#Top Layer
@@ -476,10 +481,10 @@ class GRDECL_Parser:
 
         print('Overlap',overlap_p02,overlap_p13)
         print('Gap',gap_p02,gap_p13)
-       
+
 
         if(abs(gap_p02)+abs(gap_p13)<1e-10): #Fully connected
-           
+
             return -1.0
         elif(abs(overlap_p02)+abs(overlap_p13)<1e-10): #Sealing fault
             return 0.0

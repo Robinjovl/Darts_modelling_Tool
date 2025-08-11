@@ -52,7 +52,7 @@ def _Backward1_T_Ph_vec(P, h):
     Pr = P / 1
     nu = h / 2500
     T = np.zeros(P.shape)
-    for i, j, ni in zip(I, J, n):
+    for i, j, ni in zip(I, J, n, strict=False):
         T += ni * Pr**i * (nu + 1) ** j
     return T
 

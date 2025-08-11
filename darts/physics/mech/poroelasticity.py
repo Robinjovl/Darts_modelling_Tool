@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 from darts.engines import *
@@ -190,7 +188,7 @@ class Poroelasticity(Compositional):
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
+        input_depth: list | np.ndarray,
         input_displacement: list,
     ):
         """

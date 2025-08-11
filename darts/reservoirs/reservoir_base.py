@@ -1,7 +1,6 @@
 import abc
 import atexit
 from math import pi
-from typing import Union
 
 import numpy as np
 
@@ -108,7 +107,7 @@ class ReservoirBase:
     def add_perforation(
         self,
         well_name: str,
-        cell_index: Union[int, tuple],
+        cell_index: int | tuple,
         well_radius: float = 0.1524,
         well_index: float = None,
         well_indexD: float = None,
@@ -135,7 +134,7 @@ class ReservoirBase:
         pass
 
     @abc.abstractmethod
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find index of cell centre closest to given xyz-coordinates.
 

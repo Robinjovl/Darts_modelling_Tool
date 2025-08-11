@@ -54,8 +54,7 @@ class Initialize:
         if aq_idx is not None:
             self.props.update(
                 {
-                    'm'
-                    + str(i): lambda i=i: 55.509
+                    'm' + str(i): lambda i=i: 55.509
                     * pc.x[aq_idx, i]
                     / pc.x[aq_idx, h2o_idx]
                     for i in range(pc.nc_fl)
@@ -144,9 +143,9 @@ class Initialize:
 
         # Else, check input and create depths
         assert depth_bottom >= depth_top, "Top depth is below bottom depth"
-        assert (
-            depth_top <= depth_known <= depth_bottom
-        ), "Known depth is not in range [bottom, top]"
+        assert depth_top <= depth_known <= depth_bottom, (
+            "Known depth is not in range [bottom, top]"
+        )
         self.depths = np.linspace(start=depth_top, stop=depth_bottom, num=nb)
         bc_idx = (np.fabs(self.depths - depth_known)).argmin()
         self.depths[bc_idx] = depth_known
@@ -189,8 +188,8 @@ class Initialize:
                     )
                 )
                 == self.nv - 1 - self.thermal
-            ), "Not the right number of variables specified for well-defined system of equations in block {}, need {}".format(
-                i, self.nv - 1 - self.thermal
+            ), (
+                f"Not the right number of variables specified for well-defined system of equations in block {i}, need {self.nv - 1 - self.thermal}"
             )
 
         # Define thermal gradient
@@ -248,19 +247,24 @@ class Initialize:
                 )
             )
             == self.nv
-        ), "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
-            int(
-                np.sum(
-                    [not np.isnan(np.float64(spec)) for spec in primary_specs.values()]
-                )
-                + np.sum(
-                    [
-                        not np.isnan(np.float64(spec))
-                        for spec in secondary_specs.values()
-                    ]
-                )
-            ),
-            self.nv,
+        ), (
+            "Not enough variables specified for well-defined system of equations, {} specified but {} needed".format(
+                int(
+                    np.sum(
+                        [
+                            not np.isnan(np.float64(spec))
+                            for spec in primary_specs.values()
+                        ]
+                    )
+                    + np.sum(
+                        [
+                            not np.isnan(np.float64(spec))
+                            for spec in secondary_specs.values()
+                        ]
+                    )
+                ),
+                self.nv,
+            )
         )
 
         for it in range(max_iter):

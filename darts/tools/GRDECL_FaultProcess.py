@@ -278,7 +278,6 @@ class FaultProcess:
         )
 
     def plotLines(self, bdlines=[], faultlines=[], endpoints=[]):
-
         # Plot the fault line map
         if len(bdlines) + len(faultlines) == 0:
             BoundaryLabels = ['Edge' + str(i) for i in range(len(self.BoundaryLines))]
@@ -874,12 +873,16 @@ def DrawPath(lines, labels=[], endpoints=[]):
 
     for i, verts in enumerate(lines):
         # print(i,verts)
-        plt.plot(*zip(*verts), label=labels[i])
+        plt.plot(*zip(*verts, strict=False), label=labels[i])
         # plt.scatter(*zip(*verts),alpha=0.7,s=20)
 
     if len(endpoints) > 0:
         plt.scatter(
-            *zip(*endpoints), facecolors='none', edgecolors='r', alpha=0.7, s=20
+            *zip(*endpoints, strict=False),
+            facecolors='none',
+            edgecolors='r',
+            alpha=0.7,
+            s=20,
         )
 
     # ax.set_xlim(-2,2)

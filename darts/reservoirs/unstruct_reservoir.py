@@ -1,5 +1,4 @@
 import os
-from typing import Union
 
 import meshio
 import numpy as np
@@ -133,9 +132,7 @@ class UnstructReservoir(ReservoirBase):
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # Set-up dictionary with data for boundary cells:
-        boundary_data = (
-            dict()
-        )  # Dictionary containing boundary condition data (coordinate and value of boundary):
+        boundary_data = dict()  # Dictionary containing boundary condition data (coordinate and value of boundary):
         boundary_data['first_boundary_dir'] = (
             'X'  # Indicates the boundary is located at constant X (in this case!)
         )
@@ -232,7 +229,7 @@ class UnstructReservoir(ReservoirBase):
             )
         return
 
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find nearest cell to specified coordinate
 
@@ -378,7 +375,7 @@ class UnstructReservoir(ReservoirBase):
             )
 
             print('Writing mesh data to VTK file')
-            meshio.write("{:s}/mesh.vtk".format(output_directory), mesh)
+            meshio.write(f"{output_directory:s}/mesh.vtk", mesh)
 
     def output_to_vtk(
         self,
@@ -450,7 +447,7 @@ class UnstructReservoir(ReservoirBase):
             ).tolist()  # fill matrix cells with ones
             ith_geometry += 1
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step) + ".vtu"
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}' + ".vtu"
 
         # Loop over output properties
         for i, prop in enumerate(prop_names):
@@ -466,7 +463,7 @@ class UnstructReservoir(ReservoirBase):
             cell_data=cell_data,
         )
 
-        print('Writing data to VTK file for {:d}-th reporting step'.format(ith_step))
+        print(f'Writing data to VTK file for {ith_step:d}-th reporting step')
         meshio.write(vtk_file_name, mesh)
 
         self.vtk_filenames_and_times[vtk_file_name] = t

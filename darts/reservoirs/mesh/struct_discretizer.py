@@ -457,12 +457,13 @@ class StructDiscretizer:
                 )
                 data = np.reshape(data, (self.nx, self.ny, self.nz), order='F')
             else:
-                assert (
-                    data.shape == self.arr_shape
-                ), "shape of %s is %s instead of %s" % (
-                    data_name,
-                    data.shape,
-                    self.arr_shape,
+                assert data.shape == self.arr_shape, (
+                    "shape of %s is %s instead of %s"
+                    % (
+                        data_name,
+                        data.shape,
+                        self.arr_shape,
+                    )
                 )
         return data
 
@@ -478,12 +479,13 @@ class StructDiscretizer:
             data = data * np.ones(self.nodes_tot, dtype=type(data))
         else:
             if data.ndim == 3:
-                assert (
-                    data.shape == self.arr_shape
-                ), "shape of %s is %s instead of %s" % (
-                    data_name,
-                    data.shape,
-                    self.arr_shape,
+                assert data.shape == self.arr_shape, (
+                    "shape of %s is %s instead of %s"
+                    % (
+                        data_name,
+                        data.shape,
+                        self.arr_shape,
+                    )
                 )
 
                 data = np.reshape(data, self.nodes_tot, order='F')
@@ -998,15 +1000,15 @@ class StructDiscretizer:
         assert i > 0, "Perforation block coordinate should be positive"
         assert j > 0, "Perforation block coordinate should be positive"
         assert k > 0, "Perforation block coordinate should be positive"
-        assert (
-            i <= self.nx
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            j <= self.ny
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
-        assert (
-            k <= self.nz
-        ), "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        assert i <= self.nx, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert j <= self.ny, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
+        assert k <= self.nz, (
+            "Perforation block coordinate should not exceed corresponding reservoir dimension"
+        )
         i -= 1
         j -= 1
         k -= 1
@@ -1018,7 +1020,6 @@ class StructDiscretizer:
 
         # check if target grid block is active
         if self.global_to_local[res_block] > -1:
-
             # Store grid-dimensions of segmet and permeability:
             if self.is_cpg:
                 dx, dy, dz = self.calc_cell_dimensions(i, j, k)

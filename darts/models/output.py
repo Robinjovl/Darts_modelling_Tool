@@ -1,6 +1,5 @@
 import os
 import shutil
-from typing import Union
 
 import h5py
 import matplotlib.pyplot as plt
@@ -170,13 +169,11 @@ class Output:
                 for i, name in enumerate(phase_props_labels):
                     for j in range(len(pc.phase_props[i])):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
+                            lambda ii=i,
+                            jj=j,
+                            rr=region: self.physics.property_containers[rr].phase_props[
                                 ii
-                            ][
-                                jj
-                            ]
+                            ][jj]
                         )
 
                 # Add molar phase fractions
@@ -184,11 +181,11 @@ class Output:
                     for j in range(pc.x.shape[0]):
                         temp_dict[
                             f"x_{self.physics.phases[j]}_{pc.components_name[i]}"
-                        ] = lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                            rr
-                        ].x[
-                            jj, ii
-                        ]
+                        ] = (
+                            lambda ii=i,
+                            jj=j,
+                            rr=region: self.physics.property_containers[rr].x[jj, ii]
+                        )
 
                 self.physics.property_operators[region] = PropertyOperators(
                     pc, self.physics.thermal, temp_dict
@@ -235,13 +232,11 @@ class Output:
                 for i, name in enumerate(phase_props_labels):
                     for j in range(self.physics.property_containers[region].nph):
                         temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i, jj=j, rr=region: self.physics.property_containers[
-                                rr
-                            ].phase_props[
+                            lambda ii=i,
+                            jj=j,
+                            rr=region: self.physics.property_containers[rr].phase_props[
                                 ii
-                            ][
-                                jj
-                            ]
+                            ][jj]
                         )
 
                 self.physics.property_operators[region] = PropertyOperators(
@@ -905,7 +900,6 @@ class Output:
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
                 for region, prop_itor in self.physics.property_itor.items():
-
                     block_idx = np.where(self.op_num == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
@@ -1101,31 +1095,31 @@ class Output:
         if not os.path.exists(output_directory):
             os.makedirs(output_directory, exist_ok=True)
 
-        assert isinstance(timestep, int) and timestep < len(
-            xarray_data['time']
-        ), f"Timestep should be an integer less than {len(xarray_data['time'])}."
+        assert isinstance(timestep, int) and timestep < len(xarray_data['time']), (
+            f"Timestep should be an integer less than {len(xarray_data['time'])}."
+        )
 
         var_names = list(xarray_data.data_vars)
         for i, var in enumerate(var_names):
             plt.figure()
             if z is not None:
-                assert z < len(
-                    xarray_data['z']
-                ), 'z-level step should be less than %d' % len(xarray_data['z'])
+                assert z < len(xarray_data['z']), (
+                    'z-level step should be less than %d' % len(xarray_data['z'])
+                )
                 xarray_data[var].isel(time=timestep, z=z).plot()
                 plt.savefig(output_directory + '/%s ts%d z%d.png' % (var, timestep, z))
 
             elif y is not None:
-                assert y < len(
-                    xarray_data['y']
-                ), 'y-level step should be less than %d' % len(xarray_data['y'])
+                assert y < len(xarray_data['y']), (
+                    'y-level step should be less than %d' % len(xarray_data['y'])
+                )
                 xarray_data[var].isel(time=timestep, y=y).plot()
                 plt.savefig(output_directory + '/%s ts%d y%d.png' % (var, timestep, y))
 
             elif x is not None:
-                assert x < len(
-                    xarray_data['x']
-                ), 'x-level step should be less than %d' % len(xarray_data['x'])
+                assert x < len(xarray_data['x']), (
+                    'x-level step should be less than %d' % len(xarray_data['x'])
+                )
                 xarray_data[var].isel(time=timestep, x=x).plot()
                 plt.savefig(output_directory + '/%s ts%d zx%d.png' % (var, timestep, z))
 
@@ -1678,9 +1672,7 @@ class Output:
         )
         return perfs_conn_ids
 
-    def find_values_in_an_array(
-        self, to_find: Union[np.ndarray, list], in_array: np.ndarray
-    ):
+    def find_values_in_an_array(self, to_find: np.ndarray | list, in_array: np.ndarray):
         """
         :param to_find: The values the indices of which we want to find in in_array
         :type to_find: np.ndarray or list

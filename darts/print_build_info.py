@@ -9,7 +9,7 @@ def print_build_info():
     here = os.path.abspath(os.path.dirname(__file__))
     version_info_file = os.path.join(here, 'build_info.txt')
     if os.path.exists(version_info_file):
-        with open(version_info_file, 'r') as fp:
+        with open(version_info_file) as fp:
             date_time = fp.readline().rstrip()
             user_host = fp.readline().rstrip()
             git_hash = fp.readline().rstrip()
@@ -60,5 +60,5 @@ if __name__ == '__main__':
         fp.write(git_hash.stdout.decode('utf-8'))
 
     print("Embedded build info:")
-    with open(version_info_file, 'r') as f:
+    with open(version_info_file) as f:
         print(f.read())

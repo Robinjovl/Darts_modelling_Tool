@@ -21,7 +21,6 @@ from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 class THMCModel(DartsModel):
     def __init__(self):
-
         try:
             from darts.engines import get_num_threads
 

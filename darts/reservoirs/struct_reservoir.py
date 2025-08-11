@@ -1,5 +1,4 @@
 import os
-from typing import Union
 
 import numpy as np
 from scipy.interpolate import griddata
@@ -210,7 +209,7 @@ class StructReservoir(ReservoirBase):
     def add_perforation(
         self,
         well_name: str,
-        cell_index: Union[int, tuple],
+        cell_index: int | tuple,
         well_radius: float = 0.0762,
         well_index: float = None,
         well_indexD: float = 0.0,
@@ -306,7 +305,7 @@ class StructReservoir(ReservoirBase):
 
         return
 
-    def find_cell_index(self, coord: Union[list, np.ndarray]) -> int:
+    def find_cell_index(self, coord: list | np.ndarray) -> int:
         """
         Function to find nearest cell to specified coordinate
 
@@ -338,7 +337,6 @@ class StructReservoir(ReservoirBase):
                 data = data * np.ones((self.nx, self.ny, self.nz))
         else:
             if data.ndim == 1:
-
                 # make 3d array if 1d array is passed with lenght nx or ny or nz
                 data_array = np.zeros((self.nx, self.ny, self.nz))
                 if data.size == self.nz:
@@ -648,7 +646,7 @@ class StructReservoir(ReservoirBase):
         if not self.vtk_initialized:
             self.init_vtk(output_directory)
 
-        vtk_file_name = output_directory + '/solution_ts{}'.format(ith_step)
+        vtk_file_name = output_directory + f'/solution_ts{ith_step}'
 
         cell_data = {}
         for i, name in enumerate(prop_names):

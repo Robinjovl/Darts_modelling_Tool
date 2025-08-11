@@ -73,7 +73,6 @@ class GeologyModel:
         print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data....')
         NX, NY, NZ = self.GRDECL_Data.NX, self.GRDECL_Data.NY, self.GRDECL_Data.NZ
         if self.GRDECL_Data.GRID_type == 'CornerPoint':
-
             # 1.Collect Points from the raw CornerPoint data [ZCORN]&[COORD]
             # X,Y has to be interpolated from [ZCORN]
             Points = vtk.vtkPoints()

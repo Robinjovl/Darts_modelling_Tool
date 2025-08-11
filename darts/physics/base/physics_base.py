@@ -5,7 +5,6 @@ import os
 import pickle
 from enum import Enum
 from functools import total_ordering
-from typing import Union
 
 import numpy as np
 
@@ -410,16 +409,17 @@ class PhysicsBase:
         :param max_t: Maximum temperature [K]
         :param state_spec: StateSpecification, P, PT or PH
         """
-        assert (
-            np.isscalar(min_z) or len(min_z) == self.nc - 1
-        ), "min_z must be a scalar or a vector of length nc-1."
-        assert (
-            np.isscalar(max_z) or len(max_z) == self.nc - 1
-        ), "max_z must be a scalar or a vector of length nc-1."
+        assert np.isscalar(min_z) or len(min_z) == self.nc - 1, (
+            "min_z must be a scalar or a vector of length nc-1."
+        )
+        assert np.isscalar(max_z) or len(max_z) == self.nc - 1, (
+            "max_z must be a scalar or a vector of length nc-1."
+        )
 
         if state_spec <= PhysicsBase.StateSpecification.PT:
-            axes_min, axes_max = value_vector(self.PT_axes_min), value_vector(
-                self.PT_axes_max
+            axes_min, axes_max = (
+                value_vector(self.PT_axes_min),
+                value_vector(self.PT_axes_max),
             )
 
         elif state_spec == PhysicsBase.StateSpecification.PH:
@@ -460,7 +460,7 @@ class PhysicsBase:
         self,
         mesh: conn_mesh,
         input_distribution: dict,
-        input_depth: Union[list, np.ndarray],
+        input_depth: list | np.ndarray,
         global_to_local=None,
     ):
         """

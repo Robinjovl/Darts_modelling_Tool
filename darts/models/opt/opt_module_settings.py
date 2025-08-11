@@ -2,7 +2,6 @@ import os.path as osp
 import pickle
 import sys
 import time
-from typing import List
 
 import numpy as np
 import pandas as pd
@@ -139,7 +138,7 @@ class OptModuleSettings:
     # -----------------------------------------------------------------------------------------------------------------------
     # ---------------------------------------  Adjoint method - Xiaoming Tian------------------------------------------------
     # -----------------------------------------------------------------------------------------------------------------------
-    def set_modifier_and_du_dT_and_x_idx(self, modifier, x_idx: List[int]):
+    def set_modifier_and_du_dT_and_x_idx(self, modifier, x_idx: list[int]):
         '''
         The settings of modifier, x_idx, and col_idx
         :param modifier: model modifier
@@ -522,10 +521,10 @@ class OptModuleSettings:
 
     def set_observation_data_string(
         self,
-        well_name: List[str],
-        component_index: List[int],
-        phase_index: List[int],
-        phase_name: List[str],
+        well_name: list[str],
+        component_index: list[int],
+        phase_index: list[int],
+        phase_name: list[str],
         unit: str,
         opt_comp_rate: str,
         opt_phase_rate: str,
@@ -941,9 +940,7 @@ class OptModuleSettings:
         if self.objfun_saturation:
             pass
 
-        if (
-            self.misfit_watch
-        ):  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
+        if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
             # gaussian_noise_list = np.random.randn(np.size(self.temperature_report_data, 0), np.size(self.temperature_report_data, 1))
             #
             # tempr_value = np.array(self.temperature_report_data)
@@ -1104,9 +1101,7 @@ class OptModuleSettings:
             else:
                 self.obs_saturation = 0
 
-        if (
-            self.misfit_watch
-        ):  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
+        if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
             # self.obs_TEMPERATURE = np.array(self.temperature_list)
 
             self.obs_well_tempr = np.array(self.well_tempr_list_temp)
@@ -1704,9 +1699,7 @@ class OptModuleSettings:
             sat_SAT = 0.0  # todo......
             self.fval += sat_SAT
 
-        if (
-            self.misfit_watch
-        ):  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
+        if self.misfit_watch:  # IMPORTANT!!!  You need to specify which misfit term is going to be watched below
             # # cc=np.array(self.physics.engine.time_data_customized)
             # temperature_separate = np.array(self.physics.engine.time_data_customized)[:, 0:self.reservoir.mesh.n_res_blocks]
             #
@@ -1918,9 +1911,7 @@ class OptModuleSettings:
         grad_nonlinear = []
         if np.size(self.modifier.mod_x_idx) > 3:
             for i in range(self.modifier.mod_x_idx[2], self.modifier.mod_x_idx[-1]):
-                x_eps = (
-                    x_old.copy()
-                )  # copy the array, otherwise it passes the address, and this array will be changed
+                x_eps = x_old.copy()  # copy the array, otherwise it passes the address, and this array will be changed
                 x_eps[i] += self.eps
 
                 fval = self.fval_nonlinear_FDM(x_eps)
@@ -2046,9 +2037,7 @@ class OptModuleSettings:
         grad_nonlinear = []
         if np.size(self.modifier.mod_x_idx) > 3:
             for i in range(self.modifier.mod_x_idx[2], self.modifier.mod_x_idx[-1]):
-                x_eps = (
-                    x_old.copy()
-                )  # copy the array, otherwise it passes the address, and this array will be changed
+                x_eps = x_old.copy()  # copy the array, otherwise it passes the address, and this array will be changed
                 x_eps[i] += self.eps
 
                 fval = self.fval_nonlinear_FDM(x_eps)
@@ -2184,9 +2173,7 @@ class OptModuleSettings:
         grad_nonlinear = []
         if np.size(self.modifier.mod_x_idx) > 3:
             for i in range(self.modifier.mod_x_idx[2], self.modifier.mod_x_idx[-1]):
-                x_eps = (
-                    x_old.copy()
-                )  # copy the array, otherwise it passes the address, and this array will be changed
+                x_eps = x_old.copy()  # copy the array, otherwise it passes the address, and this array will be changed
                 x_eps[i] += self.eps
 
                 fval = self.fval_nonlinear_FDM(x_eps)
@@ -2306,9 +2293,9 @@ class OptModuleSettings:
 
                         gaussian_noise_list[p] = np.random.randn(rate_serie_Q.size)
                         random_training_period = self.std_gaussian_noise_prod[n][p]
-                        gaussian_noise_list[p][
-                            0 : np.size(random_training_period)
-                        ] = random_training_period
+                        gaussian_noise_list[p][0 : np.size(random_training_period)] = (
+                            random_training_period
+                        )
 
                         rate_list[p] = (
                             rate_serie_q.values * self.phase_relative_density[p]
@@ -2466,9 +2453,9 @@ class OptModuleSettings:
 
                     gaussian_noise_list[p] = np.random.randn(rate_serie_Q.size)
                     random_training_period = self.std_gaussian_noise_inj[n][p]
-                    gaussian_noise_list[p][
-                        0 : np.size(random_training_period)
-                    ] = random_training_period
+                    gaussian_noise_list[p][0 : np.size(random_training_period)] = (
+                        random_training_period
+                    )
 
                     rate_list_inj_q[p] = rate_serie_inj_q.values
 
@@ -2689,29 +2676,23 @@ class OptModuleSettings:
 
             bhp_clean_training = sq_norm(bhp_BHP_clean[:, 0:train_lenght])
             BHP_L2_training = sq_norm(
-                (
-                    np.array(BHP_separate)[:, 0:train_lenght]
-                    * np.array(BHP_cov_mat_inv)[:, 0:train_lenght]
-                    * np.array(BHP_weights)[:, 0:train_lenght] ** 0.5
-                )
+                np.array(BHP_separate)[:, 0:train_lenght]
+                * np.array(BHP_cov_mat_inv)[:, 0:train_lenght]
+                * np.array(BHP_weights)[:, 0:train_lenght] ** 0.5
             )
 
             bhp_clean_forcast = sq_norm(bhp_BHP_clean[:, train_lenght:])
             BHP_L2_forcast = sq_norm(
-                (
-                    np.array(BHP_separate)[:, train_lenght:]
-                    * np.array(BHP_cov_mat_inv)[:, train_lenght:]
-                    * np.array(BHP_weights)[:, train_lenght:] ** 0.5
-                )
+                np.array(BHP_separate)[:, train_lenght:]
+                * np.array(BHP_cov_mat_inv)[:, train_lenght:]
+                * np.array(BHP_weights)[:, train_lenght:] ** 0.5
             )
 
             bhp_clean_overall = sq_norm(bhp_BHP_clean)
             BHP_L2_overall = sq_norm(
-                (
-                    np.array(BHP_separate)
-                    * np.array(BHP_cov_mat_inv)
-                    * np.array(BHP_weights) ** 0.5
-                )
+                np.array(BHP_separate)
+                * np.array(BHP_cov_mat_inv)
+                * np.array(BHP_weights) ** 0.5
             )
 
             err_training_BHP = bhp_clean_training / BHP_L2_training * 100
@@ -2819,29 +2800,23 @@ class OptModuleSettings:
 
             wt_clean_training = sq_norm(wt_WT_clean[:, 0:train_lenght])
             WT_L2_training = sq_norm(
-                (
-                    np.array(WT_separate)[:, 0:train_lenght]
-                    * np.array(well_tempr_cov_mat_inv)[:, 0:train_lenght]
-                    * np.array(WT_weights)[:, 0:train_lenght] ** 0.5
-                )
+                np.array(WT_separate)[:, 0:train_lenght]
+                * np.array(well_tempr_cov_mat_inv)[:, 0:train_lenght]
+                * np.array(WT_weights)[:, 0:train_lenght] ** 0.5
             )
 
             wt_clean_forcast = sq_norm(wt_WT_clean[:, train_lenght:])
             WT_L2_forcast = sq_norm(
-                (
-                    np.array(WT_separate)[:, train_lenght:]
-                    * np.array(well_tempr_cov_mat_inv)[:, train_lenght:]
-                    * np.array(WT_weights)[:, train_lenght:] ** 0.5
-                )
+                np.array(WT_separate)[:, train_lenght:]
+                * np.array(well_tempr_cov_mat_inv)[:, train_lenght:]
+                * np.array(WT_weights)[:, train_lenght:] ** 0.5
             )
 
             wt_clean_overall = sq_norm(wt_WT_clean)
             WT_L2_overall = sq_norm(
-                (
-                    np.array(WT_separate)
-                    * np.array(well_tempr_cov_mat_inv)
-                    * np.array(WT_weights) ** 0.5
-                )
+                np.array(WT_separate)
+                * np.array(well_tempr_cov_mat_inv)
+                * np.array(WT_weights) ** 0.5
             )
 
             err_training_well_temper = wt_clean_training / WT_L2_training * 100
@@ -2937,29 +2912,23 @@ class OptModuleSettings:
 
             temperature_clean_training = sq_norm(tempr_TEMPR_clean[0:train_lenght, :])
             TEMPERATURE_L2_training = sq_norm(
-                (
-                    np.array(TEMPERATURE_separate)[0:train_lenght, :]
-                    * np.array(TEMPERATURE_cov_mat_inv)[0:train_lenght, :]
-                    * np.array(temperature_weights)[0:train_lenght, :] ** 0.5
-                )
+                np.array(TEMPERATURE_separate)[0:train_lenght, :]
+                * np.array(TEMPERATURE_cov_mat_inv)[0:train_lenght, :]
+                * np.array(temperature_weights)[0:train_lenght, :] ** 0.5
             )
 
             temperature_clean_forcast = sq_norm(tempr_TEMPR_clean[train_lenght:, :])
             TEMPERATURE_L2_forcast = sq_norm(
-                (
-                    np.array(TEMPERATURE_separate)[train_lenght:, :]
-                    * np.array(TEMPERATURE_cov_mat_inv)[train_lenght:, :]
-                    * np.array(temperature_weights)[train_lenght:, :] ** 0.5
-                )
+                np.array(TEMPERATURE_separate)[train_lenght:, :]
+                * np.array(TEMPERATURE_cov_mat_inv)[train_lenght:, :]
+                * np.array(temperature_weights)[train_lenght:, :] ** 0.5
             )
 
             temperature_clean_overall = sq_norm(tempr_TEMPR_clean)
             TEMPERATURE_L2_overall = sq_norm(
-                (
-                    np.array(TEMPERATURE_separate)
-                    * np.array(TEMPERATURE_cov_mat_inv)
-                    * np.array(temperature_weights) ** 0.5
-                )
+                np.array(TEMPERATURE_separate)
+                * np.array(TEMPERATURE_cov_mat_inv)
+                * np.array(temperature_weights) ** 0.5
             )
 
             err_training_tempr = (
@@ -3054,29 +3023,23 @@ class OptModuleSettings:
 
             customized_op_clean_training = sq_norm(op_OP_clean[0:train_lenght, :])
             CUSTOMIZED_OP_L2_training = sq_norm(
-                (
-                    np.array(CUSTOMIZED_OP_separate)[0:train_lenght, :]
-                    * np.array(CUSTOMIZED_OP_cov_mat_inv)[0:train_lenght, :]
-                    * np.array(customized_op_weights)[0:train_lenght, :] ** 0.5
-                )
+                np.array(CUSTOMIZED_OP_separate)[0:train_lenght, :]
+                * np.array(CUSTOMIZED_OP_cov_mat_inv)[0:train_lenght, :]
+                * np.array(customized_op_weights)[0:train_lenght, :] ** 0.5
             )
 
             customized_op_clean_forcast = sq_norm(op_OP_clean[train_lenght:, :])
             CUSTOMIZED_OP_L2_forcast = sq_norm(
-                (
-                    np.array(CUSTOMIZED_OP_separate)[train_lenght:, :]
-                    * np.array(CUSTOMIZED_OP_cov_mat_inv)[train_lenght:, :]
-                    * np.array(customized_op_weights)[train_lenght:, :] ** 0.5
-                )
+                np.array(CUSTOMIZED_OP_separate)[train_lenght:, :]
+                * np.array(CUSTOMIZED_OP_cov_mat_inv)[train_lenght:, :]
+                * np.array(customized_op_weights)[train_lenght:, :] ** 0.5
             )
 
             customized_op_clean_overall = sq_norm(op_OP_clean)
             CUSTOMIZED_OP_L2_overall = sq_norm(
-                (
-                    np.array(CUSTOMIZED_OP_separate)
-                    * np.array(CUSTOMIZED_OP_cov_mat_inv)
-                    * np.array(customized_op_weights) ** 0.5
-                )
+                np.array(CUSTOMIZED_OP_separate)
+                * np.array(CUSTOMIZED_OP_cov_mat_inv)
+                * np.array(customized_op_weights) ** 0.5
             )
 
             err_training_op = (
@@ -3435,13 +3398,13 @@ class OptModuleSettings:
             ].T
 
             bhp_clean_training = sq_norm(bhp_BHP_clean[:, 0:train_lenght])
-            BHP_L2_training = sq_norm((np.array(BHP_separate)[:, 0:train_lenght]))
+            BHP_L2_training = sq_norm(np.array(BHP_separate)[:, 0:train_lenght])
 
             bhp_clean_forcast = sq_norm(bhp_BHP_clean[:, train_lenght:])
-            BHP_L2_forcast = sq_norm((np.array(BHP_separate)[:, train_lenght:]))
+            BHP_L2_forcast = sq_norm(np.array(BHP_separate)[:, train_lenght:])
 
             bhp_clean_overall = sq_norm(bhp_BHP_clean)
-            BHP_L2_overall = sq_norm((np.array(BHP_separate)))
+            BHP_L2_overall = sq_norm(np.array(BHP_separate))
 
             err_training_BHP = bhp_clean_training / BHP_L2_training * 100
             err_forcast_BHP = bhp_clean_forcast / BHP_L2_forcast * 100
@@ -3511,13 +3474,13 @@ class OptModuleSettings:
             wt_WT_clean = np.array(wt_WT)[np.flipud(self.dirac_vec).astype('bool'), :].T
 
             wt_clean_training = sq_norm(wt_WT_clean[:, 0:train_lenght])
-            WT_L2_training = sq_norm((np.array(WT_separate)[:, 0:train_lenght]))
+            WT_L2_training = sq_norm(np.array(WT_separate)[:, 0:train_lenght])
 
             wt_clean_forcast = sq_norm(wt_WT_clean[:, train_lenght:])
-            WT_L2_forcast = sq_norm((np.array(WT_separate)[:, train_lenght:]))
+            WT_L2_forcast = sq_norm(np.array(WT_separate)[:, train_lenght:])
 
             wt_clean_overall = sq_norm(wt_WT_clean)
-            WT_L2_overall = sq_norm((np.array(WT_separate)))
+            WT_L2_overall = sq_norm(np.array(WT_separate))
 
             err_training_well_tempr = wt_clean_training / WT_L2_training * 100
             err_forcast_well_tempr = wt_clean_forcast / WT_L2_forcast * 100
@@ -3536,7 +3499,6 @@ class OptModuleSettings:
         temperature_clean_overall = 0
         TEMPERATURE_L2_overall = 0
         if self.objfun_temperature:
-
             temperature_separate = opt_tempr
             TEMPERATURE_separate = truth_TEMPR
 
@@ -3580,16 +3542,16 @@ class OptModuleSettings:
 
             temperature_clean_training = sq_norm(tempr_TEMPR_clean[0:train_lenght, :])
             TEMPERATURE_L2_training = sq_norm(
-                (np.array(TEMPERATURE_separate)[0:train_lenght, :])
+                np.array(TEMPERATURE_separate)[0:train_lenght, :]
             )
 
             temperature_clean_forcast = sq_norm(tempr_TEMPR_clean[train_lenght:, :])
             TEMPERATURE_L2_forcast = sq_norm(
-                (np.array(TEMPERATURE_separate)[train_lenght:, :])
+                np.array(TEMPERATURE_separate)[train_lenght:, :]
             )
 
             temperature_clean_overall = sq_norm(tempr_TEMPR_clean)
-            TEMPERATURE_L2_overall = sq_norm((np.array(TEMPERATURE_separate)))
+            TEMPERATURE_L2_overall = sq_norm(np.array(TEMPERATURE_separate))
 
             err_training_tempr = (
                 temperature_clean_training / TEMPERATURE_L2_training * 100
@@ -3668,7 +3630,6 @@ class OptModuleSettings:
         customized_op_clean_overall = 0
         CUSTOMIZED_OP_L2_overall = 0
         if self.objfun_customized_op:
-
             customized_op_separate = opt_op
             CUSTOMIZED_OP_separate = truth_OP
 
@@ -3710,16 +3671,16 @@ class OptModuleSettings:
 
             customized_op_clean_training = sq_norm(op_OP_clean[0:train_lenght, :])
             CUSTOMIZED_OP_L2_training = sq_norm(
-                (np.array(CUSTOMIZED_OP_separate)[0:train_lenght, :])
+                np.array(CUSTOMIZED_OP_separate)[0:train_lenght, :]
             )
 
             customized_op_clean_forcast = sq_norm(op_OP_clean[train_lenght:, :])
             CUSTOMIZED_OP_L2_forcast = sq_norm(
-                (np.array(CUSTOMIZED_OP_separate)[train_lenght:, :])
+                np.array(CUSTOMIZED_OP_separate)[train_lenght:, :]
             )
 
             customized_op_clean_overall = sq_norm(op_OP_clean)
-            CUSTOMIZED_OP_L2_overall = sq_norm((np.array(CUSTOMIZED_OP_separate)))
+            CUSTOMIZED_OP_L2_overall = sq_norm(np.array(CUSTOMIZED_OP_separate))
 
             err_training_op = (
                 customized_op_clean_training / CUSTOMIZED_OP_L2_training * 100
@@ -3848,14 +3809,14 @@ class model_modifier_aggregator:
 
     def get_bounds_around_x0_neighbourhood(
         self, model, rel_distance=0.1
-    ) -> List[tuple]:
+    ) -> list[tuple]:
         x0 = self.get_x0(model)
         l = list(x0 * (1 - rel_distance))
         h = list(x0 * (1 + rel_distance))
-        bounds = list(zip(l, h))
+        bounds = list(zip(l, h, strict=False))
         return bounds
 
-    def get_bounds(self, model) -> List[tuple]:
+    def get_bounds(self, model) -> list[tuple]:
         '''
         The function of getting the bound of the modifier
         :param model: DARTS reservoir model
@@ -3898,7 +3859,7 @@ class model_modifier_aggregator:
                 [self.x, self.mod_x_idx, self.modifiers], fp, pickle.HIGHEST_PROTOCOL
             )
 
-    def set_grad(self, grad_original: np.array, x_idx: List[int]) -> np.array:
+    def set_grad(self, grad_original: np.array, x_idx: list[int]) -> np.array:
         '''
         The function of setting the gradients
         :param grad_original: original gradient array
@@ -3996,7 +3957,7 @@ class transmissibility_modifier:
 
         return np.array(t) / self.norms
 
-    def get_bounds(self, model, mult=10) -> List[tuple]:
+    def get_bounds(self, model, mult=10) -> list[tuple]:
         '''
         The function of getting the bound of transmissibility modifier
         :param model: DARTS reservoir model
@@ -4056,7 +4017,7 @@ class flux_multiplier_modifier:
 
         return self.fm / self.norms
 
-    def get_bounds(self, model, mult=10) -> List[tuple]:
+    def get_bounds(self, model, mult=10) -> list[tuple]:
         '''
         The function of getting the bound of flux multiplier modifier
         :param model: DARTS reservoir model
@@ -4103,7 +4064,6 @@ class transmissibility_fracture_modifier:
         self.nr_frac_frac_con = nr_frac_frac_con
 
     def get_x0(self, model) -> np.array:
-
         t = value_vector([])
         t_D = value_vector([])
 
@@ -4113,7 +4073,7 @@ class transmissibility_fracture_modifier:
 
         return np.array(t[0 : self.nr_frac_frac_con]) / self.norms
 
-    def get_bounds(self, model, mult=10) -> List[tuple]:
+    def get_bounds(self, model, mult=10) -> list[tuple]:
         bound = list()
         for i in range(0, len(self.t[0 : self.nr_frac_frac_con])):
             bound += [(0.00002, self.t[i] * mult / self.norms)]
@@ -4150,7 +4110,7 @@ class well_index_modifier:
 
         return np.array(well_index) / self.norms
 
-    def get_bounds(self, model, mult=10) -> List[tuple]:
+    def get_bounds(self, model, mult=10) -> list[tuple]:
         '''
         The function of getting the bound of well index modifier
         :param model: DARTS reservoir model

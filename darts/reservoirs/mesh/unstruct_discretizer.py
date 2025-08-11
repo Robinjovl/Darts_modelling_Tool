@@ -6,7 +6,6 @@ import subprocess
 import time
 import warnings
 from itertools import combinations
-from typing import List
 
 import meshio
 import numpy as np
@@ -31,19 +30,19 @@ from .transcalc import TransCalculations
         - Nodes:    Vertices, points
         - Cells:    Control volumes
         - Face:     Sides of the control volume
-        
+
     Finding intersections in this unstructured discretization module are down in the following way (2D example):
          "Grid example"
           0----1-----2-3
           | a / \ c /  |
           |  / b \ / d |
-          4-5-----6----7 
+          4-5-----6----7
     Example: we are investigating interface from node 1 to node 6 (with neighboring cells b and c):
-        Have two sets: 
+        Have two sets:
             - cells belonging to node 1: {a, b, c}
             - cells belonging to node 5: {b, c, d}
         Find intersection of two sets, which is also a set: {b,c}
-        When length of the set is exactly 2 --> interface has two neighboring cells and therefore a connection has to 
+        When length of the set is exactly 2 --> interface has two neighboring cells and therefore a connection has to
         be added to the connection list of the reservoir (when having in-active cells, need to add one additional check)
     This example easily generalizes to 3D and any interface geometry (if cells are conformal)!
     Also, fractures work in an analogues way!
@@ -66,7 +65,7 @@ class UnstructDiscretizer:
         if mesh_file.endswith('.geo'):
             mesh_file_msh = mesh_file.replace('.geo', '.msh')
             print('Start meshing', mesh_file_msh)
-            cmd = "gmsh {:s} -o {:s} -save".format(mesh_file, mesh_file_msh)
+            cmd = f"gmsh {mesh_file:s} -o {mesh_file_msh:s} -save"
             shell_flag = os.name == 'nt'
             redirect_log = True
             if redirect_log:
@@ -93,33 +92,15 @@ class UnstructDiscretizer:
         self.verbose = verbose
         self.mesh_file = mesh_file  # Name of the input meshfile
         self.mesh_data = []  # Initialize empty mesh data list
-        self.mat_cell_info_dict = (
-            {}
-        )  # Dictionary containing information of all the matrix cells
-        self.mat_cells_to_node = (
-            {}
-        )  # Dictionary containing all the cells belonging to each matrix node
-        self.frac_cell_info_dict = (
-            {}
-        )  # Dictionary containing information of all the fracture cells
-        self.frac_cells_to_node = (
-            {}
-        )  # Dictionary containing all the cells belonging to each fracture node
-        self.bound_face_info_dict = (
-            {}
-        )  # Dictionary containing information of all the boundary faces
-        self.bound_cells_to_node = (
-            {}
-        )  # Dictionary containing all the cells belonging to each fracture node
-        self.frac_bound_face_info_dict = (
-            {}
-        )  # Dictionary containing information of all the segments of fracture boundaries
-        self.frac_bound_cells_to_node = (
-            {}
-        )  # Dictionary containing all the cells belonging to each fracture node on boundary
-        self.output_face_info_dict = (
-            {}
-        )  # Dictionary containing information of all the faces for output
+        self.mat_cell_info_dict = {}  # Dictionary containing information of all the matrix cells
+        self.mat_cells_to_node = {}  # Dictionary containing all the cells belonging to each matrix node
+        self.frac_cell_info_dict = {}  # Dictionary containing information of all the fracture cells
+        self.frac_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node
+        self.bound_face_info_dict = {}  # Dictionary containing information of all the boundary faces
+        self.bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node
+        self.frac_bound_face_info_dict = {}  # Dictionary containing information of all the segments of fracture boundaries
+        self.frac_bound_cells_to_node = {}  # Dictionary containing all the cells belonging to each fracture node on boundary
+        self.output_face_info_dict = {}  # Dictionary containing information of all the faces for output
         self.vtk_output_nodes_to_cells = {}
         self.vtk_output_cell_idxs = {}
 
@@ -129,21 +110,13 @@ class UnstructDiscretizer:
         self.output_faces_tot = 0  # Number of output faces
         self.frac_bound_faces_tot = 0  # Number of segments on the boundary of faults
 
-        self.volume_all_cells = (
-            []
-        )  # Volume of matrix and fracture cells (later as numpy.array)
-        self.depth_all_cells = (
-            []
-        )  # Depth of matrix and fracture cells (later as numpy.array)
-        self.centroid_all_cells = (
-            []
-        )  # Centroid of matrix and fracture cells (later as numpy.array)
+        self.volume_all_cells = []  # Volume of matrix and fracture cells (later as numpy.array)
+        self.depth_all_cells = []  # Depth of matrix and fracture cells (later as numpy.array)
+        self.centroid_all_cells = []  # Centroid of matrix and fracture cells (later as numpy.array)
 
         self.boundary_connections = {}
         self.tol = 1.0e-10  # Tolerance in MPxA
-        self.mpfa_connections = (
-            {}
-        )  # Pairs of cells which has a common sub-interface per node (int. region)
+        self.mpfa_connections = {}  # Pairs of cells which has a common sub-interface per node (int. region)
         self.mpsa_connections = {}  # Stress flux connections
         self.n_dim = 0  # Mesh dimension (2 for 2D, 3 for 3D)
         self.mpfa_connections_num = 0  # Number of MPFA connections
@@ -154,9 +127,7 @@ class UnstructDiscretizer:
             tag: {'cells': []} for tag in self.physical_tags['boundary']
         }
 
-        self.disp_gradients = (
-            {}
-        )  # Displacement gradient & corresponding stencil for every matrix cell
+        self.disp_gradients = {}  # Displacement gradient & corresponding stencil for every matrix cell
         self.ith_iter = 0
         self.Ft_prev = {}
         self.Ft_iter = {}
@@ -199,10 +170,8 @@ class UnstructDiscretizer:
                 # ONLY UNCOMMENT THIS LINE BELOW IF YOU WANT HETEROGENEITY BY RANDOM INPUT:
                 # data = data * np.random.uniform(0.95, 1.05, (self.mat_cells_tot,))
             else:
-                assert (
-                    len(data) == self.mat_cells_tot
-                ), "Length of matrix data {:d} not equal to number of matrix cells {:d}".format(
-                    len(data), self.mat_cells_tot
+                assert len(data) == self.mat_cells_tot, (
+                    f"Length of matrix data {len(data):d} not equal to number of matrix cells {self.mat_cells_tot:d}"
                 )
         return data
 
@@ -219,10 +188,8 @@ class UnstructDiscretizer:
                 # Input data object is scalar value
                 data = data * np.ones((self.frac_cells_tot,), dtype=type(data))
             else:
-                assert (
-                    len(data) == self.frac_cells_tot
-                ), "Length of fracture data {:d} is not equal to number of fracture cells {:d}".format(
-                    len(data), self.frac_cells_tot
+                assert len(data) == self.frac_cells_tot, (
+                    f"Length of fracture data {len(data):d} is not equal to number of fracture cells {self.frac_cells_tot:d}"
                 )
         return data
 
@@ -272,9 +239,7 @@ class UnstructDiscretizer:
                 read_from_cache = True
                 if self.verbose:
                     print(
-                        'Time to load Mesh and cell info: {:f} [sec]'.format(
-                            (time.time() - start_time_module)
-                        )
+                        f'Time to load Mesh and cell info: {time.time() - start_time_module:f} [sec]'
                     )
                     print(self.mesh_data)
 
@@ -291,7 +256,7 @@ class UnstructDiscretizer:
                 'gmsh:physical'
             ].items():
                 unique, counts = np.unique(types, return_counts=True)
-                for type, count in zip(unique, counts):
+                for type, count in zip(unique, counts, strict=False):
                     if type in self.physical_tags['matrix']:
                         self.mat_cells_tot += count
                     elif type in self.physical_tags['fracture']:
@@ -306,37 +271,15 @@ class UnstructDiscretizer:
                         raise ValueError("Unsupported physical tag found", type)
 
             if self.verbose:
-                print(
-                    'Time to load Mesh: {:f} [sec]'.format(
-                        (time.time() - start_time_module)
-                    )
-                )
+                print(f'Time to load Mesh: {time.time() - start_time_module:f} [sec]')
 
+                print(f'Total number of matrix cells found: {self.mat_cells_tot:d}')
+                print(f'Total number of fracture cells found: {self.frac_cells_tot:d}')
+                print(f'Total number of boundary faces found: {self.bound_faces_tot:d}')
                 print(
-                    'Total number of matrix cells found: {:d}'.format(
-                        self.mat_cells_tot
-                    )
+                    f'Total number of fracture boundary faces found: {self.frac_bound_faces_tot:d}'
                 )
-                print(
-                    'Total number of fracture cells found: {:d}'.format(
-                        self.frac_cells_tot
-                    )
-                )
-                print(
-                    'Total number of boundary faces found: {:d}'.format(
-                        self.bound_faces_tot
-                    )
-                )
-                print(
-                    'Total number of fracture boundary faces found: {:d}'.format(
-                        self.frac_bound_faces_tot
-                    )
-                )
-                print(
-                    'Total number of output faces found: {:d}'.format(
-                        self.output_faces_tot
-                    )
-                )
+                print(f'Total number of output faces found: {self.output_faces_tot:d}')
 
                 print(self.mesh_data)
                 print('------------------------------------------------\n')
@@ -528,21 +471,21 @@ class UnstructDiscretizer:
                         face_count += 1
                         output_count += 1
 
-            assert (
-                mat_count == self.mat_cells_tot
-            ), "Total matrix cells not equal to number in load_mesh()"
-            assert (
-                frac_count == self.frac_cells_tot
-            ), "Total fracture cells not equal to number in load_mesh()"
-            assert (
-                bound_count == self.bound_faces_tot
-            ), "Total boundary faces not equal to number in load_mesh()"
-            assert (
-                frac_bound_count == self.frac_bound_faces_tot
-            ), "Total fracture boundary faces not equal to number in load_mesh()"
-            assert (
-                output_count == self.output_faces_tot
-            ), "Total output faces not equal to number in load_mesh()"
+            assert mat_count == self.mat_cells_tot, (
+                "Total matrix cells not equal to number in load_mesh()"
+            )
+            assert frac_count == self.frac_cells_tot, (
+                "Total fracture cells not equal to number in load_mesh()"
+            )
+            assert bound_count == self.bound_faces_tot, (
+                "Total boundary faces not equal to number in load_mesh()"
+            )
+            assert frac_bound_count == self.frac_bound_faces_tot, (
+                "Total fracture boundary faces not equal to number in load_mesh()"
+            )
+            assert output_count == self.output_faces_tot, (
+                "Total output faces not equal to number in load_mesh()"
+            )
 
         if cache and not read_from_cache:
             meshObject = {}
@@ -833,7 +776,7 @@ class UnstructDiscretizer:
         """
         # Statis method which writes any property to a specified file:
         file = open(file_name, 'w')
-        file.write("{:s}\n".format(key_word))
+        file.write(f"{key_word:s}\n")
         for ith_cell in range(num_cells):
             if np.isscalar(data):
                 file.write("%8.6f\n" % (data))
@@ -844,7 +787,7 @@ class UnstructDiscretizer:
         file.close()
         return 0
 
-    def find_cells(self, tags: List[int], type: str = 'face'):
+    def find_cells(self, tags: list[int], type: str = 'face'):
         """
         Function to find cells that share geometrical element with physically tagged geometry
         :param tags: List of tags of physical geometry
@@ -907,25 +850,11 @@ class UnstructDiscretizer:
                 )
                 if self.verbose:
                     print(
-                        'Time to load connection list: {:f} [sec]'.format(
-                            (time.time() - start_time_module)
-                        )
+                        f'Time to load connection list: {time.time() - start_time_module:f} [sec]'
                     )
-                    print(
-                        '\t#Frac-Frac connections found: {:d}'.format(
-                            connection_stats[0]
-                        )
-                    )
-                    print(
-                        '\t#Mat-Mat connections found:   {:d}'.format(
-                            connection_stats[1]
-                        )
-                    )
-                    print(
-                        '\t#Mat-Frac connections found:  {:d}'.format(
-                            connection_stats[2]
-                        )
-                    )
+                    print(f'\t#Frac-Frac connections found: {connection_stats[0]:d}')
+                    print(f'\t#Mat-Mat connections found:   {connection_stats[1]:d}')
+                    print(f'\t#Mat-Frac connections found:  {connection_stats[2]:d}')
                     print('------------------------------------------------\n')
                 return cell_m, cell_p, tran, tran_thermal
 
@@ -960,7 +889,6 @@ class UnstructDiscretizer:
             for key, nodes_to_face in self.frac_cell_info_dict[
                 ith_frac
             ].nodes_to_faces.items():
-
                 # Size of nodesToFace in 3D == 2, in 2D == 1.  This is because fractures
                 # in 2D intersect in a point (which is one node) and
                 # in 3D intersect in a line (which has two nodes)!
@@ -983,7 +911,6 @@ class UnstructDiscretizer:
                     # Compute star-delta transformation and store connectivity for
                     # for each unique fracture-fracture connection:
                     if intsect_cells_of_face[0] == ith_frac:
-
                         # If statement is necessary to have unique connections, since
                         # the main outer loop is over all fracture cells, and e.g. if
                         # fracture 5 and 6 are connected, would otherwise appear twice
@@ -1042,11 +969,9 @@ class UnstructDiscretizer:
 
         if self.verbose:
             print(
-                'Time to calculate connection list: {:f} [sec]'.format(
-                    (time.time() - start_time_module)
-                )
+                f'Time to calculate connection list: {time.time() - start_time_module:f} [sec]'
             )
-            print('\t#Frac-Frac connections found: {:d}'.format(count_frac_frac_conn))
+            print(f'\t#Frac-Frac connections found: {count_frac_frac_conn:d}')
             print('------------------------------------------------\n')
 
         # Start code for Matrix-Matrix and Fracture-Matrix connections:
@@ -1086,10 +1011,8 @@ class UnstructDiscretizer:
                     # matrix 5 and 6 are connected, would otherwise appear twice
                     # in the connection list (as (5, 6, Trans56) and (6, 5, Trans65)):
                     if intsect_cells_to_face[0] == ith_cell:
-
                         # Check if any fractures are present throughout the domain:
                         if self.frac_cells_tot > 0:
-
                             # Check if there exists a fracture on the currently investigated
                             # interface:
                             try:
@@ -1165,9 +1088,7 @@ class UnstructDiscretizer:
                                 ].volume
                             ):
                                 print(
-                                    'Found very small matrix element: {:d}'.format(
-                                        intsect_cells_to_face[0]
-                                    )
+                                    f'Found very small matrix element: {intsect_cells_to_face[0]:d}'
                                 )
                                 print(
                                     'Correcting for fracture volume results in negative volume'
@@ -1228,9 +1149,7 @@ class UnstructDiscretizer:
                                 ].volume
                             ):
                                 print(
-                                    'Found very small matrix element: {:d}'.format(
-                                        intsect_cells_to_face[1]
-                                    )
+                                    f'Found very small matrix element: {intsect_cells_to_face[1]:d}'
                                 )
                                 print(
                                     'Correcting for fracture volume results in negative volume'
@@ -1276,12 +1195,10 @@ class UnstructDiscretizer:
 
         if self.verbose:
             print(
-                'Time to calculate connection list: {:f} [sec]'.format(
-                    (time.time() - start_time_module)
-                )
+                f'Time to calculate connection list: {time.time() - start_time_module:f} [sec]'
             )
-            print('\t#Mat-Mat connections found:   {:d}'.format(count_mat_mat_conn))
-            print('\t#Mat-Frac connections found:  {:d}'.format(count_mat_frac_conn))
+            print(f'\t#Mat-Mat connections found:   {count_mat_mat_conn:d}')
+            print(f'\t#Mat-Frac connections found:  {count_mat_frac_conn:d}')
             print('------------------------------------------------\n')
 
         # Convert dictionary back to numpy array (try to find more optimized method...):
@@ -1558,7 +1475,7 @@ class UnstructDiscretizer:
                     + '\t'
                 )
             for i in range(data[0].size):
-                row += '\t' + str(data[0][i]) + '\t' + str('{:.2e}'.format(data[1][i]))
+                row += '\t' + str(data[0][i]) + '\t' + str(f'{data[1][i]:.2e}')
             f.write(row + '\n')
         f.close()
 
@@ -1830,15 +1747,9 @@ class UnstructDiscretizer:
         offset.append(accum_size)
         if self.verbose:
             print(
-                'Time to calculate MPFA connection list: {:f} [sec]'.format(
-                    (time.time() - start_time_module)
-                )
+                f'Time to calculate MPFA connection list: {time.time() - start_time_module:f} [sec]'
             )
-            print(
-                '\t#Mat-Mat MPFA connections found:   {:d}'.format(
-                    self.mpfa_connections_num
-                )
-            )
+            print(f'\t#Mat-Mat MPFA connections found:   {self.mpfa_connections_num:d}')
             # print('\t#Mat-Frac MPFA connections found:  {:d}'.format(count_mat_frac_conn))
             print('------------------------------------------------\n')
 
@@ -2541,8 +2452,7 @@ class UnstructDiscretizer:
                             pos += 1
                         D[
                             j * self.n_dim : (j + 1) * n_dim,
-                            stencil[bound_num]
-                            * n_dim : (stencil[bound_num] + 1)
+                            stencil[bound_num] * n_dim : (stencil[bound_num] + 1)
                             * n_dim,
                         ] = np.identity(n_dim)
 
@@ -2552,8 +2462,7 @@ class UnstructDiscretizer:
                                 pos += 1
                             D[
                                 j * self.n_dim : (j + 1) * n_dim,
-                                stencil[cell_id]
-                                * n_dim : (stencil[cell_id] + 1)
+                                stencil[cell_id] * n_dim : (stencil[cell_id] + 1)
                                 * n_dim,
                             ] = -alpha
                     R[j * self.n_dim : (j + 1) * self.n_dim, :] = alpha.dot(
@@ -2589,8 +2498,7 @@ class UnstructDiscretizer:
                         pos += 1
                     D[
                         j0 * self.n_dim : (j0 + 1) * n_dim,
-                        stencil[face.cell_id2]
-                        * n_dim : (stencil[face.cell_id2] + 1)
+                        stencil[face.cell_id2] * n_dim : (stencil[face.cell_id2] + 1)
                         * n_dim,
                     ] += -sign * np.identity(n_dim)
                     # gap gradients
@@ -2601,9 +2509,7 @@ class UnstructDiscretizer:
                         D[
                             j0 * self.n_dim : (j0 + 1) * n_dim,
                             stencil[id] * n_dim : (stencil[id] + 1) * n_dim,
-                        ] += (
-                            sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
-                        )
+                        ] += sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
             sq_mat = R.T.dot(W).dot(R)
             # rank_sq = np.linalg.matrix_rank(sq_mat)
             # rank = np.linalg.matrix_rank(R)
@@ -2703,8 +2609,7 @@ class UnstructDiscretizer:
                             pos += 1
                         D[
                             j * self.n_dim : (j + 1) * n_dim,
-                            stencil[bound_num]
-                            * n_dim : (stencil[bound_num] + 1)
+                            stencil[bound_num] * n_dim : (stencil[bound_num] + 1)
                             * n_dim,
                         ] = np.identity(n_dim)
 
@@ -2714,8 +2619,7 @@ class UnstructDiscretizer:
                                 pos += 1
                             D[
                                 j * self.n_dim : (j + 1) * n_dim,
-                                stencil[cell_id]
-                                * n_dim : (stencil[cell_id] + 1)
+                                stencil[cell_id] * n_dim : (stencil[cell_id] + 1)
                                 * n_dim,
                             ] = -alpha
                     R[j * self.n_dim : (j + 1) * self.n_dim, :] = alpha.dot(
@@ -2751,8 +2655,7 @@ class UnstructDiscretizer:
                         pos += 1
                     D[
                         j0 * self.n_dim : (j0 + 1) * n_dim,
-                        stencil[face.cell_id2]
-                        * n_dim : (stencil[face.cell_id2] + 1)
+                        stencil[face.cell_id2] * n_dim : (stencil[face.cell_id2] + 1)
                         * n_dim,
                     ] += -sign * np.identity(n_dim)
                     # gap gradients
@@ -2763,9 +2666,7 @@ class UnstructDiscretizer:
                         D[
                             j0 * self.n_dim : (j0 + 1) * n_dim,
                             stencil[id] * n_dim : (stencil[id] + 1) * n_dim,
-                        ] += (
-                            sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
-                        )
+                        ] += sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
             # Augmented
             for j0, cell_id2 in enumerate(adj_cells):
                 j = j0 + cur_faces.size
@@ -2964,8 +2865,7 @@ class UnstructDiscretizer:
                                 pos += 1
                             D[
                                 j * self.n_dim : (j + 1) * n_dim,
-                                stencil[cell_id]
-                                * n_dim : (stencil[cell_id] + 1)
+                                stencil[cell_id] * n_dim : (stencil[cell_id] + 1)
                                 * n_dim,
                             ] = -alpha
                         else:
@@ -2974,8 +2874,7 @@ class UnstructDiscretizer:
                                 pos += 1
                             D[
                                 j * self.n_dim : (j + 1) * n_dim,
-                                stencil[bound_num]
-                                * n_dim : (stencil[bound_num] + 1)
+                                stencil[bound_num] * n_dim : (stencil[bound_num] + 1)
                                 * n_dim,
                             ] = np.identity(n_dim)
 
@@ -2985,8 +2884,7 @@ class UnstructDiscretizer:
                                     pos += 1
                                 D[
                                     j * self.n_dim : (j + 1) * n_dim,
-                                    stencil[cell_id]
-                                    * n_dim : (stencil[cell_id] + 1)
+                                    stencil[cell_id] * n_dim : (stencil[cell_id] + 1)
                                     * n_dim,
                                 ] = -alpha
                         R[j * self.n_dim : (j + 1) * self.n_dim, :] = alpha.dot(
@@ -3019,8 +2917,9 @@ class UnstructDiscretizer:
                             pos += 1
                         D[
                             j0 * self.n_dim : (j0 + 1) * n_dim,
-                            stencil[face.cell_id2]
-                            * n_dim : (stencil[face.cell_id2] + 1)
+                            stencil[face.cell_id2] * n_dim : (
+                                stencil[face.cell_id2] + 1
+                            )
                             * n_dim,
                         ] += -sign * np.identity(n_dim)
                         # gap gradients
@@ -3031,9 +2930,7 @@ class UnstructDiscretizer:
                             D[
                                 j0 * self.n_dim : (j0 + 1) * n_dim,
                                 stencil[id] * n_dim : (stencil[id] + 1) * n_dim,
-                            ] += (
-                                sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
-                            )
+                            ] += sign * tmp[:, pos1 * n_dim : (pos1 + 1) * n_dim]
                 sq_mat = R.T.dot(R)
                 # rank_sq = np.linalg.matrix_rank(sq_mat)
                 # rank = np.linalg.matrix_rank(R)
@@ -3084,9 +2981,10 @@ class UnstructDiscretizer:
                         np.identity(self.n_dim) - np.outer(n, n),
                     )
                 )
-                self.transversal_fluxes[cell_id][face_id0] = np.array(
-                    list(stencil.keys()), dtype=np.intp
-                ), G.dot(grads.dot(D[:, : pos * n_dim]))
+                self.transversal_fluxes[cell_id][face_id0] = (
+                    np.array(list(stencil.keys()), dtype=np.intp),
+                    G.dot(grads.dot(D[:, : pos * n_dim])),
+                )
 
     def get_transversal_flux(self, cell_id, face_id, T, Tden):
         cell = self.mat_cell_info_dict[cell_id]
@@ -3293,10 +3191,8 @@ class UnstructDiscretizer:
                             '\t'
                             + str(id)
                             + '\t['
-                            + ', '.join(
-                                ['{:.2e}'.format(n) for n in data[2][ids][i, k, :]]
-                            )
-                            + str(']')
+                            + ', '.join([f'{n:.2e}' for n in data[2][ids][i, k, :]])
+                            + ']'
                         )
                     f.write(row + '\n')
         f.close()
@@ -4127,11 +4023,7 @@ class UnstructDiscretizer:
 
         if self.verbose:
             # print('Time to calculate MPSA connection list: {:f} [sec]'.format((time.time() - start_time_module)))
-            print(
-                '\t#Mat-Mat MPSA connections found:   {:d}'.format(
-                    self.mpsa_connections_num
-                )
-            )
+            print(f'\t#Mat-Mat MPSA connections found:   {self.mpsa_connections_num:d}')
             # print('\t#Mat-Frac MPSA connections found:  {:d}'.format(count_mat_frac_conn))
             print('------------------------------------------------\n')
 
@@ -4139,7 +4031,7 @@ class UnstructDiscretizer:
 
     def calc_equivalent_well_index(
         self, res_block: int, well_radius: float = 0.1524, skin: float = 0.0
-    ) -> List[float]:
+    ) -> list[float]:
         '''
         works only for wedge 2.5D extruded cells
         approximate calculation: triangle -> square with the same area -> Peaceman formula

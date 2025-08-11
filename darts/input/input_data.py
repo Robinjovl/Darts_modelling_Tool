@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 
@@ -204,7 +202,7 @@ class Well:
 class WellPerforation:
     def __init__(
         self,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -231,8 +229,8 @@ class WellData:
         self,
         name: str,
         loc_type: str,
-        loc_ijk: Union[int, tuple] = None,
-        loc_xyz: Union[float, tuple] = None,
+        loc_ijk: int | tuple = None,
+        loc_xyz: float | tuple = None,
     ):
         assert name not in self.wells, 'The well ' + name + ' has been already added!'
         w = Well(loc_type=loc_type)
@@ -249,7 +247,7 @@ class WellData:
         self,
         name: str,
         time: float,
-        loc_ijk: Union[int, tuple],
+        loc_ijk: int | tuple,
         status: str,
         well_radius: float,
         well_index: float,
@@ -488,9 +486,7 @@ class InputData:
             'thermoporoelasticity',
             'none',
         ], 'input_data: Unknown type_mech'
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             sub_obj = self.__getattribute__(k)
@@ -552,9 +548,7 @@ class InputData:
                 if not np.isscalar(value):  # if np.array
                     max_n_regions = value.size
         # make arrays from scalar fields
-        for (
-            k
-        ) in (
+        for k in (
             self.__dict__.keys()
         ):  # loop over the attributes (self.rock, self.fluid, ..)
             if k not in array_obj:

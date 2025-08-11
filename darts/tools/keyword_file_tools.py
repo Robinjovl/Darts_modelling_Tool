@@ -6,7 +6,7 @@ from darts.engines import value_vector
 
 
 def get_table_keyword(file_name, keyword):
-    with open(file_name, 'r') as f:
+    with open(file_name) as f:
         for line in f:
             if line.strip() == keyword:
                 table = []
@@ -42,7 +42,7 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
 
     # start with specified (or default) array length
     a = np.zeros(def_len)
-    with open(file_name, 'r') as f:
+    with open(file_name) as f:
         for line in f:
             s_line = line.strip()
 
@@ -87,7 +87,6 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         s2_add.fill(s2[1])
                         b = np.append(b, s2_add)
                     else:
-
                         try:
                             value = float(s1[x])
                         except ValueError:
