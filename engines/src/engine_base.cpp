@@ -1930,7 +1930,7 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 		/* ---- end check solid compositions ---- */
 
 		/* ---- check fluid compositions ---- */ 		
-		sum_z = 0;
+		sum_z = 0.;
 		z_corrected = false;
 		for (index_t c = n_solid; c < nc - 1; c++)
 		{
@@ -1948,10 +1948,10 @@ void engine_base::apply_composition_correction(std::vector<value_t>& X, std::vec
 			sum_z += new_z;
 		}
 		// check the last composition
-		new_z = 1 - sum_z;
+		new_z = 1. - sum_z;
 		if (new_z < min_zc)
 		{
-			new_z = min_zc;
+			new_z = (sum_z > max_zc) ? sum_z * min_zc : min_zc;
 			z_corrected = true;
 		}
 		sum_z += new_z;
