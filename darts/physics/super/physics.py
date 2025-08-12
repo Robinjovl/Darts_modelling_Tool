@@ -98,27 +98,27 @@ class Compositional(PhysicsBase):
 
         # axes_min
         if axes_min is None:
-            z_min = (
+            axz_min = (
                 [min_z + epsilon_z for i in range(nc - 1)]
                 if np.isscalar(min_z)
                 else [min_z[i] + epsilon_z for i in range(nc - 1)]
             )
             if self.thermal:
-                axes_min = [min_p] + z_min + [min_t]
+                axes_min = [min_p] + axz_min + [min_t]
             else:
-                axes_min = [min_p] + z_min
+                axes_min = [min_p] + axz_min
 
         # axes_max
         if axes_max is None:
-            z_max = (
+            axz_max = (
                 [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
                 if np.isscalar(min_z)
                 else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
             )
             if self.thermal:
-                axes_max = [max_p] + z_max + [max_t]
+                axes_max = [max_p] + axz_max + [max_t]
             else:
-                axes_max = [max_p] + z_max
+                axes_max = [max_p] + axz_max
 
         # n_axes_points
         if n_axes_points is None:

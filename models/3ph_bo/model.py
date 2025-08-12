@@ -1,3 +1,5 @@
+from sympy.physics.paulialgebra import epsilon
+
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
@@ -48,7 +50,7 @@ class Model(CICDModel):
     def set_physics(self, idata: InputData):
         self.physics = BlackOil(idata, self.timer, thermal=False)
         zero = 1e-12
-        epsilon = 1e-13
+        # epsilon = 1e-13
         self.inj_composition = [1 - 2 * zero, zero]
         self.ini_stream = [0.001225901537, 0.7711341309]
 
@@ -82,11 +84,24 @@ class Model(CICDModel):
         idata.obl.n_points = 5000
         idata.obl.zero = 1e-12
         idata.obl.epsilon_z = 1e-13
+        # idata.obl.epsilon_z = 0.
         idata.obl.min_p = 1.
         idata.obl.max_p = 450.
         idata.obl.min_t = -10.
         idata.obl.max_t = 100.
         idata.obl.min_z = 0.
+        # idata.obl.min_z = 1e-13
         idata.obl.max_z = 1.
+        # idata.obl.max_z = 1.-1e-13
+
+        if 1:
+            # working
+            idata.obl.epsilon_z = 0
+            idata.obl.min_z = 1e-13
+            idata.obl.max_z = 1.-1e-13
+        else:
+            idata.obl.epsilon_z = 1e-13
+            idata.obl.min_z = 0.
+            idata.obl.max_z = 1.
 
         return idata

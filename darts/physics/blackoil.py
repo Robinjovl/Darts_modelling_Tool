@@ -43,7 +43,8 @@ class BlackOil(Compositional):
             phases_name=idata.fluid.phases,
             components_name=idata.fluid.components,
             Mw=idata.fluid.Mw,
-            min_z=idata.obl.epsilon_z,
+            eps_z=idata.obl.epsilon_z,
+            # min_z=idata.obl.min_z,
             temperature=temperature,
         )
 
@@ -95,11 +96,11 @@ class BlackOilProperties(PropertyContainer):
         phases_name,
         components_name,
         Mw,
-        min_z: float = 1e-11,
+        eps_z: float = 1e-11,
         temperature: float = None,
     ):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=1.0)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.0)
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]

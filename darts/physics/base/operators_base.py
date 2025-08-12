@@ -23,8 +23,8 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.nc = property_container.nc
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
-        self.min_z = (
-            property_container.min_z if hasattr(property_container, 'min_z') else 0.0
+        self.eps_z = (
+            property_container.eps_z if hasattr(property_container, 'eps_z') else 1e-13
         )
 
         self.extrapolation_flag = extrapolation_flag
@@ -37,7 +37,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         # Find composition, if last composition is negative, apply extrapolation
         zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
 
-        if zc[-1] < 0.099 * self.min_z and self.extrapolation_flag:
+        if zc[-1] < 0.099 * self.eps_z and self.extrapolation_flag:
             self.extrapolate(state, values)
             return 1
         else:
@@ -61,10 +61,10 @@ class OperatorsBase(operator_set_evaluator_iface):
             z = vec[1:].copy()
 
         zero_comps = [
-            i for i in range(self.nc - 1) if z[i] <= self.property.min_z + 1e-15
+            i for i in range(self.nc - 1) if z[i] <= self.eps_z + 1e-15
         ]
         nonzero_comps = [
-            1 if z[i] > self.property.min_z + 1e-15 else 0 for i in range(self.nc - 1)
+            1 if z[i] > self.eps_z + 1e-15 else 0 for i in range(self.nc - 1)
         ]
         d = np.sum(nonzero_comps)
         last_z = 1.0 - np.sum(z)
@@ -121,7 +121,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         c = X[-1, :]  # shape (n_ops,)
 
         # Extrapolate values
-        z_nonzero = z[z > self.min_z + 1e-15]
+        z_nonzero = z[z > self.eps_z + 1e-15]
         ext = a.T.dot(z_nonzero) + c
 
         # Write back into values array
