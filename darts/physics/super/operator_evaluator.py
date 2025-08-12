@@ -18,7 +18,6 @@ class OperatorsSuper(OperatorsBase):
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )  # Initialize base-class
 
-        self.min_z = property_container.min_z
         self.nc_fl = property_container.nc_fl
         self.ns = property_container.ns
         self.np_fl = property_container.np_fl
