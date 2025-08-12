@@ -208,7 +208,7 @@ class Model(CICDModel):
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 nc_sol=1, np_sol=1, min_z=epsilon, rock_comp=1e-7)
+                                                 nc_sol=1, np_sol=1, eps_z=epsilon, rock_comp=1e-7)
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
@@ -427,10 +427,10 @@ class Model(CICDModel):
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, nc_sol: int = 0, np_sol: int = 0,
-                 min_z=1e-11, rock_comp=1e-6, temperature=1.):
+                 eps_z=1e-11, rock_comp=1e-6, temperature=1.):
         # Call base class constructor
         super().__init__(phases_name, components_name, Mw, nc_sol=nc_sol, np_sol=np_sol,
-                         min_z=min_z, rock_comp=rock_comp, temperature=temperature)
+                         eps_z=eps_z, rock_comp=rock_comp, temperature=temperature)
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         # Kinetic reaction
@@ -502,7 +502,6 @@ class ReservoirWithSourceOperators(ReservoirOperators):
                  delta_volume=1000, num_well_blocks=12):
         super().__init__(property_container, thermal=thermal)  # Initialize base-class
         # Store your input parameters in self here, and initialize other parameters here in self
-        self.min_z = property_container.min_z
         self.property = property_container
         self.thermal = thermal
         self.comp_inj_id = comp_inj_id

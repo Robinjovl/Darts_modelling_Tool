@@ -52,7 +52,7 @@ class Model(CICDModel):
         self.ini_stream = [0.05, 0.2 - zero]
 
         """ properties correlations """
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=epsilon)
+        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=epsilon)
 
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600)),
@@ -94,9 +94,9 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, rock_comp=1e-6):
+    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, rock_comp=1e-6):
         # Call base class constructor
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z,
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z,
                          rock_comp=rock_comp, temperature=1.)
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):

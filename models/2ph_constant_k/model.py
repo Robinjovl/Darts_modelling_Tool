@@ -222,7 +222,7 @@ class Model(DartsModel):
         thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
-                                             Mw=Mw, min_z=epsilon, temperature=1.)
+                                             Mw=Mw, eps_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(len(self.components), K, self.zero)
@@ -342,11 +342,11 @@ class Model(DartsModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, min_z=1e-11, temperature = 1.):
+    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, temperature = 1.):
         # Call base class constructor
         self.nph = len(phases_name)
         # Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state: value_vector):
         """

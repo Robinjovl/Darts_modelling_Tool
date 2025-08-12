@@ -37,7 +37,7 @@ class Model(THMCModel):
         Mw = [18.015]
         components = ['H2O']
         phases = ['wat']
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, min_z=self.zero,
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, eps_z=self.zero,
                                                temperature=323.15)
         """ properties correlations """
         property_container.flash_ev = SinglePhase(nc=1)

@@ -105,7 +105,7 @@ class Model(CICDModel, OptModuleSettings):
             from darts.physics.super.property_container import PropertyContainer
             zero = 1e-10
             epsilon = 1e-11
-            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, min_z=epsilon)
+            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
 
             property_container.flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
 

@@ -109,14 +109,14 @@ class THMCModel(DartsModel):
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                min_z=self.idata.obl.epsilon_z,
+                eps_z=self.idata.obl.epsilon_z,
             )
         else:
             property_container = PropertyContainer(
                 phases_name=phases,
                 components_name=components,
                 Mw=Mw,
-                min_z=self.idata.obl.epsilon_z,
+                eps_z=self.idata.obl.epsilon_z,
                 temperature=1.0,
             )
 

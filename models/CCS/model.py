@@ -78,7 +78,7 @@ class Model(DartsModel):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
-                                               temperature=temperature, min_z=epsilon)
+                                               temperature=temperature, eps_z=epsilon)
 
         property_container.flash_ev = NegativeFlash(flash_params, ["AQ", "PR"], [InitialGuess.Henry_AV])
         property_container.density_ev = dict([('V', EoSDensity(pr, comp_data.Mw)),

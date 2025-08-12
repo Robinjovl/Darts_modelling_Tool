@@ -46,7 +46,7 @@ class Model(CICDModel):
         self.inj = value_vector([zero])
         self.ini = value_vector([1 - zero])
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=epsilon)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -86,11 +86,11 @@ class Model(CICDModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=1.)
+        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
     def evaluate(self, state):
         """

@@ -47,7 +47,7 @@ class DeadOil(Compositional):
             phases_name=idata.fluid.phases,
             components_name=idata.fluid.components,
             Mw=idata.fluid.Mw,
-            min_z=idata.obl.epsilon_z,
+            eps_z=idata.obl.epsilon_z,
             temperature=temperature,
         )
 
@@ -121,7 +121,7 @@ class DeadOilProperties(PropertyContainer):
         phases_name,
         components_name,
         Mw,
-        min_z=1e-11,
+        eps_z=1e-11,
         rock_comp=1e-6,
         temperature: float = None,
     ):
@@ -130,7 +130,7 @@ class DeadOilProperties(PropertyContainer):
             phases_name=phases_name,
             components_name=components_name,
             Mw=Mw,
-            min_z=min_z,
+            eps_z=eps_z,
             rock_comp=rock_comp,
             temperature=temperature,
         )

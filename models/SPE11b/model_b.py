@@ -262,7 +262,7 @@ class Model(DartsModel):
         max_t = 373.15 if temperature is None else None
         self.physics = Compositional(self.components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
-                                     min_z=self.zero/10, max_z=1-self.zero/10, min_t=min_t, max_t=max_t,
+                                     min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec, 
                                      cache=False)
         self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
@@ -274,7 +274,7 @@ class Model(DartsModel):
             diff_w = 1e-9 * 86400
             diff_g = 2e-8 * 86400
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
-                                                   min_z=self.zero / 10, temperature=temperature)
+                                                   eps_z=self.zero / 10, temperature=temperature)
 
             property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
             property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),

@@ -100,7 +100,7 @@ class Model(CICDModel, OptModuleSettings):
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw,
-                                               min_z=epsilon, temperature=1.)
+                                               eps_z=epsilon, temperature=1.)
         property_container.flash_ev = ConstantK(nc, [4, 2, 1e-1], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600))])

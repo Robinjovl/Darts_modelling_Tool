@@ -154,7 +154,7 @@ for i, (region, corey_params) in enumerate(corey.items()):
     diff_w = 1e-9 * 86400 # m2/day
     diff_g = 2e-8 * 86400 # m2/day
     property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
-                                           min_z=zero / 10, temperature=temperature)
+                                           eps_z=zero / 10, temperature=temperature)
 
     property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
     property_container.density_ev = dict([('V', EoSDensity(eos=pr, Mw=comp_data.Mw)),

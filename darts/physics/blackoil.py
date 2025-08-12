@@ -44,7 +44,7 @@ class BlackOil(Compositional):
             components_name=idata.fluid.components,
             Mw=idata.fluid.Mw,
             eps_z=idata.obl.epsilon_z,
-            # min_z=idata.obl.min_z,
+            # eps_z=idata.obl.min_z,
             temperature=temperature,
         )
 
@@ -183,7 +183,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.ph = []
         for j in range(self.nph):
-            if zc[j] > self.min_z:
+            if zc[j] > self.eps_z:
                 self.ph.append(j)
             self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
 

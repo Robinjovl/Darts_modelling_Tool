@@ -73,7 +73,7 @@ class Model(CICDModel):
         """Physical properties"""
         # Create property containers:
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
-                                               temperature=1., rock_comp=1e-7, min_z=epsilon)
+                                               temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
         property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
