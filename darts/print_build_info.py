@@ -13,7 +13,10 @@ def print_build_info():
             date_time = fp.readline().rstrip()
             user_host = fp.readline().rstrip()
             git_hash = fp.readline().rstrip()
-            print(f'darts-package built on {date_time} by {user_host} from {git_hash}')
+            print(
+                'darts-package built on %s by %s from %s'
+                % (date_time, user_host, git_hash)
+            )
     else:
         import subprocess
 
@@ -30,9 +33,8 @@ def print_build_info():
             )
             return
         print(
-            'darts-package is imported locally from {} [{}]'.format(
-                here, git_hash.stdout.decode('utf-8').rstrip()
-            )
+            'darts-package is imported locally from %s [%s]'
+            % (here, git_hash.stdout.decode('utf-8').rstrip())
         )
 
 
@@ -50,7 +52,7 @@ if __name__ == '__main__':
 
         username = getpass.getuser()
         hostname = socket.gethostname()
-        fp.write(f"{username}@{hostname}\n")
+        fp.write("%s@%s\n" % (username, hostname))
 
         git_hash = subprocess.run(
             ['git', 'describe', '--always', '--dirty'], stdout=subprocess.PIPE

@@ -127,8 +127,8 @@ def set_domain_tags(
     bnd_zm_tag=None,
     bnd_zp_tag=None,
     bnd_tags=None,  # list of boundary tags
-    fracture_tags=None,
-    frac_bnd_tags=None,
+    fracture_tags=[],
+    frac_bnd_tags=[],
 ):
     '''
     :param matrix_tag: list of integers
@@ -137,10 +137,6 @@ def set_domain_tags(
     :param frac_bnd_tag: list of integers
     :return: dictionary of sets containing integer tags for each element type; dictionary of tags for 6 boundaries
     '''
-    if frac_bnd_tags is None:
-        frac_bnd_tags = []
-    if fracture_tags is None:
-        fracture_tags = []
     domain_tags = dict()
     domain_tags[elem_loc.MATRIX] = set(matrix_tags)
     domain_tags[elem_loc.FRACTURE] = set(fracture_tags)
@@ -189,7 +185,7 @@ def get_rock_compressibility(kd, biot, poro0):
         psi = np.trace(biot, axis1=biot.ndim - 2, axis2=biot.ndim - 1) / 3
         return (psi - poro0) * (1 - psi) / kd
     else:
-        raise AssertionError()
+        assert False
 
 
 def get_isotropic_stiffness(E, nu):
@@ -242,10 +238,8 @@ class UnstructReservoirMech:
         timer,
         discretizer='mech_discretizer',
         thermoporoelasticity=False,
-        fluid_vars=None,
+        fluid_vars=['p'],
     ):
-        if fluid_vars is None:
-            fluid_vars = ['p']
         self.timer = timer
         self.discretizer_name = discretizer
         self.thermoporoelasticity = thermoporoelasticity
@@ -360,9 +354,9 @@ class UnstructReservoirMech:
         :return:
         '''
         if self.discretizer_name == 'pm_discretizer':
-            np.array(self.mesh.block_m, copy=False)
-            np.array(self.mesh.block_p, copy=False)
-            np.array(self.mesh.offset, copy=False)
+            cell_m = np.array(self.mesh.block_m, copy=False)
+            cell_p = np.array(self.mesh.block_p, copy=False)
+            offset = np.array(self.mesh.offset, copy=False)
             tran = np.array(self.mesh.tran, copy=False)
             tran_biot = np.array(self.mesh.tran_biot, copy=False)
             rhs = np.array(self.mesh.rhs, copy=False)
@@ -388,7 +382,7 @@ class UnstructReservoirMech:
             rhs_biot[3::4] = 0.0
 
         elif self.discretizer_name == 'mech_discretizer':
-            raise AssertionError('Not implemented')
+            assert False, 'Not implemented'
 
     def init_matrix_stiffness(self, props):
         self.unstr_discr.stiffness = {}
@@ -692,7 +686,7 @@ class UnstructReservoirMech:
             self.unstr_discr.p_ref[:] = self.p_init
             for bound_id in range(len(self.unstr_discr.bound_face_info_dict)):
                 n = self.get_normal_to_bound_face(bound_id)
-                np.identity(3) - np.outer(n, n)
+                P = np.identity(3) - np.outer(n, n)
                 mech = self.unstr_discr.boundary_conditions[
                     self.unstr_discr.bound_face_info_dict[bound_id].prop_id
                 ]['mech']
@@ -788,7 +782,7 @@ class UnstructReservoirMech:
 
     def init_uniform_properties(self, idata: InputData):
         if self.discretizer_name == 'mech_discretizer':
-            for _i, cell_id in enumerate(
+            for i, cell_id in enumerate(
                 range(
                     self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                     self.discr_mesh.region_ranges[elem_loc.MATRIX][1],
@@ -870,7 +864,7 @@ class UnstructReservoirMech:
             self.porosity = np.zeros(self.n_matrix + self.n_fracs)
             self.cs = np.zeros(self.n_matrix + self.n_fracs)
             self.hcap = np.zeros(self.n_matrix + self.n_fracs)
-            for _i, cell_id in enumerate(
+            for i, cell_id in enumerate(
                 range(
                     self.discr_mesh.region_ranges[elem_loc.MATRIX][0],
                     self.discr_mesh.region_ranges[elem_loc.MATRIX][1],
@@ -994,7 +988,7 @@ class UnstructReservoirMech:
         elif self.discretizer_name == 'pm_discretizer':
             if self.thermoporoelasticity:
                 print('thermoporoelasticity is not supported in', self.discretizer_name)
-                raise AssertionError()
+                assert False
             self.init_pm_discretizer()
         self.init_arrays(idata)
         self.wells = []
@@ -1188,7 +1182,7 @@ class UnstructReservoirMech:
             n_vars = 4
             n_dim = 3
             fluxes = np.array(engine.fluxes, copy=False)
-            np.array(engine.fluxes_biot, copy=False)
+            fluxes_biot = np.array(engine.fluxes_biot, copy=False)
             cell_m = np.array(self.mesh.block_m, copy=False)
             cell_p = np.array(self.mesh.block_p, copy=False)
 
@@ -1248,8 +1242,8 @@ class UnstructReservoirMech:
         elif self.discretizer_name == 'pm_discretizer':
             n_vars = 4
             n_dim = 3
-            np.array(engine.fluxes, copy=False)
-            np.array(engine.fluxes_biot, copy=False)
+            fluxes = np.array(engine.fluxes, copy=False)
+            fluxes_biot = np.array(engine.fluxes_biot, copy=False)
             S_eng = vector_matrix(engine.contacts[0].S)
             frac_prop = property_array[
                 n_vars * self.unstr_discr.mat_cells_tot : n_vars
@@ -1263,7 +1257,7 @@ class UnstructReservoirMech:
             frac_data['f_local'] = np.zeros((self.unstr_discr.frac_cells_tot, n_dim))
             frac_data['mu'] = np.array(engine.contacts[0].mu, copy=False)
 
-            for cell_id, _cell in self.unstr_discr.frac_cell_info_dict.items():
+            for cell_id, cell in self.unstr_discr.frac_cell_info_dict.items():
                 cell_id -= self.unstr_discr.mat_cells_tot
                 # frac_data['tag'][cell_id] = int(cell.prop_id)
                 face = self.unstr_discr.faces[cell_id + self.unstr_discr.mat_cells_tot][
@@ -1312,6 +1306,7 @@ class UnstructReservoirMech:
         # Allocate empty new cell_data dictionary:
         property_array = np.array(engine.X, copy=False)
         available_matrix_geometries = ['hexahedron', 'wedge', 'tetra']
+        available_fracture_geometries = ['quad', 'triangle']
 
         # Stresses and velocities
         engine.eval_stresses_and_velocities()
@@ -1394,9 +1389,9 @@ class UnstructReservoirMech:
         available_fracture_geometries = ['quad', 'triangle']
 
         # if ith_step != 0:
-        np.array(engine.fluxes, copy=False)
+        fluxes = np.array(engine.fluxes, copy=False)
         # fluxes_n = np.array(physics.engine.fluxes_n, copy=False)
-        np.array(engine.fluxes_biot, copy=False)
+        fluxes_biot = np.array(engine.fluxes_biot, copy=False)
         # vels = self.reconstruct_velocities(fluxes[physics.engine.P_VAR::physics.engine.N_VARS],
         #                                  fluxes_biot[physics.engine.P_VAR::physics.engine.N_VARS])
         self.mech_operators.eval_porosities(engine.X, self.mesh.bc)
@@ -1698,7 +1693,7 @@ class UnstructReservoirMech:
             tag: int(output_layers * inds.size / z_coords[tag].size)
             for tag, inds in tag_ids.items()
         }
-        len(self.unstr_discr.physical_tags['fracture'])
+        faults_num = len(self.unstr_discr.physical_tags['fracture'])
 
         s = {tag: np.zeros(num) for tag, num in output_var_num.items()}
         # gap = np.zeros( (output_var_num, 3) )
@@ -1747,8 +1742,8 @@ class UnstructReservoirMech:
 
         n_vars = 4
         n_dim = 3
-        np.array(engine.fluxes, copy=False)
-        np.array(engine.fluxes_biot, copy=False)
+        fluxes = np.array(engine.fluxes, copy=False)
+        fluxes_biot = np.array(engine.fluxes_biot, copy=False)
         s, z_coords, inds = self.get_parametrized_fault_props()
         x = property_array.reshape(int(property_array.size / n_vars), n_vars)[
             self.unstr_discr.mat_cells_tot : self.unstr_discr.mat_cells_tot
@@ -1944,7 +1939,7 @@ class UnstructReservoirMech:
                 self.pm.faces.append(fs)
 
                 face1 = faces[4]
-                faces[5]
+                face2 = faces[5]
                 self.mesh.fault_normals.append(face1.n[0])
                 self.mesh.fault_normals.append(face1.n[1])
                 self.mesh.fault_normals.append(face1.n[2])

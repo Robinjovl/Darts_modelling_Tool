@@ -155,7 +155,7 @@ class Initialize:
             for spec, values in primary_specs.items():
                 self.primary_specs[spec] = (
                     values
-                    if isinstance(values, list | np.ndarray)
+                    if isinstance(values, (list, np.ndarray))
                     else np.ones(nb) * values
                 )
                 assert len(self.primary_specs[spec]) == nb, (
@@ -165,7 +165,7 @@ class Initialize:
             for spec, values in secondary_specs.items():
                 self.secondary_specs[spec] = (
                     values
-                    if isinstance(values, list | np.ndarray)
+                    if isinstance(values, (list, np.ndarray))
                     else np.ones(nb) * values
                 )
                 assert len(self.secondary_specs[spec]) == nb, (
@@ -267,7 +267,7 @@ class Initialize:
             )
         )
 
-        for _it in range(max_iter):
+        for it in range(max_iter):
             res = np.zeros(self.nv)
             Jac = np.zeros((self.nv, self.nv))
             values, derivs = self.evaluate(Xi)
@@ -334,7 +334,7 @@ class Initialize:
         if self.thermal:
             X[cell_idx, -1] = self.T(cell_idx)
 
-        for _it in range(max_iter):
+        for it in range(max_iter):
             # nc variables for pressure and nc-1 compositions, temperature is calculated from gradient
             res = np.zeros(n_vars)
             Jac = np.zeros((n_vars, n_vars))

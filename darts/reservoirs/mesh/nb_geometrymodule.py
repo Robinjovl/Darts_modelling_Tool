@@ -166,7 +166,7 @@ class nbHexahedron:
         )
 
         # Loop over all tetrahedrons:
-        for _jj, ith_tetra in enumerate(nodes_array_tetras):
+        for jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 
@@ -298,7 +298,7 @@ class nbWedge:
         self.volume = 0
 
         # Loop over all tetrahedrons:
-        for _jj, ith_tetra in enumerate(nodes_array_tetras):
+        for jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 
@@ -421,7 +421,7 @@ class nbPyramid:
         nodes_array_tetras = np.array([[1, 2, 3, 4], [1, 3, 0, 4]])
 
         # Loop over all tetrahedrons:
-        for _jj, ith_tetra in enumerate(nodes_array_tetras):
+        for jj, ith_tetra in enumerate(nodes_array_tetras):
             # Assign local coordinates:
             local_coord = np.zeros((4, 3), dtype=np.float64)
 

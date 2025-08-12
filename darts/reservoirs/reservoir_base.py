@@ -166,7 +166,7 @@ class ReservoirBase:
         """
         for w in self.wells:
             assert len(w.perforations) > 0, (
-                f"Well {w.name} does not perforate any active reservoir blocks"
+                "Well %s does not perforate any active reservoir blocks" % w.name
             )
         self.mesh.add_wells(ms_well_vector(self.wells))
 

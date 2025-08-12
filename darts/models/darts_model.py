@@ -178,8 +178,7 @@ class DartsModel:
             warnings.warn(
                 'The number of cells looks too big to use a direct linear solver: '
                 + str(self.reservoir.mesh.n_res_blocks)
-                + ' > 30000',
-                stacklevel=2,
+                + ' > 30000'
             )
 
     def reset(self):
@@ -496,7 +495,7 @@ class DartsModel:
             else:
                 dt /= self.data_ts.dt_mult
                 if verbose:
-                    print(f"Cut timestep to {dt:2.10f}")
+                    print("Cut timestep to %2.10f" % dt)
                 if dt < self.data_ts.dt_min:
                     break
 
@@ -624,7 +623,7 @@ class DartsModel:
             else:
                 dt /= data_ts.dt_mult
                 if verbose:
-                    print(f"Cut timestep to {dt:2.10f}")
+                    print("Cut timestep to %2.10f" % dt)
                 assert dt > data_ts.dt_min, (
                     'Stop simulation. Reason: reached min. timestep '
                     + str(data_ts.dt_min)
@@ -746,7 +745,7 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                self.physics.engine.solve_linear_equation()
+                r_code = self.physics.engine.solve_linear_equation()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -795,7 +794,7 @@ class DartsModel:
             )
         res_history = np.array([history[0][0], history[1][0]])
 
-        for _iter in range(5):
+        for iter in range(5):
             if coef.size > 2:
                 id = res_history.argmin()
                 closest_left = np.where(coef < coef[id])[0]

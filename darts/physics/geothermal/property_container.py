@@ -233,7 +233,7 @@ class PropertyContainerPH(PropertyBase):
         self.output_props = {'temperature': lambda: self.temperature}
 
     def run_flash(self, pressure, enthalpy):
-        self.flash_ev.evaluate(pressure, enthalpy)
+        error_output = self.flash_ev.evaluate(pressure, enthalpy)
         flash_results = self.flash_ev.get_flash_results()
         self.nu = np.array(flash_results.nu)
         self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)

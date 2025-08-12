@@ -509,7 +509,7 @@ class Graph:
         self.closest_point_method(
             order_discr, char_len, merge_treshold, correct_aperture
         )
-        for _ii in range(small_angle_iter):
+        for ii in range(small_angle_iter):
             self.remove_small_angles(tolerange_small_angle, char_len, correct_aperture)
         if straighten_edges:
             self.straighten_edges(tolerange_straight_angle, char_len, correct_aperture)
@@ -1111,7 +1111,7 @@ def create_geo_file(
     :return:
     """
     act_frac_sys = np.round(act_frac_sys * 10**decimals) * 10 ** (-decimals)
-    act_frac_sys.shape[0]
+    num_segm_tot = act_frac_sys.shape[0]
     unique_nodes = np.unique(
         np.vstack((act_frac_sys[:, :2], act_frac_sys[:, 2:])), axis=0
     )

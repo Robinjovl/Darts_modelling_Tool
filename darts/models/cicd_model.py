@@ -104,14 +104,10 @@ class CICDModel(DartsModel):
                         )
                         fail += 1
             if not fail:
-                print(
-                    'OK, \t{:.2f} s'.format(self.timer.node['simulation'].get_timer())
-                )
+                print('OK, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 0
             else:
-                print(
-                    'FAIL, \t{:.2f} s'.format(self.timer.node['simulation'].get_timer())
-                )
+                print('FAIL, \t%.2f s' % self.timer.node['simulation'].get_timer())
                 return 1
         else:
             self.save_performance_data(perf_file, pkl_suffix=pkl_suffix)

@@ -123,7 +123,7 @@ class Poroelasticity(Compositional):
                     "engine_super_elastic_%s%d_%d" % (platform, self.nc, self.nph)
                 )()
         else:  # discretizer == 'pm_discretizer':
-            return eval(f"engine_pm_{platform}")()
+            return eval("engine_pm_%s" % (platform))()
 
     def set_operators(self):
         """
