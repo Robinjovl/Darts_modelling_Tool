@@ -63,6 +63,8 @@ class Poroelasticity(Compositional):
         :type min_z, max_z: float
         :param min_t, max_t: Minimum, maximum temperature, default is None
         :type min_t, max_t: float
+        :param epsilon_z: Epsilon value for composition
+        :type epsilon_z: float
         :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
         :type state_spec: bool
         :param cache: Switch to cache operator values
